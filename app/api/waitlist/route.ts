@@ -8,6 +8,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'apikey': key,
         'Authorization': `Bearer ${key}`
       },
       body: JSON.stringify({ email })
