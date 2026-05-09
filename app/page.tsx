@@ -33,17 +33,13 @@ export default function OXXOVOLandingPage() {
     return () => clearInterval(interval)
   }, [targetDate])
 
- const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault()
   setLoading(true)
   try {
-    const res = await fetch('https://qrnkovokjmimagrwjebs.supabase.co/rest/v1/waitlist', {
+    const res = await fetch('/api/waitlist', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFybmtvdm9ram1pbWFncndqZWJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNTc1NzQsImV4cCI6MjA5MzgzMzU3NH0.9Hsq-_6DD9zwrYqj7Fqu5Ji48B1YzIEk2M3J9T6wHWQ',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFybmtvdm9ram1pbWFncndqZWJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNTc1NzQsImV4cCI6MjA5MzgzMzU3NH0.9Hsq-_6DD9zwrYqj7Fqu5Ji48B1YzIEk2M3J9T6wHWQ'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
     })
     if (res.ok) setSubmitted(true)
