@@ -74,7 +74,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           <a className="transition hover:text-[#b66cff]" href="#faq">FAQ</a>
         </nav>
         <div className="flex items-center gap-5">
-          <a className="text-[14px] text-white/60 max-md:hidden" href="#login">Log in</a>
+          <a className="text-[14px] text-white/60 max-md:hidden" href="/login">Log in</a>
           <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="#waitlist">
             Join Waitlist
           </a>
