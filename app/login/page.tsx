@@ -1,20 +1,20 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
-export default function SignupPage() {
+export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const router = useRouter()
 
-  const handleSignup = async () => {
+  const handleLogin = async () => {
     setLoading(true)
     setError('')
-    setMessage('')
 
-    const res = await fetch('/api/auth/signup', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
@@ -23,43 +23,52 @@ export default function SignupPage() {
     const data = await res.json()
 
     if (res.ok) {
-      setMessage('✅ Check your email to confirm your account!')
+      router.push('/')
     } else {
-      setError(data.error || 'Something went wrong.')
+      setError(data.error || 'Login failed.')
     }
     setLoading(false)
   }
 
   return (
-    <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center px-4">
+    <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
           <h1 className="text-3xl font-black text-[#8b22ff] mb-2">OXXOVO</h1>
-          <p className="text-white/50 text-sm">Create your account</p>
+          <p className="text-white/50 text-sm">Log in to your account</p>
         </div>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-white/60 mb-1">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff]" />
+            <label className="block text-sm text-white/60 mb-2">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 rounded-lg bg-white/95 text-black"
+            />
           </div>
           <div>
-            <label className="block text-sm text-white/60 mb-1">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 6 characters" className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff]" />
+            <label className="block text-sm text-white/60 mb-2">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 rounded-lg bg-[#1a1a1f] text-white border border-white/10"
+            />
           </div>
           {error && <p className="text-red-400 text-sm">{error}</p>}
-          {message && <p className="text-green-400 text-sm">{message}</p>}
-          <button type="button" onClick={handleSignup} disabled={loading} className="w-full bg-gradient-to-br from-[#7d23ff] to-[#6220dc] py-3 rounded-lg font-bold text-white hover:brightness-110 disabled:opacity-50">
-            {loading ? 'Creating account...' : 'Create Account'}
+          <button
+            type="button"
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full py-3 rounded-lg bg-[#8b22ff] hover:bg-[#7a1de8] text-white font-bold disabled:opacity-50"
+          >
+            {loading ? 'Logging in...' : 'Log in'}
           </button>
         </div>
         <p className="text-center text-white/40 text-sm mt-6">
-          Already have an account?{' '}
-          <a href="/login" className="text-[#8b22ff] hover:underline">Log in</a>
-        </p>
-        <p className="text-center text-white/25 text-xs mt-8">
-          By signing up, you agree to our{' '}
-          <a href="/terms" className="hover:underline">Terms of Service</a>{' '}and{' '}
-          <a href="/privacy" className="hover:underline">Privacy Policy</a>
+          Don't have an account?{' '}
+          <a href="/signup" className="text-[#8b22ff] hover:underline">Sign up</a>
         </p>
       </div>
     </main>
