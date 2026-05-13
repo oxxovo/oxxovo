@@ -23,6 +23,10 @@ export default function LoginPage() {
     const data = await res.json()
 
     if (res.ok) {
+      if (data.access_token) {
+        localStorage.setItem('oxxovo_token', data.access_token)
+        localStorage.setItem('oxxovo_email', email)
+      }
       router.push('/')
     } else {
       setError(data.error || 'Login failed.')
