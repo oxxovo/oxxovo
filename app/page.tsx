@@ -91,7 +91,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         <div className="flex items-center gap-5">
           {user ? (
             <>
-              <a href="/profile" className="text-[14px] text-white/70 max-md:hidden">
+              <a href="/profile" className="text-[14px] text-white/70 hover:text-white max-md:hidden transition cursor-pointer">
                 Hi, {user.email.split('@')[0]}
               </a>
               <button
