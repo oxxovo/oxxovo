@@ -91,9 +91,9 @@ const handleSubmit = async (e: React.FormEvent) => {
         <div className="flex items-center gap-5">
           {user ? (
             <>
-              <span className="text-[14px] text-white/70 max-md:hidden">
+              <a href="/profile" className="text-[14px] text-white/70 max-md:hidden">
                 Hi, {user.email.split('@')[0]}
-              </span>
+              </a>
               <button
                 onClick={handleLogout}
                 className="rounded-lg border border-white/20 px-5 py-2.5 text-[14px] font-bold text-white/80 transition hover:border-[#8b22ff] hover:text-white"
