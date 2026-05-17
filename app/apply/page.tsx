@@ -97,7 +97,7 @@ export default function ApplyPage() {
             You&apos;ve entered.
           </h1>
           <p className="text-white/60 leading-relaxed mb-8">
-            Your Free Entry is now part of the OXXOVO GENESIS archive.
+            Your Free Entry has been submitted to OXXOVO GENESIS.
             Our Triple-AI system will review your submission, and we&apos;ll
             be in touch through the email you provided.
           </p>
@@ -172,8 +172,8 @@ export default function ApplyPage() {
           </div>
 
           <p className="text-sm text-white/50 mt-6 leading-relaxed">
-            Every applicant becomes a permanent <span className="text-white">Founding Creator</span> —
-            with lifetime free entry to all Season 1 tournaments.
+            The top 50 advance as <span className="text-white">Founding Creators</span> —
+            earning a permanent badge and a place in the Genesis Archive.
           </p>
 
           <Link
@@ -279,8 +279,8 @@ export default function ApplyPage() {
             </button>
 
             <p className="text-xs text-white/40 text-center leading-relaxed">
-              Free entry. By submitting, you join the OXXOVO GENESIS archive
-              as a Founding Creator.
+              Free entry. Your submission will be reviewed by our
+              Triple-AI scoring system.
             </p>
           </div>
         </div>
