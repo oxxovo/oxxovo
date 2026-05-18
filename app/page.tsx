@@ -42,9 +42,9 @@ export default function OXXOVOLandingPage() {
           <span className="text-[26px] font-black tracking-wide text-[#8b22ff]">OXXOVO</span>
         </a>
         <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
-          <a className="transition hover:text-[#b66cff]" href="#how">How It Works</a>
-          <a className="transition hover:text-[#b66cff]" href="#about">About</a>
-          <a className="transition hover:text-[#b66cff]" href="#faq">FAQ</a>
+          <a className="transition hover:text-[#b66cff]" href="/rules">How It Works</a>
+          <a className="transition hover:text-[#b66cff]" href="/about">About</a>
+          <a className="transition hover:text-[#b66cff]" href="/faq">FAQ</a>
         </nav>
         <div className="flex items-center gap-5">
           {user ? (
