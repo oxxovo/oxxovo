@@ -52,10 +52,7 @@ export default function OXXOVOLandingPage() {
               <a href="/profile" className="text-[14px] text-white/70 hover:text-white max-md:hidden transition cursor-pointer">
                 Hi, {user.email.split('@')[0]}
               </a>
-              <button
-                onClick={handleLogout}
-                className="rounded-lg border border-white/20 px-5 py-2.5 text-[14px] font-bold text-white/80 transition hover:border-[#8b22ff] hover:text-white"
-              >
+              <button onClick={handleLogout} className="rounded-lg border border-white/20 px-5 py-2.5 text-[14px] font-bold text-white/80 transition hover:border-[#8b22ff] hover:text-white">
                 Log out
               </button>
             </>
@@ -89,14 +86,11 @@ export default function OXXOVOLandingPage() {
           </div>
 
           <div className="mt-7">
-            
-              href="/apply"
-              className="inline-flex h-[56px] items-center justify-center rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-10 text-[15px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110"
-            >
-              Apply to GENESIS →
+            <a href="/apply" className="inline-flex h-[56px] items-center justify-center rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-10 text-[15px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110">
+              Apply to GENESIS
             </a>
             <p className="mt-3 text-xs text-white/40">
-              Season 0 · GENESIS — the free launch tournament. Entry is free.
+              GENESIS is the free launch tournament. Entry is free.
             </p>
           </div>
 
