@@ -1,36 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+
 export default function OXXOVOLandingPage() {
-  const targetDate = useMemo(() => {
-    const date = new Date()
-    date.setDate(date.getDate() + 12)
-    date.setHours(date.getHours() + 8)
-    date.setMinutes(date.getMinutes() + 34)
-    date.setSeconds(date.getSeconds() + 27)
-    return date
-  }, [])
-
-  const [timeLeft, setTimeLeft] = useState({ days: '12', hours: '08', minutes: '34', seconds: '27' })
-  const [email, setEmail] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    const update = () => {
-      const distance = targetDate.getTime() - Date.now()
-      if (distance <= 0) { setTimeLeft({ days: '00', hours: '00', minutes: '00', seconds: '00' }); return }
-      const d = Math.floor(distance / 86400000)
-      const h = Math.floor((distance % 86400000) / 3600000)
-      const m = Math.floor((distance % 3600000) / 60000)
-      const s = Math.floor((distance % 60000) / 1000)
-      setTimeLeft({ days: String(d).padStart(2,'0'), hours: String(h).padStart(2,'0'), minutes: String(m).padStart(2,'0'), seconds: String(s).padStart(2,'0') })
-    }
-    update()
-    const interval = setInterval(update, 1000)
-    return () => clearInterval(interval)
-  }, [targetDate])
-const [user, setUser] = useState<{ email: string } | null>(null)
+  const [user, setUser] = useState<{ email: string } | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('oxxovo_token')
@@ -46,21 +19,6 @@ const [user, setUser] = useState<{ email: string } | null>(null)
     setUser(null)
     window.location.reload()
   }
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
-  setLoading(true)
-  try {
-    const res = await fetch('/api/waitlist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
-    })
-    if (res.ok) setSubmitted(true)
-  } catch (err) {
-    console.error(err)
-  }
-  setLoading(false)
-}
 
   const features = [
     { icon: '⚡', title: 'Real-time', desc: 'Live tournaments. Feel the pressure.' },
@@ -104,8 +62,8 @@ const handleSubmit = async (e: React.FormEvent) => {
           ) : (
             <>
               <a className="text-[14px] text-white/60 max-md:hidden" href="/login">Log in</a>
-              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="#waitlist">
-                Join Waitlist
+              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="/apply">
+                Apply to GENESIS
               </a>
             </>
           )}
@@ -130,43 +88,18 @@ const handleSubmit = async (e: React.FormEvent) => {
             <p className="mt-2 text-[16px] italic font-semibold text-gray-400">Same prompt. Same time. No excuses.</p>
           </div>
 
-          {!submitted ? (
-            <form id="waitlist" onSubmit={handleSubmit} className="mt-7 flex h-[56px] w-[min(100%,500px)] overflow-hidden rounded-lg border border-white/12 bg-[#080b12]/85">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                required
-                className="min-w-0 flex-1 bg-transparent px-5 text-[15px] text-white outline-none placeholder:text-white/40"
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="min-w-[140px] bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 text-[14px] font-extrabold text-white transition hover:brightness-110 disabled:opacity-50"
-              >
-                {loading ? '...' : 'Join Waitlist'}
-              </button>
-            </form>
-          ) : (
-            <div className="mt-7">
-              <p className="text-xl font-bold text-[#b66cff]">You are in!</p>
-              <p className="mt-1 text-sm text-white/60">Welcome, Pioneer. We will be in touch soon.</p>
-            </div>
-          )}
-          <p className="mt-2.5 text-xs text-white/40">No spam. Unsubscribe anytime.</p>
-
-          <div className="mt-7 w-[min(100%,500px)] border-t border-white/10 pt-5">
-            <div className="mb-3.5 text-[12px] font-bold uppercase tracking-widest text-[#b66cff]">Launching Soon</div>
-            <div className="grid max-w-[400px] grid-cols-4">
-              {[['Days', timeLeft.days], ['Hrs', timeLeft.hours], ['Min', timeLeft.minutes], ['Sec', timeLeft.seconds]].map(([label, val], i) => (
-                <div key={label} className={`${i > 0 ? 'border-l border-white/10 pl-5' : ''} ${i < 3 ? 'pr-5' : ''}`}>
-                  <strong className="block text-[28px] font-semibold tracking-wide">{val}</strong>
-                  <span className="mt-1 block text-[11px] uppercase text-white/50">{label}</span>
-                </div>
-              ))}
-            </div>
+          <div className="mt-7">
+            
+              href="/apply"
+              className="inline-flex h-[56px] items-center justify-center rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-10 text-[15px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110"
+            >
+              Apply to GENESIS →
+            </a>
+            <p className="mt-3 text-xs text-white/40">
+              Season 0 · GENESIS — the free launch tournament. Entry is free.
+            </p>
           </div>
+
         </div>
       </section>
 
