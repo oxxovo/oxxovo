@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 
@@ -8,6 +8,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+const CAPACITY = 500;
 
 type FormState = {
   creator_name: string;
@@ -19,6 +21,7 @@ type FormState = {
 };
 
 export default function ApplyPage() {
+  const [mode, setMode] = useState<'loading' | 'open' | 'full'>('loading');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +34,24 @@ export default function ApplyPage() {
     free_entry_url: '',
     agreed_to_rules: false,
   });
+
+  useEffect(() => {
+    const checkCapacity = async () => {
+      try {
+        const { data, error: rpcError } = await supabase.rpc(
+          'genesis_application_count'
+        );
+        if (rpcError) throw rpcError;
+        const count = typeof data === 'number' ? data : 0;
+        setMode(count >= CAPACITY ? 'full' : 'open');
+      } catch {
+        setMode('open');
+      }
+    };
+    checkCapacity();
+  }, []);
+
+  const isFull = mode === 'full';
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -55,7 +76,7 @@ export default function ApplyPage() {
       return;
     }
     if (!form.agreed_to_rules) {
-      setError('You must agree to the Official Rulebook to apply.');
+      setError('You must agree to the Official Rulebook to continue.');
       return;
     }
 
@@ -70,6 +91,7 @@ export default function ApplyPage() {
           channel_url: form.channel_url.trim(),
           free_entry_url: form.free_entry_url.trim(),
           agreed_to_rules: form.agreed_to_rules,
+          status: isFull ? 'waitlist' : 'pending',
         });
 
       if (dbError) {
@@ -80,26 +102,40 @@ export default function ApplyPage() {
       }
       setSubmitted(true);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Something went wrong. Please try again.'
+      );
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (mode === 'loading') {
+    return (
+      <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center px-6">
+        <div className="text-xs tracking-[0.3em] text-[#8B22FF] animate-pulse">
+          LOADING GENESIS...
+        </div>
+      </main>
+    );
+  }
 
   if (submitted) {
     return (
       <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center px-6">
         <div className="max-w-xl text-center">
           <div className="text-xs tracking-[0.3em] text-[#8B22FF] mb-6">
-            APPLICATION RECEIVED
+            {isFull ? 'WAITLIST CONFIRMED' : 'APPLICATION RECEIVED'}
           </div>
           <h1 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">
-            You&apos;ve entered.
+            {isFull ? "You're on the list." : "You've entered."}
           </h1>
           <p className="text-white/60 leading-relaxed mb-8">
-            Your Free Entry has been submitted to OXXOVO GENESIS.
-            Our Triple-AI system will review your submission, and we&apos;ll
-            be in touch through the email you provided.
+            {isFull
+              ? "GENESIS has reached its 500-applicant capacity. You're now on the waitlist — if a spot opens or a new round is added, we'll reach out through the email you provided."
+              : "Your Free Entry has been submitted to OXXOVO GENESIS. Our Triple-AI system will review your submission, and we'll be in touch through the email you provided."}
           </p>
           <p className="text-white/40 text-sm italic">
             The arena reveals winners.
@@ -120,18 +156,26 @@ export default function ApplyPage() {
       <section className="px-6 pt-24 pb-16 md:pt-32 md:pb-20 border-b border-white/5">
         <div className="max-w-3xl mx-auto">
           <div className="text-xs tracking-[0.3em] text-[#8B22FF] mb-6">
-            SEASON 0 — GENESIS — FREE LAUNCH TOURNAMENT
+            {isFull
+              ? 'SEASON 0 — GENESIS — WAITLIST'
+              : 'SEASON 0 — GENESIS — FREE LAUNCH TOURNAMENT'}
           </div>
           <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-8 leading-[0.95]">
-            ENTER THE<br />ARENA.
+            {isFull ? (
+              <>GENESIS<br />IS FULL.</>
+            ) : (
+              <>ENTER THE<br />ARENA.</>
+            )}
           </h1>
           <p className="text-lg md:text-xl text-white/70 leading-relaxed max-w-2xl">
-            GENESIS is OXXOVO&apos;s first verified AI creation tournament —
-            and entry is free. This is a one-time founding privilege.
+            {isFull
+              ? 'GENESIS has reached its 500-applicant capacity. Applications are now closed — but you can still join the waitlist below.'
+              : "GENESIS is OXXOVO's first verified AI creation tournament — and entry is free. This is a one-time founding privilege."}
           </p>
           <p className="text-lg md:text-xl text-white/70 leading-relaxed max-w-2xl mt-5">
-            This is not a contest.<br />
-            It is the birth of a new creative arena.
+            {isFull
+              ? 'If a spot opens or a new round is added, waitlisted creators are first in line.'
+              : 'This is not a contest. It is the birth of a new creative arena.'}
           </p>
         </div>
       </section>
@@ -188,13 +232,15 @@ export default function ApplyPage() {
       <section className="px-6 py-16 md:py-24">
         <div className="max-w-2xl mx-auto">
           <div className="text-xs tracking-[0.3em] text-[#8B22FF] mb-4">
-            APPLICATION
+            {isFull ? 'WAITLIST' : 'APPLICATION'}
           </div>
           <h2 className="text-3xl md:text-4xl font-black mb-4 tracking-tight">
-            Enter GENESIS.
+            {isFull ? 'Join the waitlist.' : 'Enter GENESIS.'}
           </h2>
           <p className="text-white/60 mb-12 leading-relaxed">
-            Free to enter. Open to creators worldwide.
+            {isFull
+              ? "GENESIS is full, but spots can open up. Add your details and we'll contact you if one does."
+              : 'Free to enter. Open to creators worldwide.'}
           </p>
 
           <div className="space-y-8">
@@ -275,12 +321,19 @@ export default function ApplyPage() {
               disabled={submitting}
               className="w-full bg-[#8B22FF] hover:bg-[#9B32FF] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold tracking-[0.2em] py-5 transition"
             >
-              {submitting ? 'SUBMITTING...' : 'SUBMIT APPLICATION'}
+              {submitting
+                ? isFull
+                  ? 'JOINING...'
+                  : 'SUBMITTING...'
+                : isFull
+                ? 'JOIN WAITLIST'
+                : 'SUBMIT APPLICATION'}
             </button>
 
             <p className="text-xs text-white/40 text-center leading-relaxed">
-              Free entry. Your submission will be reviewed by our
-              Triple-AI scoring system.
+              {isFull
+                ? 'By joining, your details are saved to the GENESIS waitlist.'
+                : 'Free entry. Your submission will be reviewed by our Triple-AI scoring system.'}
             </p>
           </div>
         </div>
