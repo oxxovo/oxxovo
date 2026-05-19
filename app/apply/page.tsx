@@ -100,6 +100,26 @@ export default function ApplyPage() {
         }
         throw new Error(dbError.message);
       }
+
+      // 신청 저장 성공 → TK 대표님께 알림 이메일 발송
+      // (이메일 발송이 실패해도 신청 자체는 정상 처리)
+      try {
+        await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            creator_name: form.creator_name.trim(),
+            email: form.email.trim().toLowerCase(),
+            country: form.country.trim() || null,
+            channel_url: form.channel_url.trim(),
+            free_entry_url: form.free_entry_url.trim(),
+            status: isFull ? 'waitlist' : 'pending',
+          }),
+        });
+      } catch {
+        // 알림 이메일 실패는 무시
+      }
+
       setSubmitted(true);
     } catch (e: unknown) {
       setError(
