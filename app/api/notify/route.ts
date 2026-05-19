@@ -21,11 +21,35 @@ export async function POST(request: Request) {
     }
 
     const isWaitlist = status === 'waitlist';
-    const subject = isWaitlist
+    const FROM = 'OXXOVO GENESIS <genesis@oxxovo.com>';
+
+    const sendEmail = (
+      to: string,
+      subject: string,
+      html: string,
+      replyTo?: string
+    ) =>
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: FROM,
+          to: [to],
+          subject,
+          html,
+          ...(replyTo ? { reply_to: replyTo } : {}),
+        }),
+      });
+
+    // ── ① 운영자(TK)에게 보내는 신청 알림 ──
+    const adminSubject = isWaitlist
       ? `[OXXOVO] New GENESIS waitlist signup — ${creator_name}`
       : `[OXXOVO] New GENESIS application — ${creator_name}`;
 
-    const html = `
+    const adminHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
         <h2 style="color: #8B22FF;">
           ${isWaitlist ? 'New GENESIS Waitlist Signup' : 'New GENESIS Application'}
@@ -41,25 +65,41 @@ export async function POST(request: Request) {
       </div>
     `;
 
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'OXXOVO GENESIS <genesis@oxxovo.com>',
-        to: ['info@oxxovo.com'],
-        reply_to: email,
-        subject,
-        html,
-      }),
-    });
+    // ── ② 신청자 본인에게 보내는 접수 확인 ──
+    const applicantSubject = isWaitlist
+      ? "OXXOVO GENESIS — You're on the waitlist"
+      : 'OXXOVO GENESIS — Application received';
 
-    if (!res.ok) {
-      const errText = await res.text();
-      return NextResponse.json({ error: errText }, { status: 500 });
-    }
+    const applicantHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1a1a1a; line-height: 1.6;">
+        <div style="font-size: 22px; font-weight: 800; color: #8B22FF; letter-spacing: 1px;">
+          OXXOVO
+        </div>
+        <div style="height: 2px; background: #8B22FF; margin: 14px 0 24px;"></div>
+        <h2 style="font-size: 20px; margin: 0 0 16px;">
+          ${isWaitlist ? "You're on the waitlist" : 'Application received'}
+        </h2>
+        <p style="margin: 0 0 14px;">Hi ${creator_name},</p>
+        ${
+          isWaitlist
+            ? `<p style="margin: 0 0 14px;">GENESIS has reached its 500-applicant capacity, so you've been added to the waitlist.</p>
+               <p style="margin: 0 0 14px;">If a spot opens or a new round is added, waitlisted creators are first in line — and we'll reach out at this email address.</p>`
+            : `<p style="margin: 0 0 14px;">Thanks for entering OXXOVO GENESIS — our first verified AI creation tournament.</p>
+               <p style="margin: 0 0 14px;">Your Free Entry has been received. Our Triple-AI system (Claude, GPT, and Gemini) reviews every submission, and the top 50 creators advance as Founding Creators.</p>
+               <p style="margin: 0 0 14px;">We'll reach out at this email address with the results.</p>`
+        }
+        <p style="margin: 24px 0 0; color: #666;">— The OXXOVO Team</p>
+        <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #eee; font-size: 12px; color: #999;">
+          OXXOVO Labs Inc. · Las Vegas, Nevada, USA · oxxovo.com
+        </div>
+      </div>
+    `;
+
+    // 둘 다 발송 — 하나가 실패해도 다른 하나는 진행
+    await Promise.allSettled([
+      sendEmail('info@oxxovo.com', adminSubject, adminHtml, email),
+      sendEmail(email, applicantSubject, applicantHtml),
+    ]);
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
