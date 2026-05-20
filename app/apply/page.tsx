@@ -17,6 +17,7 @@ type FormState = {
   country: string;
   channel_url: string;
   free_entry_url: string;
+  creator_statement: string;
   agreed_to_rules: boolean;
 };
 
@@ -32,6 +33,7 @@ export default function ApplyPage() {
     country: '',
     channel_url: '',
     free_entry_url: '',
+    creator_statement: '',
     agreed_to_rules: false,
   });
 
@@ -75,6 +77,10 @@ export default function ApplyPage() {
       setError('Please provide your Free Entry video URL.');
       return;
     }
+    if (form.creator_statement.trim().length < 150) {
+      setError('Your creator statement must be at least 150 characters.');
+      return;
+    }
     if (!form.agreed_to_rules) {
       setError('You must agree to the Official Rulebook to continue.');
       return;
@@ -90,6 +96,7 @@ export default function ApplyPage() {
           country: form.country.trim() || null,
           channel_url: form.channel_url.trim(),
           free_entry_url: form.free_entry_url.trim(),
+          creator_statement: form.creator_statement.trim(),
           agreed_to_rules: form.agreed_to_rules,
           status: isFull ? 'waitlist' : 'pending',
         });
@@ -113,6 +120,7 @@ export default function ApplyPage() {
             country: form.country.trim() || null,
             channel_url: form.channel_url.trim(),
             free_entry_url: form.free_entry_url.trim(),
+            creator_statement: form.creator_statement.trim(),
             status: isFull ? 'waitlist' : 'pending',
           }),
         });
@@ -311,6 +319,31 @@ export default function ApplyPage() {
               />
             </Field>
 
+            <Field
+              label="Creator Statement *"
+              hint="One sentence on what you set out to make. 150–250 characters."
+            >
+              <Textarea
+                value={form.creator_statement}
+                onChange={(v) => update('creator_statement', v)}
+                placeholder="e.g. An intentionally fragmented memory loop about loneliness — built to feel like a half-remembered dream rather than a clean narrative."
+                maxLength={250}
+              />
+              <div className="flex justify-end mt-2">
+                <span
+                  className={`text-xs ${
+                    form.creator_statement.trim().length >= 150 &&
+                    form.creator_statement.trim().length <= 250
+                      ? 'text-[#8B22FF]'
+                      : 'text-white/40'
+                  }`}
+                >
+                  {form.creator_statement.length} / 250
+                  {form.creator_statement.trim().length < 150 && ' · minimum 150'}
+                </span>
+              </div>
+            </Field>
+
             <div className="border border-white/10 p-5">
               <label className="flex gap-3 cursor-pointer items-start">
                 <input
@@ -411,6 +444,29 @@ function Input({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       className="w-full bg-transparent border border-white/15 px-4 py-3 text-white placeholder-white/30 focus:border-[#8B22FF] focus:outline-none transition"
+    />
+  );
+}
+
+function Textarea({
+  value,
+  onChange,
+  placeholder,
+  maxLength,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  maxLength?: number;
+}) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      rows={3}
+      className="w-full bg-transparent border border-white/15 px-4 py-3 text-white placeholder-white/30 focus:border-[#8B22FF] focus:outline-none transition resize-none leading-relaxed"
     />
   );
 }
