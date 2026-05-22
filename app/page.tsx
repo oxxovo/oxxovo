@@ -1,7 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+
+const SHOW_COUNTDOWN = false
+
 export default function OXXOVOLandingPage() {
+  // 시즌 0 실제 출시일 확정 시 아래 targetDate를 고정 날짜로 변경
+  //   예: return new Date('2026-06-15T00:00:00Z')
   const targetDate = useMemo(() => {
     const date = new Date()
     date.setDate(date.getDate() + 12)
@@ -15,8 +20,10 @@ export default function OXXOVOLandingPage() {
   const [email, setEmail] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState<{ email: string } | null>(null)
 
   useEffect(() => {
+    if (!SHOW_COUNTDOWN) return
     const update = () => {
       const distance = targetDate.getTime() - Date.now()
       if (distance <= 0) { setTimeLeft({ days: '00', hours: '00', minutes: '00', seconds: '00' }); return }
@@ -30,7 +37,6 @@ export default function OXXOVOLandingPage() {
     const interval = setInterval(update, 1000)
     return () => clearInterval(interval)
   }, [targetDate])
-const [user, setUser] = useState<{ email: string } | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('oxxovo_token')
@@ -83,17 +89,15 @@ const handleSubmit = async (e: React.FormEvent) => {
           <img src="/oxxovo_logo.png" alt="OXXOVO" className="h-24 drop-shadow-[0_0_18px_rgba(139,34,255,.6)]" />
           <span className="text-[26px] font-black tracking-wide text-[#8b22ff]">OXXOVO</span>
         </a>
-        <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
-          <a className="transition hover:text-[#b66cff]" href="#how">How It Works</a>
-          <a className="transition hover:text-[#b66cff]" href="#about">About</a>
-          <a className="transition hover:text-[#b66cff]" href="#faq">FAQ</a>
-        </nav>
         <div className="flex items-center gap-5">
           {user ? (
             <>
               <span className="text-[14px] text-white/70 max-md:hidden">
                 Hi, {user.email.split('@')[0]}
               </span>
+              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="/apply">
+                Apply to GENESIS
+              </a>
               <button
                 onClick={handleLogout}
                 className="rounded-lg border border-white/20 px-5 py-2.5 text-[14px] font-bold text-white/80 transition hover:border-[#8b22ff] hover:text-white"
@@ -104,8 +108,8 @@ const handleSubmit = async (e: React.FormEvent) => {
           ) : (
             <>
               <a className="text-[14px] text-white/60 max-md:hidden" href="/login">Log in</a>
-              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="#waitlist">
-                Join Waitlist
+              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="/apply">
+                Apply to GENESIS
               </a>
             </>
           )}
@@ -130,43 +134,59 @@ const handleSubmit = async (e: React.FormEvent) => {
             <p className="mt-2 text-[16px] italic font-semibold text-gray-400">Same prompt. Same time. No excuses.</p>
           </div>
 
-          {!submitted ? (
-            <form id="waitlist" onSubmit={handleSubmit} className="mt-7 flex h-[56px] w-[min(100%,500px)] overflow-hidden rounded-lg border border-white/12 bg-[#080b12]/85">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                required
-                className="min-w-0 flex-1 bg-transparent px-5 text-[15px] text-white outline-none placeholder:text-white/40"
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="min-w-[140px] bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 text-[14px] font-extrabold text-white transition hover:brightness-110 disabled:opacity-50"
-              >
-                {loading ? '...' : 'Join Waitlist'}
-              </button>
-            </form>
-          ) : (
-            <div className="mt-7">
-              <p className="text-xl font-bold text-[#b66cff]">You are in!</p>
-              <p className="mt-1 text-sm text-white/60">Welcome, Pioneer. We will be in touch soon.</p>
+          <div className="mt-7 w-[min(100%,500px)]">
+            <a
+              href="/apply"
+              className="flex h-[64px] items-center justify-center rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-8 text-[16px] font-extrabold uppercase tracking-wide text-white shadow-[0_0_28px_rgba(139,34,255,.5)] transition hover:brightness-110"
+            >
+              Apply to GENESIS · Season 0
+            </a>
+            <p className="mt-2.5 text-xs text-white/50">
+              Submit your AI video. Triple-AI scoring by Claude, GPT, Gemini.
+            </p>
+          </div>
+
+          <div id="waitlist" className="mt-6 w-[min(100%,500px)] border-t border-white/10 pt-5">
+            <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-white/50">
+              Or — get notified about Season 1
+            </p>
+            {!submitted ? (
+              <form onSubmit={handleSubmit} className="flex h-[48px] overflow-hidden rounded-lg border border-white/12 bg-[#080b12]/85">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  required
+                  className="min-w-0 flex-1 bg-transparent px-4 text-[14px] text-white outline-none placeholder:text-white/40"
+                />
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="min-w-[120px] border-l border-white/10 bg-transparent px-5 text-[13px] font-bold text-white/80 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
+                >
+                  {loading ? '...' : 'Notify Me'}
+                </button>
+              </form>
+            ) : (
+              <p className="text-sm text-[#b66cff]">✓ You will hear from us when Season 1 opens.</p>
+            )}
+          </div>
+
+          {SHOW_COUNTDOWN && (
+            <div className="mt-7 w-[min(100%,500px)] border-t border-white/10 pt-5">
+              <div className="mb-3.5 text-[12px] font-bold uppercase tracking-widest text-[#b66cff]">Launching Soon</div>
+              <div className="grid max-w-[400px] grid-cols-4">
+                {[['Days', timeLeft.days], ['Hrs', timeLeft.hours], ['Min', timeLeft.minutes], ['Sec', timeLeft.seconds]].map(([label, val], i) => (
+                  <div key={label} className={`${i > 0 ? 'border-l border-white/10 pl-5' : ''} ${i < 3 ? 'pr-5' : ''}`}>
+                    <strong className="block text-[28px] font-semibold tracking-wide">{val}</strong>
+                    <span className="mt-1 block text-[11px] uppercase text-white/50">{label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-          <p className="mt-2.5 text-xs text-white/40">No spam. Unsubscribe anytime.</p>
 
-          <div className="mt-7 w-[min(100%,500px)] border-t border-white/10 pt-5">
-            <div className="mb-3.5 text-[12px] font-bold uppercase tracking-widest text-[#b66cff]">Launching Soon</div>
-            <div className="grid max-w-[400px] grid-cols-4">
-              {[['Days', timeLeft.days], ['Hrs', timeLeft.hours], ['Min', timeLeft.minutes], ['Sec', timeLeft.seconds]].map(([label, val], i) => (
-                <div key={label} className={`${i > 0 ? 'border-l border-white/10 pl-5' : ''} ${i < 3 ? 'pr-5' : ''}`}>
-                  <strong className="block text-[28px] font-semibold tracking-wide">{val}</strong>
-                  <span className="mt-1 block text-[11px] uppercase text-white/50">{label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </section>
 
