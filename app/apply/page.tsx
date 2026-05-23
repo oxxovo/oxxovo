@@ -2,12 +2,24 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  getCurrentSeason,
+  getActiveApplicationCount,
+  isApplicationClosed,
+  isCapacityFull,
+  formatAiModelList,
+  type Season,
+} from '@/lib/seasons'
 
 const AI_SERVICES = ['Sora', 'Veo', 'Runway', 'Kling', 'Pika', 'Other']
 const ABSTRACT_WORDS = [
   'explor', 'surreal', 'experimental', 'abstract', 'ethereal',
   'transcendent', 'liminal', 'ineffable', 'journey', 'evocative',
 ]
+const STATEMENT_MIN = 150
+const STATEMENT_MAX = 250
+
+type Mode = 'loading' | 'closed' | 'waitlist' | 'open'
 
 function detectVideoPlatform(url: string): 'youtube' | 'vimeo' | null {
   if (/^https?:\/\/(www\.)?(youtube\.com\/watch\?v=[\w-]+|youtu\.be\/[\w-]+)/i.test(url)) return 'youtube'
@@ -18,7 +30,9 @@ function detectVideoPlatform(url: string): 'youtube' | 'vimeo' | null {
 export default function ApplyPage() {
   const router = useRouter()
   const [user, setUser] = useState<{ email: string } | null>(null)
-  const [checking, setChecking] = useState(true)
+  const [mode, setMode] = useState<Mode>('loading')
+  const [season, setSeason] = useState<Season | null>(null)
+  const [count, setCount] = useState(0)
 
   const [videoUrl, setVideoUrl] = useState('')
   const [videoDuration, setVideoDuration] = useState<number | ''>('')
@@ -33,41 +47,73 @@ export default function ApplyPage() {
 
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [submittedStatus, setSubmittedStatus] = useState<'pending' | 'waitlist' | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const token = localStorage.getItem('oxxovo_token')
-    const email = localStorage.getItem('oxxovo_email')
-    if (!token || !email) {
-      router.push('/login?redirect=/apply')
-      return
+    async function init() {
+      const token = localStorage.getItem('oxxovo_token')
+      const email = localStorage.getItem('oxxovo_email')
+      if (!token || !email) {
+        router.push('/login?redirect=/apply')
+        return
+      }
+      setUser({ email })
+
+      const s = await getCurrentSeason()
+      if (!s) {
+        setMode('closed')
+        return
+      }
+      setSeason(s)
+
+      const c = await getActiveApplicationCount(s.id)
+      setCount(c)
+
+      if (isApplicationClosed(s)) {
+        setMode('closed')
+      } else if (isCapacityFull(s, c)) {
+        setMode('waitlist')
+      } else {
+        setMode('open')
+      }
     }
-    setUser({ email })
-    setChecking(false)
+    init()
   }, [router])
 
   const platform = useMemo(() => detectVideoPlatform(videoUrl), [videoUrl])
   const statementLen = statement.length
-  const statementValid = statementLen >= 150 && statementLen <= 250
+  const statementValid = statementLen >= STATEMENT_MIN && statementLen <= STATEMENT_MAX
   const abstractHit = useMemo(() => {
     const lower = statement.toLowerCase()
     return ABSTRACT_WORDS.find((w) => new RegExp(`\\b${w}\\w*\\b`, 'i').test(lower))
   }, [statement])
-  const durationValid = typeof videoDuration === 'number' && videoDuration >= 15 && videoDuration <= 30
+
+  const minSec = season?.application_video_min_seconds ?? 0
+  const maxSec = season?.application_video_max_seconds ?? 0
+  const durationValid =
+    !!season &&
+    typeof videoDuration === 'number' &&
+    videoDuration >= minSec &&
+    videoDuration <= maxSec
+
   const allAgreed = agreeRules && agreePrivacy && agreeIntegrity
 
   const canSubmit =
     !!user &&
+    !!season &&
+    (mode === 'open' || mode === 'waitlist') &&
     !!platform &&
     durationValid &&
     !!aiService &&
     statementValid &&
     name.trim().length > 0 &&
-    allAgreed
+    allAgreed &&
+    !loading
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!canSubmit || !user) return
+    if (!canSubmit || !user || !season) return
     setLoading(true)
     setError('')
     try {
@@ -86,11 +132,13 @@ export default function ApplyPage() {
           agreed_to_rules: agreeRules,
           agreed_to_privacy: agreePrivacy,
           agreed_to_integrity_notice: agreeIntegrity,
+          season_id: season.id,
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setSubmitted(true)
+        setSubmittedStatus(data.status === 'waitlist' ? 'waitlist' : 'pending')
       } else {
         setError(typeof data.error === 'string' ? data.error : 'Submission failed. Please try again.')
       }
@@ -100,22 +148,46 @@ export default function ApplyPage() {
     setLoading(false)
   }
 
-  if (checking) {
+  if (mode === 'loading') {
     return (
       <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center">
-        <p className="text-white/60">Checking access…</p>
+        <p className="text-white/60">Checking application status…</p>
+      </main>
+    )
+  }
+
+  if (mode === 'closed') {
+    return (
+      <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-6 text-[#8b22ff] drop-shadow-[0_0_30px_rgba(139,34,255,.5)]">⏱</div>
+          <h1 className="text-3xl font-black mb-3">
+            {season?.name ?? 'GENESIS'} — Applications Closed
+          </h1>
+          <p className="text-white/60 mb-8 leading-relaxed">
+            The application period has ended. Sign up for notifications about the next season.
+          </p>
+          <a href="/" className="text-white/40 text-sm hover:text-white/70">← Back to Home</a>
+        </div>
       </main>
     )
   }
 
   if (submitted) {
+    const isWait = submittedStatus === 'waitlist'
     return (
       <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center px-4">
         <div className="text-center max-w-md">
-          <div className="text-6xl mb-6 text-[#8b22ff] drop-shadow-[0_0_30px_rgba(139,34,255,.5)]">✦</div>
-          <h1 className="text-3xl font-black mb-3">Application Received</h1>
+          <div className="text-6xl mb-6 text-[#8b22ff] drop-shadow-[0_0_30px_rgba(139,34,255,.5)]">
+            {isWait ? '⏳' : '✦'}
+          </div>
+          <h1 className="text-3xl font-black mb-3">
+            {isWait ? 'Waitlist Joined' : 'Application Received'}
+          </h1>
           <p className="text-white/60 mb-8 leading-relaxed">
-            Thank you for applying to GENESIS. We will review your entry and notify you by email.
+            {isWait
+              ? `${season?.name ?? 'This season'} reached its capacity. You're on the waitlist — we'll notify you if a spot opens, or when the next season begins.`
+              : `Thank you for applying to ${season?.name ?? 'GENESIS'}. We will review your entry and notify you by email.`}
           </p>
           <div className="flex flex-col gap-3 items-center">
             <a
@@ -130,6 +202,9 @@ export default function ApplyPage() {
       </main>
     )
   }
+
+  const aiModelText = season ? formatAiModelList(season.ai_models) : ''
+  const isWaitlistMode = mode === 'waitlist'
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
@@ -151,15 +226,33 @@ export default function ApplyPage() {
         <div className="text-center mb-12">
           <p className="inline-flex items-center gap-2.5 mb-4 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
             <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
-            GENESIS Tournament · Season 0
+            {season?.name ?? 'GENESIS Tournament'}
           </p>
-          <h1 className="text-4xl md:text-5xl font-black mb-3">Apply to GENESIS</h1>
-          <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
-            Submit your AI-generated video. Triple-AI scoring by
-            <span className="text-white/70"> Claude Opus 4.5</span>,
-            <span className="text-white/70"> GPT-4o</span>, and
-            <span className="text-white/70"> Gemini 2.5 Flash</span>.
-          </p>
+          <h1 className="text-4xl md:text-5xl font-black mb-3">
+            {isWaitlistMode ? 'Join the Waitlist' : 'Apply to GENESIS'}
+          </h1>
+          {isWaitlistMode ? (
+            <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
+              {season?.name} reached its capacity of {season?.max_applicants} applicants. Submit your entry to join the waitlist — you'll be promoted if a spot opens, or get priority access to the next season.
+            </p>
+          ) : (
+            <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
+              Submit your AI-generated video. Triple-AI scoring by
+              <span className="text-white/70"> {aiModelText}</span>.
+            </p>
+          )}
+          {!isWaitlistMode && season && (
+            <p className="mt-5 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#b66cff]/80">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#b66cff]" />
+              Application #{count + 1} of {season.max_applicants}
+            </p>
+          )}
+          {isWaitlistMode && (
+            <p className="mt-5 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-amber-400/90">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+              Capacity full — waitlist mode
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-12">
@@ -184,7 +277,9 @@ export default function ApplyPage() {
                   </p>
                 )}
                 {platform && (
-                  <p className="text-[#b66cff] text-xs mt-1.5">✓ {platform === 'youtube' ? 'YouTube' : 'Vimeo'} URL detected</p>
+                  <p className="text-[#b66cff] text-xs mt-1.5">
+                    ✓ {platform === 'youtube' ? 'YouTube' : 'Vimeo'} URL detected
+                  </p>
                 )}
               </div>
 
@@ -199,16 +294,16 @@ export default function ApplyPage() {
                     const v = e.target.value
                     setVideoDuration(v === '' ? '' : Number(v))
                   }}
-                  placeholder="e.g. 22"
+                  placeholder={`e.g. ${Math.round((minSec + maxSec) / 2)}`}
                   required
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition"
                 />
                 <p className="text-white/40 text-xs mt-1.5">
-                  Required: <span className="text-white/70">15–30 seconds</span>. Entries outside this range will be rejected during review.
+                  Required: <span className="text-white/70">{minSec}–{maxSec} seconds</span>. Entries outside this range will be rejected during review.
                 </p>
                 {videoDuration !== '' && !durationValid && (
                   <p className="text-amber-400 text-xs mt-1">
-                    Duration must be between 15 and 30 seconds.
+                    Duration must be between {minSec} and {maxSec} seconds.
                   </p>
                 )}
               </div>
@@ -238,12 +333,12 @@ export default function ApplyPage() {
                     className={
                       statementValid
                         ? 'text-[#b66cff] text-xs'
-                        : statementLen > 250
+                        : statementLen > STATEMENT_MAX
                         ? 'text-red-400 text-xs'
                         : 'text-white/40 text-xs'
                     }
                   >
-                    {statementLen} / 150–250
+                    {statementLen} / {STATEMENT_MIN}–{STATEMENT_MAX}
                   </span>
                 </label>
                 <textarea
@@ -366,9 +461,7 @@ export default function ApplyPage() {
                   required
                 />
                 <span>
-                  I understand that my entry undergoes <span className="text-white/90">AI integrity verification</span> by
-                  Claude Opus 4.5. Manipulating watermarks or misrepresenting the AI service used may result in
-                  disqualification.
+                  I understand that my entry undergoes <span className="text-white/90">AI integrity verification</span>. Manipulating watermarks or misrepresenting the AI service used may result in disqualification.
                 </span>
               </label>
             </div>
@@ -383,10 +476,14 @@ export default function ApplyPage() {
           <div>
             <button
               type="submit"
-              disabled={!canSubmit || loading}
+              disabled={!canSubmit}
               className="w-full bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] py-4 rounded-lg font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none transition"
             >
-              {loading ? 'Submitting…' : 'Submit Application'}
+              {loading
+                ? 'Submitting…'
+                : isWaitlistMode
+                ? 'Join Waitlist'
+                : 'Submit Application'}
             </button>
             {!canSubmit && !loading && (
               <p className="text-center text-xs text-white/40 mt-3">

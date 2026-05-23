@@ -1,4 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  getCurrentSeasonId,
+  getSeasonById,
+  getActiveApplicationCount,
+  isApplicationClosed,
+  isCapacityFull,
+} from '@/lib/seasons'
+
+const STATEMENT_MIN = 150
+const STATEMENT_MAX = 250
+const SUPABASE_URL = 'https://qrnkovokjmimagrwjebs.supabase.co'
+const SUPABASE_KEY = 'sb_publishable_jqaYD8CyZLZLK3mpCPjHMQ_f79qUrjl'
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,29 +36,54 @@ export async function POST(request: NextRequest) {
     }
 
     const stmtLen = String(body.creator_statement).length
-    if (stmtLen < 150 || stmtLen > 250) {
+    if (stmtLen < STATEMENT_MIN || stmtLen > STATEMENT_MAX) {
       return NextResponse.json(
-        { error: 'Creator statement must be 150–250 characters.' },
+        { error: `Creator statement must be ${STATEMENT_MIN}–${STATEMENT_MAX} characters.` },
         { status: 400 }
+      )
+    }
+
+    const seasonId: string =
+      typeof body.season_id === 'string' && body.season_id.length > 0
+        ? body.season_id
+        : getCurrentSeasonId()
+
+    const season = await getSeasonById(seasonId)
+    if (!season) {
+      return NextResponse.json(
+        { error: 'Season configuration not found. Please try again later.' },
+        { status: 503 }
+      )
+    }
+
+    if (isApplicationClosed(season)) {
+      return NextResponse.json(
+        { error: `${season.name} — applications are closed.` },
+        { status: 403 }
       )
     }
 
     const dur = Number(body.video_duration_seconds)
-    if (!Number.isFinite(dur) || dur < 15 || dur > 30) {
+    const minSec = season.application_video_min_seconds
+    const maxSec = season.application_video_max_seconds
+    if (!Number.isFinite(dur) || dur < minSec || dur > maxSec) {
       return NextResponse.json(
-        { error: 'Video duration must be between 15 and 30 seconds.' },
+        { error: `Video duration must be between ${minSec} and ${maxSec} seconds.` },
         { status: 400 }
       )
     }
 
-    const key = 'sb_publishable_jqaYD8CyZLZLK3mpCPjHMQ_f79qUrjl'
+    const currentCount = await getActiveApplicationCount(season.id)
+    const resolvedStatus: 'pending' | 'waitlist' = isCapacityFull(season, currentCount)
+      ? 'waitlist'
+      : 'pending'
 
-    const res = await fetch('https://qrnkovokjmimagrwjebs.supabase.co/rest/v1/genesis_applications', {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/genesis_applications`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: key,
-        Authorization: `Bearer ${key}`,
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
       },
       body: JSON.stringify({
         email: body.email,
@@ -60,12 +97,13 @@ export async function POST(request: NextRequest) {
         agreed_to_rules: body.agreed_to_rules,
         agreed_to_privacy: body.agreed_to_privacy,
         agreed_to_integrity_notice: body.agreed_to_integrity_notice,
-        status: 'pending',
+        season_id: season.id,
+        status: resolvedStatus,
       }),
     })
 
     const text = await res.text()
-    console.log('APPLY STATUS:', res.status)
+    console.log('APPLY STATUS:', res.status, 'RESOLVED:', resolvedStatus)
     console.log('APPLY RESPONSE:', text)
 
     if (!res.ok) {
@@ -78,7 +116,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: text }, { status: res.status })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, status: resolvedStatus, season_id: season.id })
   } catch (e) {
     console.log('APPLY ERROR:', e)
     return NextResponse.json({ error: String(e) }, { status: 500 })

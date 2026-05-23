@@ -1,4 +1,72 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import {
+  getCurrentSeason,
+  formatModelName,
+  formatWeightPercent,
+  getIntegrityModel,
+  type Season,
+} from '@/lib/seasons'
+
+const STATEMENT_MIN = 150
+const STATEMENT_MAX = 250
+const SUPPORT_EMAIL = 'hello@oxxovo.com'
+
 export default function RulesPage() {
+  const [season, setSeason] = useState<Season | null>(null)
+
+  useEffect(() => {
+    getCurrentSeason().then(setSeason)
+  }, [])
+
+  if (!season) {
+    return (
+      <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center">
+        <p className="text-white/40 text-sm">Loading current season rules…</p>
+      </main>
+    )
+  }
+
+  const integrityModel = getIntegrityModel(season.ai_models)
+  const integrityName = integrityModel
+    ? formatModelName(integrityModel.name)
+    : 'a designated panel model'
+  const modelCount = season.ai_models.length
+  const lastUpdated = new Date(season.updated_at).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+  })
+
+  const scoringCategories: {
+    name: string
+    desc: string
+    weight: number
+    integrity?: boolean
+  }[] = [
+    {
+      name: 'Intent',
+      desc: "Does the video match the creator's stated intent?",
+      weight: season.scoring_intent_clarity_weight,
+    },
+    {
+      name: 'Execution',
+      desc: 'Visual quality, motion, composition, technical craft.',
+      weight: season.scoring_execution_weight,
+    },
+    {
+      name: 'Originality',
+      desc: 'Distinct ideas, fresh framing, not derivative.',
+      weight: season.scoring_originality_weight,
+    },
+    {
+      name: 'Integrity',
+      desc: `Authenticity check. Scored by ${integrityName} only.`,
+      weight: season.scoring_integrity_weight,
+      integrity: true,
+    },
+  ]
+
   return (
     <main className="min-h-screen bg-[#030305] text-white">
       <header className="flex h-20 items-center justify-between px-6 md:px-12 border-b border-white/10">
@@ -22,74 +90,83 @@ export default function RulesPage() {
         <div className="text-center mb-14">
           <p className="inline-flex items-center gap-2.5 mb-4 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
             <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
-            GENESIS Tournament · Season 0
+            {season.name}
           </p>
           <h1 className="text-4xl md:text-5xl font-black mb-3">Tournament Rules</h1>
-          <p className="text-white/40 text-sm">Last updated: May 2026</p>
+          <p className="text-white/40 text-sm">Last updated: {lastUpdated}</p>
         </div>
 
         <div className="space-y-14 text-white/70 leading-relaxed">
 
-          <section>
-            <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-4 font-bold">
-              ① Overview
-            </h2>
+          <RuleSection num="①" title="Overview">
             <p>
-              GENESIS is OXXOVO&rsquo;s first global AI video tournament. Creators around the world submit
-              short AI-generated videos. Each entry is scored by a panel of three AI judges, in parallel,
-              under the same criteria. Same prompt. Same rules. No excuses.
+              {season.name} is OXXOVO&rsquo;s global AI video tournament. Creators around the world submit short AI-generated videos. Each entry is scored by a panel of {modelCount} independent AI judges, in parallel, under the same criteria. Same prompt. Same rules. No excuses.
             </p>
-          </section>
+            <p className="mt-4 text-sm italic text-white/45">
+              These rules describe the <span className="text-white/70">current season ({season.name})</span>. Parameters such as capacity, prize pool, AI panel composition, and scoring weights may vary by season as the platform matures.
+            </p>
+          </RuleSection>
 
-          <section>
-            <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-4 font-bold">
-              ② Eligibility
-            </h2>
+          <RuleSection num="②" title="Eligibility">
             <ul className="space-y-2.5">
               <li>
-                <span className="text-white/90">Video length:</span> <span className="text-white">15&ndash;30 seconds</span>.
-                Entries outside this range are automatically rejected.
+                <span className="text-white/90">Video length:</span>{' '}
+                <span className="text-white">
+                  {season.application_video_min_seconds}&ndash;{season.application_video_max_seconds} seconds
+                </span>
+                . Entries outside this range are automatically rejected.
               </li>
               <li>
                 <span className="text-white/90">Format:</span> uploaded to YouTube or Vimeo, publicly viewable.
               </li>
               <li>
-                <span className="text-white/90">AI-generated:</span> the visual content must be produced by
-                an AI video service (Sora, Veo, Runway, Kling, Pika, or other).
+                <span className="text-white/90">AI-generated:</span> the visual content must be produced by an AI video service (Sora, Veo, Runway, Kling, Pika, or other).
               </li>
               <li>
-                <span className="text-white/90">One entry per email.</span> Multiple accounts are grounds for
-                disqualification.
+                <span className="text-white/90">Creator statement:</span> a {STATEMENT_MIN}&ndash;{STATEMENT_MAX} character description of what is on screen, used as input for the Intent score.
+              </li>
+              <li>
+                <span className="text-white/90">One entry per email.</span> Multiple accounts are grounds for disqualification.
+              </li>
+              <li>
+                <span className="text-white/90">Capacity:</span> {season.name} accepts up to{' '}
+                <span className="text-white">{season.max_applicants.toLocaleString()}</span> applicants. After capacity, additional entries are routed to the waitlist with priority access to the next season.
               </li>
             </ul>
-          </section>
+          </RuleSection>
 
-          <section>
-            <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-4 font-bold">
-              ③ How Scoring Works
-            </h2>
+          <RuleSection num="③" title="How Scoring Works">
             <p className="mb-5">
-              Every entry is scored in parallel by <span className="text-white">three independent AI models</span>:
+              Every entry is scored in parallel by{' '}
+              <span className="text-white">{modelCount} independent AI models</span>, each from a different company. Using multiple judges cancels individual AI bias.
             </p>
-            <div className="grid sm:grid-cols-3 gap-3 mb-6">
-              {[
-                { name: 'Claude Opus 4.5', org: 'Anthropic' },
-                { name: 'GPT-4o', org: 'OpenAI' },
-                { name: 'Gemini 2.5 Flash', org: 'Google' },
-              ].map((m) => (
+            <div className="flex flex-wrap gap-3 mb-6">
+              {season.ai_models.map((m) => (
                 <div
                   key={m.name}
-                  className="rounded-lg border border-white/10 bg-white/[.03] px-4 py-3"
+                  className={`flex-1 min-w-[160px] rounded-lg border px-4 py-3 ${
+                    m.is_integrity
+                      ? 'border-[#8b22ff]/40 bg-[#8b22ff]/[.06]'
+                      : 'border-white/10 bg-white/[.03]'
+                  }`}
                 >
-                  <p className="text-white font-bold text-sm">{m.name}</p>
-                  <p className="text-white/40 text-xs mt-0.5">{m.org}</p>
+                  <p className="text-white font-bold text-sm">{formatModelName(m.name)}</p>
+                  <p className="text-white/40 text-xs mt-0.5">{m.provider ?? '—'}</p>
+                  {m.is_integrity && (
+                    <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-[#b66cff]">
+                      Integrity Judge
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
-            <p className="mb-5">
-              Each judge scores four categories. The weighted average across all three judges
-              becomes your final score.
+            <p>
+              Each judge scores four categories. The weighted average across all {modelCount} judges becomes your final OXXOVO Score. Outlier scores are automatically excluded to prevent manipulation.
             </p>
+          </RuleSection>
+
+          <RuleSection num="④" title="Scoring Categories">
+            <p className="mb-5">Four scoring categories, weighted as follows:</p>
             <div className="rounded-lg border border-white/10 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-white/[.04] text-white/60 text-xs uppercase tracking-wider">
@@ -99,73 +176,41 @@ export default function RulesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  <tr>
-                    <td className="px-4 py-3">
-                      <span className="text-white">Intent</span>
-                      <span className="block text-xs text-white/40 mt-0.5">
-                        Does the video match the creator&rsquo;s stated intent?
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-white font-bold">25%</td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3">
-                      <span className="text-white">Execution</span>
-                      <span className="block text-xs text-white/40 mt-0.5">
-                        Visual quality, motion, composition, technical craft.
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-white font-bold">45%</td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3">
-                      <span className="text-white">Originality</span>
-                      <span className="block text-xs text-white/40 mt-0.5">
-                        Distinct ideas, fresh framing, not derivative.
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-white font-bold">20%</td>
-                  </tr>
-                  <tr className="bg-[#8b22ff]/[.04]">
-                    <td className="px-4 py-3">
-                      <span className="text-white">Integrity</span>
-                      <span className="block text-xs text-white/40 mt-0.5">
-                        Authenticity check. Scored by Claude only.
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-white font-bold">10%</td>
-                  </tr>
+                  {scoringCategories.map((c) => (
+                    <tr key={c.name} className={c.integrity ? 'bg-[#8b22ff]/[.04]' : ''}>
+                      <td className="px-4 py-3">
+                        <span className="text-white">{c.name}</span>
+                        <span className="block text-xs text-white/40 mt-0.5">{c.desc}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-white font-bold">
+                        {formatWeightPercent(c.weight)}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
-          </section>
+            <p className="mt-4 text-xs italic text-white/45">
+              Scoring weights are calibrated per season and may vary in future tournaments.
+            </p>
+          </RuleSection>
 
-          <section>
-            <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-4 font-bold">
-              ④ Integrity Verification
-            </h2>
+          <RuleSection num="⑤" title="Integrity Verification">
             <p className="mb-4">
-              The Integrity score is judged by <span className="text-white">Claude Opus 4.5</span> alone.
-              It evaluates whether the submission is a genuine AI-generated video and whether the creator
-              statement is consistent with what appears on screen.
+              The Integrity score is judged by <span className="text-white">{integrityName}</span> alone &mdash; assigned solo by design, to prevent panel-wide collusion. It evaluates whether the submission is a genuine AI-generated video and whether the creator statement is consistent with what appears on screen.
             </p>
             <div className="rounded-lg border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-sm">
               <p className="text-amber-300/90 font-bold mb-1">Auto-flag threshold</p>
               <p className="text-white/60">
-                Any entry with an Integrity score below <span className="text-white">50</span> is
-                automatically flagged for human review. Flagged entries may be disqualified.
+                Any entry with an Integrity score below{' '}
+                <span className="text-white">{season.flag_integrity_threshold}</span> is automatically flagged for human review. Flagged entries may be disqualified.
               </p>
             </div>
-          </section>
+          </RuleSection>
 
-          <section>
-            <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-4 font-bold">
-              ⑤ Video Authenticity &amp; AI Service Watermarks
-            </h2>
+          <RuleSection num="⑥" title="Video Authenticity & AI Service Watermarks">
             <p className="mb-4">
-              Visible watermarks from <span className="text-white">Sora</span>, <span className="text-white">Veo</span>,
-              and <span className="text-white">Runway</span> are recognized as positive
-              signals of AI authenticity. They will <span className="text-white">not</span> count against your visual score.
+              Visible watermarks from <span className="text-white">Sora</span>, <span className="text-white">Veo</span>, and <span className="text-white">Runway</span> are recognized as positive signals of AI authenticity. They will <span className="text-white">not</span> count against your visual score.
             </p>
             <p className="mb-3">The following will lead to disqualification:</p>
             <ul className="space-y-2 pl-1">
@@ -176,50 +221,66 @@ export default function RulesPage() {
                 <span className="text-red-300/80">&times;</span> Misrepresenting the AI service used to produce the video
               </li>
               <li>
-                <span className="text-red-300/80">&times;</span> Submitting non-AI footage (live action, stock footage,
-                hand-drawn animation) framed as AI-generated
+                <span className="text-red-300/80">&times;</span> Submitting non-AI footage (live action, stock footage, hand-drawn animation) framed as AI-generated
               </li>
               <li>
                 <span className="text-red-300/80">&times;</span> Submitting the same video under multiple emails
               </li>
             </ul>
-          </section>
+          </RuleSection>
 
-          <section>
-            <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-4 font-bold">
-              ⑥ Creator Statement
-            </h2>
-            <p className="mb-3">
-              Every entry includes a written statement (<span className="text-white">150&ndash;250 characters</span>)
-              describing what is on screen. This is the input for the Intent score.
+          <RuleSection num="⑦" title="Tournament Structure & Prizes">
+            <p className="mb-4">
+              {season.name} accepts up to{' '}
+              <span className="text-white">{season.max_applicants.toLocaleString()}</span> applicants. After all entries are scored, the{' '}
+              <span className="text-white">Top {season.top_n_advance}</span> advance as Founding Creators of OXXOVO.
             </p>
-            <p className="text-sm text-white/55">
-              Concrete, descriptive statements score higher than abstract or poetic ones.
-              See the apply form for examples.
-            </p>
-          </section>
+            <div className="rounded-lg border border-[#8b22ff]/20 bg-[#8b22ff]/[.04] px-5 py-4">
+              <p className="text-[#b66cff] text-[11px] uppercase tracking-widest font-bold mb-3">
+                {season.name} Prize Pool
+              </p>
+              <p className="text-3xl font-black text-white mb-3">
+                ${Number(season.total_prize_pool).toLocaleString()} USD
+              </p>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div>
+                  <p className="text-white/40 text-xs uppercase">1st</p>
+                  <p className="text-white font-bold">${Number(season.prize_first).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-white/40 text-xs uppercase">2nd</p>
+                  <p className="text-white font-bold">${Number(season.prize_second).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-white/40 text-xs uppercase">3rd</p>
+                  <p className="text-white font-bold">${Number(season.prize_third).toLocaleString()}</p>
+                </div>
+              </div>
+              <p className="text-white/40 text-xs mt-3 italic">
+                Entry fee:{' '}
+                {Number(season.entry_fee) === 0 ? 'Free' : `$${Number(season.entry_fee).toLocaleString()}`}.
+              </p>
+            </div>
+          </RuleSection>
 
-          <section>
-            <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-4 font-bold">
-              ⑦ Prizes
-            </h2>
+          <RuleSection num="⑧" title="Grand Final & Future Seasons">
             <p>
-              Season 0 prize pool: <span className="text-white">$2,000 USD</span>, awarded to the top
-              finalists as ranked by final weighted score. Winners are announced after the submission window
-              closes and all entries are scored.
+              Tournament structure scales with participation. As OXXOVO grows, future seasons will feature larger capacities, higher prize pools, and the eventual Grand Final. Specific tournament structure, prize pools, and selection counts vary by season and are announced before each application window opens.
             </p>
-          </section>
+          </RuleSection>
 
-          <section>
-            <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-4 font-bold">
-              ⑧ Final Word
-            </h2>
-            <p>
-              Rules may evolve between seasons as the platform matures. Material changes will be announced
-              before the next submission window opens. Questions about a specific entry?
-              Email <span className="text-[#b66cff]">hello@oxxovo.com</span>.
+          <RuleSection num="⑨" title="Disclaimer & Final Word">
+            <p className="mb-4">
+              These rules describe the <span className="text-white/90">{season.name}</span> tournament. Future seasons may differ in capacity, prize pool, AI panel composition, scoring weights, and other parameters. Material changes will be announced before the next application window opens.
             </p>
-          </section>
+            <p>
+              Questions about a specific entry? Email{' '}
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[#b66cff] hover:underline">
+                {SUPPORT_EMAIL}
+              </a>
+              .
+            </p>
+          </RuleSection>
 
         </div>
 
@@ -228,7 +289,7 @@ export default function RulesPage() {
             href="/apply"
             className="inline-block rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-8 py-4 text-[15px] font-extrabold uppercase tracking-wide text-white shadow-[0_0_24px_rgba(139,34,255,.45)] hover:brightness-110 transition"
           >
-            Apply to GENESIS · Season 0
+            Apply to {season.name}
           </a>
           <p className="text-white/30 text-xs mt-10">
             &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.
@@ -236,5 +297,24 @@ export default function RulesPage() {
         </div>
       </section>
     </main>
+  )
+}
+
+function RuleSection({
+  num,
+  title,
+  children,
+}: {
+  num: string
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <section>
+      <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-4 font-bold">
+        {num} {title}
+      </h2>
+      <div>{children}</div>
+    </section>
   )
 }
