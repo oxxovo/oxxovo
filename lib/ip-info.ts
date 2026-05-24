@@ -39,9 +39,10 @@ export function formatTrademarkClasses(
 }
 
 // Single-line summary used in every page footer.
-// Assumes trademark and patent share the same status and jurisdiction.
+// Jurisdiction intentionally omitted — kept global for marketing tone.
+// Precise jurisdiction info lives in the /about IP section and /rules Patent Notice.
 export function formatFooterStatusLine(): string {
-  return `Trademark and patent applications ${IP_INFO.patent.status} in ${IP_INFO.patent.jurisdictionShort}.`
+  return `Trademark and patent applications ${IP_INFO.patent.status}.`
 }
 
 export function formatInternationalNote(): string {
