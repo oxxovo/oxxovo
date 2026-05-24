@@ -1,0 +1,30 @@
+// Admin 전용 server Supabase client (server components, route handlers, server actions).
+// 일반 사용자 페이지는 lib/supabase.ts 사용.
+
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+export async function createSupabaseServer() {
+  const cookieStore = await cookies()
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options),
+            )
+          } catch {
+            // setAll called from server component is a no-op — proxy.ts handles refresh.
+          }
+        },
+      },
+    },
+  )
+}

@@ -1,0 +1,127 @@
+import { z } from 'zod'
+
+const aiModelSchema = z.object({
+  name: z.string().min(1, 'model name required'),
+  provider: z.string().optional(),
+  is_integrity: z.boolean().optional(),
+})
+
+const nullableTimestamp = z
+  .union([z.string().datetime({ offset: true }), z.literal(''), z.null()])
+  .transform((v) => (v === '' || v == null ? null : v))
+
+// Used for both create and update. id is server-generated for inserts.
+export const seasonSchema = z
+  .object({
+    name: z.string().min(1, 'name required').max(50),
+    season_number: z.coerce.number().int().nonnegative(),
+    status: z.enum(['draft', 'active', 'closed', 'completed']),
+
+    max_applicants: z.coerce.number().int().positive(),
+    top_n_advance: z.coerce.number().int().positive(),
+    application_video_min_seconds: z.coerce.number().int().positive(),
+    application_video_max_seconds: z.coerce.number().int().positive(),
+
+    prize_first: z.coerce.number().nonnegative(),
+    prize_second: z.coerce.number().nonnegative(),
+    prize_third: z.coerce.number().nonnegative(),
+    total_prize_pool: z.coerce.number().nonnegative(),
+    entry_fee: z.coerce.number().nonnegative(),
+
+    main_round_video_seconds: z.coerce.number().int().positive(),
+    theme_announcement_minutes_before: z.coerce.number().int().nonnegative(),
+    submission_hours: z.coerce.number().int().positive(),
+    community_vote_weight: z.coerce.number().min(0).max(1),
+    ai_score_weight: z.coerce.number().min(0).max(1),
+
+    scoring_intent_clarity_weight: z.coerce.number().min(0).max(1),
+    scoring_execution_weight: z.coerce.number().min(0).max(1),
+    scoring_originality_weight: z.coerce.number().min(0).max(1),
+    scoring_integrity_weight: z.coerce.number().min(0).max(1),
+
+    ai_models: z.array(aiModelSchema).min(1, 'at least one AI model required'),
+
+    flag_integrity_threshold: z.coerce.number().min(0).max(100),
+    flag_spread_threshold: z.coerce.number().min(0).max(100),
+
+    application_open_at: nullableTimestamp,
+    application_close_at: nullableTimestamp,
+    scoring_complete_at: nullableTimestamp,
+    main_round_start_at: nullableTimestamp,
+    main_round_end_at: nullableTimestamp,
+    awards_announcement_at: nullableTimestamp,
+  })
+  .refine(
+    (s) => s.application_video_min_seconds <= s.application_video_max_seconds,
+    {
+      message: 'video min must be <= video max',
+      path: ['application_video_max_seconds'],
+    },
+  )
+  .refine(
+    (s) => Math.abs(s.community_vote_weight + s.ai_score_weight - 1) < 0.001,
+    {
+      message: 'community + ai weights must sum to 1.0',
+      path: ['ai_score_weight'],
+    },
+  )
+  .refine(
+    (s) =>
+      Math.abs(
+        s.scoring_intent_clarity_weight +
+          s.scoring_execution_weight +
+          s.scoring_originality_weight +
+          s.scoring_integrity_weight -
+          1,
+      ) < 0.001,
+    {
+      message: 'scoring weights must sum to 1.0',
+      path: ['scoring_integrity_weight'],
+    },
+  )
+  .refine(
+    (s) => s.top_n_advance <= s.max_applicants,
+    {
+      message: 'top_n_advance must be <= max_applicants',
+      path: ['top_n_advance'],
+    },
+  )
+
+export type SeasonInput = z.infer<typeof seasonSchema>
+
+export const DEFAULT_SEASON: SeasonInput = {
+  name: 'NEW SEASON',
+  season_number: 1,
+  status: 'draft',
+  max_applicants: 500,
+  top_n_advance: 50,
+  application_video_min_seconds: 15,
+  application_video_max_seconds: 30,
+  prize_first: 1200,
+  prize_second: 500,
+  prize_third: 300,
+  total_prize_pool: 2000,
+  entry_fee: 0,
+  main_round_video_seconds: 30,
+  theme_announcement_minutes_before: 60,
+  submission_hours: 48,
+  community_vote_weight: 0.7,
+  ai_score_weight: 0.3,
+  scoring_intent_clarity_weight: 0.25,
+  scoring_execution_weight: 0.45,
+  scoring_originality_weight: 0.2,
+  scoring_integrity_weight: 0.1,
+  ai_models: [
+    { name: 'claude-opus-4-5', provider: 'Anthropic', is_integrity: true },
+    { name: 'gpt-4o', provider: 'OpenAI' },
+    { name: 'gemini-2.5-flash', provider: 'Google' },
+  ],
+  flag_integrity_threshold: 50,
+  flag_spread_threshold: 30,
+  application_open_at: null,
+  application_close_at: null,
+  scoring_complete_at: null,
+  main_round_start_at: null,
+  main_round_end_at: null,
+  awards_announcement_at: null,
+}

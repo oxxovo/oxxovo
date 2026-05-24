@@ -6,6 +6,7 @@ import {
   formatAiModelList,
   formatAiProviderList,
   formatModelName,
+  formatPanelLabel,
   formatWeightPercent,
   getIntegrityModel,
   type Season,
@@ -77,7 +78,7 @@ export default function OXXOVOLandingPage() {
 
   const integrityModel = season ? getIntegrityModel(season.ai_models) : null
   const modelCount = season?.ai_models.length ?? 3
-  const tripleOr = (n: number) => (n === 3 ? 'Triple' : `${n}`)
+  const panelLabel = season ? formatPanelLabel(season.ai_models) : 'multi-AI'
 
   return (
     <main className="relative bg-[#030305] text-white">
@@ -163,7 +164,7 @@ export default function OXXOVOLandingPage() {
               <p className="mt-2.5 text-xs text-white/50">
                 Submit your AI video. {season ? (
                   <>
-                    {tripleOr(modelCount)}-AI scoring by {formatAiProviderList(season.ai_models)}.
+                    {panelLabel} scoring by {formatAiProviderList(season.ai_models)}.
                   </>
                 ) : (
                   <>AI verified scoring.</>
@@ -227,7 +228,7 @@ export default function OXXOVOLandingPage() {
             />
             <Step
               num="02"
-              title={`${tripleOr(modelCount)}-AI Judges`}
+              title={`${panelLabel} Judges`}
               body={
                 <>
                   {modelCount === 3 ? 'Three' : modelCount} independent AI models — {formatAiModelList(season.ai_models)} — from {modelCount === 3 ? 'three' : modelCount} different companies score your work in parallel. Eliminates single-AI bias.
@@ -265,7 +266,7 @@ export default function OXXOVOLandingPage() {
             The First Verified Arena<br />for AI Video Creators.
           </h2>
           <p className="text-white/70 leading-relaxed text-lg">
-            OXXOVO is the global arena for AI video creators. We verify AI-generated content with independent {tripleOr(modelCount).toLowerCase()}-AI scoring to ensure fairness. Founded in Las Vegas, OXXOVO Labs Inc. operates the first AI-verified video tournament platform.
+            OXXOVO is the global arena for AI video creators. We verify AI-generated content with independent {panelLabel.toLowerCase()} scoring to ensure fairness. Founded in Las Vegas, OXXOVO Labs Inc. operates the first AI-verified video tournament platform.
           </p>
 
           <div className="grid grid-cols-3 gap-4 mt-10 pt-8 border-t border-white/10">
@@ -322,7 +323,7 @@ export default function OXXOVOLandingPage() {
             </Faq>
 
             <Faq q={`Why ${modelCount === 3 ? 'three' : modelCount} AIs instead of one?`}>
-              Every AI has bias. By using {modelCount} independent models from {modelCount} different companies, individual biases cancel out. When the panel agrees, the result is far more trustworthy than any single AI&apos;s verdict. This is what makes OXXOVO scoring {tripleOr(modelCount)}-AI Verified.
+              Every AI has bias. By using {modelCount} independent models from {modelCount} different companies, individual biases cancel out. When the panel agrees, the result is far more trustworthy than any single AI&apos;s verdict. This is what makes OXXOVO scoring {panelLabel} Verified.
             </Faq>
 
             <Faq q={`What if ${season.max_applicants} people apply before me?`}>
@@ -338,7 +339,7 @@ export default function OXXOVOLandingPage() {
             </Faq>
 
             <Faq q="When do I get my results?">
-              {tripleOr(modelCount)}-AI scoring takes approximately 60–90 seconds per submission. Your individual score appears in your profile soon after submission. Final rankings are published after the application period closes.
+              {panelLabel} scoring takes approximately 60–90 seconds per submission. Your individual score appears in your profile soon after submission. Final rankings are published after the application period closes.
             </Faq>
           </div>
         ) : (

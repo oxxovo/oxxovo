@@ -43,3 +43,7 @@ next-env.d.ts
 
 # Claude Code local session settings
 .claude/settings.local.json
+
+# One-shot admin/ops scripts (service-role, manual use only — never ship)
+/scripts/set-admin-password.mjs
+/scripts/inspect-admin-access.mjs
