@@ -133,3 +133,15 @@ export function formatAiProviderList(models: AIModel[]): string {
 export function getIntegrityModel(models: AIModel[]): AIModel | null {
   return models.find((m) => m.is_integrity) || null
 }
+
+// Derive panel label from model count (3 → "Triple-AI", 4 → "Quad-AI", etc.)
+export function formatPanelLabel(models: AIModel[]): string {
+  const PREFIX_BY_COUNT: Record<number, string> = {
+    2: 'Dual',
+    3: 'Triple',
+    4: 'Quad',
+    5: 'Penta',
+  }
+  const count = models.length
+  return `${PREFIX_BY_COUNT[count] ?? `${count}-Model`}-AI`
+}

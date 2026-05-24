@@ -1,4 +1,9 @@
 import { NextResponse } from 'next/server';
+import {
+  getCurrentSeason,
+  formatAiProviderList,
+  formatPanelLabel,
+} from '@/lib/seasons';
 
 export async function POST(request: Request) {
   try {
@@ -20,8 +25,17 @@ export async function POST(request: Request) {
       );
     }
 
+    const season = await getCurrentSeason();
+    const seasonName = season?.name ?? 'GENESIS';
+    const capacity = season ? season.max_applicants.toLocaleString() : '500';
+    const topN = season?.top_n_advance ?? 50;
+    const panelLabel = season ? formatPanelLabel(season.ai_models) : 'multi-AI';
+    const providerList = season ? formatAiProviderList(season.ai_models) : 'multiple AI providers';
+
     const isWaitlist = status === 'waitlist';
-    const FROM = 'OXXOVO GENESIS <genesis@oxxovo.com>';
+    // FROM email address is DNS-bound infra (Cloudflare Email Routing + Resend
+    // domain verification, configured in 옥소보 5). Display name reflects current season.
+    const FROM = `OXXOVO ${seasonName} <info@oxxovo.com>`;
 
     const sendEmail = (
       to: string,
@@ -46,13 +60,13 @@ export async function POST(request: Request) {
 
     // ── ① 운영자(TK)에게 보내는 신청 알림 ──
     const adminSubject = isWaitlist
-      ? `[OXXOVO] New GENESIS waitlist signup — ${creator_name}`
-      : `[OXXOVO] New GENESIS application — ${creator_name}`;
+      ? `[OXXOVO] New ${seasonName} waitlist signup — ${creator_name}`
+      : `[OXXOVO] New ${seasonName} application — ${creator_name}`;
 
     const adminHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
         <h2 style="color: #8B22FF;">
-          ${isWaitlist ? 'New GENESIS Waitlist Signup' : 'New GENESIS Application'}
+          ${isWaitlist ? `New ${seasonName} Waitlist Signup` : `New ${seasonName} Application`}
         </h2>
         <table style="border-collapse: collapse; width: 100%;">
           <tr><td style="padding: 6px 0;"><strong>Creator</strong></td><td>${creator_name}</td></tr>
@@ -67,8 +81,8 @@ export async function POST(request: Request) {
 
     // ── ② 신청자 본인에게 보내는 접수 확인 ──
     const applicantSubject = isWaitlist
-      ? "OXXOVO GENESIS — You're on the waitlist"
-      : 'OXXOVO GENESIS — Application received';
+      ? `OXXOVO ${seasonName} — You're on the waitlist`
+      : `OXXOVO ${seasonName} — Application received`;
 
     const applicantHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1a1a1a; line-height: 1.6;">
@@ -82,10 +96,10 @@ export async function POST(request: Request) {
         <p style="margin: 0 0 14px;">Hi ${creator_name},</p>
         ${
           isWaitlist
-            ? `<p style="margin: 0 0 14px;">GENESIS has reached its 500-applicant capacity, so you've been added to the waitlist.</p>
+            ? `<p style="margin: 0 0 14px;">${seasonName} has reached its ${capacity}-applicant capacity, so you've been added to the waitlist.</p>
                <p style="margin: 0 0 14px;">If a spot opens or a new round is added, waitlisted creators are first in line — and we'll reach out at this email address.</p>`
-            : `<p style="margin: 0 0 14px;">Thanks for entering OXXOVO GENESIS — our first verified AI creation tournament.</p>
-               <p style="margin: 0 0 14px;">Your Free Entry has been received. Our Triple-AI system (Claude, GPT, and Gemini) reviews every submission, and the top 50 creators advance as Founding Creators.</p>
+            : `<p style="margin: 0 0 14px;">Thanks for entering OXXOVO ${seasonName} — a verified AI creation tournament.</p>
+               <p style="margin: 0 0 14px;">Your entry has been received. Our ${panelLabel} system (${providerList}) reviews every submission, and the top ${topN} creators advance as Founding Creators.</p>
                <p style="margin: 0 0 14px;">We'll reach out at this email address with the results.</p>`
         }
         <p style="margin: 24px 0 0; color: #666;">— The OXXOVO Team</p>

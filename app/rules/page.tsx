@@ -86,7 +86,7 @@ export default function RulesPage() {
           href="/apply"
           className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-5 py-2.5 text-[13px] font-extrabold text-white shadow-[0_0_18px_rgba(139,34,255,.4)] hover:brightness-110 transition"
         >
-          Apply to GENESIS
+          Apply to {season?.name ?? 'GENESIS'}
         </a>
       </header>
 

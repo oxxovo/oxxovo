@@ -6,8 +6,18 @@ import {
   formatPatentOfficeFull,
   formatTrademarkClasses,
 } from '@/lib/ip-info';
+import {
+  getCurrentSeason,
+  formatAiProviderList,
+  formatPanelLabel,
+} from '@/lib/seasons';
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const season = await getCurrentSeason();
+  const seasonName = season?.name ?? 'GENESIS';
+  const panelLabel = season ? formatPanelLabel(season.ai_models) : 'multi-AI';
+  const providerList = season ? formatAiProviderList(season.ai_models) : 'multiple AI providers';
+
   return (
     <main className="min-h-screen bg-[#030305] text-white">
       <section className="px-6 pt-24 pb-16 md:pt-32 md:pb-20 border-b border-white/5">
@@ -78,16 +88,16 @@ export default function AboutPage() {
           transparent scoring.
         </P>
         <P>
-          Entries are evaluated by a Triple-AI panel — Claude, GPT, and
-          Gemini — combined with a community vote, so no single judge,
-          human or machine, decides alone. Our goal is to build the trust
-          and the standard that competitive AI creation will need.
+          Entries are evaluated by a {panelLabel} panel — {providerList} —
+          combined with a community vote, so no single judge, human or
+          machine, decides alone. Our goal is to build the trust and the
+          standard that competitive AI creation will need.
         </P>
       </Section>
 
-      <Section label="THE ROAD AHEAD" title="From GENESIS onward">
+      <Section label="THE ROAD AHEAD" title={`From ${seasonName} onward`}>
         <P>
-          OXXOVO begins with GENESIS — a free launch tournament open to
+          OXXOVO begins with {seasonName} — a launch tournament open to
           creators worldwide. From there, the arena grows into regular
           seasonal tournaments, leading to an annual Grand Final where the
           champions of each round compete for the title.
@@ -128,7 +138,7 @@ export default function AboutPage() {
             href="/apply"
             className="inline-block bg-[#8B22FF] hover:bg-[#9B32FF] text-white font-bold tracking-[0.2em] px-10 py-5 transition"
           >
-            APPLY TO GENESIS
+            APPLY TO {seasonName.toUpperCase()}
           </Link>
         </div>
       </section>

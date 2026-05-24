@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { getCurrentSeason, type Season } from '@/lib/seasons'
 
 export default function ProfilePage() {
   const [user, setUser] = useState<{ email: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [season, setSeason] = useState<Season | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -19,6 +21,7 @@ export default function ProfilePage() {
 
     setUser({ email })
     setLoading(false)
+    getCurrentSeason().then(setSeason)
   }, [router])
 
   const handleLogout = () => {
@@ -92,7 +95,7 @@ export default function ProfilePage() {
         <div className="bg-white/5 border border-white/10 rounded-lg p-6">
           <h2 className="text-lg font-bold mb-4">🏆 Tournament History</h2>
           <p className="text-white/40 text-sm text-center py-8">
-            No tournaments yet. Season 0 is coming soon.
+            No tournaments yet. {season?.name ?? 'GENESIS'} is coming soon.
           </p>
         </div>
 

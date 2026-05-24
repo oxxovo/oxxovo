@@ -8,6 +8,7 @@ import {
   isApplicationClosed,
   isCapacityFull,
   formatAiModelList,
+  formatPanelLabel,
   type Season,
 } from '@/lib/seasons'
 import { formatFooterStatusLine } from '@/lib/ip-info'
@@ -230,7 +231,7 @@ export default function ApplyPage() {
             {season?.name ?? 'GENESIS Tournament'}
           </p>
           <h1 className="text-4xl md:text-5xl font-black mb-3">
-            {isWaitlistMode ? 'Join the Waitlist' : 'Apply to GENESIS'}
+            {isWaitlistMode ? 'Join the Waitlist' : `Apply to ${season?.name ?? 'GENESIS'}`}
           </h1>
           {isWaitlistMode ? (
             <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
@@ -238,7 +239,7 @@ export default function ApplyPage() {
             </p>
           ) : (
             <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
-              Submit your AI-generated video. Triple-AI scoring by
+              Submit your AI-generated video. {season ? formatPanelLabel(season.ai_models) : 'AI'} scoring by
               <span className="text-white/70"> {aiModelText}</span>.
             </p>
           )}

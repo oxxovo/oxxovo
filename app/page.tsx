@@ -104,7 +104,7 @@ export default function OXXOVOLandingPage() {
                 Hi, {user.email.split('@')[0]}
               </a>
               <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="/apply">
-                Apply to GENESIS
+                Apply to {season?.name ?? 'GENESIS'}
               </a>
               <button
                 onClick={handleLogout}
@@ -117,7 +117,7 @@ export default function OXXOVOLandingPage() {
             <>
               <a className="text-[14px] text-white/60 max-md:hidden" href="/login">Log in</a>
               <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="/apply">
-                Apply to GENESIS
+                Apply to {season?.name ?? 'GENESIS'}
               </a>
             </>
           )}
@@ -166,7 +166,7 @@ export default function OXXOVOLandingPage() {
                     {tripleOr(modelCount)}-AI scoring by {formatAiProviderList(season.ai_models)}.
                   </>
                 ) : (
-                  <>Triple-AI verified scoring.</>
+                  <>AI verified scoring.</>
                 )}
               </p>
             </div>
@@ -265,7 +265,7 @@ export default function OXXOVOLandingPage() {
             The First Verified Arena<br />for AI Video Creators.
           </h2>
           <p className="text-white/70 leading-relaxed text-lg">
-            OXXOVO is the global arena for AI video creators. We verify AI-generated content with independent triple-AI scoring to ensure fairness. Founded in Las Vegas, OXXOVO Labs Inc. operates the first AI-verified video tournament platform.
+            OXXOVO is the global arena for AI video creators. We verify AI-generated content with independent {tripleOr(modelCount).toLowerCase()}-AI scoring to ensure fairness. Founded in Las Vegas, OXXOVO Labs Inc. operates the first AI-verified video tournament platform.
           </p>
 
           <div className="grid grid-cols-3 gap-4 mt-10 pt-8 border-t border-white/10">
@@ -326,7 +326,7 @@ export default function OXXOVOLandingPage() {
             </Faq>
 
             <Faq q={`What if ${season.max_applicants} people apply before me?`}>
-              {season.name} accepts up to {season.max_applicants} applicants. If the limit is reached before you apply, you&apos;ll be automatically added to the Genesis Waitlist with priority access to the next season. We never turn anyone away.
+              {season.name} accepts up to {season.max_applicants} applicants. If the limit is reached before you apply, you&apos;ll be automatically added to the {season.name} Waitlist with priority access to the next season. We never turn anyone away.
             </Faq>
 
             <Faq q="What are the prizes?">
