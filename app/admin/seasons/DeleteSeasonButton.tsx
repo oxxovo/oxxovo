@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { deleteSeason } from './actions'
+import { useT } from '@/lib/admin-i18n'
 
 export function DeleteSeasonButton({
   id,
@@ -10,6 +11,7 @@ export function DeleteSeasonButton({
   id: string
   seasonName: string
 }) {
+  const t = useT()
   const [confirmText, setConfirmText] = useState('')
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -24,7 +26,7 @@ export function DeleteSeasonButton({
       try {
         await deleteSeason(id)
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Delete failed')
+        setError(e instanceof Error ? e.message : t.delete.delete_failed)
       }
     })
   }
@@ -36,31 +38,27 @@ export function DeleteSeasonButton({
         onClick={() => setOpen(true)}
         className="px-4 py-2 rounded border border-[#ff4444]/40 text-[#ff8888] text-xs font-bold uppercase tracking-wider hover:bg-[#ff4444]/10 transition"
       >
-        Delete season
+        {t.delete.button}
       </button>
     )
   }
 
   return (
     <div className="border border-[#ff4444]/40 bg-[#ff4444]/[.06] rounded p-5">
-      <p className="text-sm text-[#ff8888] font-bold mb-1">
-        Delete this season?
-      </p>
+      <p className="text-sm text-[#ff8888] font-bold mb-1">{t.delete.confirm_title}</p>
       <p className="text-xs text-white/60 mb-3">
-        This permanently removes <span className="text-white">{seasonName}</span> and
-        all references on the public site. Applications tied to this season are
-        not deleted but will become orphaned. Type{' '}
+        {t.delete.confirm_body_lead(seasonName)}
         <code className="px-1.5 py-0.5 bg-black/40 rounded text-[#ff8844]">
           delete {seasonName}
-        </code>{' '}
-        to confirm.
+        </code>
+        {t.delete.confirm_body_tail}
       </p>
 
       <input
         type="text"
         value={confirmText}
         onChange={(e) => setConfirmText(e.target.value)}
-        placeholder={`delete ${seasonName}`}
+        placeholder={t.delete.confirm_input_ph(seasonName)}
         className="w-full px-3 py-2 mb-3 bg-[#100608] border border-white/10 rounded text-sm text-white focus:border-[#ff8844] focus:outline-none"
         autoFocus
       />
@@ -78,7 +76,7 @@ export function DeleteSeasonButton({
           disabled={!canDelete || pending}
           className="px-4 py-2 rounded bg-[#ff4444] text-white text-xs font-bold uppercase tracking-wider hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {pending ? 'Deleting…' : 'Delete forever'}
+          {pending ? t.delete.deleting : t.delete.delete_forever}
         </button>
         <button
           type="button"
@@ -90,7 +88,7 @@ export function DeleteSeasonButton({
           disabled={pending}
           className="px-4 py-2 rounded border border-white/15 text-white/70 text-xs font-bold uppercase tracking-wider hover:text-white transition"
         >
-          Cancel
+          {t.delete.cancel}
         </button>
       </div>
     </div>

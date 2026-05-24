@@ -3,9 +3,11 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
+import { useT } from '@/lib/admin-i18n'
 
 export function LogoutButton() {
   const router = useRouter()
+  const t = useT()
   const [loading, setLoading] = useState(false)
 
   const handleLogout = async () => {
@@ -22,7 +24,7 @@ export function LogoutButton() {
       disabled={loading}
       className="w-full px-3 py-2 text-xs text-white/60 hover:text-[#ff4444] border border-white/10 hover:border-[#ff4444]/40 rounded transition disabled:opacity-50"
     >
-      {loading ? 'Signing out…' : 'Sign out'}
+      {loading ? t.layout.signing_out : t.layout.sign_out}
     </button>
   )
 }

@@ -3,9 +3,11 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
+import { useT } from '@/lib/admin-i18n'
 
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
   const router = useRouter()
+  const t = useT()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -36,7 +38,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="block text-xs uppercase tracking-wider text-white/40 mb-2">
-          Email
+          {t.login.email}
         </label>
         <input
           type="email"
@@ -50,7 +52,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
 
       <div>
         <label className="block text-xs uppercase tracking-wider text-white/40 mb-2">
-          Password
+          {t.login.password}
         </label>
         <input
           type="password"
@@ -73,7 +75,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         disabled={loading}
         className="w-full py-3 rounded bg-gradient-to-br from-[#ff4444] to-[#cc3333] hover:brightness-110 text-white font-bold text-sm uppercase tracking-wider transition disabled:opacity-50"
       >
-        {loading ? 'Signing in…' : 'Sign in'}
+        {loading ? t.login.signing_in : t.login.sign_in}
       </button>
     </form>
   )

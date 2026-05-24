@@ -22,11 +22,13 @@ export const seasonSchema = z
     application_video_min_seconds: z.coerce.number().int().positive(),
     application_video_max_seconds: z.coerce.number().int().positive(),
 
-    prize_first: z.coerce.number().nonnegative(),
-    prize_second: z.coerce.number().nonnegative(),
-    prize_third: z.coerce.number().nonnegative(),
     total_prize_pool: z.coerce.number().nonnegative(),
     entry_fee: z.coerce.number().nonnegative(),
+    // prize_first/second/third are GENERATED columns in Postgres (total * pct/100);
+    // the form sends only the percentages, the DB computes absolute amounts.
+    prize_first_pct: z.coerce.number().min(0).max(100),
+    prize_second_pct: z.coerce.number().min(0).max(100),
+    prize_third_pct: z.coerce.number().min(0).max(100),
 
     main_round_video_seconds: z.coerce.number().int().positive(),
     theme_announcement_minutes_before: z.coerce.number().int().nonnegative(),
@@ -86,6 +88,14 @@ export const seasonSchema = z
       path: ['top_n_advance'],
     },
   )
+  .refine(
+    (s) =>
+      Math.abs(s.prize_first_pct + s.prize_second_pct + s.prize_third_pct - 100) < 0.01,
+    {
+      message: 'prize split must sum to 100%',
+      path: ['prize_third_pct'],
+    },
+  )
 
 export type SeasonInput = z.infer<typeof seasonSchema>
 
@@ -97,11 +107,11 @@ export const DEFAULT_SEASON: SeasonInput = {
   top_n_advance: 50,
   application_video_min_seconds: 15,
   application_video_max_seconds: 30,
-  prize_first: 1200,
-  prize_second: 500,
-  prize_third: 300,
   total_prize_pool: 2000,
   entry_fee: 0,
+  prize_first_pct: 60,
+  prize_second_pct: 25,
+  prize_third_pct: 15,
   main_round_video_seconds: 30,
   theme_announcement_minutes_before: 60,
   submission_hours: 48,

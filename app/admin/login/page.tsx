@@ -1,23 +1,25 @@
+'use client'
+
+import { useSearchParams } from 'next/navigation'
+import { useT } from '@/lib/admin-i18n'
 import { LoginForm } from './LoginForm'
 
-export default async function AdminLoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string; redirect?: string; reason?: string }>
-}) {
-  const params = await searchParams
-  const errorParam = params.error
-  const redirect = params.redirect ?? '/admin'
+export default function AdminLoginPage() {
+  const t = useT()
+  const params = useSearchParams()
+  const errorParam = params.get('error')
+  const reason = params.get('reason')
+  const redirect = params.get('redirect') ?? '/admin'
 
   const errorMessage =
     errorParam === 'not_admin'
-      ? 'Your account does not have admin access.'
+      ? t.login.err_not_admin
       : errorParam === 'recovery_expired'
-        ? 'The password recovery link has expired. Request a new one.'
+        ? t.login.err_recovery_expired
         : errorParam === 'callback_failed'
-          ? `Sign-in callback failed${params.reason ? `: ${params.reason}` : '.'}`
+          ? t.login.err_callback_failed(reason)
           : errorParam === 'missing_code'
-            ? 'The sign-in link was missing required parameters.'
+            ? t.login.err_missing_code
             : null
 
   return (
@@ -25,12 +27,10 @@ export default async function AdminLoginPage({
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
           <div className="text-[10px] tracking-[0.3em] text-[#ff8844] font-bold mb-2">
-            OXXOVO
+            {t.login.brand_tag}
           </div>
-          <h1 className="text-2xl font-black">Admin Console</h1>
-          <p className="text-sm text-white/40 mt-2">
-            Authorized personnel only.
-          </p>
+          <h1 className="text-2xl font-black">{t.login.title}</h1>
+          <p className="text-sm text-white/40 mt-2">{t.login.subtitle}</p>
         </div>
 
         {errorMessage && (

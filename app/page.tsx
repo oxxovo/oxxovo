@@ -11,22 +11,18 @@ import {
   getIntegrityModel,
   type Season,
 } from '@/lib/seasons'
+import { useLocalUser } from '@/lib/use-local-user'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 
 type TimeLeft = { days: string; hours: string; minutes: string; seconds: string }
 const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '00' }
 
 export default function OXXOVOLandingPage() {
-  const [user, setUser] = useState<{ email: string } | null>(null)
+  const user = useLocalUser()
   const [season, setSeason] = useState<Season | null>(null)
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(ZERO_TIME)
 
   useEffect(() => {
-    const token = localStorage.getItem('oxxovo_token')
-    const email = localStorage.getItem('oxxovo_email')
-    if (token && email) {
-      setUser({ email })
-    }
     getCurrentSeason().then(setSeason)
   }, [])
 
@@ -64,7 +60,6 @@ export default function OXXOVOLandingPage() {
   const handleLogout = () => {
     localStorage.removeItem('oxxovo_token')
     localStorage.removeItem('oxxovo_email')
-    setUser(null)
     window.location.reload()
   }
 

@@ -8,7 +8,10 @@ import { seasonSchema, type SeasonInput } from '@/lib/season-schema'
 
 export type SeasonFormState = {
   ok: boolean
-  message?: string
+  // i18n key for canned messages — client looks up the translation.
+  // Untranslated raw text (DB error, unknown failures) goes into errorMessage.
+  messageKey?: 'validation_failed' | 'saved'
+  errorMessage?: string
   fieldErrors?: Record<string, string[]>
 }
 
@@ -80,7 +83,7 @@ export async function saveSeason(
       const key = issue.path.join('.')
       fieldErrors[key] = [...(fieldErrors[key] ?? []), issue.message]
     }
-    return { ok: false, message: 'Validation failed', fieldErrors }
+    return { ok: false, messageKey: 'validation_failed', fieldErrors }
   }
 
   try {
@@ -97,9 +100,9 @@ export async function saveSeason(
     if (!id) {
       redirect(`/admin/seasons/${newId}?saved=1`)
     }
-    return { ok: true, message: 'Saved.' }
+    return { ok: true, messageKey: 'saved' }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
-    return { ok: false, message: msg }
+    return { ok: false, errorMessage: msg }
   }
 }

@@ -3,11 +3,13 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
+import { useT } from '@/lib/admin-i18n'
 
 const MIN_LENGTH = 8
 
 export function ResetPasswordForm() {
   const router = useRouter()
+  const t = useT()
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,11 +21,11 @@ export function ResetPasswordForm() {
     setError(null)
 
     if (password.length < MIN_LENGTH) {
-      setError(`Password must be at least ${MIN_LENGTH} characters.`)
+      setError(t.reset_password.min_length(MIN_LENGTH))
       return
     }
     if (password !== confirm) {
-      setError('Passwords do not match.')
+      setError(t.reset_password.mismatch)
       return
     }
 
@@ -50,7 +52,7 @@ export function ResetPasswordForm() {
   if (done) {
     return (
       <div className="px-4 py-5 rounded border border-emerald-500/30 bg-emerald-500/10 text-sm text-emerald-300 text-center">
-        Password updated. Redirecting…
+        {t.reset_password.success}
       </div>
     )
   }
@@ -59,7 +61,7 @@ export function ResetPasswordForm() {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="block text-xs uppercase tracking-wider text-white/40 mb-2">
-          New password
+          {t.reset_password.new_password}
         </label>
         <input
           type="password"
@@ -75,7 +77,7 @@ export function ResetPasswordForm() {
 
       <div>
         <label className="block text-xs uppercase tracking-wider text-white/40 mb-2">
-          Confirm password
+          {t.reset_password.confirm_password}
         </label>
         <input
           type="password"
@@ -99,7 +101,7 @@ export function ResetPasswordForm() {
         disabled={loading}
         className="w-full py-3 rounded bg-gradient-to-br from-[#ff4444] to-[#cc3333] hover:brightness-110 text-white font-bold text-sm uppercase tracking-wider transition disabled:opacity-50"
       >
-        {loading ? 'Updating…' : 'Set new password'}
+        {loading ? t.reset_password.submitting : t.reset_password.submit}
       </button>
     </form>
   )

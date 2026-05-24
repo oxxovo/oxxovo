@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import { saveSeason, type SeasonFormState } from './actions'
 import { type SeasonInput } from '@/lib/season-schema'
+import { useT } from '@/lib/admin-i18n'
 
 const initialState: SeasonFormState = { ok: false }
 
@@ -30,20 +31,42 @@ export function SeasonForm({
   id: string | null
   initial: SeasonInput
 }) {
+  const t = useT()
   const [state, formAction, pending] = useActionState(
     (prev: SeasonFormState, fd: FormData) => saveSeason(id, prev, fd),
     initialState,
   )
   const [aiModels, setAiModels] = useState(initial.ai_models)
 
+  // Pool + percentages are controlled so the live preview ("≈ $X") and the
+  // sum indicator can react to every keystroke. All other fields stay
+  // uncontrolled (defaultValue) for simplicity.
+  const [pool, setPool] = useState(Number(initial.total_prize_pool))
+  const [pct1, setPct1] = useState(Number(initial.prize_first_pct))
+  const [pct2, setPct2] = useState(Number(initial.prize_second_pct))
+  const [pct3, setPct3] = useState(Number(initial.prize_third_pct))
+
+  const sumPct = round2(pct1 + pct2 + pct3)
+  const sumOk = Math.abs(sumPct - 100) < 0.01
+  const previewAmount = (pct: number) =>
+    Number.isFinite(pool) && Number.isFinite(pct)
+      ? Math.round((pool * pct) / 100 * 100) / 100
+      : 0
+
   const fieldError = (key: string) => state.fieldErrors?.[key]?.[0]
+
+  const bannerText =
+    state.messageKey === 'validation_failed'
+      ? t.season_form.validation_failed
+      : state.messageKey === 'saved'
+        ? t.season_form.saved
+        : state.errorMessage ?? null
 
   return (
     <form action={formAction} className="space-y-10">
       <input type="hidden" name="ai_models" value={JSON.stringify(aiModels)} />
 
-      {/* Status banner */}
-      {state.message && (
+      {bannerText && (
         <div
           className={`px-4 py-3 rounded border text-sm ${
             state.ok
@@ -51,59 +74,114 @@ export function SeasonForm({
               : 'border-[#ff4444]/30 bg-[#ff4444]/10 text-[#ff8888]'
           }`}
         >
-          {state.message}
+          {bannerText}
         </div>
       )}
 
-      <Group title="Season info">
-        <Field label="Name" name="name" defaultValue={initial.name} error={fieldError('name')} />
-        <Field label="Season #" name="season_number" type="number" defaultValue={initial.season_number} error={fieldError('season_number')} />
+      <Group title={t.season_form.group_info}>
+        <Field label={t.season_form.field_name} name="name" defaultValue={initial.name} error={fieldError('name')} />
+        <Field label={t.season_form.field_season_number} name="season_number" type="number" defaultValue={initial.season_number} error={fieldError('season_number')} />
         <Select
-          label="Status"
+          label={t.season_form.field_status}
           name="status"
           defaultValue={initial.status}
-          options={['draft', 'active', 'closed', 'completed']}
+          options={[
+            { value: 'draft', label: t.status.draft },
+            { value: 'active', label: t.status.active },
+            { value: 'closed', label: t.status.closed },
+            { value: 'completed', label: t.status.completed },
+          ]}
           error={fieldError('status')}
         />
       </Group>
 
-      <Group title="Capacity & selection">
-        <Field label="Max applicants" name="max_applicants" type="number" defaultValue={initial.max_applicants} error={fieldError('max_applicants')} />
-        <Field label="Top N advance" name="top_n_advance" type="number" defaultValue={initial.top_n_advance} error={fieldError('top_n_advance')} />
+      <Group title={t.season_form.group_capacity}>
+        <Field label={t.season_form.field_max_applicants} name="max_applicants" type="number" defaultValue={initial.max_applicants} error={fieldError('max_applicants')} />
+        <Field label={t.season_form.field_top_n} name="top_n_advance" type="number" defaultValue={initial.top_n_advance} error={fieldError('top_n_advance')} />
       </Group>
 
-      <Group title="Video length (seconds)">
-        <Field label="Application min" name="application_video_min_seconds" type="number" defaultValue={initial.application_video_min_seconds} error={fieldError('application_video_min_seconds')} />
-        <Field label="Application max" name="application_video_max_seconds" type="number" defaultValue={initial.application_video_max_seconds} error={fieldError('application_video_max_seconds')} />
-        <Field label="Main round" name="main_round_video_seconds" type="number" defaultValue={initial.main_round_video_seconds} error={fieldError('main_round_video_seconds')} />
+      <Group title={t.season_form.group_video}>
+        <Field label={t.season_form.field_video_app_min} name="application_video_min_seconds" type="number" defaultValue={initial.application_video_min_seconds} error={fieldError('application_video_min_seconds')} />
+        <Field label={t.season_form.field_video_app_max} name="application_video_max_seconds" type="number" defaultValue={initial.application_video_max_seconds} error={fieldError('application_video_max_seconds')} />
+        <Field label={t.season_form.field_video_main} name="main_round_video_seconds" type="number" defaultValue={initial.main_round_video_seconds} error={fieldError('main_round_video_seconds')} />
       </Group>
 
-      <Group title="Timing">
-        <Field label="Theme reveal (minutes before)" name="theme_announcement_minutes_before" type="number" defaultValue={initial.theme_announcement_minutes_before} error={fieldError('theme_announcement_minutes_before')} />
-        <Field label="Submission window (hours)" name="submission_hours" type="number" defaultValue={initial.submission_hours} error={fieldError('submission_hours')} />
+      <Group title={t.season_form.group_timing}>
+        <Field label={t.season_form.field_theme_reveal} name="theme_announcement_minutes_before" type="number" defaultValue={initial.theme_announcement_minutes_before} error={fieldError('theme_announcement_minutes_before')} />
+        <Field label={t.season_form.field_submission_hours} name="submission_hours" type="number" defaultValue={initial.submission_hours} error={fieldError('submission_hours')} />
       </Group>
 
-      <Group title="Prizes (USD)">
-        <Field label="Total prize pool" name="total_prize_pool" type="number" step="1" defaultValue={initial.total_prize_pool} error={fieldError('total_prize_pool')} />
-        <Field label="1st place" name="prize_first" type="number" step="1" defaultValue={initial.prize_first} error={fieldError('prize_first')} />
-        <Field label="2nd place" name="prize_second" type="number" step="1" defaultValue={initial.prize_second} error={fieldError('prize_second')} />
-        <Field label="3rd place" name="prize_third" type="number" step="1" defaultValue={initial.prize_third} error={fieldError('prize_third')} />
-        <Field label="Entry fee" name="entry_fee" type="number" step="1" defaultValue={initial.entry_fee} error={fieldError('entry_fee')} />
+      <Group title={t.season_form.group_pool}>
+        <ControlledNumberField
+          label={t.season_form.field_total_pool}
+          name="total_prize_pool"
+          step="1"
+          value={pool}
+          onChange={setPool}
+          error={fieldError('total_prize_pool')}
+        />
+        <Field
+          label={t.season_form.field_entry_fee}
+          name="entry_fee"
+          type="number"
+          step="1"
+          defaultValue={initial.entry_fee}
+          error={fieldError('entry_fee')}
+        />
       </Group>
 
-      <Group title="Scoring split (must sum to 1.0)">
-        <Field label="Community vote weight" name="community_vote_weight" type="number" step="0.01" defaultValue={initial.community_vote_weight} error={fieldError('community_vote_weight')} hint="e.g. 0.7" />
-        <Field label="AI score weight" name="ai_score_weight" type="number" step="0.01" defaultValue={initial.ai_score_weight} error={fieldError('ai_score_weight')} hint="e.g. 0.3" />
+      <Group title={t.season_form.group_split}>
+        <PercentField
+          label={t.season_form.field_1st_place}
+          name="prize_first_pct"
+          value={pct1}
+          onChange={setPct1}
+          previewUsd={previewAmount(pct1)}
+          error={fieldError('prize_first_pct')}
+        />
+        <PercentField
+          label={t.season_form.field_2nd_place}
+          name="prize_second_pct"
+          value={pct2}
+          onChange={setPct2}
+          previewUsd={previewAmount(pct2)}
+          error={fieldError('prize_second_pct')}
+        />
+        <PercentField
+          label={t.season_form.field_3rd_place}
+          name="prize_third_pct"
+          value={pct3}
+          onChange={setPct3}
+          previewUsd={previewAmount(pct3)}
+          error={fieldError('prize_third_pct')}
+        />
+        <div className="md:col-span-2 mt-1 flex items-center justify-between border-t border-white/10 pt-3">
+          <span className="text-[11px] uppercase tracking-wider text-white/50">
+            {t.season_form.split_total_label}
+          </span>
+          <span
+            className={`text-sm font-bold ${
+              sumOk ? 'text-emerald-300' : 'text-[#ff8888]'
+            }`}
+          >
+            {sumPct.toFixed(2)}% {sumOk ? '✓' : t.season_form.split_total_bad}
+          </span>
+        </div>
       </Group>
 
-      <Group title="AI judging weights (must sum to 1.0)">
-        <Field label="Intent" name="scoring_intent_clarity_weight" type="number" step="0.01" defaultValue={initial.scoring_intent_clarity_weight} error={fieldError('scoring_intent_clarity_weight')} />
-        <Field label="Execution" name="scoring_execution_weight" type="number" step="0.01" defaultValue={initial.scoring_execution_weight} error={fieldError('scoring_execution_weight')} />
-        <Field label="Originality" name="scoring_originality_weight" type="number" step="0.01" defaultValue={initial.scoring_originality_weight} error={fieldError('scoring_originality_weight')} />
-        <Field label="Integrity" name="scoring_integrity_weight" type="number" step="0.01" defaultValue={initial.scoring_integrity_weight} error={fieldError('scoring_integrity_weight')} />
+      <Group title={t.season_form.group_scoring}>
+        <Field label={t.season_form.field_community_vote} name="community_vote_weight" type="number" step="0.01" defaultValue={initial.community_vote_weight} error={fieldError('community_vote_weight')} hint={t.season_form.hint_07} />
+        <Field label={t.season_form.field_ai_score} name="ai_score_weight" type="number" step="0.01" defaultValue={initial.ai_score_weight} error={fieldError('ai_score_weight')} hint={t.season_form.hint_03} />
       </Group>
 
-      <Group title="AI panel">
+      <Group title={t.season_form.group_ai_weights}>
+        <Field label={t.season_form.field_intent} name="scoring_intent_clarity_weight" type="number" step="0.01" defaultValue={initial.scoring_intent_clarity_weight} error={fieldError('scoring_intent_clarity_weight')} />
+        <Field label={t.season_form.field_execution} name="scoring_execution_weight" type="number" step="0.01" defaultValue={initial.scoring_execution_weight} error={fieldError('scoring_execution_weight')} />
+        <Field label={t.season_form.field_originality} name="scoring_originality_weight" type="number" step="0.01" defaultValue={initial.scoring_originality_weight} error={fieldError('scoring_originality_weight')} />
+        <Field label={t.season_form.field_integrity} name="scoring_integrity_weight" type="number" step="0.01" defaultValue={initial.scoring_integrity_weight} error={fieldError('scoring_integrity_weight')} />
+      </Group>
+
+      <Group title={t.season_form.group_ai_panel}>
         <div className="col-span-full">
           <AiModelsEditor models={aiModels} onChange={setAiModels} />
           {fieldError('ai_models') && (
@@ -112,18 +190,18 @@ export function SeasonForm({
         </div>
       </Group>
 
-      <Group title="Integrity thresholds">
-        <Field label="Integrity flag threshold" name="flag_integrity_threshold" type="number" defaultValue={initial.flag_integrity_threshold} error={fieldError('flag_integrity_threshold')} hint="0-100" />
-        <Field label="Spread flag threshold" name="flag_spread_threshold" type="number" defaultValue={initial.flag_spread_threshold} error={fieldError('flag_spread_threshold')} hint="0-100" />
+      <Group title={t.season_form.group_integrity}>
+        <Field label={t.season_form.field_flag_integrity} name="flag_integrity_threshold" type="number" defaultValue={initial.flag_integrity_threshold} error={fieldError('flag_integrity_threshold')} hint={t.season_form.hint_0_100} />
+        <Field label={t.season_form.field_flag_spread} name="flag_spread_threshold" type="number" defaultValue={initial.flag_spread_threshold} error={fieldError('flag_spread_threshold')} hint={t.season_form.hint_0_100} />
       </Group>
 
-      <Group title="Schedule">
-        <DatetimeField label="Application open" name="application_open_at" defaultValue={toDatetimeLocal(initial.application_open_at)} error={fieldError('application_open_at')} />
-        <DatetimeField label="Application close" name="application_close_at" defaultValue={toDatetimeLocal(initial.application_close_at)} error={fieldError('application_close_at')} />
-        <DatetimeField label="Scoring complete" name="scoring_complete_at" defaultValue={toDatetimeLocal(initial.scoring_complete_at)} error={fieldError('scoring_complete_at')} />
-        <DatetimeField label="Main round start" name="main_round_start_at" defaultValue={toDatetimeLocal(initial.main_round_start_at)} error={fieldError('main_round_start_at')} />
-        <DatetimeField label="Main round end" name="main_round_end_at" defaultValue={toDatetimeLocal(initial.main_round_end_at)} error={fieldError('main_round_end_at')} />
-        <DatetimeField label="Awards announcement" name="awards_announcement_at" defaultValue={toDatetimeLocal(initial.awards_announcement_at)} error={fieldError('awards_announcement_at')} />
+      <Group title={t.season_form.group_schedule}>
+        <DatetimeField label={t.season_form.field_app_open} name="application_open_at" defaultValue={toDatetimeLocal(initial.application_open_at)} error={fieldError('application_open_at')} />
+        <DatetimeField label={t.season_form.field_app_close} name="application_close_at" defaultValue={toDatetimeLocal(initial.application_close_at)} error={fieldError('application_close_at')} />
+        <DatetimeField label={t.season_form.field_scoring_complete} name="scoring_complete_at" defaultValue={toDatetimeLocal(initial.scoring_complete_at)} error={fieldError('scoring_complete_at')} />
+        <DatetimeField label={t.season_form.field_main_start} name="main_round_start_at" defaultValue={toDatetimeLocal(initial.main_round_start_at)} error={fieldError('main_round_start_at')} />
+        <DatetimeField label={t.season_form.field_main_end} name="main_round_end_at" defaultValue={toDatetimeLocal(initial.main_round_end_at)} error={fieldError('main_round_end_at')} />
+        <DatetimeField label={t.season_form.field_awards} name="awards_announcement_at" defaultValue={toDatetimeLocal(initial.awards_announcement_at)} error={fieldError('awards_announcement_at')} />
       </Group>
 
       <div className="flex items-center gap-3 pt-4 border-t border-white/10">
@@ -132,11 +210,13 @@ export function SeasonForm({
           disabled={pending}
           className="px-6 py-3 rounded bg-gradient-to-br from-[#ff4444] to-[#cc3333] text-white font-bold text-sm uppercase tracking-wider hover:brightness-110 transition disabled:opacity-50"
         >
-          {pending ? 'Saving…' : id ? 'Save changes' : 'Create season'}
+          {pending
+            ? t.season_form.saving
+            : id
+              ? t.season_form.save_changes
+              : t.season_form.create_season}
         </button>
-        <p className="text-xs text-white/40">
-          Changes are visible on the public site immediately after save.
-        </p>
+        <p className="text-xs text-white/40">{t.season_form.save_caption}</p>
       </div>
     </form>
   )
@@ -188,7 +268,7 @@ function Select({
   label: string
   name: string
   defaultValue: string
-  options: string[]
+  options: Array<{ value: string; label: string }>
   error?: string
 }) {
   return (
@@ -202,8 +282,8 @@ function Select({
         }`}
       >
         {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
+          <option key={o.value} value={o.value}>
+            {o.label}
           </option>
         ))}
       </select>
@@ -244,12 +324,85 @@ function DatetimeField({
   )
 }
 
+function round2(n: number) {
+  return Math.round(n * 100) / 100
+}
+
+function ControlledNumberField({
+  label, name, value, onChange, error, hint, step,
+}: {
+  label: string
+  name: string
+  value: number
+  onChange: (n: number) => void
+  error?: string
+  hint?: string
+  step?: string
+}) {
+  return (
+    <label className="block">
+      <div className="text-[11px] uppercase tracking-wider text-white/50 mb-1.5">{label}</div>
+      <input
+        name={name}
+        type="number"
+        step={step}
+        value={Number.isFinite(value) ? value : ''}
+        onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+        className={`w-full px-3 py-2 bg-[#100608] border rounded text-sm text-white focus:border-[#ff8844] focus:outline-none transition ${
+          error ? 'border-[#ff4444]' : 'border-white/10'
+        }`}
+      />
+      {hint && !error && <p className="mt-1 text-[10px] text-white/35">{hint}</p>}
+      {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
+    </label>
+  )
+}
+
+function PercentField({
+  label, name, value, onChange, previewUsd, error,
+}: {
+  label: string
+  name: string
+  value: number
+  onChange: (n: number) => void
+  previewUsd: number
+  error?: string
+}) {
+  return (
+    <label className="block">
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-[11px] uppercase tracking-wider text-white/50">{label}</span>
+        <span className="text-[11px] text-white/40 tabular-nums">
+          ≈ ${previewUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div className="relative">
+        <input
+          name={name}
+          type="number"
+          step="0.01"
+          min="0"
+          max="100"
+          value={Number.isFinite(value) ? value : ''}
+          onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+          className={`w-full pl-3 pr-9 py-2 bg-[#100608] border rounded text-sm text-white focus:border-[#ff8844] focus:outline-none transition tabular-nums ${
+            error ? 'border-[#ff4444]' : 'border-white/10'
+          }`}
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-white/40">%</span>
+      </div>
+      {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
+    </label>
+  )
+}
+
 function AiModelsEditor({
   models, onChange,
 }: {
   models: { name: string; provider?: string; is_integrity?: boolean }[]
   onChange: (models: { name: string; provider?: string; is_integrity?: boolean }[]) => void
 }) {
+  const t = useT()
   const update = (i: number, patch: Partial<{ name: string; provider?: string; is_integrity?: boolean }>) => {
     onChange(models.map((m, idx) => (idx === i ? { ...m, ...patch } : m)))
   }
@@ -261,13 +414,13 @@ function AiModelsEditor({
       {models.map((m, i) => (
         <div key={i} className="grid grid-cols-12 gap-2 items-center">
           <input
-            placeholder="model name (e.g. claude-opus-4-5)"
+            placeholder={t.season_form.ai_model_name_ph}
             value={m.name}
             onChange={(e) => update(i, { name: e.target.value })}
             className="col-span-5 px-3 py-2 bg-[#100608] border border-white/10 rounded text-sm text-white focus:border-[#ff8844] focus:outline-none"
           />
           <input
-            placeholder="provider (e.g. Anthropic)"
+            placeholder={t.season_form.ai_provider_ph}
             value={m.provider ?? ''}
             onChange={(e) => update(i, { provider: e.target.value })}
             className="col-span-4 px-3 py-2 bg-[#100608] border border-white/10 rounded text-sm text-white focus:border-[#ff8844] focus:outline-none"
@@ -278,13 +431,13 @@ function AiModelsEditor({
               checked={!!m.is_integrity}
               onChange={(e) => update(i, { is_integrity: e.target.checked })}
             />
-            Integrity
+            {t.season_form.integrity_check}
           </label>
           <button
             type="button"
             onClick={() => remove(i)}
             className="col-span-1 text-xs text-white/40 hover:text-[#ff4444]"
-            aria-label="Remove model"
+            aria-label={t.season_form.remove_model_aria}
           >
             ✕
           </button>
@@ -295,7 +448,7 @@ function AiModelsEditor({
         onClick={add}
         className="text-xs text-[#ff8844] hover:underline"
       >
-        + Add AI model
+        {t.season_form.add_ai_model}
       </button>
     </div>
   )

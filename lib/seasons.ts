@@ -17,9 +17,15 @@ export type Season = {
   application_video_min_seconds: number
   application_video_max_seconds: number
 
+  // prize_first/second/third are GENERATED ALWAYS AS STORED in Postgres
+  // (computed from total_prize_pool * prize_*_pct / 100). Read-only at the
+  // application layer — only the percentages and pool are writable.
   prize_first: number
   prize_second: number
   prize_third: number
+  prize_first_pct: number
+  prize_second_pct: number
+  prize_third_pct: number
   total_prize_pool: number
   entry_fee: number
 

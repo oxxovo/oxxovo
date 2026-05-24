@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
@@ -6,6 +5,7 @@ import { type Season } from '@/lib/seasons'
 import { type SeasonInput } from '@/lib/season-schema'
 import { SeasonForm } from '../SeasonForm'
 import { DeleteSeasonButton } from '../DeleteSeasonButton'
+import { EditSeasonHeader, DangerZoneHeading } from '../SeasonPageHeader'
 
 export default async function SeasonEditPage({
   params,
@@ -38,11 +38,11 @@ export default async function SeasonEditPage({
     top_n_advance: season.top_n_advance,
     application_video_min_seconds: season.application_video_min_seconds,
     application_video_max_seconds: season.application_video_max_seconds,
-    prize_first: season.prize_first,
-    prize_second: season.prize_second,
-    prize_third: season.prize_third,
     total_prize_pool: season.total_prize_pool,
     entry_fee: season.entry_fee,
+    prize_first_pct: season.prize_first_pct,
+    prize_second_pct: season.prize_second_pct,
+    prize_third_pct: season.prize_third_pct,
     main_round_video_seconds: season.main_round_video_seconds,
     theme_announcement_minutes_before: season.theme_announcement_minutes_before,
     submission_hours: season.submission_hours,
@@ -65,37 +65,17 @@ export default async function SeasonEditPage({
 
   return (
     <div className="p-8 max-w-4xl">
-      <header className="mb-8">
-        <Link href="/admin/seasons" className="text-xs text-[#ff8844] hover:underline">
-          ← Seasons
-        </Link>
-        <div className="mt-3 flex items-baseline justify-between">
-          <h1 className="text-3xl font-black">
-            Edit {season.name}{' '}
-            <span className="text-white/30 font-normal">· Season {season.season_number}</span>
-          </h1>
-          <span className="text-xs text-white/40">
-            Last updated{' '}
-            {new Date(season.updated_at).toLocaleString('en-US', {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-            })}
-          </span>
-        </div>
-      </header>
-
-      {saved && (
-        <div className="mb-6 px-4 py-3 rounded border border-emerald-500/30 bg-emerald-500/10 text-sm text-emerald-300">
-          Season saved. Public site cache refreshed.
-        </div>
-      )}
+      <EditSeasonHeader
+        name={season.name}
+        seasonNumber={season.season_number}
+        updatedAt={season.updated_at}
+        showSaved={!!saved}
+      />
 
       <SeasonForm id={id} initial={initial} />
 
       <section className="mt-16 pt-8 border-t border-white/10">
-        <h2 className="text-xs uppercase tracking-[0.2em] text-[#ff8888] font-bold mb-4">
-          Danger zone
-        </h2>
+        <DangerZoneHeading />
         <DeleteSeasonButton id={id} seasonName={season.name} />
       </section>
     </div>
