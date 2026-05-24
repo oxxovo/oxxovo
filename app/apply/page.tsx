@@ -10,6 +10,7 @@ import {
   formatAiModelList,
   type Season,
 } from '@/lib/seasons'
+import { formatFooterStatusLine } from '@/lib/ip-info'
 
 const AI_SERVICES = ['Sora', 'Veo', 'Runway', 'Kling', 'Pika', 'Other']
 const ABSTRACT_WORDS = [
@@ -494,7 +495,10 @@ export default function ApplyPage() {
         </form>
 
         <p className="text-center text-white/30 text-xs mt-16">
-          © 2026 OXXOVO Labs Inc. All Rights Reserved.
+          OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.
+        </p>
+        <p className="text-center text-white/30 text-xs mt-1">
+          {formatFooterStatusLine()}
         </p>
       </section>
     </main>

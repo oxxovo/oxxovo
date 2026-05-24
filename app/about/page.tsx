@@ -1,4 +1,11 @@
 import Link from 'next/link';
+import {
+  IP_INFO,
+  formatFooterStatusLine,
+  formatInternationalNote,
+  formatPatentOfficeFull,
+  formatTrademarkClasses,
+} from '@/lib/ip-info';
 
 export default function AboutPage() {
   return (
@@ -92,6 +99,23 @@ export default function AboutPage() {
         </P>
       </Section>
 
+      <Section label="🛡️ INTELLECTUAL PROPERTY" title="Protected by patent and trademark filings">
+        <P>
+          OXXOVO&rsquo;s tournament integrity technology is protected by
+          patent applications filed with the {formatPatentOfficeFull()} on{' '}
+          {IP_INFO.patent.filingDate}:
+        </P>
+        <ul className="text-white/70 leading-relaxed mb-4 pl-5 space-y-1.5 list-disc marker:text-[#8B22FF]/60">
+          {IP_INFO.patent.titles.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+        <P>
+          Trademark applications also filed for {IP_INFO.trademark.name} across
+          multiple classes ({formatTrademarkClasses()}). {formatInternationalNote()}
+        </P>
+      </Section>
+
       <section className="px-6 py-16 md:py-24 text-center">
         <div className="max-w-2xl mx-auto">
           <div className="text-xs tracking-[0.3em] text-[#8B22FF] mb-6">
@@ -114,7 +138,10 @@ export default function AboutPage() {
           <Link href="/" className="hover:text-white transition">
             ← OXXOVO
           </Link>
-          <div>OXXOVO Labs Inc. · Las Vegas, Nevada, USA</div>
+          <div>OXXOVO&trade; &middot; Las Vegas, Nevada, USA</div>
+        </div>
+        <div className="max-w-3xl mx-auto mt-4 text-center text-[10px] tracking-[0.15em] text-white/30">
+          OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. &middot; {formatFooterStatusLine()}
         </div>
       </footer>
     </main>

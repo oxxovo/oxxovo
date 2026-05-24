@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { formatFooterStatusLine } from '@/lib/ip-info';
 
 const faqs = [
   {
@@ -118,7 +119,10 @@ export default function FAQPage() {
           <Link href="/" className="hover:text-white transition">
             ← OXXOVO
           </Link>
-          <div>OXXOVO Labs Inc. · Las Vegas, Nevada, USA</div>
+          <div>OXXOVO&trade; &middot; Las Vegas, Nevada, USA</div>
+        </div>
+        <div className="max-w-3xl mx-auto mt-4 text-center text-[10px] tracking-[0.15em] text-white/30">
+          OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. &middot; {formatFooterStatusLine()}
         </div>
       </footer>
     </main>

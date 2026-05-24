@@ -8,6 +8,10 @@ import {
   getIntegrityModel,
   type Season,
 } from '@/lib/seasons'
+import {
+  IP_INFO,
+  formatFooterStatusLine,
+} from '@/lib/ip-info'
 
 const STATEMENT_MIN = 150
 const STATEMENT_MAX = 250
@@ -227,6 +231,12 @@ export default function RulesPage() {
                 <span className="text-red-300/80">&times;</span> Submitting the same video under multiple emails
               </li>
             </ul>
+            <div className="mt-5 rounded-lg border border-[#8b22ff]/25 bg-[#8b22ff]/[.05] px-4 py-3 text-sm">
+              <p className="text-[#b66cff] font-bold mb-1">&#8505;&#65039; Patent Notice</p>
+              <p className="text-white/60">
+                The above tournament integrity technologies are protected by patent applications filed in {IP_INFO.patent.jurisdictionShort} ({IP_INFO.patent.filingDate}) and will be extended internationally under the {IP_INFO.international.treaty}.
+              </p>
+            </div>
           </RuleSection>
 
           <RuleSection num="⑦" title="Tournament Structure & Prizes">
@@ -292,7 +302,10 @@ export default function RulesPage() {
             Apply to {season.name}
           </a>
           <p className="text-white/30 text-xs mt-10">
-            &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.
+            OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.
+          </p>
+          <p className="text-white/30 text-xs mt-1">
+            {formatFooterStatusLine()}
           </p>
         </div>
       </section>

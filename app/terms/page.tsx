@@ -1,3 +1,5 @@
+import { formatFooterStatusLine } from '@/lib/ip-info'
+
 export default function TermsPage() {
   return (
     <main className="min-h-screen bg-[#030305] text-white px-8 py-16 max-w-4xl mx-auto">
@@ -59,7 +61,8 @@ export default function TermsPage() {
       </section>
 
       <div className="mt-16 pt-8 border-t border-white/10 text-center text-white/30 text-sm">
-        © 2026 OXXOVO Labs Inc. All Rights Reserved.
+        OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.
+        <p className="text-xs text-white/30 mt-1">{formatFooterStatusLine()}</p>
       </div>
     </main>
   )

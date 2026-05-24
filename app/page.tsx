@@ -10,6 +10,7 @@ import {
   getIntegrityModel,
   type Season,
 } from '@/lib/seasons'
+import { formatFooterStatusLine } from '@/lib/ip-info'
 
 type TimeLeft = { days: string; hours: string; minutes: string; seconds: string }
 const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '00' }
@@ -358,7 +359,8 @@ export default function OXXOVOLandingPage() {
             <a href="/rules" className="hover:text-white/70">Rules</a>
           </div>
         </div>
-        <p className="mt-1 text-center text-[10px] text-white/20">Copyright 2026 OXXOVO Labs Inc. All Rights Reserved.</p>
+        <p className="mt-1 text-center text-[10px] text-white/20">OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.</p>
+        <p className="text-center text-[10px] text-white/20">{formatFooterStatusLine()}</p>
       </footer>
 
     </main>
