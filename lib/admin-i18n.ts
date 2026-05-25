@@ -81,6 +81,7 @@ type Messages = {
       dashboard: string
       seasons: string
       applications: string
+      contacts: string
       winners: string
       emails: string
     }
@@ -239,6 +240,91 @@ type Messages = {
     min_length: (n: number) => string
     mismatch: string
   }
+  applications: {
+    title: string
+    subtitle: string
+    season_select_label: string
+    segment_all: string
+    segment_pending: string
+    segment_top50: string
+    segment_waitlist: string
+    segment_awarded: string
+    segment_rejected: string
+    segment_count: (n: number) => string
+    search_placeholder: string
+    sort_label: string
+    sort_submitted_desc: string
+    sort_submitted_asc: string
+    sort_score_desc: string
+    sort_name_asc: string
+    csv_export: string
+    csv_exported: (n: number) => string
+    col_name: string
+    col_email: string
+    col_country: string
+    col_status: string
+    col_ai_service: string
+    col_submitted: string
+    col_score: string
+    empty: string
+    score_pending: string
+  }
+  application_detail: {
+    back: string
+    section_applicant: string
+    section_statement: string
+    section_video: string
+    section_actions: string
+    section_scoring: string
+    label_name: string
+    label_email: string
+    label_country: string
+    label_channel: string
+    label_ai_service: string
+    label_submitted: string
+    label_status: string
+    label_award_rank: string
+    no_country: string
+    no_channel: string
+    notes_label: string
+    notes_placeholder: string
+    notes_save: string
+    notes_saving: string
+    notes_saved: string
+    status_change_label: string
+    award_rank_label: string
+    award_rank_none: string
+    award_rank_1st: string
+    award_rank_2nd: string
+    award_rank_3rd: string
+    save_status: string
+    save_award: string
+    scoring_placeholder: string
+  }
+  video: {
+    embed_failed: string
+    open_external: string
+    raw_url_label: string
+    no_url: string
+  }
+  contacts: {
+    title: string
+    subtitle: string
+    season_select_label: string
+    search_placeholder: string
+    csv_export: string
+    col_season: string
+    col_name: string
+    col_email: string
+    col_award: string
+    col_phone: string
+    col_address: string
+    col_messenger: string
+    col_filled_at: string
+    pending_badge: string
+    empty: string
+    not_filled: string
+  }
 }
 
 const MESSAGES_EN: Messages = {
@@ -253,6 +339,7 @@ const MESSAGES_EN: Messages = {
       dashboard: 'Dashboard',
       seasons: 'Seasons',
       applications: 'Applications',
+      contacts: 'Winner contacts',
       winners: 'Winners',
       emails: 'Emails',
     },
@@ -415,6 +502,91 @@ const MESSAGES_EN: Messages = {
     min_length: (n) => `Password must be at least ${n} characters.`,
     mismatch: 'Passwords do not match.',
   },
+  applications: {
+    title: 'Applications',
+    subtitle: 'Browse, filter, and manage every applicant.',
+    season_select_label: 'Season',
+    segment_all: 'All',
+    segment_pending: 'Pending',
+    segment_top50: 'Top 50',
+    segment_waitlist: 'Waitlist',
+    segment_awarded: 'Awarded',
+    segment_rejected: 'Rejected',
+    segment_count: (n) => `(${n})`,
+    search_placeholder: 'Search name, email, channel…',
+    sort_label: 'Sort',
+    sort_submitted_desc: 'Newest first',
+    sort_submitted_asc: 'Oldest first',
+    sort_score_desc: 'Highest score',
+    sort_name_asc: 'Name (A→Z)',
+    csv_export: 'Export CSV',
+    csv_exported: (n) => `Exported ${n} row${n === 1 ? '' : 's'}.`,
+    col_name: 'Name',
+    col_email: 'Email',
+    col_country: 'Country',
+    col_status: 'Status',
+    col_ai_service: 'AI service',
+    col_submitted: 'Submitted',
+    col_score: 'Score',
+    empty: 'No applications match the current filter.',
+    score_pending: '—',
+  },
+  application_detail: {
+    back: '← Applications',
+    section_applicant: 'Applicant',
+    section_statement: 'Statement',
+    section_video: 'Video',
+    section_actions: 'Admin actions',
+    section_scoring: 'Scoring',
+    label_name: 'Name',
+    label_email: 'Email',
+    label_country: 'Country',
+    label_channel: 'Channel',
+    label_ai_service: 'AI service',
+    label_submitted: 'Submitted',
+    label_status: 'Status',
+    label_award_rank: 'Award',
+    no_country: '—',
+    no_channel: '—',
+    notes_label: 'Admin notes (private)',
+    notes_placeholder: 'Internal observations, integrity flags, follow-ups…',
+    notes_save: 'Save notes',
+    notes_saving: 'Saving…',
+    notes_saved: 'Saved.',
+    status_change_label: 'Change status',
+    award_rank_label: 'Set award rank',
+    award_rank_none: 'No award',
+    award_rank_1st: '1st place',
+    award_rank_2nd: '2nd place',
+    award_rank_3rd: '3rd place',
+    save_status: 'Save status',
+    save_award: 'Save award',
+    scoring_placeholder: 'Triple-AI scoring results will appear here after Phase 3 integration.',
+  },
+  video: {
+    embed_failed: 'Unable to embed this video.',
+    open_external: 'Open in new tab ↗',
+    raw_url_label: 'Source URL',
+    no_url: 'No video URL provided.',
+  },
+  contacts: {
+    title: 'Winner contacts',
+    subtitle: 'Information winners enter themselves on their profile.',
+    season_select_label: 'Season',
+    search_placeholder: 'Search name, email…',
+    csv_export: 'Export CSV',
+    col_season: 'Season',
+    col_name: 'Name',
+    col_email: 'Email',
+    col_award: 'Award',
+    col_phone: 'Phone',
+    col_address: 'Address',
+    col_messenger: 'Messenger',
+    col_filled_at: 'Filled at',
+    pending_badge: 'Pending',
+    empty: 'No winners yet.',
+    not_filled: '—',
+  },
 }
 
 const MESSAGES_KO: Messages = {
@@ -429,6 +601,7 @@ const MESSAGES_KO: Messages = {
       dashboard: '대시보드',
       seasons: '시즌 관리',
       applications: '지원자 관리',
+      contacts: '시상자 연락처',
       winners: '수상자 관리',
       emails: '이메일',
     },
@@ -590,6 +763,91 @@ const MESSAGES_KO: Messages = {
     success: '비밀번호가 업데이트되었습니다. 이동 중…',
     min_length: (n) => `비밀번호는 최소 ${n}자 이상이어야 합니다.`,
     mismatch: '비밀번호가 일치하지 않습니다.',
+  },
+  applications: {
+    title: '지원자 관리',
+    subtitle: '전체 지원자를 조회/필터/관리합니다.',
+    season_select_label: '시즌',
+    segment_all: '전체',
+    segment_pending: '대기',
+    segment_top50: 'Top 50',
+    segment_waitlist: '대기자',
+    segment_awarded: '시상자',
+    segment_rejected: '탈락',
+    segment_count: (n) => `(${n})`,
+    search_placeholder: '이름, 이메일, 채널 검색…',
+    sort_label: '정렬',
+    sort_submitted_desc: '최신 신청 순',
+    sort_submitted_asc: '오래된 신청 순',
+    sort_score_desc: '점수 높은 순',
+    sort_name_asc: '이름 가나다 순',
+    csv_export: 'CSV 내보내기',
+    csv_exported: (n) => `${n}건 내보냄.`,
+    col_name: '이름',
+    col_email: '이메일',
+    col_country: '국가',
+    col_status: '상태',
+    col_ai_service: 'AI 서비스',
+    col_submitted: '신청 시간',
+    col_score: '점수',
+    empty: '현재 필터에 해당하는 지원자가 없습니다.',
+    score_pending: '—',
+  },
+  application_detail: {
+    back: '← 지원자 관리',
+    section_applicant: '지원자 정보',
+    section_statement: '자기소개',
+    section_video: '영상',
+    section_actions: '관리자 작업',
+    section_scoring: '채점 결과',
+    label_name: '이름',
+    label_email: '이메일',
+    label_country: '국가',
+    label_channel: '채널',
+    label_ai_service: 'AI 서비스',
+    label_submitted: '신청 시간',
+    label_status: '상태',
+    label_award_rank: '시상',
+    no_country: '—',
+    no_channel: '—',
+    notes_label: '관리자 메모 (비공개)',
+    notes_placeholder: '내부 관찰, 부정 의심 플래그, 후속 조치…',
+    notes_save: '메모 저장',
+    notes_saving: '저장 중…',
+    notes_saved: '저장됨.',
+    status_change_label: '상태 변경',
+    award_rank_label: '시상 순위 지정',
+    award_rank_none: '시상 없음',
+    award_rank_1st: '1등',
+    award_rank_2nd: '2등',
+    award_rank_3rd: '3등',
+    save_status: '상태 저장',
+    save_award: '시상 저장',
+    scoring_placeholder: 'Triple-AI 채점 결과는 3차 통합 후 표시됩니다.',
+  },
+  video: {
+    embed_failed: '이 영상은 임베드할 수 없습니다.',
+    open_external: '새 탭에서 열기 ↗',
+    raw_url_label: '원본 URL',
+    no_url: '영상 URL이 없습니다.',
+  },
+  contacts: {
+    title: '시상자 연락처',
+    subtitle: '시상자가 본인 프로필에서 직접 입력한 정보입니다.',
+    season_select_label: '시즌',
+    search_placeholder: '이름, 이메일 검색…',
+    csv_export: 'CSV 내보내기',
+    col_season: '시즌',
+    col_name: '이름',
+    col_email: '이메일',
+    col_award: '시상',
+    col_phone: '전화',
+    col_address: '주소',
+    col_messenger: '메신저',
+    col_filled_at: '입력 시간',
+    pending_badge: '대기 중',
+    empty: '아직 시상자가 없습니다.',
+    not_filled: '—',
   },
 }
 
