@@ -6,6 +6,7 @@ import {
   isApplicationClosed,
   isCapacityFull,
 } from '@/lib/seasons'
+import { sendApplicationReceived, sendWaitlisted } from '@/lib/email/send'
 
 const STATEMENT_MIN = 150
 const STATEMENT_MAX = 250
@@ -84,6 +85,8 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`,
+        // Return the inserted row so we can pass application_id to email_logs.
+        Prefer: 'return=representation',
       },
       body: JSON.stringify({
         email: body.email,
@@ -114,6 +117,44 @@ export async function POST(request: NextRequest) {
         )
       }
       return NextResponse.json({ error: text }, { status: res.status })
+    }
+
+    // Pull the inserted id out of the PostgREST representation response. If
+    // parsing fails, log without applicationId — dedup loses its anchor but
+    // the email still goes out.
+    let insertedId: string | null = null
+    try {
+      const parsed = JSON.parse(text)
+      const row = Array.isArray(parsed) ? parsed[0] : parsed
+      if (row && typeof row.id === 'string') insertedId = row.id
+    } catch {
+      // ignore — email send proceeds without applicationId
+    }
+
+    // Fire the appropriate notification. Errors here are logged into
+    // email_logs by the helper itself; we don't fail the apply request even
+    // if Resend hiccups, since the application is already persisted.
+    const emailCommon = {
+      toEmail: body.email,
+      country: body.country ?? null,
+      creatorName: body.creator_name,
+      seasonName: season.display_name,
+      maxApplicants: season.max_applicants,
+      applicationId: insertedId,
+      seasonId: season.id,
+    }
+    if (resolvedStatus === 'waitlist') {
+      sendWaitlisted(emailCommon).catch((e) =>
+        console.error('[apply] sendWaitlisted error:', e),
+      )
+    } else {
+      sendApplicationReceived({
+        ...emailCommon,
+        // Newly inserted is the (currentCount + 1)th applicant.
+        applicationCount: currentCount + 1,
+      }).catch((e) =>
+        console.error('[apply] sendApplicationReceived error:', e),
+      )
     }
 
     return NextResponse.json({ success: true, status: resolvedStatus, season_id: season.id })

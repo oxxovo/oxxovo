@@ -1,0 +1,411 @@
+// High-level send helpers. Each template gets its own helper that:
+//   1. renders the React Email template to HTML
+//   2. calls Resend
+//   3. writes an email_logs row (sent / failed / skipped)
+//
+// Callers (apply route, status-change actions, cron route) just invoke the
+// helper — they don't touch Resend or the logs table directly. Per OXXOVO
+// automation philosophy, every helper is a side-effect of an existing action;
+// there is no "Send X email" UI.
+
+import 'server-only'
+import { render } from '@react-email/components'
+import type { ReactElement } from 'react'
+import { getResend, EMAIL_FROM } from './client'
+import type { RankAward } from '@/lib/seasons'
+import { detectEmailLang, type EmailLang } from './lang'
+import { logEmail, alreadySent, type TemplateKey } from './log'
+import {
+  ApplicationReceived,
+  subjectFor as applicationReceivedSubject,
+  type ApplicationReceivedProps,
+} from './templates/ApplicationReceived'
+import {
+  Waitlisted,
+  subjectFor as waitlistedSubject,
+  type WaitlistedProps,
+} from './templates/Waitlisted'
+import {
+  SelectedTop50,
+  subjectFor as selectedTop50Subject,
+  type SelectedTop50Props,
+} from './templates/SelectedTop50'
+import {
+  NotSelected,
+  subjectFor as notSelectedSubject,
+  type NotSelectedProps,
+} from './templates/NotSelected'
+import {
+  MainRoundStart,
+  subjectFor as mainRoundStartSubject,
+  type MainRoundStartProps,
+} from './templates/MainRoundStart'
+import {
+  SubmissionDeadline,
+  subjectFor as submissionDeadlineSubject,
+  type SubmissionDeadlineProps,
+} from './templates/SubmissionDeadline'
+import {
+  ResultsAnnounced,
+  subjectFor as resultsAnnouncedSubject,
+  type ResultsAnnouncedProps,
+} from './templates/ResultsAnnounced'
+import {
+  AwardedContactRequest,
+  subjectFor as awardedContactRequestSubject,
+  type AwardedContactRequestProps,
+} from './templates/AwardedContactRequest'
+
+export type SendResult =
+  | { ok: true; messageId: string | null; skipped?: false }
+  | { ok: true; messageId: null; skipped: true; reason: 'already_sent' }
+  | { ok: false; error: string }
+
+type ExecuteSendInput = {
+  toEmail: string
+  templateKey: TemplateKey
+  language: EmailLang
+  subject: string
+  element: ReactElement
+  applicationId?: string | null
+  seasonId?: string | null
+}
+
+// Shared engine: dedup + render + resend + log. Every send* helper funnels
+// through this so retry/dedup/logging behavior is identical across templates.
+async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
+  if (input.applicationId) {
+    if (await alreadySent(input.applicationId, input.templateKey)) {
+      await logEmail({
+        applicationId: input.applicationId,
+        seasonId: input.seasonId,
+        toEmail: input.toEmail,
+        templateKey: input.templateKey,
+        language: input.language,
+        subject: '(skipped — already sent)',
+        status: 'skipped',
+        metadata: { reason: 'already_sent' },
+      })
+      return { ok: true, messageId: null, skipped: true, reason: 'already_sent' }
+    }
+  }
+
+  const html = await render(input.element)
+
+  try {
+    const resend = getResend()
+    const { data, error } = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: input.toEmail,
+      subject: input.subject,
+      html,
+    })
+
+    if (error) {
+      await logEmail({
+        applicationId: input.applicationId,
+        seasonId: input.seasonId,
+        toEmail: input.toEmail,
+        templateKey: input.templateKey,
+        language: input.language,
+        subject: input.subject,
+        status: 'failed',
+        errorMessage: error.message,
+      })
+      return { ok: false, error: error.message }
+    }
+
+    await logEmail({
+      applicationId: input.applicationId,
+      seasonId: input.seasonId,
+      toEmail: input.toEmail,
+      templateKey: input.templateKey,
+      language: input.language,
+      subject: input.subject,
+      resendMessageId: data?.id ?? null,
+      status: 'sent',
+    })
+    return { ok: true, messageId: data?.id ?? null }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    await logEmail({
+      applicationId: input.applicationId,
+      seasonId: input.seasonId,
+      toEmail: input.toEmail,
+      templateKey: input.templateKey,
+      language: input.language,
+      subject: input.subject,
+      status: 'failed',
+      errorMessage: message,
+    })
+    return { ok: false, error: message }
+  }
+}
+
+// ─── per-template senders ─────────────────────────────────────────────────
+
+type SendApplicationReceivedInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  applicationCount: number
+  maxApplicants: number
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendApplicationReceived(
+  input: SendApplicationReceivedInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: ApplicationReceivedProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    applicationCount: input.applicationCount,
+    maxApplicants: input.maxApplicants,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'application_received',
+    language: lang,
+    subject: applicationReceivedSubject(props),
+    element: <ApplicationReceived {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+type SendWaitlistedInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  maxApplicants: number
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendWaitlisted(
+  input: SendWaitlistedInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: WaitlistedProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    maxApplicants: input.maxApplicants,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'waitlisted',
+    language: lang,
+    subject: waitlistedSubject(props),
+    element: <Waitlisted {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+type SendSelectedTop50Input = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  topNAdvance: number
+  mainRoundStartAt: string | null
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendSelectedTop50(
+  input: SendSelectedTop50Input,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: SelectedTop50Props = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    topNAdvance: input.topNAdvance,
+    mainRoundStartAt: input.mainRoundStartAt,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'selected_top50',
+    language: lang,
+    subject: selectedTop50Subject(props),
+    element: <SelectedTop50 {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+type SendNotSelectedInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendNotSelected(
+  input: SendNotSelectedInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: NotSelectedProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'not_selected',
+    language: lang,
+    subject: notSelectedSubject(props),
+    element: <NotSelected {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+type SendMainRoundStartInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  themeAnnouncementMinutesBefore: number
+  submissionHours: number
+  mainRoundVideoMinSeconds: number
+  mainRoundVideoMaxSeconds: number
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendMainRoundStart(
+  input: SendMainRoundStartInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: MainRoundStartProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    themeAnnouncementMinutesBefore: input.themeAnnouncementMinutesBefore,
+    submissionHours: input.submissionHours,
+    mainRoundVideoMinSeconds: input.mainRoundVideoMinSeconds,
+    mainRoundVideoMaxSeconds: input.mainRoundVideoMaxSeconds,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'main_round_start',
+    language: lang,
+    subject: mainRoundStartSubject(props),
+    element: <MainRoundStart {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+type SendSubmissionDeadlineInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  hoursRemaining: number
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendSubmissionDeadline(
+  input: SendSubmissionDeadlineInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: SubmissionDeadlineProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    hoursRemaining: input.hoursRemaining,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'submission_deadline',
+    language: lang,
+    subject: submissionDeadlineSubject(props),
+    element: <SubmissionDeadline {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+type SendResultsAnnouncedInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendResultsAnnounced(
+  input: SendResultsAnnouncedInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: ResultsAnnouncedProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'results_announced',
+    language: lang,
+    subject: resultsAnnouncedSubject(props),
+    element: <ResultsAnnounced {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+type SendAwardedContactRequestInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  awardRank: 1 | 2 | 3
+  prizeAmountUsd: number
+  extras: RankAward
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendAwardedContactRequest(
+  input: SendAwardedContactRequestInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: AwardedContactRequestProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    awardRank: input.awardRank,
+    prizeAmountUsd: input.prizeAmountUsd,
+    extras: input.extras,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'awarded_contact_request',
+    language: lang,
+    subject: awardedContactRequestSubject(props),
+    element: <AwardedContactRequest {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}

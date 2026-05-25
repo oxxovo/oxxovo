@@ -6,9 +6,28 @@ export type AIModel = {
   is_integrity?: boolean
 }
 
+// Non-cash perks awarded per rank. Cash stays in prize_first/second/third
+// columns. Every field is optional — e.g. only 1st place receives the
+// physical trophy in Season 0, while every rank receives a badge and a
+// grand-final ticket. Korean/English text is stored directly so future
+// seasons can rename perks without a code change.
+export type RankAward = {
+  trophy_ko?: string
+  trophy_en?: string
+  badge_ko?: string
+  badge_en?: string
+  grand_final_ko?: string
+  grand_final_en?: string
+}
+
+export type AwardPrizes = Record<string, RankAward | undefined>
+
 export type Season = {
   id: string
   name: string
+  // Human-facing label ("OXXOVO Genesis Season 0"). `name` stays as the
+  // codename ("GENESIS"); everything user-facing should read display_name.
+  display_name: string
   season_number: number
   status: string
 
@@ -28,10 +47,19 @@ export type Season = {
   prize_third_pct: number
   total_prize_pool: number
   entry_fee: number
+  award_prizes: AwardPrizes
 
+  // Single-value column retained for backwards compatibility; new code reads
+  // the min/max range below. Drop in a follow-up migration once nothing
+  // references it.
   main_round_video_seconds: number
+  main_round_video_min_seconds: number
+  main_round_video_max_seconds: number
   theme_announcement_minutes_before: number
   submission_hours: number
+  // Cron fires the deadline-reminder email once per entry in this array,
+  // e.g. [24, 6] → reminder at 24h-remaining and again at 6h-remaining.
+  deadline_reminder_hours: number[]
   community_vote_weight: number
   ai_score_weight: number
 
