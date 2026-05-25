@@ -325,6 +325,69 @@ type Messages = {
     empty: string
     not_filled: string
   }
+  profile: {
+    page_title: string
+    header_brand: string
+    log_out: string
+    loading: string
+    auth_required: string
+    auth_required_action: string
+    loading_failed: string
+    section_my_application: string
+    section_video: string
+    section_status: string
+    section_scoring: string
+    section_winner_form: string
+    section_history: string
+    no_application_title: string
+    no_application_body: string
+    no_application_cta: string
+    label_creator_name: string
+    label_country: string
+    label_channel: string
+    label_ai_service: string
+    label_submitted: string
+    label_statement: string
+    label_season: string
+    status_pending_msg: string
+    status_waitlist_msg: string
+    status_verifying_msg: string
+    status_eligible_msg: string
+    status_selected_msg: string
+    status_awarded_msg: string
+    status_rejected_msg: string
+    scoring_placeholder: string
+    winner_form_intro: string
+    winner_form_phone: string
+    winner_form_phone_ph: string
+    winner_form_address: string
+    winner_form_address_ph: string
+    winner_form_messenger: string
+    winner_form_messenger_hint: string
+    winner_form_messenger_ph: string
+    winner_form_save: string
+    winner_form_saving: string
+    winner_form_already_saved: string
+    winner_form_updated_at: (date: string) => string
+    winner_form_err_phone: string
+    winner_form_err_address: string
+    winner_form_err_invalid_token: string
+    winner_form_err_not_owner: string
+    winner_form_err_not_awarded: string
+    winner_form_err_not_found: string
+    winner_form_err_save_failed: (msg?: string) => string
+    history_empty: string
+    history_season_card: (n: number, name: string) => string
+    celebration_title_1st: string
+    celebration_title_2nd: string
+    celebration_title_3rd: string
+    celebration_subtitle_1st: string
+    celebration_subtitle_2nd: string
+    celebration_subtitle_3rd: string
+    celebration_prize_label: string
+    celebration_founding_creator: string
+    celebration_season_label: (n: number, name: string) => string
+  }
 }
 
 const MESSAGES_EN: Messages = {
@@ -587,6 +650,74 @@ const MESSAGES_EN: Messages = {
     empty: 'No winners yet.',
     not_filled: '—',
   },
+  profile: {
+    page_title: 'Creator profile',
+    header_brand: 'OXXOVO',
+    log_out: 'Log out',
+    loading: 'Loading…',
+    auth_required: 'You need to sign in to view your profile.',
+    auth_required_action: 'Go to login',
+    loading_failed: 'Could not load your profile data. Please try again.',
+    section_my_application: 'My application',
+    section_video: 'My video',
+    section_status: 'Status',
+    section_scoring: 'Triple-AI scoring',
+    section_winner_form: 'Winner contact info',
+    section_history: 'Season history',
+    no_application_title: 'No application on file',
+    no_application_body:
+      'You haven’t applied to any season with this email yet.',
+    no_application_cta: 'Apply now',
+    label_creator_name: 'Creator name',
+    label_country: 'Country',
+    label_channel: 'Channel',
+    label_ai_service: 'AI service',
+    label_submitted: 'Submitted',
+    label_statement: 'Statement',
+    label_season: 'Season',
+    status_pending_msg: 'Submission received. Scoring will run after the season closes.',
+    status_waitlist_msg: 'You are on the waitlist. We’ll notify you if a Top 50 slot opens.',
+    status_verifying_msg: 'Triple-AI verification in progress.',
+    status_eligible_msg: 'Verification passed. Your entry is eligible for the main round.',
+    status_selected_msg: 'Congratulations — you’ve been selected for Top 50.',
+    status_awarded_msg:
+      'Congratulations! You’ve been chosen as a winner. Please complete the contact form below so we can ship your prize.',
+    status_rejected_msg: 'This season didn’t work out. We hope to see you in the next one.',
+    scoring_placeholder:
+      'Triple-AI scores will appear here after Phase 3 integration with the scoring system.',
+    winner_form_intro:
+      'We need your phone and shipping address to deliver the prize. Messenger ID is optional and only used if we need to reach you quickly.',
+    winner_form_phone: 'Phone',
+    winner_form_phone_ph: '+1 555 123 4567',
+    winner_form_address: 'Shipping address',
+    winner_form_address_ph: 'Street, city, state/province, postal code, country',
+    winner_form_messenger: 'Messenger ID (optional)',
+    winner_form_messenger_hint:
+      'Free-form. Example: "KakaoTalk: oxxovo" or "WhatsApp: +1…" or "Telegram: @user".',
+    winner_form_messenger_ph: 'Platform: ID',
+    winner_form_save: 'Save contact info',
+    winner_form_saving: 'Saving…',
+    winner_form_already_saved: 'Saved. You can update it anytime.',
+    winner_form_updated_at: (date) => `Last updated ${date}`,
+    winner_form_err_phone: 'Phone is required.',
+    winner_form_err_address: 'Shipping address is required.',
+    winner_form_err_invalid_token: 'Your session has expired. Please sign in again.',
+    winner_form_err_not_owner: 'You can only edit your own application.',
+    winner_form_err_not_awarded: 'This application is not in the awarded state.',
+    winner_form_err_not_found: 'Application not found.',
+    winner_form_err_save_failed: (msg) => `Save failed${msg ? `: ${msg}` : '.'}`,
+    history_empty: 'No tournament history yet.',
+    history_season_card: (n, name) => `Season ${n} · ${name}`,
+    celebration_title_1st: 'Champion',
+    celebration_title_2nd: 'Runner-up',
+    celebration_title_3rd: 'Third Place',
+    celebration_subtitle_1st: 'The top of OXXOVO Genesis.',
+    celebration_subtitle_2nd: 'Among the very best of this season.',
+    celebration_subtitle_3rd: 'A podium finish — outstanding work.',
+    celebration_prize_label: 'Prize',
+    celebration_founding_creator: 'Founding Creator',
+    celebration_season_label: (n, name) => `Season ${n} — ${name}`,
+  },
 }
 
 const MESSAGES_KO: Messages = {
@@ -848,6 +979,72 @@ const MESSAGES_KO: Messages = {
     pending_badge: '대기 중',
     empty: '아직 시상자가 없습니다.',
     not_filled: '—',
+  },
+  profile: {
+    page_title: '크리에이터 프로필',
+    header_brand: 'OXXOVO',
+    log_out: '로그아웃',
+    loading: '불러오는 중…',
+    auth_required: '프로필을 보려면 로그인이 필요합니다.',
+    auth_required_action: '로그인 페이지로',
+    loading_failed: '프로필 데이터를 불러오지 못했습니다. 다시 시도해주세요.',
+    section_my_application: '내 신청',
+    section_video: '내 영상',
+    section_status: '상태',
+    section_scoring: 'Triple-AI 채점',
+    section_winner_form: '시상자 연락처 입력',
+    section_history: '시즌 기록',
+    no_application_title: '신청 기록 없음',
+    no_application_body: '이 이메일로 신청한 시즌이 없습니다.',
+    no_application_cta: '지금 신청하기',
+    label_creator_name: '크리에이터 이름',
+    label_country: '국가',
+    label_channel: '채널',
+    label_ai_service: 'AI 서비스',
+    label_submitted: '신청 시간',
+    label_statement: '자기소개',
+    label_season: '시즌',
+    status_pending_msg: '신청이 접수되었습니다. 시즌 마감 후 채점이 진행됩니다.',
+    status_waitlist_msg: '대기자 명단에 등록되었습니다. Top 50 결원 발생 시 알려드립니다.',
+    status_verifying_msg: 'Triple-AI 검증이 진행 중입니다.',
+    status_eligible_msg: '검증을 통과했습니다. 본선 진출 자격이 있습니다.',
+    status_selected_msg: '축하합니다 — Top 50에 선발되셨습니다.',
+    status_awarded_msg:
+      '축하합니다! 시상자로 선정되셨습니다. 상금/상패 발송을 위해 아래 연락처를 입력해주세요.',
+    status_rejected_msg: '이번 시즌은 아쉽게 탈락하셨습니다. 다음 시즌에서 다시 만나뵙길 바랍니다.',
+    scoring_placeholder: 'Triple-AI 채점 결과는 3차 통합 후 표시됩니다.',
+    winner_form_intro:
+      '상금/상패 발송을 위해 전화번호와 우편 주소가 필요합니다. 메신저 ID는 선택 사항이며, 긴급한 연락이 필요한 경우에만 사용됩니다.',
+    winner_form_phone: '전화번호',
+    winner_form_phone_ph: '+82 10 1234 5678',
+    winner_form_address: '우편 주소',
+    winner_form_address_ph: '도로명/지번, 시/도, 우편번호, 국가',
+    winner_form_messenger: '메신저 ID (선택)',
+    winner_form_messenger_hint:
+      '자유 입력. 예: "KakaoTalk: oxxovo" 또는 "WhatsApp: +82…" 또는 "Telegram: @user".',
+    winner_form_messenger_ph: '플랫폼: ID',
+    winner_form_save: '연락처 저장',
+    winner_form_saving: '저장 중…',
+    winner_form_already_saved: '저장되었습니다. 언제든지 수정 가능합니다.',
+    winner_form_updated_at: (date) => `최근 수정 ${date}`,
+    winner_form_err_phone: '전화번호는 필수입니다.',
+    winner_form_err_address: '우편 주소는 필수입니다.',
+    winner_form_err_invalid_token: '세션이 만료되었습니다. 다시 로그인해주세요.',
+    winner_form_err_not_owner: '본인의 신청만 수정 가능합니다.',
+    winner_form_err_not_awarded: '이 신청은 시상자 상태가 아닙니다.',
+    winner_form_err_not_found: '신청을 찾을 수 없습니다.',
+    winner_form_err_save_failed: (msg) => `저장 실패${msg ? `: ${msg}` : '.'}`,
+    history_empty: '아직 토너먼트 기록이 없습니다.',
+    history_season_card: (n, name) => `시즌 ${n} · ${name}`,
+    celebration_title_1st: '우승자',
+    celebration_title_2nd: '준우승',
+    celebration_title_3rd: '3위',
+    celebration_subtitle_1st: 'OXXOVO Genesis 최고의 자리.',
+    celebration_subtitle_2nd: '이번 시즌 최정상급의 작품입니다.',
+    celebration_subtitle_3rd: '포디엄에 오르신 것을 축하드립니다.',
+    celebration_prize_label: '상금',
+    celebration_founding_creator: '파운딩 크리에이터',
+    celebration_season_label: (n, name) => `시즌 ${n} — ${name}`,
   },
 }
 
