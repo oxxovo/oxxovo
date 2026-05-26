@@ -69,13 +69,21 @@ type ExecuteSendInput = {
   element: ReactElement
   applicationId?: string | null
   seasonId?: string | null
+  // Cron-only: extra dedup key for multi-fire templates (submission_deadline
+  // fires once per reminder_hour). Also persisted in metadata.
+  reminderHour?: number
 }
 
 // Shared engine: dedup + render + resend + log. Every send* helper funnels
 // through this so retry/dedup/logging behavior is identical across templates.
 async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
+  const baseMetadata: Record<string, unknown> | null =
+    input.reminderHour != null ? { reminder_hour: input.reminderHour } : null
+
   if (input.applicationId) {
-    if (await alreadySent(input.applicationId, input.templateKey)) {
+    if (
+      await alreadySent(input.applicationId, input.templateKey, input.reminderHour)
+    ) {
       await logEmail({
         applicationId: input.applicationId,
         seasonId: input.seasonId,
@@ -84,7 +92,7 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
         language: input.language,
         subject: '(skipped — already sent)',
         status: 'skipped',
-        metadata: { reason: 'already_sent' },
+        metadata: { ...(baseMetadata ?? {}), reason: 'already_sent' },
       })
       return { ok: true, messageId: null, skipped: true, reason: 'already_sent' }
     }
@@ -111,6 +119,7 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
         subject: input.subject,
         status: 'failed',
         errorMessage: error.message,
+        metadata: baseMetadata,
       })
       return { ok: false, error: error.message }
     }
@@ -124,6 +133,7 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
       subject: input.subject,
       resendMessageId: data?.id ?? null,
       status: 'sent',
+      metadata: baseMetadata,
     })
     return { ok: true, messageId: data?.id ?? null }
   } catch (e) {
@@ -137,6 +147,7 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
       subject: input.subject,
       status: 'failed',
       errorMessage: message,
+      metadata: baseMetadata,
     })
     return { ok: false, error: message }
   }
@@ -318,6 +329,11 @@ type SendSubmissionDeadlineInput = {
   creatorName: string
   seasonName: string
   hoursRemaining: number
+  // The reminder slot from seasons.deadline_reminder_hours that triggered
+  // this send (e.g. 24 or 6). Used as the multi-fire dedup key so the same
+  // applicant can receive a 24h reminder AND a 6h reminder without the
+  // partial unique index blocking the second send.
+  reminderHour: number
   applicationId?: string | null
   seasonId?: string | null
   forceLang?: EmailLang
@@ -341,6 +357,7 @@ export async function sendSubmissionDeadline(
     element: <SubmissionDeadline {...props} />,
     applicationId: input.applicationId,
     seasonId: input.seasonId,
+    reminderHour: input.reminderHour,
   })
 }
 

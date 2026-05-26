@@ -325,6 +325,47 @@ type Messages = {
     empty: string
     not_filled: string
   }
+  emails: {
+    title: string
+    subtitle: string
+    season_select_label: string
+    template_label: string
+    status_label: string
+    language_label: string
+    search_placeholder: string
+    template_all: string
+    status_all: string
+    language_all: string
+    template_application_received: string
+    template_waitlisted: string
+    template_selected_top50: string
+    template_not_selected: string
+    template_main_round_start: string
+    template_submission_deadline: string
+    template_results_announced: string
+    template_awarded_contact_request: string
+    status_sent: string
+    status_failed: string
+    status_skipped: string
+    status_queued: string
+    stat_total: string
+    stat_sent: string
+    stat_failed: string
+    stat_skipped: string
+    col_sent_at: string
+    col_template: string
+    col_recipient: string
+    col_lang: string
+    col_status: string
+    col_subject: string
+    col_error: string
+    col_meta: string
+    empty: string
+    pager_prev: string
+    pager_next: string
+    pager_label: (start: number, end: number, total: number) => string
+    retry_note: string
+  }
   profile: {
     page_title: string
     header_brand: string
@@ -649,6 +690,49 @@ const MESSAGES_EN: Messages = {
     pending_badge: 'Pending',
     empty: 'No winners yet.',
     not_filled: '—',
+  },
+  emails: {
+    title: 'Emails',
+    subtitle:
+      'Every email this site has sent, why, and whether it landed. Sends are automatic — failed rows retry on their own via cron.',
+    season_select_label: 'Season',
+    template_label: 'Template',
+    status_label: 'Status',
+    language_label: 'Language',
+    search_placeholder: 'Search recipient, subject…',
+    template_all: 'All templates',
+    status_all: 'All statuses',
+    language_all: 'All languages',
+    template_application_received: 'Application received',
+    template_waitlisted: 'Waitlisted',
+    template_selected_top50: 'Selected (Top 50)',
+    template_not_selected: 'Not selected',
+    template_main_round_start: 'Main round start',
+    template_submission_deadline: 'Submission deadline',
+    template_results_announced: 'Results announced',
+    template_awarded_contact_request: 'Awarded — contact request',
+    status_sent: 'Sent',
+    status_failed: 'Failed',
+    status_skipped: 'Skipped',
+    status_queued: 'Queued',
+    stat_total: 'Total',
+    stat_sent: 'Sent',
+    stat_failed: 'Failed',
+    stat_skipped: 'Skipped',
+    col_sent_at: 'Sent at',
+    col_template: 'Template',
+    col_recipient: 'Recipient',
+    col_lang: 'Lang',
+    col_status: 'Status',
+    col_subject: 'Subject',
+    col_error: 'Error',
+    col_meta: 'Meta',
+    empty: 'No emails match the current filter.',
+    pager_prev: '← Previous',
+    pager_next: 'Next →',
+    pager_label: (start, end, total) => `${start}–${end} of ${total}`,
+    retry_note:
+      'Cron retries failed rows automatically with 15 / 30 / 60 / 120-minute backoff (max 4 attempts).',
   },
   profile: {
     page_title: 'Creator profile',
@@ -979,6 +1063,49 @@ const MESSAGES_KO: Messages = {
     pending_badge: '대기 중',
     empty: '아직 시상자가 없습니다.',
     not_filled: '—',
+  },
+  emails: {
+    title: '이메일',
+    subtitle:
+      '사이트가 발송한 모든 이메일과 발송 사유, 도달 여부 기록. 발송은 모두 자동이며, 실패한 발송은 cron이 자동으로 재시도합니다.',
+    season_select_label: '시즌',
+    template_label: '템플릿',
+    status_label: '상태',
+    language_label: '언어',
+    search_placeholder: '수신자, 제목 검색…',
+    template_all: '모든 템플릿',
+    status_all: '모든 상태',
+    language_all: '모든 언어',
+    template_application_received: '신청 접수',
+    template_waitlisted: '대기자 등록',
+    template_selected_top50: '본선 진출 (Top 50)',
+    template_not_selected: '탈락 통보',
+    template_main_round_start: '본선 시작',
+    template_submission_deadline: '제출 마감 임박',
+    template_results_announced: '결과 발표',
+    template_awarded_contact_request: '시상 — 연락처 요청',
+    status_sent: '발송됨',
+    status_failed: '실패',
+    status_skipped: '스킵',
+    status_queued: '대기',
+    stat_total: '전체',
+    stat_sent: '발송 성공',
+    stat_failed: '실패',
+    stat_skipped: '스킵',
+    col_sent_at: '발송 시간',
+    col_template: '템플릿',
+    col_recipient: '수신자',
+    col_lang: '언어',
+    col_status: '상태',
+    col_subject: '제목',
+    col_error: '오류',
+    col_meta: '메타',
+    empty: '현재 필터에 해당하는 이메일이 없습니다.',
+    pager_prev: '← 이전',
+    pager_next: '다음 →',
+    pager_label: (start, end, total) => `${total}건 중 ${start}–${end}`,
+    retry_note:
+      '실패한 발송은 cron이 15분 / 30분 / 60분 / 120분 백오프로 자동 재시도합니다 (최대 4회).',
   },
   profile: {
     page_title: '크리에이터 프로필',

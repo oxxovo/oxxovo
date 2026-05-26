@@ -14,7 +14,7 @@ const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean 
   { href: '/admin/applications', key: 'applications', emoji: '📹' },
   { href: '/admin/contacts', key: 'contacts', emoji: '📇' },
   { href: '/admin/winners', key: 'winners', emoji: '🏆', soon: true },
-  { href: '/admin/emails', key: 'emails', emoji: '📧', soon: true },
+  { href: '/admin/emails', key: 'emails', emoji: '📧' },
 ]
 
 export function AdminShell({
