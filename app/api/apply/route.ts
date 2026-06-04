@@ -23,7 +23,7 @@ export type ApplyErrorCode =
   | 'duration_range'
   | 'season_not_found'
   | 'season_closed'
-  | 'already_applied'
+  | 'already_applied_this_season'
   | 'server_error'
 
 export type ApplyResponse =
@@ -120,10 +120,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
 
     if (insertErr) {
       console.error('[apply] insert failed:', insertErr.code, insertErr.message)
-      // 23505 = unique_violation. With UNIQUE(season_id, user_id) (Phase 1)
-      // this means the signed-in user already applied to this season.
+      // 23505 = unique_violation. Fires on UNIQUE(season_id, user_id) (Phase 1)
+      // or UNIQUE(season_id, lower(email)) (email-unique-fix) — either way the
+      // applicant already applied to THIS season. (The old global
+      // genesis_applications_email_unique — a real weekly-reapply blocker — was
+      // dropped in genesis_email_unique_fix_2026-06.sql.)
       if (insertErr.code === '23505') {
-        return NextResponse.json({ error: 'already_applied' }, { status: 409 })
+        return NextResponse.json({ error: 'already_applied_this_season' }, { status: 409 })
       }
       return NextResponse.json({ error: 'server_error' }, { status: 500 })
     }

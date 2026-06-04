@@ -164,9 +164,9 @@ export default function ApplyPage() {
           duration_range: t.profile.apply_err_duration_range(minSec, maxSec),
           season_not_found: t.profile.apply_err_season_not_found,
           season_closed: t.profile.apply_err_season_closed,
-          // 23505 on UNIQUE(season_id, user_id) — already applied this season.
-          // Reuses the existing i18n string until dedicated wording is added.
-          already_applied: t.profile.apply_err_duplicate_email,
+          // 23505 on UNIQUE(season_id, user_id) or (season_id, email) — already
+          // applied this season. Reuses the existing i18n string for now.
+          already_applied_this_season: t.profile.apply_err_duplicate_email,
           unauthenticated: t.profile.apply_err_server_error, // unreachable (handled above)
           server_error: t.profile.apply_err_server_error,
         }

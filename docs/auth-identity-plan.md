@@ -24,19 +24,16 @@
 | 토큰 검증 | 서버 액션이 `admin.auth.getUser(token)`로 JWT 검증 (`app/profile/actions.ts`) |
 | 신원 연결 | `user_id` FK 없음 → **email `ilike` 문자열 매칭**으로 자기 신청 조회 |
 | `/apply` | **비로그인** insert, auth 계정 불요, 사용자가 입력한 email 신뢰 |
-| email 유일성 | UNIQUE **제약 없음**(pkey만). 유일 인덱스 여부는 pg_indexes로 확정 필요(아래) |
+| email 유일성 | ✅ 확정(2026-06-04): `genesis_applications_email_unique`(전역 유일 **인덱스**) 존재 = 매주 재신청 블로커였음. `genesis_email_unique_fix_2026-06.sql`로 DROP + `(season_id, lower(email))` 교체 |
 | genesis RLS | **꺼짐** — admin이 `createSupabaseServer()`(쿠키, 정책 없이) 읽기 성공이 증거. = 현재 데이터 노출, RLS로 닫아야 함 |
 | 세션 갱신 | 이 Next 버전은 `middleware.ts` 아님 → **`proxy.ts`** (이미 존재, admin용) |
 
-### 23505 미스터리 — pg_indexes로 확정
-`/api/apply`의 `23505 → duplicate_email`는 현재 어떤 유일 인덱스도 코드에 없어 **방어/비활성 코드일 공산이 큼**. 단 테이블이 추적 밖 생성이라 100% 확정은 아래 쿼리로:
-```sql
-SELECT indexname, indexdef FROM pg_indexes
-WHERE schemaname='public' AND tablename='genesis_applications' ORDER BY indexname;
-```
-- email 유일 인덱스가 **보이면**: 라이브 → 매주 재신청 블로커 → DROP 필요.
-- **안 보이면**: 23505 핸들러는 방어 코드. Phase 1의 `UNIQUE(season_id, user_id)` 추가 후 **재신청 같은 시즌 중복**에서 23505가 의미를 가짐 → 에러 라벨을 `already_applied_this_season`로 교체(Phase 3).
-- 결과에 따라 `admin-plan-2026-05.md` 문서 정정.
+### 23505 미스터리 — ✅ 최종 확정 (2026-06-04)
+pg_indexes 결과: `genesis_applications_email_unique`(email **전역 유일 인덱스**)가 실제로 존재.
+- TK의 첫 점검은 `contype IN ('u','p')`로 **제약**만 봤기에 이 **인덱스**(제약 아님)를 못 잡았음 → "제약 없음"은 맞지만 "유일성 없음"은 아니었음.
+- 따라서 `/api/apply`의 23505 핸들러는 **dead code가 아니라 LIVE BLOCKER**였음. 시즌0 신청자가 시즌1 신청 시 전역 email 유일 위반(23505)으로 차단 = 매주 시즌 hard blocker. (첫 추측이 옳았음.)
+- 조치: `genesis_email_unique_fix_2026-06.sql` — DROP 전역 유일 + `(season_id, lower(email))` 유일 추가. 라벨은 `already_applied_this_season`(Phase 3, 시즌별 user/email 중복 의미).
+- 참고: 이 인덱스는 **추적 밖 초기 테이블 생성** 시 만들어진 것. `admin-plan-2026-05.md`·`admin-1차-2026-05.md`의 `email TEXT NOT NULL UNIQUE`는 전부 **profiles 테이블**이라 genesis와 무관 → 그 문서엔 정정할 내용 없음.
 
 ---
 
@@ -95,8 +92,8 @@ WHERE schemaname='public' AND tablename='genesis_applications' ORDER BY indexnam
 | A1 | 라이브 /profile·/login·/apply 리팩터 회귀 | Phase 분리 독립 배포 + 리허설 시즌 전체 사이클 |
 | A2 | RLS 켤 때 admin/apply 깨짐 | Phase 5 reader 전수감사 후 정책 동반 ENABLE |
 | A3 | 매직링크 미수신(스팸/지연) | 안내 문구 + 재발송 + (후속) 보조 수단 검토 |
-| A4 | email 유일 인덱스가 실제 존재 시 매주 재신청 블로킹 | pg_indexes 확정 → 있으면 DROP |
-| A5 | 시즌0 중복 email로 (season_id,email) 추가 실패 | 점검 쿼리 후 결정, Phase 1은 user_id 기준만 |
+| A4 | ✅ 해소: email 전역 유일 인덱스 존재 = 매주 블로커였음(확정) | `genesis_email_unique_fix`로 DROP + `(season_id,email)` 교체 |
+| A5 | ✅ 해소: 시즌0 중복 email 0건(#5) | `(season_id, lower(email))` 유일 안전 추가 |
 | A6 | backfill 중 email 대소문자/오타 불일치 | auth.email 소문자 정규화 매칭(기존 ilike 로직 재사용) |
 
 ---
