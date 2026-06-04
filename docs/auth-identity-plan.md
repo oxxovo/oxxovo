@@ -59,7 +59,7 @@ WHERE schemaname='public' AND tablename='genesis_applications' ORDER BY indexnam
 - **RLS 미포함**(Phase 5). verification에 pg_indexes(23505 확정) + 시즌별 email 중복 점검 포함.
 - → **TK: Supabase 적용 + verification 5개 결과 공유**
 
-### Phase 2 — 매직링크 + 쿠키 세션 (핵심, long pole)
+### Phase 2 — 매직링크 + 쿠키 세션 (핵심, long pole) ✅ 완료 (브랜치 2266f6d, 6b19b5f)
 - `lib/supabase-browser.ts`/`supabase-server.ts`(이미 존재)를 일반 사용자에도 사용.
 - `/login`: 비밀번호 폼 → **매직링크 발송 폼**(이메일만). `signInWithOtp({ email, emailRedirectTo })`.
 - 콜백 라우트 `app/auth/callback/route.ts`: `exchangeCodeForSession` → 쿠키 세션 수립 → redirect.
@@ -67,22 +67,22 @@ WHERE schemaname='public' AND tablename='genesis_applications' ORDER BY indexnam
 - `/signup` 페이지: 매직링크는 가입=로그인 통합이라 별도 가입 불요 → `/login`으로 통합 or 리다이렉트.
 - 구(舊) `oxxovo_token` localStorage 경로 제거 (`lib/use-local-user.ts`, `/api/auth/login`, `/api/auth/signup` deprecate).
 
-### Phase 3 — /apply 인증 요구 (A-1)
+### Phase 3 — /apply 인증 요구 (A-1) ✅ 완료 (브랜치 f5dd5e9)
 - `/apply` 페이지: 미인증이면 매직링크 로그인 UI 먼저, 인증 후 폼(이메일 자동 채움/잠금).
 - `/api/apply`: 쿠키 세션에서 `user_id` + **검증된 auth 이메일** 취득 → insert에 `user_id` 포함, 사용자 입력 이메일 신뢰 제거.
 - `23505` → `already_applied_this_season` 라벨로 교체(중복 방지 인덱스와 연동).
 
-### Phase 4 — /profile 리팩터
+### Phase 4 — /profile 리팩터 (4a 세션 배관 ✅ 완료 6b19b5f / 4b user_id 매칭 ⏳ backfill 후)
 - `loadProfileData`: token 인자 + `getUser(token)` + email `ilike` → **쿠키 세션 + `user_id = auth.uid()` 조회**로 전환.
 - `saveWinnerInfo`/`saveMainRoundSubmission`: 동일하게 세션 기반 소유권 검증(email 매칭 hack 제거).
 - 클라이언트(`app/profile/page.tsx`)의 `useLocalToken` 제거 → 세션 기반.
 
-### Phase 5 — RLS (신중, reader 전수감사 후)
+### Phase 5 — RLS (신중, reader 전수감사 후) ✅ SQL 작성 7006462 / 적용 대기
 - genesis_applications reader 전수: admin 페이지(`createSupabaseServer` 쿠키), apply/cron/profile(service-role), 혹시 모를 anon 경로.
 - 정책: `SELECT/UPDATE USING (user_id = auth.uid())` (owner) + `USING (is_admin())` (admin). service-role은 자동 bypass. INSERT는 apply가 service-role이므로 정책 무관(또는 authenticated+user_id=auth.uid() 정책).
 - `ALTER TABLE genesis_applications ENABLE ROW LEVEL SECURITY` → **현재 데이터 노출도 닫음**.
 
-### Phase 6 — 시즌 0 backfill
+### Phase 6 — 시즌 0 backfill ✅ SQL+콜백 작성 7006462 / 적용 대기
 - 기존 email-only row: 같은 email로 첫 매직링크 로그인 시 `user_id` 매칭 채움 (콜백/로그인 직후 1회 동기화, 또는 admin 일괄 backfill RPC).
 - 케이스: 한 email이 여러 시즌 row → 전부 같은 user_id로 연결.
 
@@ -101,8 +101,23 @@ WHERE schemaname='public' AND tablename='genesis_applications' ORDER BY indexnam
 
 ---
 
-## 5. 대기 / 다음
+## 5. 진행 현황 (2026-06-04)
 
-1. **TK: Phase 1 마이그레이션 적용 + verification 결과**(특히 pg_indexes #3, 중복 email #5) 공유.
-2. 결과 확인 후 **Phase 2(매직링크+쿠키 세션) 착수** — long pole 3~5일.
-3. 각 Phase 배포 → 리허설 시즌(7/27~31)에서 무인 전체 사이클 검증.
+브랜치 `auth-cookie-sessions` (커밋: 2266f6d → 6b19b5f → f5dd5e9 → 7006462). main 무영향.
+
+| Phase | 상태 | 비고 |
+|---|---|---|
+| 1 DB user_id | 🟡 SQL 적용 대기 | TK 적용 + verification #2~5 공유 예정 |
+| 2 매직링크+쿠키 | ✅ 코드 완료 | tsc/eslint clean |
+| 3 /apply 인증 | ✅ 코드 완료 | localStorage 경로·비밀번호 API 삭제 |
+| 4a 세션 배관 | ✅ 코드 완료 | profile token→쿠키 세션 |
+| 4b user_id 매칭 | ⏳ 대기 | Phase 6 backfill 후 (지금은 email ilike) |
+| 5 RLS | ✅ SQL 작성 | 적용은 pre-flight(STEP 0) 확인 + 리허설 후 |
+| 6 backfill | ✅ SQL+콜백 작성 | Phase 1 적용 후 |
+
+### 대기 / 다음 순서
+1. **TK:** Phase 1 마이그레이션 적용 + verification #2~5(특히 #3 pg_indexes=23505 확정, #5 중복 email) 공유.
+2. 결과 후: 23505 확정 + `admin-plan` 정정 → (필요 시) Phase 4b 전환.
+3. **머지 전 필수:** Phase 1 적용 + 리허설 시즌(7/27~31)에서 매직링크 전체 흐름(로그인→신청→프로필) 무인 검증.
+4. RLS(Phase 5)는 STEP 0 pre-flight 결과 확인 후, 리허설 환경에서 먼저 ENABLE 검증.
+5. 검증 통과 → `auth-cookie-sessions` → main 머지.
