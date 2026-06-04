@@ -11,19 +11,25 @@ import {
   getIntegrityModel,
   type Season,
 } from '@/lib/seasons'
-import { useLocalUser } from '@/lib/use-local-user'
+import { createSupabaseBrowser } from '@/lib/supabase-browser'
+import { getSessionUser } from '@/app/_actions/auth'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 
 type TimeLeft = { days: string; hours: string; minutes: string; seconds: string }
 const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '00' }
 
 export default function OXXOVOLandingPage() {
-  const user = useLocalUser()
+  const [user, setUser] = useState<{ email: string } | null>(null)
   const [season, setSeason] = useState<Season | null>(null)
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(ZERO_TIME)
 
   useEffect(() => {
     getCurrentSeason().then(setSeason)
+  }, [])
+
+  // Reflect the cookie-session sign-in state in the nav.
+  useEffect(() => {
+    getSessionUser().then((u) => setUser(u ? { email: u.email } : null))
   }, [])
 
   const targetDate = useMemo(() => {
@@ -57,9 +63,9 @@ export default function OXXOVOLandingPage() {
     return () => clearInterval(interval)
   }, [targetDate])
 
-  const handleLogout = () => {
-    localStorage.removeItem('oxxovo_token')
-    localStorage.removeItem('oxxovo_email')
+  const handleLogout = async () => {
+    const supabase = createSupabaseBrowser()
+    await supabase.auth.signOut()
     window.location.reload()
   }
 
