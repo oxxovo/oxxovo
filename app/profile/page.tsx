@@ -1,12 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useT, useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
-import { useLocalToken, clearLocalUser } from '@/lib/use-local-user'
+import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { VideoEmbed } from '@/app/_components/VideoEmbed'
 import { WinnerCelebrationCard } from './WinnerCelebrationCard'
+import { MainRoundCard, type MockOverrides } from './MainRoundCard'
+import { getSeasonById, type Season } from '@/lib/seasons'
+import { loadSystemMessages, type SystemMessages } from '@/lib/system-messages'
 import {
   loadProfileData,
   saveWinnerInfo,
@@ -20,47 +23,99 @@ const STATUS_STYLES: Record<string, string> = {
   verifying: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
   eligible: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
   selected: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  main_round_submitted: 'bg-[#8b22ff]/15 text-[#b66cff] border-[#8b22ff]/30',
+  flagged: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
   awarded: 'bg-[#ff4444]/15 text-[#ff8888] border-[#ff4444]/30',
   rejected: 'bg-white/5 text-white/40 border-white/10',
+}
+
+// Mock overrides — dev-only URL query → MockOverrides. NODE_ENV !== 'development'
+// 가드로 production 번들에서 dead-code elimination됨.
+function useMockOverrides(): MockOverrides | undefined {
+  const params = useSearchParams()
+  return useMemo(() => {
+    if (process.env.NODE_ENV !== 'development') return undefined
+    const status = params.get('mock_status') ?? undefined
+    const themeRevealedRaw = params.get('mock_theme_revealed')
+    const themeRevealed =
+      themeRevealedRaw === '1' ? true : themeRevealedRaw === '0' ? false : undefined
+    const closeInRaw = params.get('mock_close_in')
+    const closeInSeconds = closeInRaw ? parseInt(closeInRaw, 10) : undefined
+    if (!status && themeRevealed === undefined && closeInSeconds === undefined) {
+      return undefined
+    }
+    return { status, themeRevealed, closeInSeconds }
+  }, [params])
 }
 
 export default function ProfilePage() {
   const router = useRouter()
   const t = useT()
-  const token = useLocalToken()
+  const lang = useAdminLang()
+  const [authState, setAuthState] = useState<'loading' | 'authed' | 'unauthed'>(
+    'loading',
+  )
   const [data, setData] = useState<ProfileData | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [messages, setMessages] = useState<SystemMessages | null>(null)
+  const [season, setSeason] = useState<Season | null>(null)
+  const mockOverrides = useMockOverrides()
 
-  // Token is read via useSyncExternalStore (hydration-safe). When it appears
-  // we fetch the profile; setData/setLoadError only run inside the async
-  // callback (not synchronously in the effect body) which keeps the
-  // react-hooks/set-state-in-effect rule happy.
+  // Identity now lives in the @supabase/ssr cookie session; loadProfileData()
+  // reads it server-side, so the client just calls it once on mount. State is
+  // only set inside the async callback (not synchronously in the effect body),
+  // keeping the react-hooks/set-state-in-effect rule happy.
   useEffect(() => {
-    if (!token) return
     let cancelled = false
-    loadProfileData(token).then((res) => {
+    loadProfileData().then((res) => {
       if (cancelled) return
       if (res.ok) {
         setData(res.data)
-      } else if (res.error === 'invalid_token') {
-        // Stale or forged token. Clear it; the useLocalToken subscriber
-        // will re-render the component with token === null.
-        clearLocalUser()
+        setAuthState('authed')
+      } else if (res.error === 'unauthenticated') {
+        setAuthState('unauthed')
       } else {
         setLoadError(res.error)
+        setAuthState('authed')
       }
     })
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [])
 
-  const handleLogout = () => {
-    clearLocalUser()
+  // System messages — fetched once on mount, used by MainRoundCard.
+  useEffect(() => {
+    let cancelled = false
+    loadSystemMessages().then((m) => {
+      if (!cancelled) setMessages(m)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Season — fetched when the current application's season_id is known.
+  const currentSeasonId = data?.applications[0]?.season_id
+  useEffect(() => {
+    if (!currentSeasonId) return
+    let cancelled = false
+    getSeasonById(currentSeasonId).then((s) => {
+      if (!cancelled) setSeason(s)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [currentSeasonId])
+
+  const handleLogout = async () => {
+    const supabase = createSupabaseBrowser()
+    await supabase.auth.signOut()
     router.push('/')
+    router.refresh()
   }
 
-  if (token === null) {
+  if (authState === 'unauthed') {
     return (
       <main className="min-h-screen bg-[#030305] text-white flex flex-col">
         <Header email={null} onLogout={handleLogout} hideLogout />
@@ -85,7 +140,7 @@ export default function ProfilePage() {
     )
   }
 
-  if (!data) {
+  if (authState === 'loading' || !data) {
     return (
       <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center">
         <p className="text-white/60">{t.profile.loading}</p>
@@ -112,9 +167,18 @@ export default function ProfilePage() {
             <StatusCard app={currentApp} />
             <ApplicationCard app={currentApp} />
             <VideoCard url={currentApp.free_entry_url} />
+            {season && messages && (
+              <MainRoundCard
+                app={currentApp}
+                season={season}
+                messages={messages}
+                lang={lang}
+                mockOverrides={mockOverrides}
+              />
+            )}
             <ScoringCard />
             {currentApp.status === 'awarded' && (
-              <WinnerFormCard token={token} app={currentApp} />
+              <WinnerFormCard app={currentApp} />
             )}
           </>
         )}
@@ -219,6 +283,8 @@ function StatusCard({ app }: { app: ProfileApplication }) {
     verifying: t.profile.status_verifying_msg,
     eligible: t.profile.status_eligible_msg,
     selected: t.profile.status_selected_msg,
+    main_round_submitted: t.profile.status_main_round_submitted_msg,
+    flagged: t.profile.status_flagged_msg,
     awarded: t.profile.status_awarded_msg,
     rejected: t.profile.status_rejected_msg,
   }
@@ -307,13 +373,7 @@ function ScoringCard() {
   )
 }
 
-function WinnerFormCard({
-  token,
-  app,
-}: {
-  token: string
-  app: ProfileApplication
-}) {
+function WinnerFormCard({ app }: { app: ProfileApplication }) {
   const t = useT()
   const [phone, setPhone] = useState(app.winner_phone ?? '')
   const [address, setAddress] = useState(app.winner_address ?? '')
@@ -330,7 +390,6 @@ function WinnerFormCard({
     setPending(true)
 
     const res = await saveWinnerInfo({
-      token,
       applicationId: app.id,
       phone,
       address,
@@ -340,7 +399,7 @@ function WinnerFormCard({
     setPending(false)
     if (!res.ok) {
       const errorMap: Record<typeof res.error, string> = {
-        invalid_token: t.profile.winner_form_err_invalid_token,
+        unauthenticated: t.profile.winner_form_err_invalid_token,
         not_owner: t.profile.winner_form_err_not_owner,
         not_awarded: t.profile.winner_form_err_not_awarded,
         not_found: t.profile.winner_form_err_not_found,

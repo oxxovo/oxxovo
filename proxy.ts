@@ -1,7 +1,11 @@
 // Next.js 16 proxy (formerly middleware). Renamed from middleware.ts.
 // Two responsibilities:
-//   1. Refresh Supabase Auth session cookies on every request (so server components see fresh tokens).
-//   2. Gate /admin/* routes — unauthenticated or non-admin users are sent to /admin/login.
+//   1. Refresh Supabase Auth session cookies on matched routes (so server
+//      components / actions see fresh tokens) — for BOTH admin and public-site
+//      cookie sessions ([[feedback-auth-pattern]]). getUser() below performs
+//      the refresh; the setAll cookie writer persists rotated tokens.
+//   2. Gate /admin/* routes — unauthenticated or non-admin users are sent to
+//      /admin/login. Public routes are never gated here (just refreshed).
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
@@ -84,7 +88,13 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Run on /admin/* only (skip everything else — static, API, public pages).
+    // /admin/* — refresh + admin gate.
     '/admin/:path*',
+    // Public-site routes that rely on a fresh cookie session (refresh only,
+    // no gate). /auth covers the magic-link callback. API + static are skipped.
+    '/profile/:path*',
+    '/apply/:path*',
+    '/auth/:path*',
+    '/login',
   ],
 }
