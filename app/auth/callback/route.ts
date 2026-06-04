@@ -42,6 +42,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Best-effort: link any pre-existing email-only applications to this user
+  // (Phase 6 — link_user_applications RPC, idempotent). Never block login on a
+  // backfill hiccup (e.g. RPC not yet deployed); the bulk backfill / next
+  // login catches up.
+  try {
+    await supabase.rpc('link_user_applications')
+  } catch {
+    // ignore
+  }
+
   // Only honor `next` if it's a safe, relative in-app path (leading single
   // slash, not protocol-relative "//host") — never an admin path.
   const safeNext =
