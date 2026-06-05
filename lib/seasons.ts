@@ -84,13 +84,6 @@ export type Season = {
   updated_at: string
 }
 
-const CURRENT_SEASON_ID =
-  process.env.NEXT_PUBLIC_OXXOVO_CURRENT_SEASON || 'season_0'
-
-export function getCurrentSeasonId(): string {
-  return CURRENT_SEASON_ID
-}
-
 export async function getSeasonById(id: string): Promise<Season | null> {
   const { data, error } = await supabase
     .from('seasons')
@@ -105,12 +98,57 @@ export async function getSeasonById(id: string): Promise<Season | null> {
   return data as Season
 }
 
+// "Current season" used to be pinned by the build-time env var
+// NEXT_PUBLIC_OXXOVO_CURRENT_SEASON. That breaks the weekly auto-rotation model
+// (see [[project-weekly-season-system]]): a new season opens applications every
+// Monday, so the public pointer must advance on its own with no redeploy. We
+// now resolve it dynamically from the DB by application window — fully dynamic,
+// no env var, so the seasons table is the single source of truth.
+//
+// Semantics: the "current" season for public-facing pages (home countdown,
+// /apply) is the most recently opened season — the one applicants can act on
+// right now. Because a season's main round / scoring run in later weeks while
+// the next season's application window is already open, several seasons are
+// in-flight at once; the newest-opened one is the correct application target.
 export async function getCurrentSeason(): Promise<Season | null> {
-  return getSeasonById(CURRENT_SEASON_ID)
+  const nowIso = new Date().toISOString()
+
+  // Primary: the most recently opened season (application_open_at <= now).
+  // `.lte` excludes NULL application_open_at automatically. During a normal
+  // application week this resolves to that week's season; in the brief gap
+  // before the next Monday it stays on the latest opened season.
+  const { data: opened, error: openedErr } = await supabase
+    .from('seasons')
+    .select('*')
+    .lte('application_open_at', nowIso)
+    .order('application_open_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (openedErr) {
+    console.error('[seasons] current-season (opened) query failed:', openedErr.message)
+    return null
+  }
+  if (opened) return opened as Season
+
+  // Fallback (pre-launch): nothing has opened yet — surface the soonest
+  // upcoming season so the site can render an "applications open soon" state.
+  const { data: upcoming, error: upcomingErr } = await supabase
+    .from('seasons')
+    .select('*')
+    .order('application_open_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (upcomingErr) {
+    console.error('[seasons] current-season (upcoming) query failed:', upcomingErr.message)
+    return null
+  }
+  return (upcoming as Season) ?? null
 }
 
 export async function getActiveApplicationCount(
-  seasonId: string = CURRENT_SEASON_ID
+  seasonId: string
 ): Promise<number> {
   const { data, error } = await supabase.rpc('get_active_application_count', {
     p_season_id: seasonId,

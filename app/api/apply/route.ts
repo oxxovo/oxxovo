@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  getCurrentSeasonId,
+  getCurrentSeason,
   getSeasonById,
   getActiveApplicationCount,
   isApplicationClosed,
@@ -44,12 +44,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const seasonId: string =
+    // An explicit season_id in the body wins (lets an applicant act on a
+    // specific season); otherwise resolve the current season dynamically from
+    // the application window — no env pin (see [[project-weekly-season-system]]).
+    const season =
       typeof body.season_id === 'string' && body.season_id.length > 0
-        ? body.season_id
-        : getCurrentSeasonId()
-
-    const season = await getSeasonById(seasonId)
+        ? await getSeasonById(body.season_id)
+        : await getCurrentSeason()
     if (!season) {
       return NextResponse.json(
         { error: 'Season configuration not found. Please try again later.' },
