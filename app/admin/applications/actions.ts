@@ -9,6 +9,7 @@ import {
   sendNotSelected,
   sendAwardedContactRequest,
 } from '@/lib/email/send'
+import { recomputePartnerStats } from '@/lib/partners'
 
 export type AdminActionState = {
   ok: boolean
@@ -55,12 +56,22 @@ export async function saveStatus(id: string, status: string): Promise<AdminActio
     .from('genesis_applications')
     .update({ status })
     .eq('id', id)
-    .select('id, email, country, creator_name, season_id')
+    .select('id, email, country, creator_name, season_id, user_id')
     .single()
   if (error) return { ok: false, errorMessage: error.message }
 
   revalidatePath('/admin/applications')
   revalidatePath(`/admin/applications/${id}`)
+
+  // Top-50 advance credits the user's cumulative_top50 and may auto-promote
+  // them to partner eligibility. Idempotent recompute; non-fatal.
+  if (status === 'selected' && row.user_id) {
+    try {
+      await recomputePartnerStats(row.user_id)
+    } catch (e) {
+      console.error('[saveStatus] partner recompute error:', e)
+    }
+  }
 
   // Side-effect: fire status-change notifications. Per automation philosophy,
   // there is no separate "Send email" admin button — the email IS the action.
@@ -113,13 +124,24 @@ export async function saveAwardRank(
     .from('genesis_applications')
     .update({ award_rank: rank })
     .eq('id', id)
-    .select('id, email, country, creator_name, season_id')
+    .select('id, email, country, creator_name, season_id, user_id')
     .single()
   if (error) return { ok: false, errorMessage: error.message }
 
   revalidatePath('/admin/applications')
   revalidatePath(`/admin/applications/${id}`)
   revalidatePath('/admin/contacts')
+
+  // An award rank (1-3) credits cumulative_wins and can upgrade the user's
+  // tier / promote them to eligibility. Recompute reflects whatever the rank
+  // now is (including a clear to null). Idempotent; non-fatal.
+  if (row.user_id) {
+    try {
+      await recomputePartnerStats(row.user_id)
+    } catch (e) {
+      console.error('[saveAwardRank] partner recompute error:', e)
+    }
+  }
 
   // Auto-fire the prize payout request the moment a top-3 rank is set.
   // Dedup ensures re-saving the same rank (or toggling away and back) does
