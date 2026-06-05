@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useT, useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
@@ -48,7 +48,7 @@ function useMockOverrides(): MockOverrides | undefined {
   }, [params])
 }
 
-export default function ProfilePage() {
+function ProfilePageInner() {
   const router = useRouter()
   const t = useT()
   const lang = useAdminLang()
@@ -185,6 +185,25 @@ export default function ProfilePage() {
 
         <HistoryCard applications={data.applications} />
       </section>
+    </main>
+  )
+}
+
+// useSearchParams()(useMockOverrides 내부)는 prerender 시 CSR bailout이라 App
+// Router 규약상 <Suspense> 경계 필요. 페이지 본문을 Suspense로 감싸 production
+// 빌드의 missing-suspense-with-csr-bailout 에러를 해소 (로직/UI 변경 없음).
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<ProfileFallback />}>
+      <ProfilePageInner />
+    </Suspense>
+  )
+}
+
+function ProfileFallback() {
+  return (
+    <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center">
+      <p className="text-white/60">…</p>
     </main>
   )
 }
