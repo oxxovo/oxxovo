@@ -86,23 +86,43 @@ export type Season = {
   prize_pool_escrow_status: 'not_required' | 'pending' | 'paid' | 'refunded'
   prize_pool_escrow_paid_at: string | null
   commission_rate_override: number | null
+  prize_funding_mode: PrizeFundingMode
 
   created_at: string
   updated_at: string
 }
 
-// Public-visibility gate. A partner-hosted season is hidden from the public
-// until its prize pool escrow is 'paid' (beta policy); official seasons use
-// 'not_required' and so are gated only by their draft status. Draft seasons of
-// any kind are never public. Apply this anywhere seasons are listed publicly.
+// Prize-funding mode (seasons.prize_funding_mode). Single source of truth for
+// the allowed values; the DB CHECK mirrors this list. The platform-wide default
+// lives in platform_config (partner_default_prize_funding_mode), not here.
+//   entry_pool         — funded by entry/platform; partner deposits nothing.
+//   partner_guaranteed — partner guarantees the pool and must escrow it.
+export const PRIZE_FUNDING_MODES = ['entry_pool', 'partner_guaranteed'] as const
+export type PrizeFundingMode = (typeof PRIZE_FUNDING_MODES)[number]
+
+// The escrow status a season starts in given its funding mode. Only a
+// guaranteed pool needs escrow; an entry-pool tournament requires none. This is
+// the single place the mode -> escrow relationship is encoded.
+export function initialEscrowStatusForFundingMode(
+  mode: string,
+): 'not_required' | 'pending' {
+  return mode === 'partner_guaranteed' ? 'pending' : 'not_required'
+}
+
+// Public-visibility gate. A season is public once it's off draft AND its escrow
+// is in a settled state — 'not_required' (entry-pool / official) or 'paid'
+// (a guaranteed pool the admin has confirmed). A 'pending' or 'refunded' escrow
+// keeps it hidden. Because the funding mode sets the escrow status at creation,
+// this guard requires payment only for guaranteed-prize tournaments, with no
+// per-mode branching. Apply anywhere seasons are listed publicly.
 export function isSeasonPubliclyVisible(
-  season: Pick<Season, 'status' | 'host_type' | 'prize_pool_escrow_status'>,
+  season: Pick<Season, 'status' | 'prize_pool_escrow_status'>,
 ): boolean {
   if (season.status === 'draft') return false
-  if (season.host_type === 'partner') {
-    return season.prize_pool_escrow_status === 'paid'
-  }
-  return true
+  return (
+    season.prize_pool_escrow_status === 'not_required' ||
+    season.prize_pool_escrow_status === 'paid'
+  )
 }
 
 const CURRENT_SEASON_ID =

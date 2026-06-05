@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { createPartnerTournament, type HostFormState } from './actions'
+import type { PrizeFundingMode } from '@/lib/seasons'
 
 type Defaults = {
   application_video_min_seconds: number
@@ -19,22 +20,38 @@ type Defaults = {
 const inputCls =
   'w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff]'
 
+const FUNDING_MODES: { value: PrizeFundingMode; label: string; hint: string }[] = [
+  {
+    value: 'entry_pool',
+    label: 'Entry-pool funded',
+    hint: 'Funded by entries — no deposit, goes public immediately.',
+  },
+  {
+    value: 'partner_guaranteed',
+    label: 'Partner-guaranteed',
+    hint: 'You guarantee the pool — escrow must be confirmed before it goes public.',
+  },
+]
+
 export function HostNewForm({
   tierName,
   maxApplicantsCap,
   maxTournamentsPerSeason,
   defaults,
+  defaultFundingMode,
 }: {
   tierName: string
   maxApplicantsCap: number
   maxTournamentsPerSeason: number | null
   defaults: Defaults
+  defaultFundingMode: PrizeFundingMode
 }) {
   const [pending, startTransition] = useTransition()
   const [state, setState] = useState<HostFormState>({ ok: false })
 
   // controlled fields
   const [theme, setTheme] = useState('')
+  const [fundingMode, setFundingMode] = useState<PrizeFundingMode>(defaultFundingMode)
   const [openAt, setOpenAt] = useState('')
   const [closeAt, setCloseAt] = useState('')
   const [maxApplicants, setMaxApplicants] = useState(String(maxApplicantsCap))
@@ -63,6 +80,7 @@ export function HostNewForm({
     const toIso = (v: string) => (v ? new Date(v).toISOString() : '')
     const fd = new FormData()
     fd.set('theme', theme)
+    fd.set('prize_funding_mode', fundingMode)
     fd.set('application_open_at', toIso(openAt))
     fd.set('application_close_at', toIso(closeAt))
     fd.set('max_applicants', maxApplicants)
@@ -123,6 +141,31 @@ export function HostNewForm({
               placeholder="e.g. Neon Dreams"
               className={inputCls}
             />
+          </Field>
+
+          <Field label="Prize funding" error={err('prize_funding_mode')}>
+            <div className="grid grid-cols-2 gap-3">
+              {FUNDING_MODES.map((m) => {
+                const active = fundingMode === m.value
+                return (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setFundingMode(m.value)}
+                    className={`text-left rounded-lg border px-4 py-3 transition ${
+                      active
+                        ? 'border-[#8b22ff] bg-[#8b22ff]/10'
+                        : 'border-white/10 bg-white/5 hover:border-white/25'
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold text-white">{m.label}</span>
+                    <span className="block text-[11px] text-white/45 mt-1 leading-snug">
+                      {m.hint}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </Field>
 
           <div className="grid grid-cols-2 gap-4">

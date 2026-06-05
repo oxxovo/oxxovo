@@ -429,6 +429,7 @@ export type PartnerTournamentRow = {
   total_prize_pool: number
   max_applicants: number
   status: string
+  prize_funding_mode: string
   prize_pool_escrow_status: string
   application_open_at: string | null
   application_close_at: string | null
@@ -442,7 +443,7 @@ export async function getPartnerTournaments(): Promise<PartnerTournamentRow[]> {
   const { data, error } = await admin
     .from('seasons')
     .select(
-      'id, display_name, host_user_id, total_prize_pool, max_applicants, status, prize_pool_escrow_status, application_open_at, application_close_at, created_at',
+      'id, display_name, host_user_id, total_prize_pool, max_applicants, status, prize_funding_mode, prize_pool_escrow_status, application_open_at, application_close_at, created_at',
     )
     .eq('host_type', 'partner')
     .order('created_at', { ascending: false })
@@ -468,6 +469,55 @@ export async function getPartnerTournaments(): Promise<PartnerTournamentRow[]> {
     ...r,
     host_email: r.host_user_id ? emailById.get(r.host_user_id) ?? null : null,
   }))
+}
+
+// ─── partner settlement (정산) ────────────────────────────────────────────
+// Canonical formula. No hardcoded rates or fees: the commission rate comes from
+// the season override or platform_config, and processing_fees is the ACTUAL
+// payment-processing cost (card/ACH/withdrawal) recorded at settlement time and
+// stored on partner_tournaments.processing_fees.
+//
+//   host_payout = total_revenue - commission - processing_fees - prize_paid
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100
+}
+
+export type SettlementInput = {
+  totalRevenue: number
+  commissionRate: number // 0..1
+  processingFees: number // actual measured cost recorded at settlement
+  prizePaid: number
+}
+
+export type Settlement = {
+  commissionAmount: number
+  processingFees: number
+  prizePaid: number
+  hostPayout: number
+}
+
+export function computePartnerSettlement(input: SettlementInput): Settlement {
+  const commissionAmount = round2(input.totalRevenue * input.commissionRate)
+  const hostPayout = round2(
+    input.totalRevenue - commissionAmount - input.processingFees - input.prizePaid,
+  )
+  return {
+    commissionAmount,
+    processingFees: round2(input.processingFees),
+    prizePaid: round2(input.prizePaid),
+    hostPayout,
+  }
+}
+
+// Effective commission rate for a tournament: a per-season override beats the
+// platform_config default. Both DB-sourced; never hardcoded.
+export async function getEffectiveCommissionRate(
+  commissionRateOverride: number | null,
+): Promise<number> {
+  if (commissionRateOverride != null) return commissionRateOverride
+  const cfg = await getPlatformConfigMap()
+  return Number(cfg.get('partner_commission_rate') ?? 0)
 }
 
 // Weekly correction cron: recompute every user that has a linked application.

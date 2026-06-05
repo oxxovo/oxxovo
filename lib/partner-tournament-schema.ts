@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PRIZE_FUNDING_MODES } from '@/lib/seasons'
 
 // Validation for the partner-configurable subset of a tournament (/host/new).
 // Everything NOT here (ai_models, allowed_video_platforms, deadline_reminder_
@@ -14,6 +15,9 @@ const timestamp = z.string().datetime({ offset: true })
 export const partnerTournamentSchema = z
   .object({
     theme: z.string().min(1, 'theme required').max(100),
+
+    // entry_pool (default) or partner_guaranteed; the latter requires escrow.
+    prize_funding_mode: z.enum(PRIZE_FUNDING_MODES),
 
     application_open_at: timestamp,
     application_close_at: timestamp,

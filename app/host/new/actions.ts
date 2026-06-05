@@ -3,7 +3,11 @@
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getTierConfig } from '@/lib/partners'
-import { getCurrentSeasonId, type Season } from '@/lib/seasons'
+import {
+  getCurrentSeasonId,
+  initialEscrowStatusForFundingMode,
+  type Season,
+} from '@/lib/seasons'
 import {
   partnerTournamentSchema,
   type PartnerTournamentInput,
@@ -167,10 +171,13 @@ export async function createPartnerTournament(
     // partner tournaments start with no preset perks
     award_prizes: {},
 
-    // host / escrow
+    // host / escrow — escrow status follows the funding mode: a guaranteed pool
+    // starts 'pending' (admin must confirm payment before public), an entry
+    // pool is 'not_required'.
     host_type: 'partner',
     host_user_id: user.id,
-    prize_pool_escrow_status: 'pending',
+    prize_funding_mode: input.prize_funding_mode,
+    prize_pool_escrow_status: initialEscrowStatusForFundingMode(input.prize_funding_mode),
 
     created_at: nowIso,
     updated_at: nowIso,

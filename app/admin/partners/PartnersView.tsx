@@ -53,9 +53,11 @@ const DICT = {
       colPool: '상금풀',
       colMax: '정원',
       colStatus: '상태',
+      colFunding: '재원',
       colEscrow: '에스크로',
       markPaid: 'Paid 처리 & 공개',
       escrow: { not_required: '불필요', pending: '대기', paid: '완료', refunded: '환불' } as Record<string, string>,
+      funding: { entry_pool: '참가비풀', partner_guaranteed: '보장상금' } as Record<string, string>,
     },
     toast: {
       suspended: '정지되었습니다',
@@ -108,9 +110,11 @@ const DICT = {
       colPool: 'Prize pool',
       colMax: 'Cap',
       colStatus: 'Status',
+      colFunding: 'Funding',
       colEscrow: 'Escrow',
       markPaid: 'Mark paid & publish',
       escrow: { not_required: 'N/A', pending: 'Pending', paid: 'Paid', refunded: 'Refunded' } as Record<string, string>,
+      funding: { entry_pool: 'Entry pool', partner_guaranteed: 'Guaranteed' } as Record<string, string>,
     },
     toast: {
       suspended: 'Suspended',
@@ -419,6 +423,7 @@ function TournamentsTable({
               <th className="px-4 py-3 font-semibold text-right">{tx.tour.colPool}</th>
               <th className="px-4 py-3 font-semibold text-right">{tx.tour.colMax}</th>
               <th className="px-4 py-3 font-semibold">{tx.tour.colStatus}</th>
+              <th className="px-4 py-3 font-semibold">{tx.tour.colFunding}</th>
               <th className="px-4 py-3 font-semibold">{tx.tour.colEscrow}</th>
               <th className="px-4 py-3" />
             </tr>
@@ -435,6 +440,9 @@ function TournamentsTable({
                   {r.max_applicants.toLocaleString()}
                 </td>
                 <td className="px-4 py-3 text-white/60 text-xs">{r.status}</td>
+                <td className="px-4 py-3 text-white/60 text-xs">
+                  {tx.tour.funding[r.prize_funding_mode] ?? r.prize_funding_mode}
+                </td>
                 <td className="px-4 py-3">
                   <span
                     className={`text-xs ${

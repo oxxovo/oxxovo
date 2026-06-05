@@ -1,8 +1,13 @@
 import Link from 'next/link'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { getTierConfig } from '@/lib/partners'
-import { getCurrentSeasonId, type Season } from '@/lib/seasons'
+import { getTierConfig, getPlatformConfigMap } from '@/lib/partners'
+import {
+  getCurrentSeasonId,
+  PRIZE_FUNDING_MODES,
+  type PrizeFundingMode,
+  type Season,
+} from '@/lib/seasons'
 import { HostNewForm } from './HostNewForm'
 
 export const dynamic = 'force-dynamic'
@@ -86,6 +91,15 @@ export default async function HostNewPage() {
     .single()
   const t = tmpl as Season | null
 
+  // Default funding mode from platform_config (dynamic, not hardcoded).
+  const cfg = await getPlatformConfigMap()
+  const cfgMode = String(cfg.get('partner_default_prize_funding_mode') ?? '')
+  const defaultFundingMode: PrizeFundingMode = (
+    PRIZE_FUNDING_MODES as readonly string[]
+  ).includes(cfgMode)
+    ? (cfgMode as PrizeFundingMode)
+    : 'entry_pool'
+
   const defaults = {
     application_video_min_seconds: t?.application_video_min_seconds ?? 15,
     application_video_max_seconds: t?.application_video_max_seconds ?? 30,
@@ -104,6 +118,7 @@ export default async function HostNewPage() {
       maxApplicantsCap={tier.max_applications_cap}
       maxTournamentsPerSeason={tier.max_tournaments_per_season}
       defaults={defaults}
+      defaultFundingMode={defaultFundingMode}
     />
   )
 }
