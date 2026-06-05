@@ -215,10 +215,50 @@ S2:                     [신청7d][채점][본선][시상]
 | 항목 | 결정권자 | 시점 |
 |---|---|---|
 | 발사일 A/B/C 최종 확정 | TK | 신원/Auth 진척 후 |
-| season status enum 확장 vs 타임스탬프 기반 | 지수 + 오스 | cron 설계(task #6) |
+| ~~season status enum 확장 vs 타임스탬프 기반~~ | ✅ **타임스탬프 기반 확정** (2026-06-05, §11) | — |
 | 시즌 4+ round 스키마 설계 | 별도 세션 | 11월/세션 6 |
-| Soak default를 template에도 박을지 vs cron만 | 지수 | cron 작업(task #6) |
+| ~~Soak default를 template에도 박을지 vs cron만~~ | ✅ **cron만** (직전 복제 + season_number 분기, §11) | — |
 | Member Hosted Tournament 트랙 스키마 | 별도 세션 | 시즌 4+ 이후 |
+
+---
+
+## 11. cron 자동 시즌 — 구현 완료 (2026-06-05)
+
+> §7 task #6 구현. 작성: 지수 · 브랜치: `feat/main-round-leaderboard` 후속.
+
+### 11.1 무엇을 만들었나
+
+| 파일 | 역할 |
+|---|---|
+| `lib/season-schedule.ts` | PT 월력→UTC DST-정확 스케줄 계산(순수함수) + 직전 시즌 복제 빌더 + Soak 규칙 |
+| `app/api/cron/season-tick/route.ts` | 시즌 자동 생성(create-ahead) + 상태 전이. 매시 정각 cron |
+| `lib/email/admin-alert.ts` | 백그라운드 잡용 Resend 관리자 알림(생성 성공/에러) |
+| `lib/seasons.ts` | `getCurrentSeason()`를 env var → **DB 윈도우 기반**으로 교체 |
+| `vercel.json` | `/api/cron/season-tick` `0 * * * *` 추가 |
+
+### 11.2 핵심 설계 결정
+
+- **블로커 — "현재 시즌" 포인터:** 기존 `getCurrentSeason()`은 빌드타임 env `NEXT_PUBLIC_OXXOVO_CURRENT_SEASON`(기본 `season_0`)에 고정 → **매주 자동 회전 시 재배포 없이는 시즌이 안 넘어감**. env 의존을 **완전 제거**하고, `application_open_at <= now` 중 가장 최근 개막 시즌을 동적으로 "현재"로 해석(미개막 시 가장 가까운 예정 시즌 폴백). 소비처 6곳 전부 이미 async라 drop-in. `getCurrentSeasonId()`(동기) 제거, `api/apply/route.ts` 1곳 async화.
+- **create-ahead:** 현재 시즌이 개막하면 즉시 다음 주 시즌을 `draft`로 미리 생성 → 항상 정확히 1개 앞섬. 대표님이 코드네임/`main_round_theme` 설정할 리드타임 1주 확보, 월요일 00:00 PT에 status가 자동 `active` 전이.
+- **멱등성:** `id = season_<n>` 결정적 지정 → PK 유니크로 중복 생성 차단. 동시 tick의 unique_violation(23505)은 "정상 작동"으로 skip. 상태 전이는 `.eq('status', old)` compare-and-swap.
+- **상태 전이 = 타임스탬프 기반(§10 결정):** enum은 기존 `draft/active/closed/completed` 유지(확장 안 함). `desiredStatus()`가 시각으로 목표 상태 산출, **forward-only**(역행·admin 수동 편집 비간섭). email-tick이 이미 타임스탬프 기반이라 정합.
+- **Soak default = cron만(§10 결정):** 직전 시즌 행 복제 + `season_number >= 4 → 0.3/0.7, < 4 → 1.0/0.0`만 덮어씀. `DEFAULT_SEASON` 템플릿은 미변경. generated 컬럼(`prize_first/second/third`) 복제 제외.
+- **DST:** Luxon `America/Los_Angeles`. 앵커=월 00:00 PT, 모든 시각을 in-zone wall-clock 오프셋으로 계산 후 UTC 저장. 다음 개막=직전 개막 +1주(in-zone). 봄/가을 경계 실측 검증 완료(§11.3). `main_round_end = main_round_start + submission_hours`(파라미터 기반).
+
+### 11.3 검증 (실측)
+
+- ✅ `tsc --noEmit` 통과, `next build` 통과(`/api/cron/season-tick` dynamic route 등록 확인).
+- ✅ DST 경계: 가을(10/26 개막, 11/1 PST 전환)·봄(3/2 개막, 3/8 PDT 전환) 케이스에서 월력 시각 정확 유지. 멱등 앵커 체인 -7→-8 전환 정확.
+- ✅ 빌더: generated 컬럼 제외 / season_1=Soak(1·0) / season_4=production(0.3·0.7) 경계 / 복제 파라미터 유지 / 개막 8/10 07:00 UTC.
+- ✅ lint: 신규 5개 파일 0 에러(기존 파일 에러는 본 작업과 무관).
+
+### 11.4 발사 전 잔여 의존성 (TK/운영)
+
+- [ ] **`scoring_start_at` 컬럼이 live DB에 존재해야 함**(`reports/seasons_weights_finals_migration.sql` 적용 여부). 빌더가 이 컬럼을 INSERT하므로 미적용 시 시즌 생성 실패.
+- [ ] **Vercel Pro cron slot** 확인(현재 2개, Pro 한도 40 — 안전하나 배포 전 재확인. [[feedback-vercel-cron-limits]]).
+- [ ] **`CRON_SECRET`** prod 환경변수 설정 확인(email-tick과 공유).
+- [ ] 리허설(7/27~31)에서 실 cron 1주 사이클 무인 검증(§7-12).
+- 참고: 오늘(6/5) 시점 cron을 돌려도 season_0 개막(8/3)이 미래라 **생성·전이 모두 no-op** = 안전.
 
 ---
 
