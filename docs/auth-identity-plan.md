@@ -104,7 +104,8 @@ pg_indexes 결과: `genesis_applications_email_unique`(email **전역 유일 인
 
 | Phase | 상태 | 비고 |
 |---|---|---|
-| 1 DB user_id | 🟡 SQL 적용 대기 | TK 적용 + verification #2~5 공유 예정 |
+| 1 DB user_id | ✅ 적용 완료 | 2026-06-04 적용, verification #2/#3/#5 통과 |
+| email_unique_fix | ✅ 적용 완료 | 2026-06-04 적용, 인덱스 5종 검증(전역 DROP + season_email_uniq) |
 | 2 매직링크+쿠키 | ✅ 코드 완료 | tsc/eslint clean |
 | 3 /apply 인증 | ✅ 코드 완료 | localStorage 경로·비밀번호 API 삭제 |
 | 4a 세션 배관 | ✅ 코드 완료 | profile token→쿠키 세션 |

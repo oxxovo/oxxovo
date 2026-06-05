@@ -1,0 +1,4 @@
+# SQL migrations are pasted into the Supabase SQL Editor. Force LF endings so
+# the first line is never mangled, and keep them ASCII-only for separators
+# (no box-drawing chars like the long dash). See memory: feedback-sql-ascii-only.
+*.sql text eol=lf

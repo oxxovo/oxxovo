@@ -17,11 +17,13 @@ export function NewSeasonHeader() {
 }
 
 export function EditSeasonHeader({
+  id,
   name,
   seasonNumber,
   updatedAt,
   showSaved,
 }: {
+  id: string
   name: string
   seasonNumber: number
   updatedAt: string
@@ -48,6 +50,12 @@ export function EditSeasonHeader({
           </h1>
           <span className="text-xs text-white/40">{t.season_edit.last_updated(formattedDate)}</span>
         </div>
+        <Link
+          href={`/admin/seasons/${id}/main-results`}
+          className="inline-block mt-3 px-3 py-1.5 rounded border border-[#8b22ff]/40 bg-[#8b22ff]/[.08] text-xs font-bold text-[#d4a7ff] hover:brightness-110 transition"
+        >
+          {t.main_results.page_title} →
+        </Link>
       </header>
 
       {showSaved && (

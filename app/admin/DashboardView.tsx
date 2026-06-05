@@ -4,14 +4,26 @@ import Link from 'next/link'
 import { useT } from '@/lib/admin-i18n'
 import { type Season } from '@/lib/seasons'
 
+export type ScoringStats = {
+  none: number
+  low: number
+  medium: number
+  high: number
+  completed: number
+  in_progress: number
+  failed: number
+}
+
 export function DashboardView({
   adminName,
   seasons,
   applicationCount,
+  scoringStats,
 }: {
   adminName: string
   seasons: Season[]
   applicationCount: number
+  scoringStats: ScoringStats | null
 }) {
   const t = useT()
   const currentSeason = seasons.find((s) => s.status === 'active') ?? seasons[0] ?? null
@@ -23,7 +35,7 @@ export function DashboardView({
         <p className="text-sm text-white/40">{t.dashboard.welcome(adminName)}</p>
       </header>
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Stat label={t.dashboard.stat_total_seasons} value={seasons.length} />
         <Stat
           label={t.dashboard.stat_current_season}
@@ -39,6 +51,15 @@ export function DashboardView({
         />
         <Stat label={t.dashboard.stat_total_applicants} value={applicationCount} />
       </section>
+
+      {/* Scoring stats for current season — confidence distribution + flagged urgency */}
+      {scoringStats && currentSeason && (
+        <ScoringStatsBlock
+          season={currentSeason}
+          stats={scoringStats}
+          flaggedCount={scoringStats.high}
+        />
+      )}
 
       <section className="mb-10">
         <div className="flex items-baseline justify-between mb-4">
@@ -156,4 +177,73 @@ function localizedStatus(
     return map[status]
   }
   return status
+}
+
+function ScoringStatsBlock({
+  season,
+  stats,
+  flaggedCount,
+}: {
+  season: Season
+  stats: ScoringStats
+  flaggedCount: number
+}) {
+  const totalJudged = stats.completed
+  const hasUrgent = flaggedCount > 0
+  return (
+    <section className="mb-10">
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="text-lg font-bold">
+          {season.name} · Scoring progress
+        </h2>
+        {hasUrgent && (
+          <Link
+            href="/admin/applications?segment=flagged"
+            className="text-xs text-red-300 hover:underline"
+          >
+            🚩 {flaggedCount} need review →
+          </Link>
+        )}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MiniStat label="Judged" value={totalJudged} tone="default" />
+        <MiniStat label="In progress" value={stats.in_progress} tone="indigo" />
+        <MiniStat label="Failed" value={stats.failed} tone="red-soft" />
+        <MiniStat label="Flagged" value={flaggedCount} tone={hasUrgent ? 'red' : 'default'} />
+      </div>
+      <div className="grid grid-cols-4 gap-3 mt-3">
+        <MiniStat label="Confidence: none" value={stats.none} tone="default" />
+        <MiniStat label="Confidence: low" value={stats.low} tone="default" />
+        <MiniStat label="Confidence: medium" value={stats.medium} tone="amber" />
+        <MiniStat label="Confidence: high" value={stats.high} tone={stats.high > 0 ? 'red' : 'default'} />
+      </div>
+    </section>
+  )
+}
+
+function MiniStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: number
+  tone: 'default' | 'indigo' | 'amber' | 'red' | 'red-soft'
+}) {
+  const toneClass =
+    tone === 'red'
+      ? 'border-red-500/40 bg-red-500/10 text-red-200'
+      : tone === 'red-soft'
+        ? 'border-red-500/20 bg-red-500/5 text-red-300/80'
+        : tone === 'amber'
+          ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+          : tone === 'indigo'
+            ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-200'
+            : 'border-white/10 bg-white/[.02] text-white/80'
+  return (
+    <div className={`border rounded p-3 ${toneClass}`}>
+      <div className="text-[10px] uppercase tracking-wider opacity-70 mb-1">{label}</div>
+      <div className="text-xl font-black">{value}</div>
+    </div>
+  )
 }

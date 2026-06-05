@@ -246,6 +246,7 @@ type Messages = {
     season_select_label: string
     segment_all: string
     segment_pending: string
+    segment_flagged: string
     segment_top50: string
     segment_waitlist: string
     segment_awarded: string
@@ -266,8 +267,32 @@ type Messages = {
     col_ai_service: string
     col_submitted: string
     col_score: string
+    col_grade: string
+    col_integrity: string
     empty: string
     score_pending: string
+    // Recommendations panel (작업 5)
+    recommendations_title: (n: number) => string
+    recommendations_subtitle: string
+    recommendations_empty: string
+    recommendations_recommended_at: (date: string) => string
+    recommendations_col_rank: string
+    recommendations_col_score: string
+    recommendations_apply_btn: string
+    recommendations_apply_confirm_message: (n: number) => string
+    recommendations_apply_confirm_btn: string
+    recommendations_apply_cancel_btn: string
+    recommendations_applied_at: (date: string, admin: string) => string
+    recommendations_applied_status: string
+    recommendations_flagged_section_title: string
+    recommendations_flagged_section_note: string
+    recommendations_total_label: (n: number) => string
+    // applyRecommendation server action errors (작업 6)
+    apply_rec_err_unauthorized: string
+    apply_rec_err_season_not_found: string
+    apply_rec_err_no_recommendations: string
+    apply_rec_err_race_or_already_applied: string
+    apply_rec_err_update_failed: string
   }
   application_detail: {
     back: string
@@ -276,6 +301,7 @@ type Messages = {
     section_video: string
     section_actions: string
     section_scoring: string
+    section_integrity_review: string
     label_name: string
     label_email: string
     label_country: string
@@ -300,6 +326,25 @@ type Messages = {
     save_status: string
     save_award: string
     scoring_placeholder: string
+    scoring_no_data: string
+    scoring_in_progress: string
+    scoring_failed: string
+    scoring_verified_score: string
+    scoring_grade: string
+    scoring_subscores: string
+    scoring_intent: string
+    scoring_execution: string
+    scoring_originality: string
+    scoring_integrity_weight: string
+    scoring_judged_at: (date: string) => string
+    scoring_cost: (usd: string) => string
+    integrity_confidence_label: string
+    integrity_score_label: string
+    integrity_explanation_label: string
+    integrity_recommendation_label: string
+    integrity_high_warning: string
+    ai_outputs_toggle: string
+    ai_outputs_hide: string
   }
   video: {
     embed_failed: string
@@ -428,6 +473,89 @@ type Messages = {
     celebration_prize_label: string
     celebration_founding_creator: string
     celebration_season_label: (n: number, name: string) => string
+    // Main round submission (2026-05-29) — single-submission model
+    main_round_section_title: string
+    main_round_theme_label: string
+    main_round_allowed_platforms_label: string
+    main_round_video_url_label: string
+    main_round_video_url_placeholder: string
+    main_round_submitted_video_label: string
+    main_round_submitted_at_label: string
+    main_round_close_countdown_label: string
+    main_round_theme_reveal_countdown_label: string
+    countdown_unit_day: string
+    countdown_unit_hour: string
+    countdown_unit_minute: string
+    countdown_unit_second: string
+    main_round_video_url_err_empty: string
+    main_round_video_url_err_unknown: string
+    main_round_video_url_err_not_allowed: string
+    main_round_submit_btn: string
+    main_round_submitting: string
+    main_round_modal_confirm: string
+    main_round_modal_cancel: string
+    status_main_round_submitted_msg: string
+    status_flagged_msg: string
+    // /apply submission errors — keyed off ApplyErrorCode from /api/apply.
+    apply_err_missing_field: string
+    apply_err_agreements_required: string
+    apply_err_statement_length: string
+    apply_err_duration_range: (min: number, max: number) => string
+    apply_err_season_not_found: string
+    apply_err_season_closed: string
+    apply_err_duplicate_email: string
+    apply_err_server_error: string
+    // saveMainRoundSubmission server action errors (단계 7)
+    main_round_err_invalid_token: string
+    main_round_err_not_found: string
+    main_round_err_not_owner: string
+    main_round_err_season_not_found: string
+    main_round_err_not_selected: string
+    main_round_err_season_dates_not_set: string
+    main_round_err_before_start: string
+    main_round_err_after_close: string
+    main_round_err_video_url_required: string
+    main_round_err_video_url_invalid: string
+    main_round_err_video_url_not_allowed: string
+    main_round_err_race_or_already_submitted: string
+    main_round_err_save_failed: string
+  }
+  main_results: {
+    back_to_season: string
+    page_title: string
+    subtitle: string
+    weights_label: (ai: number, community: number) => string
+    soak_note: string
+    theme_label: string
+    empty: string
+    approve_btn: string
+    approve_hint: string
+    approve_confirm_message: string
+    approve_confirm_btn: string
+    approve_cancel_btn: string
+    approve_err_season_not_found: string
+    approve_err_no_scored: string
+    approve_err_update_failed: string
+    col_rank: string
+    col_creator: string
+    col_final: string
+    col_grade: string
+    col_award: string
+    col_actions: string
+    col_video: string
+    no_video: string
+    final_pending: string
+    award_badge: (rank: number) => string
+    override_btn: string
+    override_note: string
+    override_prev: (reason: string) => string
+    override_rank_label: string
+    override_rank_ph: string
+    override_reason_ph: string
+    override_save_btn: string
+    override_cancel_btn: string
+    override_err_required: string
+    override_err_rank: string
   }
 }
 
@@ -612,6 +740,7 @@ const MESSAGES_EN: Messages = {
     season_select_label: 'Season',
     segment_all: 'All',
     segment_pending: 'Pending',
+    segment_flagged: 'Flagged',
     segment_top50: 'Top 50',
     segment_waitlist: 'Waitlist',
     segment_awarded: 'Awarded',
@@ -632,8 +761,33 @@ const MESSAGES_EN: Messages = {
     col_ai_service: 'AI service',
     col_submitted: 'Submitted',
     col_score: 'Score',
+    col_grade: 'Grade',
+    col_integrity: 'Integrity',
     empty: 'No applications match the current filter.',
     score_pending: '—',
+    recommendations_title: (n) => `Top ${n} Recommendation`,
+    recommendations_subtitle: 'Auto-recommended by verified_score. Review and apply.',
+    recommendations_empty: 'Scoring not yet completed. Recommendations will appear once scoring finishes.',
+    recommendations_recommended_at: (date) => `Recommended at: ${date}`,
+    recommendations_col_rank: 'Rank',
+    recommendations_col_score: 'Score',
+    recommendations_apply_btn: 'Apply Recommendation',
+    recommendations_apply_confirm_message: (n) =>
+      `This will mark Top ${n} as 'selected', the rest as 'rejected', and send automatic notification emails. Proceed?`,
+    recommendations_apply_confirm_btn: 'Apply',
+    recommendations_apply_cancel_btn: 'Cancel',
+    recommendations_applied_at: (date, admin) => `Applied at: ${date} (${admin})`,
+    recommendations_applied_status: 'Applied',
+    recommendations_flagged_section_title: 'Flagged Applications (excluded from recommendation)',
+    recommendations_flagged_section_note:
+      'These applications were excluded due to integrity concerns. Admin review and status update required.',
+    recommendations_total_label: (n) => `${n} recommended in total`,
+    apply_rec_err_unauthorized: 'Admin authentication required.',
+    apply_rec_err_season_not_found: 'Season not found.',
+    apply_rec_err_no_recommendations: 'No recommendations to apply.',
+    apply_rec_err_race_or_already_applied:
+      'Already applied or another admin is applying concurrently.',
+    apply_rec_err_update_failed: 'Failed to apply. Please try again later.',
   },
   application_detail: {
     back: '← Applications',
@@ -642,6 +796,7 @@ const MESSAGES_EN: Messages = {
     section_video: 'Video',
     section_actions: 'Admin actions',
     section_scoring: 'Scoring',
+    section_integrity_review: 'Integrity Review',
     label_name: 'Name',
     label_email: 'Email',
     label_country: 'Country',
@@ -666,6 +821,25 @@ const MESSAGES_EN: Messages = {
     save_status: 'Save status',
     save_award: 'Save award',
     scoring_placeholder: 'Triple-AI scoring results will appear here after Phase 3 integration.',
+    scoring_no_data: 'Not yet scored. The oxxovo-scoring system will pick this up automatically.',
+    scoring_in_progress: 'Triple-AI scoring in progress…',
+    scoring_failed: 'Scoring failed — see error below.',
+    scoring_verified_score: 'OXXOVO Verified Score',
+    scoring_grade: 'Grade',
+    scoring_subscores: 'Subscores (Consensus)',
+    scoring_intent: 'Intent (25%)',
+    scoring_execution: 'Execution (45%)',
+    scoring_originality: 'Originality (20%)',
+    scoring_integrity_weight: 'Integrity (10%)',
+    scoring_judged_at: (date) => `Judged ${date}`,
+    scoring_cost: (usd) => `Cost: ${usd}`,
+    integrity_confidence_label: 'Confidence',
+    integrity_score_label: 'Claude Integrity Score',
+    integrity_explanation_label: 'AI Explanation',
+    integrity_recommendation_label: 'AI Recommendation',
+    integrity_high_warning: 'High-confidence integrity suspicion — admin review required before this entry can proceed.',
+    ai_outputs_toggle: 'Show AI raw outputs',
+    ai_outputs_hide: 'Hide AI raw outputs',
   },
   video: {
     embed_failed: 'Unable to embed this video.',
@@ -801,6 +975,93 @@ const MESSAGES_EN: Messages = {
     celebration_prize_label: 'Prize',
     celebration_founding_creator: 'Founding Creator',
     celebration_season_label: (n, name) => `Season ${n} — ${name}`,
+    main_round_section_title: 'Main Round Submission',
+    main_round_theme_label: 'Main Round Theme',
+    main_round_allowed_platforms_label: 'Allowed Platforms',
+    main_round_video_url_label: 'Video URL',
+    main_round_video_url_placeholder: 'YouTube, Vimeo, or other video link',
+    main_round_submitted_video_label: 'Submitted Video',
+    main_round_submitted_at_label: 'Submitted at',
+    main_round_close_countdown_label: 'Time until close',
+    main_round_theme_reveal_countdown_label: 'Time until theme reveal',
+    countdown_unit_day: 'd',
+    countdown_unit_hour: 'h',
+    countdown_unit_minute: 'm',
+    countdown_unit_second: 's',
+    main_round_video_url_err_empty: 'Please enter a video URL.',
+    main_round_video_url_err_unknown: 'Unsupported platform.',
+    main_round_video_url_err_not_allowed: 'This platform is not allowed for this season.',
+    main_round_submit_btn: 'Submit',
+    main_round_submitting: 'Submitting…',
+    main_round_modal_confirm: 'Submit',
+    main_round_modal_cancel: 'Cancel',
+    status_main_round_submitted_msg: 'Your main-round video has been submitted. Awaiting results.',
+    status_flagged_msg: 'Your application is under review by the operations team.',
+    apply_err_missing_field: 'A required field is missing.',
+    apply_err_agreements_required: 'All three agreements are required.',
+    apply_err_statement_length: 'Creator statement must be 150–250 characters.',
+    apply_err_duration_range: (min, max) =>
+      `Video duration must be between ${min} and ${max} seconds.`,
+    apply_err_season_not_found: 'Season configuration not found. Please try again later.',
+    apply_err_season_closed: 'Applications for this season are closed.',
+    apply_err_duplicate_email: 'This email has already submitted an application.',
+    apply_err_server_error: 'Submission failed. Please try again later.',
+    main_round_err_invalid_token: 'Your session has expired. Please sign in again.',
+    main_round_err_not_found: 'Application not found.',
+    main_round_err_not_owner: 'You can only submit on your own application.',
+    main_round_err_season_not_found: 'Season configuration not found. Please try again later.',
+    main_round_err_not_selected: 'Only selected creators can submit a main-round video.',
+    main_round_err_season_dates_not_set: 'The season schedule isn’t set yet.',
+    main_round_err_before_start: 'The main round hasn’t started yet.',
+    main_round_err_after_close: 'The main round has closed.',
+    main_round_err_video_url_required: 'Please enter a video URL.',
+    main_round_err_video_url_invalid: 'Unsupported platform.',
+    main_round_err_video_url_not_allowed: 'This platform is not allowed for this season.',
+    main_round_err_race_or_already_submitted: 'Your main-round video has already been submitted.',
+    main_round_err_save_failed: 'Submission failed. Please try again later.',
+  },
+  main_results: {
+    back_to_season: 'Back to season',
+    page_title: 'Main Round Results',
+    subtitle:
+      'Finalists are ranked automatically by AI final score. Review and approve the Top 3 awards, or override on integrity or system-error grounds.',
+    weights_label: (ai, community) => `AI ${ai}% / Community ${community}%`,
+    soak_note: 'Soak mode - final score = AI score (community weight 0)',
+    theme_label: 'Common theme',
+    empty:
+      'No main-round submissions yet. Results appear here once oxxovo-scoring scores them.',
+    approve_btn: 'Approve Top 3 Awards',
+    approve_hint:
+      'Sets award rank 1/2/3 for the top three by final score and fires the prize-payout request emails.',
+    approve_confirm_message:
+      'Approve the Top 3 by final score as award winners 1/2/3? This sets their award rank and sends the prize-payout request emails.',
+    approve_confirm_btn: 'Approve',
+    approve_cancel_btn: 'Cancel',
+    approve_err_season_not_found: 'Season not found.',
+    approve_err_no_scored: 'No scored main-round submissions yet.',
+    approve_err_update_failed: 'Failed to set award ranks. Please try again.',
+    col_rank: 'Rank',
+    col_creator: 'Creator',
+    col_final: 'Final',
+    col_grade: 'Grade',
+    col_award: 'Award',
+    col_actions: 'Actions',
+    col_video: 'Video',
+    no_video: 'No video',
+    final_pending: 'Pending',
+    award_badge: (rank) => `#${rank} Award`,
+    override_btn: 'Override',
+    override_note:
+      'Manually adjust the award rank on integrity, plagiarism, or system-error grounds. The reason is recorded for audit.',
+    override_prev: (reason) => `Previous reason: ${reason}`,
+    override_rank_label: 'Award rank',
+    override_rank_ph: 'e.g. 1',
+    override_reason_ph:
+      'Reason for override (required) - e.g. plagiarism confirmed, scoring system error',
+    override_save_btn: 'Save override',
+    override_cancel_btn: 'Cancel',
+    override_err_required: 'An override reason is required.',
+    override_err_rank: 'Award rank must be 1-99, or leave blank to clear.',
   },
 }
 
@@ -985,6 +1246,7 @@ const MESSAGES_KO: Messages = {
     season_select_label: '시즌',
     segment_all: '전체',
     segment_pending: '대기',
+    segment_flagged: '검토 필요',
     segment_top50: 'Top 50',
     segment_waitlist: '대기자',
     segment_awarded: '시상자',
@@ -1005,8 +1267,33 @@ const MESSAGES_KO: Messages = {
     col_ai_service: 'AI 서비스',
     col_submitted: '신청 시간',
     col_score: '점수',
+    col_grade: '등급',
+    col_integrity: '진정성',
     empty: '현재 필터에 해당하는 지원자가 없습니다.',
     score_pending: '—',
+    recommendations_title: (n) => `본선 진출 추천 (Top ${n})`,
+    recommendations_subtitle: 'verified_score 기준 자동 추천 결과입니다. 검토 후 적용해 주세요.',
+    recommendations_empty: '채점이 아직 완료되지 않았습니다. 채점 완료 후 추천 결과가 표시됩니다.',
+    recommendations_recommended_at: (date) => `추천 생성 시각: ${date}`,
+    recommendations_col_rank: '순위',
+    recommendations_col_score: '점수',
+    recommendations_apply_btn: '추천 적용',
+    recommendations_apply_confirm_message: (n) =>
+      `Top ${n}을 'selected'로, 나머지를 'rejected'로 일괄 변경하고 자동 이메일을 발송합니다. 진행하시겠어요?`,
+    recommendations_apply_confirm_btn: '적용',
+    recommendations_apply_cancel_btn: '취소',
+    recommendations_applied_at: (date, admin) => `적용 시각: ${date} (${admin})`,
+    recommendations_applied_status: '적용 완료',
+    recommendations_flagged_section_title: '검토 대기 신청 (자동 추천 제외)',
+    recommendations_flagged_section_note:
+      '다음 신청은 무결성 우려로 자동 추천에서 제외되었습니다. 운영진 검토 후 상태 변경이 필요합니다.',
+    recommendations_total_label: (n) => `총 ${n}건 추천됨`,
+    apply_rec_err_unauthorized: '관리자 인증이 필요합니다.',
+    apply_rec_err_season_not_found: '시즌을 찾을 수 없습니다.',
+    apply_rec_err_no_recommendations: '적용할 추천 결과가 없습니다.',
+    apply_rec_err_race_or_already_applied:
+      '이미 적용되었거나 다른 관리자가 동시에 적용 중입니다.',
+    apply_rec_err_update_failed: '적용 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.',
   },
   application_detail: {
     back: '← 지원자 관리',
@@ -1015,6 +1302,7 @@ const MESSAGES_KO: Messages = {
     section_video: '영상',
     section_actions: '관리자 작업',
     section_scoring: '채점 결과',
+    section_integrity_review: '진정성 검토',
     label_name: '이름',
     label_email: '이메일',
     label_country: '국가',
@@ -1039,6 +1327,25 @@ const MESSAGES_KO: Messages = {
     save_status: '상태 저장',
     save_award: '시상 저장',
     scoring_placeholder: 'Triple-AI 채점 결과는 3차 통합 후 표시됩니다.',
+    scoring_no_data: '아직 채점되지 않았습니다. oxxovo-scoring 시스템이 자동으로 처리합니다.',
+    scoring_in_progress: 'Triple-AI 채점 진행 중…',
+    scoring_failed: '채점 실패 — 오류는 아래 참조.',
+    scoring_verified_score: 'OXXOVO 검증 점수',
+    scoring_grade: '등급',
+    scoring_subscores: '세부 점수 (Consensus)',
+    scoring_intent: '의도 (25%)',
+    scoring_execution: '실행 (45%)',
+    scoring_originality: '독창성 (20%)',
+    scoring_integrity_weight: '진정성 (10%)',
+    scoring_judged_at: (date) => `채점 완료: ${date}`,
+    scoring_cost: (usd) => `비용: ${usd}`,
+    integrity_confidence_label: '신뢰도',
+    integrity_score_label: 'Claude Integrity 점수',
+    integrity_explanation_label: 'AI 사유',
+    integrity_recommendation_label: 'AI 추천',
+    integrity_high_warning: '명백한 의심 — 진행 전 관리자 검토가 필요합니다.',
+    ai_outputs_toggle: 'AI 원본 출력 보기',
+    ai_outputs_hide: 'AI 원본 출력 접기',
   },
   video: {
     embed_failed: '이 영상은 임베드할 수 없습니다.',
@@ -1172,6 +1479,91 @@ const MESSAGES_KO: Messages = {
     celebration_prize_label: '상금',
     celebration_founding_creator: '파운딩 크리에이터',
     celebration_season_label: (n, name) => `시즌 ${n} — ${name}`,
+    main_round_section_title: '본선 영상 제출',
+    main_round_theme_label: '본선 테마',
+    main_round_allowed_platforms_label: '허용 플랫폼',
+    main_round_video_url_label: '영상 URL',
+    main_round_video_url_placeholder: 'YouTube, Vimeo 등 영상 링크',
+    main_round_submitted_video_label: '제출한 본선 영상',
+    main_round_submitted_at_label: '제출 시각',
+    main_round_close_countdown_label: '본선 마감까지',
+    main_round_theme_reveal_countdown_label: '테마 공개까지',
+    countdown_unit_day: '일',
+    countdown_unit_hour: '시간',
+    countdown_unit_minute: '분',
+    countdown_unit_second: '초',
+    main_round_video_url_err_empty: '영상 URL을 입력해주세요.',
+    main_round_video_url_err_unknown: '지원하지 않는 플랫폼입니다.',
+    main_round_video_url_err_not_allowed: '이 시즌에 허용된 플랫폼이 아닙니다.',
+    main_round_submit_btn: '제출하기',
+    main_round_submitting: '제출 중…',
+    main_round_modal_confirm: '제출',
+    main_round_modal_cancel: '취소',
+    status_main_round_submitted_msg: '본선 영상을 제출하셨습니다. 결과 발표를 기다려주세요.',
+    status_flagged_msg: '신청에 대한 운영진 검토가 진행 중입니다.',
+    apply_err_missing_field: '필수 항목이 누락되었습니다.',
+    apply_err_agreements_required: '세 가지 동의 사항에 모두 동의해 주셔야 합니다.',
+    apply_err_statement_length: 'Creator Statement는 150~250자 사이여야 합니다.',
+    apply_err_duration_range: (min, max) =>
+      `영상 길이는 ${min}~${max}초 사이여야 합니다.`,
+    apply_err_season_not_found: '시즌 설정을 찾을 수 없습니다. 잠시 후 다시 시도해주세요.',
+    apply_err_season_closed: '이번 시즌 신청이 마감되었습니다.',
+    apply_err_duplicate_email: '이 이메일로 이미 신청서가 제출되었습니다.',
+    apply_err_server_error: '신청 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.',
+    main_round_err_invalid_token: '세션이 만료되었습니다. 다시 로그인해 주세요.',
+    main_round_err_not_found: '신청을 찾을 수 없습니다.',
+    main_round_err_not_owner: '본인의 신청만 제출할 수 있습니다.',
+    main_round_err_season_not_found: '시즌 설정을 찾을 수 없습니다. 잠시 후 다시 시도해 주세요.',
+    main_round_err_not_selected: '본선 진출자만 영상을 제출할 수 있습니다.',
+    main_round_err_season_dates_not_set: '시즌 일정이 아직 확정되지 않았습니다.',
+    main_round_err_before_start: '본선이 아직 시작되지 않았습니다.',
+    main_round_err_after_close: '본선 접수가 마감되었습니다.',
+    main_round_err_video_url_required: '영상 URL을 입력해 주세요.',
+    main_round_err_video_url_invalid: '지원하지 않는 플랫폼입니다.',
+    main_round_err_video_url_not_allowed: '이 시즌에 허용된 플랫폼이 아닙니다.',
+    main_round_err_race_or_already_submitted: '이미 본선 영상을 제출하셨습니다.',
+    main_round_err_save_failed: '제출 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  },
+  main_results: {
+    back_to_season: '시즌으로 돌아가기',
+    page_title: '본선 결과',
+    subtitle:
+      '본선 진출자는 AI 최종 점수로 자동 랭킹됩니다. 상위 3 수상을 검토 후 승인하거나, 부정·시스템 오류 시 override 하세요.',
+    weights_label: (ai, community) => `AI ${ai}% / 커뮤니티 ${community}%`,
+    soak_note: 'Soak 모드 - 최종 점수 = AI 점수 (커뮤니티 가중 0)',
+    theme_label: '공통 주제',
+    empty: '아직 본선 제출이 없습니다. oxxovo-scoring 채점 후 여기에 표시됩니다.',
+    approve_btn: '상위 3 수상 승인',
+    approve_hint:
+      '최종 점수 상위 3명에게 수상 순위 1/2/3을 부여하고 상금 지급 요청 이메일을 발송합니다.',
+    approve_confirm_message:
+      '최종 점수 상위 3명을 수상자 1/2/3위로 승인할까요? 수상 순위가 설정되고 상금 지급 요청 이메일이 발송됩니다.',
+    approve_confirm_btn: '승인',
+    approve_cancel_btn: '취소',
+    approve_err_season_not_found: '시즌을 찾을 수 없습니다.',
+    approve_err_no_scored: '아직 채점된 본선 제출이 없습니다.',
+    approve_err_update_failed: '수상 순위 설정에 실패했습니다. 다시 시도해 주세요.',
+    col_rank: '순위',
+    col_creator: '크리에이터',
+    col_final: '최종',
+    col_grade: '등급',
+    col_award: '수상',
+    col_actions: '관리',
+    col_video: '영상',
+    no_video: '영상 없음',
+    final_pending: '대기',
+    award_badge: (rank) => `${rank}위 수상`,
+    override_btn: '수동 조정',
+    override_note:
+      '부정·표절·시스템 오류 시 수상 순위를 수동 조정합니다. 사유는 audit용으로 기록됩니다.',
+    override_prev: (reason) => `이전 사유: ${reason}`,
+    override_rank_label: '수상 순위',
+    override_rank_ph: '예: 1',
+    override_reason_ph: 'override 사유 (필수) - 예: 표절 확인, 채점 시스템 오류',
+    override_save_btn: '저장',
+    override_cancel_btn: '취소',
+    override_err_required: 'override 사유는 필수입니다.',
+    override_err_rank: '수상 순위는 1-99, 또는 비워서 해제하세요.',
   },
 }
 

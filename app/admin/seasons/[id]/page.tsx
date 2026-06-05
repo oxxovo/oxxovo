@@ -66,6 +66,7 @@ export default async function SeasonEditPage({
   return (
     <div className="p-8 max-w-4xl">
       <EditSeasonHeader
+        id={id}
         name={season.name}
         seasonNumber={season.season_number}
         updatedAt={season.updated_at}

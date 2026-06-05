@@ -35,11 +35,11 @@ function Korean(p: NotSelectedProps) {
       <Text style={paragraph}>
         Triple-AI 채점이 마무리되었습니다. 안타깝게도 이번{' '}
         <strong>{p.seasonName}</strong>에서는 본선 진출자로 선정되지
-        못하셨다는 결과를 전해드립니다.
+        못하셨습니다.
       </Text>
       <Text style={paragraph}>
         시간을 들여 영상을 만들어 제출해주신 점, 진심으로 감사드립니다. OXXOVO
-        프로필에 본인 채점 결과가 게시되어 있으니 참고하실 수 있습니다.
+        프로필에서 본인 채점 결과를 확인하실 수 있습니다.
       </Text>
       <Text style={muted}>
         {RESULT_INTEGRITY_NOTE_KO} 다음 시즌도 동일한 기준으로 열립니다.
