@@ -80,8 +80,29 @@ export type Season = {
   main_round_end_at: string | null
   awards_announcement_at: string | null
 
+  // Member Hosted Tournament (partner) fields.
+  host_type: 'official' | 'partner'
+  host_user_id: string | null
+  prize_pool_escrow_status: 'not_required' | 'pending' | 'paid' | 'refunded'
+  prize_pool_escrow_paid_at: string | null
+  commission_rate_override: number | null
+
   created_at: string
   updated_at: string
+}
+
+// Public-visibility gate. A partner-hosted season is hidden from the public
+// until its prize pool escrow is 'paid' (beta policy); official seasons use
+// 'not_required' and so are gated only by their draft status. Draft seasons of
+// any kind are never public. Apply this anywhere seasons are listed publicly.
+export function isSeasonPubliclyVisible(
+  season: Pick<Season, 'status' | 'host_type' | 'prize_pool_escrow_status'>,
+): boolean {
+  if (season.status === 'draft') return false
+  if (season.host_type === 'partner') {
+    return season.prize_pool_escrow_status === 'paid'
+  }
+  return true
 }
 
 const CURRENT_SEASON_ID =
