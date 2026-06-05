@@ -83,6 +83,7 @@ type Messages = {
       applications: string
       contacts: string
       winners: string
+      partners: string
       emails: string
     }
   }
@@ -445,6 +446,7 @@ const MESSAGES_EN: Messages = {
       applications: 'Applications',
       contacts: 'Winner contacts',
       winners: 'Winners',
+      partners: 'Partners',
       emails: 'Emails',
     },
   },
@@ -818,6 +820,7 @@ const MESSAGES_KO: Messages = {
       applications: '지원자 관리',
       contacts: '시상자 연락처',
       winners: '수상자 관리',
+      partners: '파트너',
       emails: '이메일',
     },
   },
