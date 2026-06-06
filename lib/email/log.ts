@@ -7,6 +7,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import type { EmailLang } from './lang'
 
 export type TemplateKey =
+  | 'pre_registered'
   | 'application_received'
   | 'waitlisted'
   | 'selected_top50'

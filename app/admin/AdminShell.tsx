@@ -6,12 +6,20 @@ import { useT, useAdminLang, setAdminLang } from '@/lib/admin-i18n'
 import { LogoutButton } from './LogoutButton'
 import { type AdminProfile } from '@/lib/admin-auth'
 
-type NavItemKey = 'dashboard' | 'seasons' | 'applications' | 'contacts' | 'winners' | 'emails'
+type NavItemKey =
+  | 'dashboard'
+  | 'seasons'
+  | 'applications'
+  | 'pre_registrations'
+  | 'contacts'
+  | 'winners'
+  | 'emails'
 
 const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean }> = [
   { href: '/admin', key: 'dashboard', emoji: '🏠' },
   { href: '/admin/seasons', key: 'seasons', emoji: '🏗️' },
   { href: '/admin/applications', key: 'applications', emoji: '📹' },
+  { href: '/admin/pre-registrations', key: 'pre_registrations', emoji: '📨' },
   { href: '/admin/contacts', key: 'contacts', emoji: '📇' },
   { href: '/admin/winners', key: 'winners', emoji: '🏆', soon: true },
   { href: '/admin/emails', key: 'emails', emoji: '📧' },

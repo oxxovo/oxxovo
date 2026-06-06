@@ -81,6 +81,7 @@ type Messages = {
       dashboard: string
       seasons: string
       applications: string
+      pre_registrations: string
       contacts: string
       winners: string
       emails: string
@@ -325,6 +326,23 @@ type Messages = {
     empty: string
     not_filled: string
   }
+  pre_reg: {
+    title: string
+    subtitle: string
+    season_select_label: string
+    search_placeholder: string
+    count_label: (n: number) => string
+    csv_export: string
+    col_email: string
+    col_season: string
+    col_utm_source: string
+    col_utm_medium: string
+    col_utm_campaign: string
+    col_referrer: string
+    col_status: string
+    col_created_at: string
+    empty: string
+  }
   emails: {
     title: string
     subtitle: string
@@ -336,6 +354,7 @@ type Messages = {
     template_all: string
     status_all: string
     language_all: string
+    template_pre_registered: string
     template_application_received: string
     template_waitlisted: string
     template_selected_top50: string
@@ -443,6 +462,7 @@ const MESSAGES_EN: Messages = {
       dashboard: 'Dashboard',
       seasons: 'Seasons',
       applications: 'Applications',
+      pre_registrations: 'Pre-registrations',
       contacts: 'Winner contacts',
       winners: 'Winners',
       emails: 'Emails',
@@ -691,6 +711,23 @@ const MESSAGES_EN: Messages = {
     empty: 'No winners yet.',
     not_filled: '—',
   },
+  pre_reg: {
+    title: 'Pre-registrations',
+    subtitle: 'Emails captured on /pre-register, with UTM attribution.',
+    season_select_label: 'Season',
+    search_placeholder: 'Search email, UTM…',
+    count_label: (n) => `${n} result${n === 1 ? '' : 's'}`,
+    csv_export: 'Export CSV',
+    col_email: 'Email',
+    col_season: 'Season',
+    col_utm_source: 'Source',
+    col_utm_medium: 'Medium',
+    col_utm_campaign: 'Campaign',
+    col_referrer: 'Referrer',
+    col_status: 'Status',
+    col_created_at: 'Registered at',
+    empty: 'No pre-registrations match the current filter.',
+  },
   emails: {
     title: 'Emails',
     subtitle:
@@ -703,6 +740,7 @@ const MESSAGES_EN: Messages = {
     template_all: 'All templates',
     status_all: 'All statuses',
     language_all: 'All languages',
+    template_pre_registered: 'Pre-registered',
     template_application_received: 'Application received',
     template_waitlisted: 'Waitlisted',
     template_selected_top50: 'Selected (Top 50)',
@@ -816,6 +854,7 @@ const MESSAGES_KO: Messages = {
       dashboard: '대시보드',
       seasons: '시즌 관리',
       applications: '지원자 관리',
+      pre_registrations: '사전 등록',
       contacts: '시상자 연락처',
       winners: '수상자 관리',
       emails: '이메일',
@@ -1064,6 +1103,23 @@ const MESSAGES_KO: Messages = {
     empty: '아직 시상자가 없습니다.',
     not_filled: '—',
   },
+  pre_reg: {
+    title: '사전 등록',
+    subtitle: '/pre-register에서 수집된 이메일과 UTM 유입 정보.',
+    season_select_label: '시즌',
+    search_placeholder: '이메일, UTM 검색…',
+    count_label: (n) => `${n}건`,
+    csv_export: 'CSV 내보내기',
+    col_email: '이메일',
+    col_season: '시즌',
+    col_utm_source: '소스',
+    col_utm_medium: '매체',
+    col_utm_campaign: '캠페인',
+    col_referrer: '리퍼러',
+    col_status: '상태',
+    col_created_at: '등록 시간',
+    empty: '현재 필터에 해당하는 사전 등록이 없습니다.',
+  },
   emails: {
     title: '이메일',
     subtitle:
@@ -1076,6 +1132,7 @@ const MESSAGES_KO: Messages = {
     template_all: '모든 템플릿',
     status_all: '모든 상태',
     language_all: '모든 언어',
+    template_pre_registered: '사전 등록',
     template_application_received: '신청 접수',
     template_waitlisted: '대기자 등록',
     template_selected_top50: '본선 진출 (Top 50)',
