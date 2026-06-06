@@ -80,8 +80,61 @@ export type Season = {
   main_round_end_at: string | null
   awards_announcement_at: string | null
 
+  // Public theme, shown openly. The secret main_round_twist (and its legacy
+  // main_round_theme fallback) are intentionally NOT on this type: they live
+  // only on the base table and never travel through getSeasonById, which reads
+  // the secret-free seasons_public view. See getThemeDisplay / lib/seasons-theme.
+  season_theme: string | null
+
   created_at: string
   updated_at: string
+}
+
+// Source shape for the theme-display helper. main_round_twist / main_round_theme
+// are optional because the public Season object (from the view) never carries
+// them — only a server-side read of the base table provides them.
+export type ThemeSource = {
+  season_theme?: string | null
+  main_round_twist?: string | null
+  main_round_theme?: string | null
+  main_round_start_at: string | null
+  theme_announcement_minutes_before: number
+}
+
+export type ThemeDisplay = {
+  theme: string | null
+  // null until the twist is revealed (or when no secret was provided, e.g. on
+  // the client). Never expose a non-null twist before isTwistRevealed() is true.
+  twist: string | null
+  revealed: boolean
+}
+
+// The twist becomes public at main_round_start_at minus
+// theme_announcement_minutes_before. Reuses the existing announcement lead
+// time — no separate reveal column.
+export function isTwistRevealed(
+  s: Pick<ThemeSource, 'main_round_start_at' | 'theme_announcement_minutes_before'>,
+  now: Date = new Date(),
+): boolean {
+  if (!s.main_round_start_at) return false
+  const startMs = new Date(s.main_round_start_at).getTime()
+  const revealMs = startMs - s.theme_announcement_minutes_before * 60_000
+  return now.getTime() >= revealMs
+}
+
+// Single source of truth for how theme + twist render. theme (season_theme) is
+// always shown; twist (main_round_twist, falling back to the deprecated
+// main_round_theme) is shown ONLY once revealed. Pure and side-effect free, so
+// it is safe to call on the client — but it can only ever reveal a twist that
+// the caller already holds, and the client never holds one.
+export function getThemeDisplay(s: ThemeSource, now: Date = new Date()): ThemeDisplay {
+  const revealed = isTwistRevealed(s, now)
+  const twistRaw = s.main_round_twist ?? s.main_round_theme ?? null
+  return {
+    theme: s.season_theme ?? null,
+    twist: revealed ? twistRaw : null,
+    revealed,
+  }
 }
 
 const CURRENT_SEASON_ID =
@@ -92,8 +145,13 @@ export function getCurrentSeasonId(): string {
 }
 
 export async function getSeasonById(id: string): Promise<Season | null> {
+  // Reads the seasons_public VIEW, not the base table. The view excludes the
+  // secret theme columns (main_round_twist, main_round_theme), so nothing
+  // fetched through this (browser-reachable) path can ever carry the twist
+  // before reveal. Server code that genuinely needs the secret reads the base
+  // table via the service role — see lib/seasons-theme.getRevealedTheme.
   const { data, error } = await supabase
-    .from('seasons')
+    .from('seasons_public')
     .select('*')
     .eq('id', id)
     .single()
