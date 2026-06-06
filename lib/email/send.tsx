@@ -16,6 +16,11 @@ import type { RankAward } from '@/lib/seasons'
 import { detectEmailLang, type EmailLang } from './lang'
 import { logEmail, alreadySent, type TemplateKey } from './log'
 import {
+  PreRegistered,
+  subjectFor as preRegisteredSubject,
+  type PreRegisteredProps,
+} from './templates/PreRegistered'
+import {
   ApplicationReceived,
   subjectFor as applicationReceivedSubject,
   type ApplicationReceivedProps,
@@ -154,6 +159,38 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
 }
 
 // ─── per-template senders ─────────────────────────────────────────────────
+
+type SendPreRegisteredInput = {
+  toEmail: string
+  // Country drives ko/en. Pre-registration has no country field yet, so
+  // callers pass null and the email defaults to English.
+  country: string | null | undefined
+  seasonName: string
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+// Pre-registration confirmation. Not application-scoped (no applicationId), so
+// executeSend's per-application dedup does not run — the caller (pre-register
+// route) only fires this on the FIRST insert, never on a duplicate re-submit,
+// so a given address receives at most one confirmation.
+export async function sendPreRegistered(
+  input: SendPreRegisteredInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: PreRegisteredProps = {
+    lang,
+    seasonName: input.seasonName,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'pre_registered',
+    language: lang,
+    subject: preRegisteredSubject(props),
+    element: <PreRegistered {...props} />,
+    seasonId: input.seasonId,
+  })
+}
 
 type SendApplicationReceivedInput = {
   toEmail: string

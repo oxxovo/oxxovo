@@ -33,6 +33,7 @@ type Stats = {
 }
 
 const TEMPLATE_KEYS = [
+  'pre_registered',
   'application_received',
   'waitlisted',
   'selected_top50',
@@ -79,6 +80,8 @@ export function EmailsView({
   const templateLabel = (key: string): string => {
     const k = key as (typeof TEMPLATE_KEYS)[number]
     switch (k) {
+      case 'pre_registered':
+        return t.emails.template_pre_registered
       case 'application_received':
         return t.emails.template_application_received
       case 'waitlisted':
