@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { PreRegistrationsView, type PreRegRow } from './PreRegistrationsView'
 import { type Season } from '@/lib/seasons'
 
@@ -12,7 +13,8 @@ export default async function PreRegistrationsPage({
   const { season: seasonParam } = await searchParams
   const supabase = await createSupabaseServer()
 
-  // All seasons for the dropdown.
+  // All seasons for the dropdown (not PII — read through the user-context
+  // client like the rest of the admin console).
   const { data: seasonsData } = await supabase
     .from('seasons')
     .select('id, name, season_number, status')
@@ -25,7 +27,13 @@ export default async function PreRegistrationsPage({
 
   const seasonScope = seasonParam || 'all'
 
-  let query = supabase
+  // pre_registrations holds personal data (email + attribution). Read it
+  // through the service-role client so we can REVOKE every anon/authenticated
+  // privilege on the table at the DB layer (defense-in-depth): the table
+  // becomes reachable only by the service role, with RLS still enabled as a
+  // backstop. requireAdmin() above is what gates access to this page.
+  const admin = createSupabaseAdmin()
+  let query = admin
     .from('pre_registrations')
     .select('id, email, utm_source, utm_medium, utm_campaign, referrer, season_id, status, created_at')
     .order('created_at', { ascending: false })
