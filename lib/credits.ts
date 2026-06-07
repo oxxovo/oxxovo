@@ -66,6 +66,74 @@ export function creditsForCost(costUsd: number, pricing: StudioPricing): number 
   return Math.ceil((costUsd * (1 + pricing.marginRate)) / pricing.creditUsdValue)
 }
 
+// --- Stripe top-up (purchase) --------------------------------------------
+
+export interface StudioPurchaseConfig {
+  enabled: boolean
+  packUsd: number[] // offered USD amounts
+  creditUsdValue: number
+}
+
+// Buy-flow config: gate + offered USD packs + credit conversion. All dynamic
+// (platform_config) -- no hardcoded packs.
+export async function getStudioPurchaseConfig(): Promise<StudioPurchaseConfig> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('platform_config')
+    .select('key, value')
+    .in('key', ['studio_purchase_enabled', 'studio_credit_pack_usd', 'studio_credit_usd_value'])
+  if (error) throw new Error('getStudioPurchaseConfig: ' + error.message)
+  const map = new Map<string, string>()
+  for (const r of data ?? []) map.set(r.key as string, r.value as string)
+  const packUsd = (map.get('studio_credit_pack_usd') ?? '')
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0)
+  const cuv = Number(map.get('studio_credit_usd_value'))
+  return {
+    enabled: String(map.get('studio_purchase_enabled')).toLowerCase() === 'true',
+    packUsd,
+    creditUsdValue: Number.isFinite(cuv) && cuv > 0 ? cuv : 0.1,
+  }
+}
+
+// Credits a USD amount buys (whole credits).
+export function creditsForUsd(usd: number, creditUsdValue: number): number {
+  return Math.floor(usd / creditUsdValue)
+}
+
+// Idempotent purchase credit. Keyed by the Stripe session id (unique partial
+// index), so a webhook redelivery never double-credits.
+export async function grantPurchasedCredits(args: {
+  userId: string
+  usd: number
+  credits: number
+  stripeSessionId: string
+}): Promise<{ ok: boolean; duplicate?: boolean; errorMessage?: string }> {
+  const admin = createSupabaseAdmin()
+  // Pre-check (the unique index is the real guard).
+  const { data: existing } = await admin
+    .from('credit_transactions')
+    .select('id')
+    .eq('stripe_session_id', args.stripeSessionId)
+    .limit(1)
+  if (existing && existing.length > 0) return { ok: true, duplicate: true }
+
+  const { error } = await admin.from('credit_transactions').insert({
+    user_id: args.userId,
+    amount_credits: args.credits,
+    type: 'purchase',
+    stripe_session_id: args.stripeSessionId,
+    metadata: { usd: args.usd },
+  })
+  if (error) {
+    // Unique-violation = a concurrent webhook already inserted it.
+    if ((error as { code?: string }).code === '23505') return { ok: true, duplicate: true }
+    return { ok: false, errorMessage: error.message }
+  }
+  return { ok: true }
+}
+
 // --- mutations ------------------------------------------------------------
 
 export interface GrantResult {

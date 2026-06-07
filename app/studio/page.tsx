@@ -10,7 +10,9 @@ import {
   createGenerationAction,
   pollJobsAction,
   submitGenerationAction,
+  getPurchaseOptions,
   type StudioState,
+  type PurchaseOptions,
 } from './actions'
 import { type StudioJob, type ApplicantInfo } from '@/lib/studio'
 
@@ -267,6 +269,8 @@ export default function StudioPage() {
 
         <ThemeBanner t={t} state={state} />
         <StatusBar t={t} state={state} />
+        <BuyCredits token={token} />
+
 
         {!state.hasApplication && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
@@ -342,6 +346,72 @@ function StatusBar({ t, state }: { t: Dict; state: StudioState }) {
       </span>
       <span className="text-white/50">{t.used_label(state.generationsUsed, state.maxGenerations)}</span>
     </div>
+  )
+}
+
+function BuyCredits({ token }: { token: string }) {
+  const [opts, setOpts] = useState<PurchaseOptions | null>(null)
+  const [busy, setBusy] = useState<number | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getPurchaseOptions().then((o) => {
+      if (!cancelled) setOpts(o)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Hidden unless the buy flow is enabled (studio_purchase_enabled) with packs.
+  if (!opts || !opts.enabled || opts.packUsd.length === 0) return null
+
+  const buy = (usd: number) => {
+    setErr(null)
+    setBusy(usd)
+    fetch('/api/studio/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, usd }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.url) window.location.href = j.url
+        else {
+          setErr(j.error || 'error')
+          setBusy(null)
+        }
+      })
+      .catch(() => {
+        setErr('network')
+        setBusy(null)
+      })
+  }
+
+  return (
+    <section className="mt-6 rounded-xl border border-white/10 bg-white/[.02] p-5">
+      <h2 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold mb-3">
+        Buy credits <span className="ml-1 text-[9px] text-amber-300/80">test mode</span>
+      </h2>
+      <div className="flex flex-wrap gap-3">
+        {opts.packUsd.map((usd) => {
+          const credits = Math.floor(usd / opts.creditUsdValue)
+          return (
+            <button
+              key={usd}
+              type="button"
+              onClick={() => buy(usd)}
+              disabled={busy !== null}
+              className="rounded-lg border border-[#8b22ff]/40 px-4 py-2.5 text-sm font-bold text-[#b66cff] transition hover:bg-[#8b22ff]/10 disabled:opacity-40"
+            >
+              {busy === usd ? '…' : `$${usd} · ${credits} credits`}
+            </button>
+          )
+        })}
+      </div>
+      {err && <p className="mt-2 text-[11px] text-[#ff8888]">{err}</p>}
+    </section>
   )
 }
 

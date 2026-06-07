@@ -20,8 +20,18 @@ import {
   type StudioJob,
   type ApplicantInfo,
 } from '@/lib/studio'
-import { getBalance, getStudioPricing } from '@/lib/credits'
+import { getBalance, getStudioPricing, getStudioPurchaseConfig } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
+
+export type PurchaseOptions = { enabled: boolean; packUsd: number[]; creditUsdValue: number }
+
+// Credit top-up packs for the /studio buy section. Gated by both session6 and
+// the dedicated studio_purchase_enabled switch.
+export async function getPurchaseOptions(): Promise<PurchaseOptions> {
+  if (!(await isSession6Enabled())) return { enabled: false, packUsd: [], creditUsdValue: 0.1 }
+  const cfg = await getStudioPurchaseConfig()
+  return { enabled: cfg.enabled, packUsd: cfg.packUsd, creditUsdValue: cfg.creditUsdValue }
+}
 
 async function verifyToken(
   token: string,
