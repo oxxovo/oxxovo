@@ -33,9 +33,30 @@ export type StudioJob = {
   created_at: string
 }
 
+export type StudioRoundSetting = 'application' | 'main' | 'both'
+export type EffectiveRound = 'application' | 'main'
+
 export type SeasonStudioConfig = {
-  round: 'application' | 'main'
+  round: StudioRoundSetting
   maxGenerationsPerRound: number
+  mainRoundStartAt: string | null
+}
+
+// Server-authoritative round resolution. For a fixed-round season the setting IS
+// the effective round. For 'both', the schedule decides: before the main round
+// starts it is the application round; at/after main_round_start_at it is the
+// main round. The client never chooses.
+export function resolveEffectiveRound(
+  cfg: Pick<SeasonStudioConfig, 'round' | 'mainRoundStartAt'>,
+  now: Date = new Date(),
+): EffectiveRound {
+  if (cfg.round === 'application') return 'application'
+  if (cfg.round === 'main') return 'main'
+  // 'both'
+  if (cfg.mainRoundStartAt && now.getTime() >= new Date(cfg.mainRoundStartAt).getTime()) {
+    return 'main'
+  }
+  return 'application'
 }
 
 export async function getActiveModels(): Promise<StudioModel[]> {
@@ -53,26 +74,41 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round')
+    .select('studio_round, studio_max_generations_per_round, main_round_start_at')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
   return {
-    round: (data.studio_round as 'application' | 'main') ?? 'main',
+    round: (data.studio_round as StudioRoundSetting) ?? 'main',
     maxGenerationsPerRound: Number(data.studio_max_generations_per_round ?? 10),
+    mainRoundStartAt: (data.main_round_start_at as string | null) ?? null,
   }
 }
 
-// Per-participant generation count for a season (every enqueue counts toward the
-// per-round cap).
-export async function countGenerations(userId: string, seasonId: string): Promise<number> {
+// Per-participant generation count toward the per-round cap. For a 'both' season
+// the cap is per round, so generations are split by the schedule boundary
+// (created before main_round_start_at = application phase; at/after = main).
+// For a fixed-round season every generation counts toward that one round.
+export async function countGenerationsForRound(
+  userId: string,
+  seasonId: string,
+  cfg: SeasonStudioConfig,
+  effectiveRound: EffectiveRound,
+): Promise<number> {
   const admin = createSupabaseAdmin()
-  const { count, error } = await admin
+  let q = admin
     .from('generation_jobs')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('season_id', seasonId)
-  if (error) throw new Error('countGenerations: ' + error.message)
+
+  if (cfg.round === 'both' && cfg.mainRoundStartAt) {
+    if (effectiveRound === 'main') q = q.gte('created_at', cfg.mainRoundStartAt)
+    else q = q.lt('created_at', cfg.mainRoundStartAt)
+  }
+
+  const { count, error } = await q
+  if (error) throw new Error('countGenerationsForRound: ' + error.message)
   return count ?? 0
 }
 
@@ -119,9 +155,10 @@ export async function createGeneration(args: {
     return { ok: false, reason: 'bad_duration' }
   }
 
-  // 3. Per-round generation cap.
+  // 3. Per-round generation cap (round resolved server-side from the schedule).
   const cfg = await getSeasonStudioConfig(args.seasonId)
-  const used = await countGenerations(args.userId, args.seasonId)
+  const effectiveRound = resolveEffectiveRound(cfg)
+  const used = await countGenerationsForRound(args.userId, args.seasonId, cfg, effectiveRound)
   if (used >= cfg.maxGenerationsPerRound) return { ok: false, reason: 'cap_reached' }
 
   // 4. Price + balance.
@@ -217,14 +254,15 @@ export async function submitGeneration(args: {
   const v = verifyCryptoBind(job, args.seasonId)
   if (!v.ok) return { ok: false, reason: 'cryptobind_failed', detail: v.reason }
 
-  // 3. Studio round for this season.
+  // 3. Studio round for this season -- effective round resolved server-side.
   const cfg = await getSeasonStudioConfig(args.seasonId)
+  const effectiveRound = resolveEffectiveRound(cfg)
 
   // 4. Find the participant's application (by email, like the rest of the site).
   const email = args.email.toLowerCase()
   const { data: appRow, error: aErr } = await admin
     .from('genesis_applications')
-    .select('id, studio_generation_job_id, main_round_submitted_at')
+    .select('id, studio_application_submitted_at, main_round_submitted_at')
     .eq('season_id', args.seasonId)
     .ilike('email', email)
     .order('created_at', { ascending: false })
@@ -233,27 +271,26 @@ export async function submitGeneration(args: {
   if (aErr) return { ok: false, reason: 'failed', detail: aErr.message }
   if (!appRow) return { ok: false, reason: 'no_application' }
 
-  // 5. Immutability -- one studio submission per application, permanent.
-  if (appRow.studio_generation_job_id) return { ok: false, reason: 'already_submitted' }
-  if (cfg.round === 'main' && appRow.main_round_submitted_at) {
-    return { ok: false, reason: 'already_submitted' }
-  }
-
-  // 6. Write the submission (round-specific video column) + CryptoBind proof.
+  // 5. Immutability -- one studio submission PER ROUND, permanent.
   const now = new Date().toISOString()
-  const update: Record<string, unknown> = {
-    studio_generation_job_id: job.id,
-    studio_cryptobind_signature: job.cryptobind_signature,
-    studio_cryptobind_verified_at: now,
-  }
-  if (cfg.round === 'main') {
+  const update: Record<string, unknown> = {}
+  if (effectiveRound === 'main') {
+    if (appRow.main_round_submitted_at) return { ok: false, reason: 'already_submitted' }
     update.main_round_video_url = job.video_url
     update.main_round_submitted_at = now
+    update.studio_main_job_id = job.id
+    update.studio_main_signature = job.cryptobind_signature
   } else {
+    if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
     update.free_entry_url = job.video_url
     update.video_duration_seconds = job.duration_seconds
     update.ai_service = 'OXXOVO Studio'
+    update.studio_application_job_id = job.id
+    update.studio_application_signature = job.cryptobind_signature
+    update.studio_application_submitted_at = now
   }
+
+  // 6. Write the submission (status intentionally unchanged).
   const { error: upErr } = await admin
     .from('genesis_applications')
     .update(update)

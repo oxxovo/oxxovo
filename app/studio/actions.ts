@@ -11,7 +11,8 @@ import { getRevealedTheme } from '@/lib/seasons-theme'
 import {
   getActiveModels,
   getSeasonStudioConfig,
-  countGenerations,
+  resolveEffectiveRound,
+  countGenerationsForRound,
   listUserJobs,
   createGeneration,
   submitGeneration,
@@ -63,21 +64,25 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
     const season = await getCurrentSeason()
     if (!season) return { ok: false, error: 'no_season' }
 
-    const [cfg, models, balance, used, jobs, theme, pricing] = await Promise.all([
+    const [cfg, models, balance, jobs, theme, pricing] = await Promise.all([
       getSeasonStudioConfig(season.id),
       getActiveModels(),
       getBalance(auth.userId),
-      countGenerations(auth.userId, season.id),
       listUserJobs(auth.userId, season.id),
       getRevealedTheme(season.id),
       getStudioPricing(),
     ])
 
-    // Application presence + whether a studio submission already landed.
+    // The round is decided server-side from the schedule (client never chooses).
+    const effectiveRound = resolveEffectiveRound(cfg)
+    const used = await countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound)
+
+    // Application presence + whether a studio submission already landed for the
+    // current (effective) round.
     const admin = createSupabaseAdmin()
     const { data: appRow } = await admin
       .from('genesis_applications')
-      .select('id, studio_generation_job_id, main_round_submitted_at')
+      .select('id, studio_application_submitted_at, main_round_submitted_at')
       .eq('season_id', season.id)
       .ilike('email', auth.email)
       .order('created_at', { ascending: false })
@@ -86,8 +91,9 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
 
     const alreadySubmitted = !!(
       appRow &&
-      (appRow.studio_generation_job_id ||
-        (cfg.round === 'main' && appRow.main_round_submitted_at))
+      (effectiveRound === 'main'
+        ? appRow.main_round_submitted_at
+        : appRow.studio_application_submitted_at)
     )
 
     return {
@@ -98,7 +104,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
           id: season.id,
           displayName: season.display_name,
           seasonNumber: season.season_number,
-          round: cfg.round,
+          round: effectiveRound,
           theme: theme.theme,
           twist: theme.twist,
           twistRevealed: theme.revealed,
@@ -155,10 +161,12 @@ export async function pollJobsAction(token: string): Promise<PollResult> {
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
+  const cfg = await getSeasonStudioConfig(season.id)
+  const effectiveRound = resolveEffectiveRound(cfg)
   const [jobs, balance, used] = await Promise.all([
     listUserJobs(auth.userId, season.id),
     getBalance(auth.userId),
-    countGenerations(auth.userId, season.id),
+    countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound),
   ])
   return { ok: true, jobs, balance, generationsUsed: used }
 }

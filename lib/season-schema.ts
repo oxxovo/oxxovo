@@ -46,6 +46,11 @@ export const seasonSchema = z
     flag_integrity_threshold: z.coerce.number().min(0).max(100),
     flag_spread_threshold: z.coerce.number().min(0).max(100),
 
+    // Studio (Session 6). studio_round 'both' = generate via studio in BOTH
+    // rounds; the server resolves the effective round from the schedule.
+    studio_round: z.enum(['application', 'main', 'both']),
+    studio_max_generations_per_round: z.coerce.number().int().positive(),
+
     application_open_at: nullableTimestamp,
     application_close_at: nullableTimestamp,
     scoring_complete_at: nullableTimestamp,
@@ -128,6 +133,8 @@ export const DEFAULT_SEASON: SeasonInput = {
   ],
   flag_integrity_threshold: 50,
   flag_spread_threshold: 30,
+  studio_round: 'main',
+  studio_max_generations_per_round: 10,
   application_open_at: null,
   application_close_at: null,
   scoring_complete_at: null,

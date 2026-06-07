@@ -204,6 +204,13 @@ type Messages = {
     integrity_check: string
     add_ai_model: string
     remove_model_aria: string
+    group_studio: string
+    field_studio_round: string
+    field_studio_max_gen: string
+    studio_round_application: string
+    studio_round_main: string
+    studio_round_both: string
+    hint_studio_round: string
   }
   delete: {
     button: string
@@ -587,6 +594,13 @@ const MESSAGES_EN: Messages = {
     integrity_check: 'Integrity',
     add_ai_model: '+ Add AI model',
     remove_model_aria: 'Remove model',
+    group_studio: 'Studio (in-platform generation)',
+    field_studio_round: 'Studio round',
+    field_studio_max_gen: 'Max generations / participant / round',
+    studio_round_application: 'Application only',
+    studio_round_main: 'Main round only',
+    studio_round_both: 'Both (server resolves by schedule)',
+    hint_studio_round: 'For "Both", the round is decided by main round start time.',
   },
   delete: {
     button: 'Delete season',
@@ -980,6 +994,13 @@ const MESSAGES_KO: Messages = {
     integrity_check: '진정성',
     add_ai_model: '+ AI 모델 추가',
     remove_model_aria: '모델 삭제',
+    group_studio: 'Studio (인앱 생성)',
+    field_studio_round: 'Studio 라운드',
+    field_studio_max_gen: '1인당 라운드별 최대 생성 횟수',
+    studio_round_application: '예선만',
+    studio_round_main: '본선만',
+    studio_round_both: '둘 다 (서버가 일정으로 판정)',
+    hint_studio_round: '"둘 다"는 본선 시작 시각 기준으로 라운드가 결정됩니다.',
   },
   delete: {
     button: '시즌 삭제',

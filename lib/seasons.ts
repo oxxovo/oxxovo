@@ -73,6 +73,11 @@ export type Season = {
   flag_integrity_threshold: number
   flag_spread_threshold: number
 
+  // Studio (Session 6). Only read from the base table (service role) via
+  // lib/studio; the public seasons_public view does not need these.
+  studio_round: 'application' | 'main' | 'both'
+  studio_max_generations_per_round: number
+
   application_open_at: string | null
   application_close_at: string | null
   scoring_complete_at: string | null
