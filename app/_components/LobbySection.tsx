@@ -49,7 +49,7 @@ const MODE_BADGE: Record<LobbyMode, { label: string; cls: string } | null> = {
   ended: { label: 'ENDED', cls: 'bg-white/5 text-white/40 border-white/10' },
 }
 
-function LobbyCardView({ card }: { card: LobbyCard }) {
+export function LobbyCardView({ card }: { card: LobbyCard }) {
   const ended = card.mode === 'ended'
   const badge = MODE_BADGE[card.mode]
 
