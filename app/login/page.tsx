@@ -27,7 +27,9 @@ export default function LoginPage() {
         localStorage.setItem('oxxovo_token', data.access_token)
         localStorage.setItem('oxxovo_email', email)
       }
-      router.push('/')
+      // Honor ?redirect= (e.g. the /apply entry funnel) -- same-origin paths only.
+      const redirect = new URLSearchParams(window.location.search).get('redirect')
+      router.push(redirect && redirect.startsWith('/') ? redirect : '/')
     } else {
       setError(data.error || 'Login failed.')
     }
