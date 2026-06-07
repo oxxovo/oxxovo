@@ -27,7 +27,7 @@
 - **create-ahead:** 현재 시즌 개막 시 다음 주 시즌을 `draft`로 미리 생성 → 항상 1개 앞섬(코드네임/`main_round_theme` 설정 리드타임 1주), 월 00:00 PT에 `active` 자동 전이.
 - **멱등성:** `id = season_<n>` 결정적 PK로 중복 차단, `unique_violation`(23505)은 정상 skip, 상태 전이는 `.eq('status', old)` compare-and-swap.
 - **상태 전이 = 타임스탬프 기반(§10 결정):** enum `draft/active/closed/completed` 유지(미확장), forward-only(역행·admin 수동편집 비간섭). email-tick과 정합.
-- **Soak default = cron만(§10 결정):** 직전 시즌 복제 + `season_number>=4 → 0.3/0.7, <4 → 1.0/0.0`만 덮어씀. generated 컬럼 복제 제외. `DEFAULT_SEASON` 템플릿 미변경.
+- **vote weight default = platform_config(2026-06-07 정책 변경):** 옛 Soak 일정(`season_number>=4 → 0.7, <4 → 0`) **폐기**. 새 정책 = 시즌0만 0(시드 행 데이터값), 시즌1+ 전부 0.7. cron은 `platform_config.default_community_vote_weight`(0.70)를 읽어 모든 자동생성 시즌에 적용, `ai_score_weight = 1 - community` 파생. **per-시즌 분기 코드 0**(시즌0 특별처리 없음 — 0은 시드 행의 데이터값일 뿐). 마이그레이션: `reports/seasons_weight_policy_2026-06.sql`(TK 실행). `DEFAULT_SEASON` 템플릿 미변경.
 - **DST:** Luxon `America/Los_Angeles`. 앵커 +1주(in-zone)로 다음 개막 산출. UTC-7 하드코딩 없음.
 - **옥소보 원칙:** per-시즌 분기 0, 모든 차이는 복제된 seasons 행, 컬럼 ADD-only(신규 마이그레이션 없음).
 
@@ -35,7 +35,7 @@
 
 - ✅ `next build` 통과 (`/api/cron/season-tick` dynamic route 등록 확인), `.next` clean 후 재빌드
 - ✅ DST 경계: 가을(10/26 개막→11/1 PST 전환)·봄(3/2 개막→3/8 PDT 전환) 월력 시각 정확 유지, 멱등 앵커 체인 -7→-8 전환 정확
-- ✅ 빌더: generated 컬럼 제외 / season_1=Soak(1·0) / **season_4=production(0.3·0.7) 경계** / 복제 파라미터 유지 / 개막 8/10 07:00 UTC
+- ✅ 빌더: generated 컬럼 제외 / 모든 자동생성 시즌 community=0.7·ai=0.3(platform_config 주입, 분기 없음) / 복제 파라미터 유지 / 개막 8/10 07:00 UTC
 - ✅ lint: 신규 5개 파일 0 에러
 - ✅ 오늘(6/5) 시점 cron 실행 시 season_0 개막(8/3)이 미래라 생성·전이 모두 **no-op = 안전**
 

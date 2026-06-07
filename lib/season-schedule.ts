@@ -8,23 +8,15 @@ import type { Season } from './seasons'
 // [[feedback-vercel-cron-limits]] / [[project-weekly-season-system]].
 export const SEASON_ZONE = 'America/Los_Angeles'
 
-// The one-and-only place the "Soak" business rule lives in code. Seasons 0–3
-// run AI-only (community votes are collected but carry zero weight); season 4
-// onward switches to the production 30/70 split. The per-season weights are
-// still stored in the seasons table — this constant only decides what an
-// AUTO-CREATED season inherits at the single transition point. If this boundary
-// ever needs to move, prefer an ADD-only seasons column over editing this. See
-// [[project-final-score-design]] / [[feedback-no-hardcode]].
-export const PRODUCTION_MODE_START_SEASON = 4
-const SOAK_WEIGHTS = { ai_score_weight: 1, community_vote_weight: 0 }
-const PRODUCTION_WEIGHTS = { ai_score_weight: 0.3, community_vote_weight: 0.7 }
-
-export function soakWeightsForSeason(seasonNumber: number) {
-  return seasonNumber >= PRODUCTION_MODE_START_SEASON
-    ? { ...PRODUCTION_WEIGHTS }
-    : { ...SOAK_WEIGHTS }
-}
-
+// Every auto-created season inherits the SAME community-vote weight, read by the
+// cron from platform_config.default_community_vote_weight (0.7) and passed in
+// here — there is deliberately NO per-season branching. Only season_0, the
+// hand-seeded bootstrap row, carries a different weight (0), and that lives
+// purely as a data value on that one row; the cron never creates season_0, so it
+// never has to special-case it. ai_score_weight is derived as 1 - community so
+// the pair always sums to 1.0 (the seasonSchema invariant). If the policy ever
+// changes, edit the platform_config value, not this code. See
+// [[feedback-no-hardcode]] / [[project-final-score-design]].
 export type SeasonSchedule = {
   application_open_at: string
   application_close_at: string
@@ -129,16 +121,22 @@ export type NewSeasonRow = Record<string, unknown>
 // Build the INSERT payload for the season after `prev`: clone every operational
 // parameter (capacity, prizes, video specs, AI models, sub-weights, thresholds,
 // allowed platforms, ...), then override identity, status, schedule, and the
-// Soak-rule weights. The result is written by the cron with the admin client, so
-// it bypasses the admin-form Zod schema — `id` is set deterministically to
+// vote weights. `communityVoteWeight` is supplied by the caller from
+// platform_config (never hardcoded here); ai_score_weight is derived so the pair
+// sums to 1.0. The result is written by the cron with the admin client, so it
+// bypasses the admin-form Zod schema — `id` is set deterministically to
 // `season_<n>` to make creation idempotent via the primary key.
-export function buildNextSeasonRow(prev: Season): NewSeasonRow {
+export function buildNextSeasonRow(prev: Season, communityVoteWeight: number): NewSeasonRow {
+  if (!Number.isFinite(communityVoteWeight) || communityVoteWeight < 0 || communityVoteWeight > 1) {
+    throw new Error(`buildNextSeasonRow: invalid communityVoteWeight: ${communityVoteWeight}`)
+  }
   const seasonNumber = prev.season_number + 1
   const id = `season_${seasonNumber}`
 
   const openMonday = nextOpenMondayPT(prev.application_open_at ?? '')
   const schedule = computeSeasonSchedule(openMonday, prev.submission_hours)
-  const weights = soakWeightsForSeason(seasonNumber)
+  // Round to 4 decimals to avoid 1 - 0.7 = 0.30000000000000004 floating drift.
+  const ai_score_weight = Math.round((1 - communityVoteWeight) * 10000) / 10000
 
   const clone: Record<string, unknown> = { ...(prev as unknown as Record<string, unknown>) }
   for (const key of NON_CLONED_KEYS) delete clone[key]
@@ -155,7 +153,8 @@ export function buildNextSeasonRow(prev: Season): NewSeasonRow {
     display_name: `OXXOVO Season ${seasonNumber}`,
     // Theme is set per-season by an admin before the main round; never inherited.
     main_round_theme: null,
-    ...weights,
+    community_vote_weight: communityVoteWeight,
+    ai_score_weight,
     ...schedule,
   }
 }

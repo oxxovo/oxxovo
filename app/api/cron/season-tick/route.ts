@@ -122,7 +122,24 @@ async function handle(request: NextRequest) {
       skippedCreation = `${nextId} already exists`
     } else {
       try {
-        const row = buildNextSeasonRow(latest)
+        // The default community-vote weight for every auto-created season lives
+        // in platform_config, never hardcoded (mirrors lib/credits.ts). A throw
+        // here is caught below and reported; status transitions still run.
+        const { data: cfg, error: cfgErr } = await supabase
+          .from('platform_config')
+          .select('value')
+          .eq('key', 'default_community_vote_weight')
+          .single()
+        if (cfgErr) {
+          throw new Error(`read default_community_vote_weight failed: ${cfgErr.message}`)
+        }
+        const communityVoteWeight = Number(cfg?.value)
+        if (!Number.isFinite(communityVoteWeight)) {
+          throw new Error(
+            `platform_config.default_community_vote_weight missing/invalid: ${JSON.stringify(cfg?.value)}`,
+          )
+        }
+        const row = buildNextSeasonRow(latest, communityVoteWeight)
         // Set updated_at explicitly: the admin insert path always does, which
         // signals the column has no DB default. created_at is omitted (admin
         // omits it too, so it has a default).
