@@ -9,14 +9,15 @@
 --    submitGeneration (which writes free_entry_url = the R2 URL).
 --
 -- 2. model_catalog -- activate the 3 tiers (budget already seeded as ltx-video).
---    Adds a 'standard' (Veo 3 Fast class) and a 'premium' (Veo 3 class) model.
+--    standard = Veo 3.1 Fast, premium = Veo 3.1.
 --
---    *** VERIFY BEFORE PRODUCTION ***  cost_per_second_usd and the supported
---    duration range below are ESTIMATES. Confirm the exact fal model id, the
---    current per-second price, and the allowed durations against the live
---    fal.ai catalog, then adjust these rows (admin/SQL). The dev cost guard
---    (STUDIO_DEV_MODE=true) forces the cheapest model regardless, so these are
---    only exercised once dev mode is off.
+--    fal-verified 2026-06-07 (audio ON -- tournament videos default to audio):
+--      veo3.1-fast : fal-ai/veo3.1/fast  $0.15/s (audio off $0.10)  max 8s
+--      veo3.1      : fal-ai/veo3.1       $0.40/s (audio off $0.20)  max 8s
+--    Single-generation cap is 8s for both. NOTE: main-round videos require
+--    21-30s -- exceeds 8s; resolved separately (extend-chain or per-round length
+--    policy -- see studio session-6 memory). The dev cost guard
+--    (STUDIO_DEV_MODE=true) forces the cheapest model regardless.
 --
 -- ASCII-only. Idempotent.
 -- =========================================================================
@@ -33,10 +34,10 @@ INSERT INTO public.model_catalog
   (id, tier, provider, fal_model_id, display_name, cost_per_second_usd,
    min_duration_seconds, max_duration_seconds, active, sort_order)
 VALUES
-  ('veo3-fast', 'standard', 'fal', 'fal-ai/veo3/fast', 'Veo 3 Fast',
-   0.25, 4, 8, true, 1),
-  ('veo3', 'premium', 'fal', 'fal-ai/veo3', 'Veo 3',
-   0.50, 4, 8, true, 2)
+  ('veo3.1-fast', 'standard', 'fal', 'fal-ai/veo3.1/fast', 'Veo 3.1 Fast',
+   0.15, 4, 8, true, 1),
+  ('veo3.1', 'premium', 'fal', 'fal-ai/veo3.1', 'Veo 3.1',
+   0.40, 4, 8, true, 2)
 ON CONFLICT (id) DO NOTHING;
 
 COMMIT;
