@@ -21,6 +21,7 @@ import {
   type ApplicantInfo,
 } from '@/lib/studio'
 import { getBalance, getStudioPricing } from '@/lib/credits'
+import { isSession6Enabled } from '@/lib/session6'
 
 async function verifyToken(
   token: string,
@@ -55,9 +56,10 @@ export type StudioState = {
 
 export type LoadStudioResult =
   | { ok: true; data: StudioState }
-  | { ok: false; error: 'invalid_token' | 'no_season' | 'load_failed'; detail?: string }
+  | { ok: false; error: 'invalid_token' | 'no_season' | 'load_failed' | 'disabled'; detail?: string }
 
 export async function loadStudioState(token: string): Promise<LoadStudioResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
   const auth = await verifyToken(token)
   if (!auth) return { ok: false, error: 'invalid_token' }
 
@@ -129,7 +131,7 @@ export type CreateGenResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'cap_reached' | 'insufficient_credits' | 'failed'
+      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'cap_reached' | 'insufficient_credits' | 'disabled' | 'failed'
       detail?: string
     }
 
@@ -137,6 +139,7 @@ export async function createGenerationAction(
   token: string,
   input: { modelId: string; prompt: string; durationSeconds: number },
 ): Promise<CreateGenResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
   const auth = await verifyToken(token)
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
@@ -155,9 +158,10 @@ export async function createGenerationAction(
 
 export type PollResult =
   | { ok: true; jobs: StudioJob[]; balance: number; generationsUsed: number }
-  | { ok: false; error: 'invalid_token' | 'no_season' }
+  | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' }
 
 export async function pollJobsAction(token: string): Promise<PollResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
   const auth = await verifyToken(token)
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
@@ -189,6 +193,7 @@ export type SubmitGenResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'disabled'
         | 'failed'
       detail?: string
     }
@@ -198,6 +203,7 @@ export async function submitGenerationAction(
   jobId: string,
   applicant?: ApplicantInfo,
 ): Promise<SubmitGenResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
   const auth = await verifyToken(token)
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()

@@ -175,11 +175,12 @@ export default function ApplyPage() {
   }
 
   // Unauthenticated visitor -> intro + sign-in CTA (returns here after login).
+  // Studio messaging only when the studio funnel is active (session6 ON).
   if (!user) {
-    return <IntroScreen seasonName={season?.name ?? 'GENESIS'} />
+    return <IntroScreen seasonName={season?.name ?? 'GENESIS'} studio={studioApplication} />
   }
 
-  // Studio-based application round -> funnel into /studio (no external form).
+  // Studio-based application round (session6 ON) -> funnel into /studio.
   if (studioApplication) {
     return <FunnelScreen email={user.email} season={season} mode={mode} count={count} />
   }
@@ -534,7 +535,7 @@ function ApplyHeader({ email }: { email?: string }) {
 
 // Unauthenticated entry screen: a short intro + sign-in CTA. After sign-in the
 // user returns to /apply (now authenticated) and sees the studio funnel.
-function IntroScreen({ seasonName }: { seasonName: string }) {
+function IntroScreen({ seasonName, studio }: { seasonName: string; studio: boolean }) {
   return (
     <main className="min-h-screen bg-[#030305] text-white">
       <ApplyHeader />
@@ -545,9 +546,9 @@ function IntroScreen({ seasonName }: { seasonName: string }) {
         </p>
         <h1 className="text-4xl font-black mb-4">Apply to {seasonName}</h1>
         <p className="text-white/55 leading-relaxed mb-8">
-          This season you create and submit your entry inside OXXOVO Studio — no
-          external uploads. Sign in to get started; your first submission
-          registers your application.
+          {studio
+            ? 'This season you create and submit your entry inside OXXOVO Studio — no external uploads. Sign in to get started; your first submission registers your application.'
+            : 'Sign in to submit your application.'}
         </p>
         <a
           href="/login?redirect=/apply"
