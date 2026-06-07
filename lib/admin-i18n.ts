@@ -85,6 +85,7 @@ type Messages = {
       contacts: string
       winners: string
       emails: string
+      credits: string
     }
   }
   dashboard: {
@@ -466,6 +467,7 @@ const MESSAGES_EN: Messages = {
       contacts: 'Winner contacts',
       winners: 'Winners',
       emails: 'Emails',
+      credits: 'Credits',
     },
   },
   dashboard: {
@@ -858,6 +860,7 @@ const MESSAGES_KO: Messages = {
       contacts: '시상자 연락처',
       winners: '수상자 관리',
       emails: '이메일',
+      credits: '크레딧',
     },
   },
   dashboard: {
