@@ -27,12 +27,17 @@ const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean 
 
 export function AdminShell({
   admin,
+  memberHostedEnabled = false,
   children,
 }: {
   admin: AdminProfile
+  memberHostedEnabled?: boolean
   children: ReactNode
 }) {
   const t = useT()
+
+  // Member-hosted nav entry is hidden unless the program is on (master switch).
+  const nav = NAV.filter((item) => item.key !== 'partners' || memberHostedEnabled)
 
   return (
     <div className="min-h-screen bg-[#0a0608] text-white flex">
@@ -46,7 +51,7 @@ export function AdminShell({
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <Link
               key={item.href}
               href={item.soon ? '#' : item.href}

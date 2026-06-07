@@ -1,4 +1,6 @@
+import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 import {
   getActivePartners,
   getSuspendedPartners,
@@ -13,6 +15,8 @@ import { PartnersView } from './PartnersView'
 // only), gated by requireAdmin() above.
 export default async function PartnersPage() {
   await requireAdmin()
+  // Hidden behind the master switch: 404 when the program is off.
+  if (!(await isMemberHostedEnabled())) notFound()
 
   const [active, suspended, eligible, tiers, tournaments] = await Promise.all([
     getActivePartners(),

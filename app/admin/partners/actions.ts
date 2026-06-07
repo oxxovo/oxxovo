@@ -5,6 +5,7 @@ import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getTierConfigs, logPartnerStatusEvent } from '@/lib/partners'
 import { sendPartnerInvitation } from '@/lib/email/send'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
 
@@ -132,6 +133,9 @@ export async function invitePartner(input: {
   tier: string
   note: string
 }): Promise<PartnerActionState> {
+  if (!(await isMemberHostedEnabled())) {
+    return { ok: false, errorMessage: 'Member-hosted program is not active.' }
+  }
   const admin = await requireAdmin()
   const email = input.email.trim().toLowerCase()
   const note = input.note.trim()

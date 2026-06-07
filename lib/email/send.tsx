@@ -65,10 +65,11 @@ import {
   subjectFor as partnerEligibleSubject,
   type PartnerEligibleProps,
 } from './templates/PartnerEligible'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 export type SendResult =
   | { ok: true; messageId: string | null; skipped?: false }
-  | { ok: true; messageId: null; skipped: true; reason: 'already_sent' }
+  | { ok: true; messageId: null; skipped: true; reason: 'already_sent' | 'member_hosted_disabled' }
   | { ok: false; error: string }
 
 type ExecuteSendInput = {
@@ -456,6 +457,10 @@ type SendPartnerInvitationInput = {
 export async function sendPartnerInvitation(
   input: SendPartnerInvitationInput,
 ): Promise<SendResult> {
+  // Suppressed while the member-hosted program is off (master switch).
+  if (!(await isMemberHostedEnabled())) {
+    return { ok: true, messageId: null, skipped: true, reason: 'member_hosted_disabled' }
+  }
   const lang = input.forceLang ?? detectEmailLang(input.country)
   const props: PartnerInvitationProps = {
     lang,
@@ -484,6 +489,10 @@ type SendPartnerEligibleInput = {
 export async function sendPartnerEligible(
   input: SendPartnerEligibleInput,
 ): Promise<SendResult> {
+  // Suppressed while the member-hosted program is off (master switch).
+  if (!(await isMemberHostedEnabled())) {
+    return { ok: true, messageId: null, skipped: true, reason: 'member_hosted_disabled' }
+  }
   const lang = input.forceLang ?? detectEmailLang(input.country)
   const props: PartnerEligibleProps = {
     lang,

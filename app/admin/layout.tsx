@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 import { getAdminOrNull } from '@/lib/admin-auth'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 import { AdminShell } from './AdminShell'
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
@@ -11,5 +12,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     return <>{children}</>
   }
 
-  return <AdminShell admin={admin}>{children}</AdminShell>
+  // Hide member-hosted nav when the program is off (master switch).
+  const memberHostedEnabled = await isMemberHostedEnabled()
+
+  return (
+    <AdminShell admin={admin} memberHostedEnabled={memberHostedEnabled}>
+      {children}
+    </AdminShell>
+  )
 }

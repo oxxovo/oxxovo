@@ -12,6 +12,7 @@ import {
   partnerTournamentSchema,
   type PartnerTournamentInput,
 } from '@/lib/partner-tournament-schema'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 export type HostFormState = {
   ok: boolean
@@ -36,6 +37,10 @@ export async function createPartnerTournament(
   _prev: HostFormState,
   formData: FormData,
 ): Promise<HostFormState> {
+  // Master switch: member-hosted is off by default.
+  if (!(await isMemberHostedEnabled())) {
+    return { ok: false, errorMessage: 'Member-hosted tournaments are not available.' }
+  }
   // 1. AuthN: must be signed in.
   const supabase = await createSupabaseServer()
   const {
