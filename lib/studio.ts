@@ -211,6 +211,24 @@ export async function createGeneration(args: {
   return { ok: true, jobId, credits }
 }
 
+// Creator Statement bounds. Mirrors /apply (no per-season column exists yet);
+// it is the Triple-AI Intent scoring material, so it is required.
+export const STATEMENT_MIN = 150
+export const STATEMENT_MAX = 250
+
+// Applicant info needed to AUTO-CREATE the application row at studio submission
+// time (application round, when the participant has no row yet -- external-URL
+// entry is retired). Statement feeds Intent scoring, so it is mandatory.
+export type ApplicantInfo = {
+  creatorName: string
+  creatorStatement: string
+  country?: string
+  channelUrl?: string
+  agreedRules: boolean
+  agreedPrivacy: boolean
+  agreedIntegrity: boolean
+}
+
 export type SubmitResult =
   | { ok: true }
   | {
@@ -222,6 +240,10 @@ export type SubmitResult =
         | 'cryptobind_failed'
         | 'no_application'
         | 'already_submitted'
+        | 'application_info_required'
+        | 'bad_statement'
+        | 'agreements_required'
+        | 'name_required'
         | 'failed'
       detail?: string
     }
@@ -235,6 +257,7 @@ export async function submitGeneration(args: {
   email: string
   seasonId: string
   jobId: string
+  applicant?: ApplicantInfo
 }): Promise<SubmitResult> {
   const admin = createSupabaseAdmin()
 
@@ -269,33 +292,71 @@ export async function submitGeneration(args: {
     .limit(1)
     .maybeSingle()
   if (aErr) return { ok: false, reason: 'failed', detail: aErr.message }
-  if (!appRow) return { ok: false, reason: 'no_application' }
 
-  // 5. Immutability -- one studio submission PER ROUND, permanent.
   const now = new Date().toISOString()
-  const update: Record<string, unknown> = {}
-  if (effectiveRound === 'main') {
-    if (appRow.main_round_submitted_at) return { ok: false, reason: 'already_submitted' }
-    update.main_round_video_url = job.video_url
-    update.main_round_submitted_at = now
-    update.studio_main_job_id = job.id
-    update.studio_main_signature = job.cryptobind_signature
-  } else {
-    if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
-    update.free_entry_url = job.video_url
-    update.video_duration_seconds = job.duration_seconds
-    update.ai_service = 'OXXOVO Studio'
-    update.studio_application_job_id = job.id
-    update.studio_application_signature = job.cryptobind_signature
-    update.studio_application_submitted_at = now
-  }
 
-  // 6. Write the submission (status intentionally unchanged).
-  const { error: upErr } = await admin
-    .from('genesis_applications')
-    .update(update)
-    .eq('id', appRow.id)
-  if (upErr) return { ok: false, reason: 'failed', detail: upErr.message }
+  // 5a. No application row yet. For the application round the studio submission
+  //     IS the application, so create the row (with the applicant info + the
+  //     Intent-scoring statement). The main round requires a pre-existing row.
+  if (!appRow) {
+    if (effectiveRound === 'main') return { ok: false, reason: 'no_application' }
+    const info = args.applicant
+    if (!info) return { ok: false, reason: 'application_info_required' }
+    const name = (info.creatorName ?? '').trim()
+    const statement = (info.creatorStatement ?? '').trim()
+    if (!name) return { ok: false, reason: 'name_required' }
+    if (statement.length < STATEMENT_MIN || statement.length > STATEMENT_MAX) {
+      return { ok: false, reason: 'bad_statement' }
+    }
+    if (!info.agreedRules || !info.agreedPrivacy || !info.agreedIntegrity) {
+      return { ok: false, reason: 'agreements_required' }
+    }
+    const { error: insErr } = await admin.from('genesis_applications').insert({
+      season_id: args.seasonId,
+      user_id: args.userId,
+      email,
+      creator_name: name,
+      creator_statement: statement,
+      country: info.country?.trim() || null,
+      channel_url: info.channelUrl?.trim() || null,
+      ai_service: 'OXXOVO Studio',
+      free_entry_url: job.video_url,
+      video_duration_seconds: job.duration_seconds,
+      agreed_to_rules: true,
+      agreed_to_privacy: true,
+      agreed_to_integrity_notice: true,
+      status: 'pending',
+      studio_application_job_id: job.id,
+      studio_application_signature: job.cryptobind_signature,
+      studio_application_submitted_at: now,
+    })
+    if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
+    // Lock the job below (step 7).
+  } else {
+    // 5b. Row exists -- per-round immutability + update.
+    const update: Record<string, unknown> = {}
+    if (effectiveRound === 'main') {
+      if (appRow.main_round_submitted_at) return { ok: false, reason: 'already_submitted' }
+      update.main_round_video_url = job.video_url
+      update.main_round_submitted_at = now
+      update.studio_main_job_id = job.id
+      update.studio_main_signature = job.cryptobind_signature
+    } else {
+      if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
+      update.free_entry_url = job.video_url
+      update.video_duration_seconds = job.duration_seconds
+      update.ai_service = 'OXXOVO Studio'
+      update.studio_application_job_id = job.id
+      update.studio_application_signature = job.cryptobind_signature
+      update.studio_application_submitted_at = now
+    }
+    // 6. Write the submission (status intentionally unchanged).
+    const { error: upErr } = await admin
+      .from('genesis_applications')
+      .update(update)
+      .eq('id', appRow.id)
+    if (upErr) return { ok: false, reason: 'failed', detail: upErr.message }
+  }
 
   // 7. Lock the job: ready -> submitted (terminal, immutable).
   const { error: jUpErr } = await admin

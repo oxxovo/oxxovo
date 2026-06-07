@@ -12,7 +12,17 @@ import {
   submitGenerationAction,
   type StudioState,
 } from './actions'
-import { type StudioJob } from '@/lib/studio'
+import { type StudioJob, type ApplicantInfo } from '@/lib/studio'
+
+type ApplicantDraft = {
+  name: string
+  statement: string
+  country: string
+  channelUrl: string
+  rules: boolean
+  privacy: boolean
+  integrity: boolean
+}
 
 const DICT = {
   ko: {
@@ -65,6 +75,20 @@ const DICT = {
     submit_err_already: '이미 제출했습니다.',
     submit_err_cryptobind: '생성 인증 검증에 실패했습니다(CryptoBind).',
     submit_err_generic: '제출 실패',
+    applicant_title: '신청 정보 (예선 첫 제출)',
+    applicant_hint: '예선 첫 제출 시 신청 정보가 함께 등록됩니다. Creator Statement는 Intent 채점 재료라 필수입니다.',
+    f_name: '이름',
+    f_country: '국가 (선택)',
+    f_channel: '채널 URL (선택)',
+    f_statement: 'Creator Statement',
+    statement_ph: '화면에 보이는 것을 구체적으로 (주제·동작·스타일). 추상적 표현은 Intent 점수가 낮습니다.',
+    agree_rules: '대회 규칙에 동의합니다.',
+    agree_privacy: '개인정보 처리방침에 동의합니다.',
+    agree_integrity: 'AI 무결성 검증에 동의합니다.',
+    submit_err_name: '이름을 입력하세요.',
+    submit_err_statement: `Creator Statement는 ${150}~${250}자여야 합니다.`,
+    submit_err_agreements: '모든 약관에 동의해야 합니다.',
+    submit_err_app_info: '신청 정보를 입력하세요.',
   },
   en: {
     brand: 'OXXOVO',
@@ -116,8 +140,25 @@ const DICT = {
     submit_err_already: 'Already submitted.',
     submit_err_cryptobind: 'Generation authentication failed (CryptoBind).',
     submit_err_generic: 'Submission failed',
+    applicant_title: 'Application info (first application-round submit)',
+    applicant_hint: 'Your first application-round submit also registers your application. The Creator Statement is required (it feeds Intent scoring).',
+    f_name: 'Name',
+    f_country: 'Country (optional)',
+    f_channel: 'Channel URL (optional)',
+    f_statement: 'Creator Statement',
+    statement_ph: 'Describe what is on screen (subject, action, style). Abstract wording scores low on Intent.',
+    agree_rules: 'I agree to the Tournament Rules.',
+    agree_privacy: 'I agree to the Privacy Policy.',
+    agree_integrity: 'I agree to AI integrity verification.',
+    submit_err_name: 'Name is required.',
+    submit_err_statement: `Creator Statement must be ${150}–${250} characters.`,
+    submit_err_agreements: 'You must agree to all terms.',
+    submit_err_app_info: 'Enter your application info.',
   },
 }
+
+const STATEMENT_MIN = 150
+const STATEMENT_MAX = 250
 
 type Dict = (typeof DICT)['en']
 
@@ -134,6 +175,10 @@ export default function StudioPage() {
   const token = useLocalToken()
   const [state, setState] = useState<StudioState | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [applicant, setApplicant] = useState<ApplicantDraft>({
+    name: '', statement: '', country: '', channelUrl: '',
+    rules: false, privacy: false, integrity: false,
+  })
 
   useEffect(() => {
     if (!token) return
@@ -208,6 +253,10 @@ export default function StudioPage() {
     )
   }
 
+  // Application round + no row yet => the first submit also registers the
+  // application, so we must collect applicant info (incl. the Intent statement).
+  const needsApplicantInfo = !state.hasApplication && state.season.round === 'application'
+
   return (
     <Shell t={t} email={state.email} onLogout={() => { clearLocalUser(); router.push('/') }}>
       <section className="max-w-3xl mx-auto px-6 py-12">
@@ -235,10 +284,16 @@ export default function StudioPage() {
 
         <Generator t={t} token={token} state={state} onCreated={refresh} />
 
+        {needsApplicantInfo && (
+          <ApplicantForm t={t} applicant={applicant} onChange={setApplicant} />
+        )}
+
         <Generations
           t={t}
           token={token}
           state={state}
+          needsApplicantInfo={needsApplicantInfo}
+          applicant={applicant}
           onChanged={async () => {
             // After submit, reload full state (to flip alreadySubmitted) + jobs.
             const res = await loadStudioState(token)
@@ -408,11 +463,15 @@ function Generations({
   t,
   token,
   state,
+  needsApplicantInfo,
+  applicant,
   onChanged,
 }: {
   t: Dict
   token: string
   state: StudioState
+  needsApplicantInfo: boolean
+  applicant: ApplicantDraft
   onChanged: () => void | Promise<void>
 }) {
   return (
@@ -429,12 +488,73 @@ function Generations({
               token={token}
               job={job}
               canSubmit={!state.alreadySubmitted}
+              needsApplicantInfo={needsApplicantInfo}
+              applicant={applicant}
               onChanged={onChanged}
             />
           ))}
         </div>
       )}
     </section>
+  )
+}
+
+function ApplicantForm({
+  t,
+  applicant,
+  onChange,
+}: {
+  t: Dict
+  applicant: ApplicantDraft
+  onChange: (a: ApplicantDraft) => void
+}) {
+  const set = (patch: Partial<ApplicantDraft>) => onChange({ ...applicant, ...patch })
+  const len = applicant.statement.length
+  const stmtOk = len >= STATEMENT_MIN && len <= STATEMENT_MAX
+  return (
+    <section className="mt-8 rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/[.05] p-5">
+      <h2 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold mb-1">{t.applicant_title}</h2>
+      <p className="text-[11px] text-white/40 mb-4">{t.applicant_hint}</p>
+      <div className="space-y-3">
+        <label className="block">
+          <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.f_name}</div>
+          <input value={applicant.name} onChange={(e) => set({ name: e.target.value })} className={inputCls} />
+        </label>
+        <label className="block">
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="text-[10px] uppercase tracking-wider text-white/40">{t.f_statement}</span>
+            <span className={`text-[10px] ${stmtOk ? 'text-[#b66cff]' : len > STATEMENT_MAX ? 'text-[#ff8888]' : 'text-white/40'}`}>
+              {len} / {STATEMENT_MIN}–{STATEMENT_MAX}
+            </span>
+          </div>
+          <textarea value={applicant.statement} onChange={(e) => set({ statement: e.target.value })} rows={4} placeholder={t.statement_ph} className={`${inputCls} resize-y`} />
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block">
+            <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.f_country}</div>
+            <input value={applicant.country} onChange={(e) => set({ country: e.target.value })} className={inputCls} />
+          </label>
+          <label className="block">
+            <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.f_channel}</div>
+            <input value={applicant.channelUrl} onChange={(e) => set({ channelUrl: e.target.value })} className={inputCls} />
+          </label>
+        </div>
+        <div className="space-y-2 pt-1 text-sm text-white/70">
+          <Agree checked={applicant.rules} onChange={(v) => set({ rules: v })} label={t.agree_rules} />
+          <Agree checked={applicant.privacy} onChange={(v) => set({ privacy: v })} label={t.agree_privacy} />
+          <Agree checked={applicant.integrity} onChange={(v) => set({ integrity: v })} label={t.agree_integrity} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function Agree({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <label className="flex items-start gap-2.5 cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#8b22ff]" />
+      <span>{label}</span>
+    </label>
   )
 }
 
@@ -452,12 +572,16 @@ function JobCard({
   token,
   job,
   canSubmit,
+  needsApplicantInfo,
+  applicant,
   onChanged,
 }: {
   t: Dict
   token: string
   job: StudioJob
   canSubmit: boolean
+  needsApplicantInfo: boolean
+  applicant: ApplicantDraft
   onChanged: () => void | Promise<void>
 }) {
   const [pending, startTransition] = useTransition()
@@ -477,15 +601,36 @@ function JobCard({
       case 'no_application': return t.submit_err_no_application
       case 'already_submitted': return t.submit_err_already
       case 'cryptobind_failed': return t.submit_err_cryptobind
+      case 'application_info_required': return t.submit_err_app_info
+      case 'name_required': return t.submit_err_name
+      case 'bad_statement': return t.submit_err_statement
+      case 'agreements_required': return t.submit_err_agreements
       default: return t.submit_err_generic
     }
   }
 
   const handleSubmit = () => {
-    if (typeof window !== 'undefined' && !window.confirm(t.submit_confirm)) return
     setError(null)
+    let info: ApplicantInfo | undefined
+    if (needsApplicantInfo) {
+      const name = applicant.name.trim()
+      const statement = applicant.statement.trim()
+      if (!name) return setError(t.submit_err_name)
+      if (statement.length < STATEMENT_MIN || statement.length > STATEMENT_MAX) return setError(t.submit_err_statement)
+      if (!applicant.rules || !applicant.privacy || !applicant.integrity) return setError(t.submit_err_agreements)
+      info = {
+        creatorName: name,
+        creatorStatement: statement,
+        country: applicant.country.trim() || undefined,
+        channelUrl: applicant.channelUrl.trim() || undefined,
+        agreedRules: applicant.rules,
+        agreedPrivacy: applicant.privacy,
+        agreedIntegrity: applicant.integrity,
+      }
+    }
+    if (typeof window !== 'undefined' && !window.confirm(t.submit_confirm)) return
     startTransition(async () => {
-      const res = await submitGenerationAction(token, job.id)
+      const res = await submitGenerationAction(token, job.id, info)
       if (res.ok) await onChanged()
       else setError(submitErr(res.error))
     })

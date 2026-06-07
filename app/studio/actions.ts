@@ -18,6 +18,7 @@ import {
   submitGeneration,
   type StudioModel,
   type StudioJob,
+  type ApplicantInfo,
 } from '@/lib/studio'
 import { getBalance, getStudioPricing } from '@/lib/credits'
 
@@ -184,11 +185,19 @@ export type SubmitGenResult =
         | 'cryptobind_failed'
         | 'no_application'
         | 'already_submitted'
+        | 'application_info_required'
+        | 'bad_statement'
+        | 'agreements_required'
+        | 'name_required'
         | 'failed'
       detail?: string
     }
 
-export async function submitGenerationAction(token: string, jobId: string): Promise<SubmitGenResult> {
+export async function submitGenerationAction(
+  token: string,
+  jobId: string,
+  applicant?: ApplicantInfo,
+): Promise<SubmitGenResult> {
   const auth = await verifyToken(token)
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
@@ -199,6 +208,7 @@ export async function submitGenerationAction(token: string, jobId: string): Prom
     email: auth.email,
     seasonId: season.id,
     jobId,
+    applicant,
   })
   if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
   return { ok: true }
