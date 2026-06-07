@@ -203,6 +203,10 @@ type Messages = {
     integrity_check: string
     add_ai_model: string
     remove_model_aria: string
+    group_lobby: string
+    field_poster_url: string
+    field_lobby_featured: string
+    hint_poster_url: string
   }
   delete: {
     button: string
@@ -585,6 +589,10 @@ const MESSAGES_EN: Messages = {
     integrity_check: 'Integrity',
     add_ai_model: '+ Add AI model',
     remove_model_aria: 'Remove model',
+    group_lobby: 'Lobby (home tournaments card)',
+    field_poster_url: 'Poster URL',
+    field_lobby_featured: 'Feature in lobby (pin first)',
+    hint_poster_url: 'Optional. Empty = purple gradient + theme fallback.',
   },
   delete: {
     button: 'Delete season',
@@ -977,6 +985,10 @@ const MESSAGES_KO: Messages = {
     integrity_check: '진정성',
     add_ai_model: '+ AI 모델 추가',
     remove_model_aria: '모델 삭제',
+    group_lobby: '로비 (메인 토너먼트 카드)',
+    field_poster_url: '포스터 URL',
+    field_lobby_featured: '로비 featured (맨 앞 고정)',
+    hint_poster_url: '선택. 비우면 퍼플 그라데이션 + 테마 폴백.',
   },
   delete: {
     button: '시즌 삭제',

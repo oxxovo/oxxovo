@@ -46,6 +46,15 @@ export const seasonSchema = z
     flag_integrity_threshold: z.coerce.number().min(0).max(100),
     flag_spread_threshold: z.coerce.number().min(0).max(100),
 
+    // Lobby (home TOURNAMENTS section). poster_url empty -> null (gradient
+    // fallback); lobby_featured pins the card first.
+    poster_url: z
+      .union([z.string(), z.null(), z.undefined()])
+      .transform((v) => (v ?? '').trim() || null),
+    lobby_featured: z
+      .union([z.literal('true'), z.literal('false'), z.boolean(), z.undefined()])
+      .transform((v) => v === true || v === 'true'),
+
     application_open_at: nullableTimestamp,
     application_close_at: nullableTimestamp,
     scoring_complete_at: nullableTimestamp,
@@ -128,6 +137,8 @@ export const DEFAULT_SEASON: SeasonInput = {
   ],
   flag_integrity_threshold: 50,
   flag_spread_threshold: 30,
+  poster_url: null,
+  lobby_featured: false,
   application_open_at: null,
   application_close_at: null,
   scoring_complete_at: null,

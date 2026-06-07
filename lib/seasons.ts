@@ -86,6 +86,11 @@ export type Season = {
   // the secret-free seasons_public view. See getThemeDisplay / lib/seasons-theme.
   season_theme: string | null
 
+  // Lobby (home TOURNAMENTS section). poster_url null -> gradient fallback;
+  // lobby_featured pins the card first.
+  poster_url: string | null
+  lobby_featured: boolean
+
   created_at: string
   updated_at: string
 }
