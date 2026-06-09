@@ -13,6 +13,7 @@
 import 'server-only'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { sendPartnerEligible } from '@/lib/email/send'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
 
@@ -373,7 +374,12 @@ export async function recomputePartnerStats(userId: string): Promise<void> {
   const eligible =
     (top50Threshold > 0 && top50 >= top50Threshold) ||
     (winsThreshold > 0 && wins >= winsThreshold)
-  const becameEligible = eligible && profile.partner_status === 'none'
+  // M-1: auto-promotion (partner_status flip) and the PartnerEligible email are
+  // member-hosted surfaces -- they only fire when the master switch is on. The
+  // cumulative stats + tier above still recompute (harmless), so the moment the
+  // program is enabled the next recompute promotes anyone already qualified.
+  const memberHostedOn = await isMemberHostedEnabled()
+  const becameEligible = memberHostedOn && eligible && profile.partner_status === 'none'
 
   const update: Record<string, unknown> = {
     cumulative_top50: top50,

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createSupabaseServer } from '@/lib/supabase-server'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 // Partner-invite magic-link callback. Mirrors /admin/auth/callback: exchange
 // the PKCE code for a session, then forward to the activation page. Kept
@@ -9,6 +10,12 @@ import { createSupabaseServer } from '@/lib/supabase-server'
 // Inbound: /partner/auth/callback?code=<pkce>
 //          /partner/auth/callback?error=...&error_description=...
 export async function GET(request: NextRequest) {
+  // M-3: while the master switch is off the partner program is unreachable, so
+  // the magic-link callback 404s too (mirrors the /partner layout gate).
+  if (!(await isMemberHostedEnabled())) {
+    return new NextResponse('Not found', { status: 404 })
+  }
+
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
   const errorParam = searchParams.get('error_description') ?? searchParams.get('error')

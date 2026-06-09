@@ -20,6 +20,12 @@ export type PartnerActionState = {
 // visible per isSeasonPubliclyVisible. Only applies to a pending partner season.
 export async function markEscrowPaid(seasonId: string): Promise<PartnerActionState> {
   await requireAdmin()
+  // M-4: marking escrow paid publishes a partner tournament (draft -> active).
+  // It must not run while the master switch is off, or a partner season could be
+  // made public with the program disabled. Mirrors invitePartner's gate.
+  if (!(await isMemberHostedEnabled())) {
+    return { ok: false, errorMessage: 'Member-hosted program is not active.' }
+  }
   const db = createSupabaseAdmin()
   const { data, error } = await db
     .from('seasons')

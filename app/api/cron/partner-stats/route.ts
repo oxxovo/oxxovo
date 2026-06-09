@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { recomputeAllPartnerStats } from '@/lib/partners'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,15 @@ async function handle(request: NextRequest) {
   }
 
   const ranAt = new Date().toISOString()
+
+  // M-2: the partner program is a member-hosted surface. While the master
+  // switch is off the cron is a no-op (the row stays in vercel.json so enabling
+  // the switch needs no redeploy). recomputeAllPartnerStats is also guarded
+  // per-user, but skipping here avoids the whole table scan for nothing.
+  if (!(await isMemberHostedEnabled())) {
+    return NextResponse.json({ ok: true, ranAt, processed: 0, skipped: 'member_hosted_disabled' })
+  }
+
   const { processed } = await recomputeAllPartnerStats()
   return NextResponse.json({ ok: true, ranAt, processed })
 }
