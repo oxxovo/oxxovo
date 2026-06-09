@@ -8,6 +8,8 @@ import { createHmac, timingSafeEqual } from 'crypto'
 
 export const CRYPTOBIND_ALGO = 'HMAC-SHA256'
 const CANON_VERSION = 'v1'
+// Content-binding canonical version (S-6). Must match the worker copy.
+const CONTENT_CANON_VERSION = 'v1c'
 
 function secret(): string {
   const s = process.env.STUDIO_CRYPTOBIND_SECRET
@@ -69,9 +71,18 @@ function safeEqualHex(a: string, b: string): boolean {
   }
 }
 
+// S-6: content-binding canonical string. Mirrors the worker copy; jobId + tid
+// pin the video hash to this job and tournament.
+function contentCanonicalString(i: { jobId: string; tid: string; contentHash: string }): string {
+  return [CONTENT_CANON_VERSION, i.jobId, i.tid, i.contentHash].join('|')
+}
+
 export type VerifyResult =
   | { ok: true }
-  | { ok: false; reason: 'signature_mismatch' | 'tid_mismatch' | 'unsupported_algo' }
+  | {
+      ok: false
+      reason: 'signature_mismatch' | 'tid_mismatch' | 'unsupported_algo' | 'content_mismatch'
+    }
 
 // Stage 2 (submission): recompute + compare, and the embedded TID must equal the
 // tournament being submitted to.
@@ -85,6 +96,10 @@ export function verifyCryptoBind(
     cryptobind_algo: string
     model_id: string
     duration_seconds: number
+    // S-6 content binding (nullable: jobs produced before the worker stamped it,
+    // or when its secret was unset, simply skip the extra check).
+    cryptobind_content_hash?: string | null
+    cryptobind_content_signature?: string | null
   },
   expectedTid: string,
 ): VerifyResult {
@@ -101,5 +116,25 @@ export function verifyCryptoBind(
     }),
   )
   if (!safeEqualHex(expected, row.cryptobind_signature)) return { ok: false, reason: 'signature_mismatch' }
+
+  // S-6: when the worker stamped a content binding, the stored hash must carry a
+  // valid signature for THIS job + tournament. An attacker who rewrites
+  // video_url/the hash post-generation cannot forge this without the secret.
+  if (row.cryptobind_content_hash || row.cryptobind_content_signature) {
+    if (!row.cryptobind_content_hash || !row.cryptobind_content_signature) {
+      return { ok: false, reason: 'content_mismatch' }
+    }
+    const expectedContent = sign(
+      contentCanonicalString({
+        jobId: row.id,
+        tid: row.cryptobind_tid,
+        contentHash: row.cryptobind_content_hash,
+      }),
+    )
+    if (!safeEqualHex(expectedContent, row.cryptobind_content_signature)) {
+      return { ok: false, reason: 'content_mismatch' }
+    }
+  }
+
   return { ok: true }
 }

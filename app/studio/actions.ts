@@ -203,6 +203,8 @@ export type SubmitGenResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'application_closed'
+        | 'round_closed'
         | 'disabled'
         | 'failed'
       detail?: string

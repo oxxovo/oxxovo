@@ -9,6 +9,12 @@ import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
 import { buildCryptoBind, verifyCryptoBind } from '@/lib/cryptobind'
+import {
+  getSeasonById,
+  getActiveApplicationCount,
+  isApplicationClosed,
+  isCapacityFull,
+} from '@/lib/seasons'
 
 export type StudioTier = 'budget' | 'standard' | 'premium'
 
@@ -40,6 +46,33 @@ export type SeasonStudioConfig = {
   round: StudioRoundSetting
   maxGenerationsPerRound: number
   mainRoundStartAt: string | null
+  // S-3: main-round submission window = mainRoundStartAt + submissionHours.
+  submissionHours: number
+  // S-7: per-round video-length bounds (seconds). The generation duration must
+  // fall within the bounds of the round it belongs to, not just the model's.
+  applicationVideoMinSeconds: number
+  applicationVideoMaxSeconds: number
+  mainRoundVideoMinSeconds: number
+  mainRoundVideoMaxSeconds: number
+}
+
+// Per-round video-length bounds, resolved from the season config. Application
+// round uses application_video_*; main round uses main_round_video_*.
+export function videoBoundsForRound(
+  cfg: SeasonStudioConfig,
+  round: EffectiveRound,
+): { min: number; max: number } {
+  return round === 'main'
+    ? { min: cfg.mainRoundVideoMinSeconds, max: cfg.mainRoundVideoMaxSeconds }
+    : { min: cfg.applicationVideoMinSeconds, max: cfg.applicationVideoMaxSeconds }
+}
+
+// S-3: the absolute submission deadline for the main round (ms epoch), or null
+// when the season has no main_round_start_at yet. After this instant a main-
+// round studio submission is refused.
+export function mainRoundDeadlineMs(cfg: SeasonStudioConfig): number | null {
+  if (!cfg.mainRoundStartAt) return null
+  return new Date(cfg.mainRoundStartAt).getTime() + cfg.submissionHours * 3_600_000
 }
 
 // Server-authoritative round resolution. For a fixed-round season the setting IS
@@ -74,7 +107,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, main_round_start_at')
+    .select('studio_round, studio_max_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -82,6 +115,11 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     round: (data.studio_round as StudioRoundSetting) ?? 'main',
     maxGenerationsPerRound: Number(data.studio_max_generations_per_round ?? 10),
     mainRoundStartAt: (data.main_round_start_at as string | null) ?? null,
+    submissionHours: Number(data.submission_hours ?? 48),
+    applicationVideoMinSeconds: Number(data.application_video_min_seconds ?? 0),
+    applicationVideoMaxSeconds: Number(data.application_video_max_seconds ?? 0),
+    mainRoundVideoMinSeconds: Number(data.main_round_video_min_seconds ?? 0),
+    mainRoundVideoMaxSeconds: Number(data.main_round_video_max_seconds ?? 0),
   }
 }
 
@@ -158,6 +196,13 @@ export async function createGeneration(args: {
   // 3. Per-round generation cap (round resolved server-side from the schedule).
   const cfg = await getSeasonStudioConfig(args.seasonId)
   const effectiveRound = resolveEffectiveRound(cfg)
+
+  // S-7: duration must also satisfy the SEASON's video-length bounds for this
+  // round, not only the model's. A configured bound of 0 means "unset" -> skip.
+  const bounds = videoBoundsForRound(cfg, effectiveRound)
+  if (bounds.min > 0 && duration < bounds.min) return { ok: false, reason: 'bad_duration' }
+  if (bounds.max > 0 && duration > bounds.max) return { ok: false, reason: 'bad_duration' }
+
   const used = await countGenerationsForRound(args.userId, args.seasonId, cfg, effectiveRound)
   if (used >= cfg.maxGenerationsPerRound) return { ok: false, reason: 'cap_reached' }
 
@@ -244,6 +289,8 @@ export type SubmitResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'application_closed'
+        | 'round_closed'
         | 'failed'
       detail?: string
     }
@@ -265,7 +312,7 @@ export async function submitGeneration(args: {
   const { data: job, error: jErr } = await admin
     .from('generation_jobs')
     .select(
-      'id, user_id, season_id, status, video_url, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo',
+      'id, user_id, season_id, status, video_url, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
     )
     .eq('id', args.jobId)
     .single()
@@ -280,6 +327,16 @@ export async function submitGeneration(args: {
   // 3. Studio round for this season -- effective round resolved server-side.
   const cfg = await getSeasonStudioConfig(args.seasonId)
   const effectiveRound = resolveEffectiveRound(cfg)
+
+  // S-3: the main round closes at main_round_start_at + submission_hours (48h
+  // by default). A studio submission after that instant is refused -- mirrors
+  // the single-submission deadline the scoring system relies on.
+  if (effectiveRound === 'main') {
+    const deadlineMs = mainRoundDeadlineMs(cfg)
+    if (deadlineMs !== null && Date.now() > deadlineMs) {
+      return { ok: false, reason: 'round_closed' }
+    }
+  }
 
   // 4. Find the participant's application (by email, like the rest of the site).
   const email = args.email.toLowerCase()
@@ -311,6 +368,19 @@ export async function submitGeneration(args: {
     if (!info.agreedRules || !info.agreedPrivacy || !info.agreedIntegrity) {
       return { ok: false, reason: 'agreements_required' }
     }
+
+    // S-1/S-2: this auto-created row IS an application, so it must obey the same
+    // gates as POST /api/apply -- the application window and the capacity/
+    // waitlist split. A studio submission cannot mint a 'pending' row past the
+    // close time or beyond max_applicants.
+    const season = await getSeasonById(args.seasonId)
+    if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
+    if (isApplicationClosed(season)) return { ok: false, reason: 'application_closed' }
+    const activeCount = await getActiveApplicationCount(args.seasonId)
+    const resolvedStatus: 'pending' | 'waitlist' = isCapacityFull(season, activeCount)
+      ? 'waitlist'
+      : 'pending'
+
     const { error: insErr } = await admin.from('genesis_applications').insert({
       season_id: args.seasonId,
       user_id: args.userId,
@@ -325,7 +395,7 @@ export async function submitGeneration(args: {
       agreed_to_rules: true,
       agreed_to_privacy: true,
       agreed_to_integrity_notice: true,
-      status: 'pending',
+      status: resolvedStatus,
       studio_application_job_id: job.id,
       studio_application_signature: job.cryptobind_signature,
       studio_application_submitted_at: now,

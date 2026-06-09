@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getStripe } from '@/lib/stripe'
 import { getStudioPurchaseConfig, creditsForUsd } from '@/lib/credits'
+import { isSession6Enabled } from '@/lib/session6'
 
 const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
 
@@ -16,6 +17,10 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'bad_request' }, { status: 400 })
   }
+
+  // S-5: gate on the Studio master switch too, not only the purchase flag. When
+  // session6 is off the whole feature (including top-ups) is unavailable.
+  if (!(await isSession6Enabled())) return NextResponse.json({ error: 'disabled' }, { status: 403 })
 
   const cfg = await getStudioPurchaseConfig()
   if (!cfg.enabled) return NextResponse.json({ error: 'disabled' }, { status: 403 })

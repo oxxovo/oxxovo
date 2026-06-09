@@ -91,6 +91,8 @@ const DICT = {
     submit_err_statement: `Creator Statement는 ${150}~${250}자여야 합니다.`,
     submit_err_agreements: '모든 약관에 동의해야 합니다.',
     submit_err_app_info: '신청 정보를 입력하세요.',
+    submit_err_app_closed: '신청이 마감되었습니다.',
+    submit_err_round_closed: '본선 제출 기한이 지났습니다.',
   },
   en: {
     brand: 'OXXOVO',
@@ -156,6 +158,8 @@ const DICT = {
     submit_err_statement: `Creator Statement must be ${150}–${250} characters.`,
     submit_err_agreements: 'You must agree to all terms.',
     submit_err_app_info: 'Enter your application info.',
+    submit_err_app_closed: 'Applications are closed.',
+    submit_err_round_closed: 'The main-round submission deadline has passed.',
   },
 }
 
@@ -675,6 +679,8 @@ function JobCard({
       case 'name_required': return t.submit_err_name
       case 'bad_statement': return t.submit_err_statement
       case 'agreements_required': return t.submit_err_agreements
+      case 'application_closed': return t.submit_err_app_closed
+      case 'round_closed': return t.submit_err_round_closed
       default: return t.submit_err_generic
     }
   }
