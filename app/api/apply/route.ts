@@ -6,19 +6,45 @@ import {
   isApplicationClosed,
   isCapacityFull,
 } from '@/lib/seasons'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { getUserOrNull } from '@/lib/user-auth'
 import { sendApplicationReceived, sendWaitlisted } from '@/lib/email/send'
 
 const STATEMENT_MIN = 150
 const STATEMENT_MAX = 250
-const SUPABASE_URL = 'https://qrnkovokjmimagrwjebs.supabase.co'
-const SUPABASE_KEY = 'sb_publishable_jqaYD8CyZLZLK3mpCPjHMQ_f79qUrjl'
 
-export async function POST(request: NextRequest) {
+// Error codes — client maps via t.profile.apply_err_* (옥소보 saveWinnerInfo 패턴).
+// Server holds state/decision, client holds wording (단일 i18n 진실원천).
+export type ApplyErrorCode =
+  | 'unauthenticated'
+  | 'missing_field'
+  | 'agreements_required'
+  | 'statement_length'
+  | 'duration_range'
+  | 'season_not_found'
+  | 'season_closed'
+  | 'already_applied_this_season'
+  | 'server_error'
+
+export type ApplyResponse =
+  | { success: true; status: 'pending' | 'waitlist'; season_id: string }
+  | { error: ApplyErrorCode; detail?: string }
+
+// All DB writes go through createSupabaseAdmin() (service_role). See
+// feedback_server_side_anon_rls_trap memory for the 2026-05-29 catch.
+
+export async function POST(request: NextRequest): Promise<NextResponse<ApplyResponse>> {
   try {
+    // A-1: must be signed in to apply. Identity (email + user_id) comes from
+    // the verified cookie session — never trust a client-supplied email.
+    const user = await getUserOrNull()
+    if (!user) {
+      return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    }
+
     const body = await request.json()
 
     const required = [
-      'email',
       'creator_name',
       'free_entry_url',
       'video_duration_seconds',
@@ -28,20 +54,20 @@ export async function POST(request: NextRequest) {
     for (const k of required) {
       const v = body[k]
       if (v === undefined || v === null || v === '') {
-        return NextResponse.json({ error: `Missing field: ${k}` }, { status: 400 })
+        return NextResponse.json(
+          { error: 'missing_field', detail: k },
+          { status: 400 },
+        )
       }
     }
 
     if (!body.agreed_to_rules || !body.agreed_to_privacy || !body.agreed_to_integrity_notice) {
-      return NextResponse.json({ error: 'All three agreements are required.' }, { status: 400 })
+      return NextResponse.json({ error: 'agreements_required' }, { status: 400 })
     }
 
     const stmtLen = String(body.creator_statement).length
     if (stmtLen < STATEMENT_MIN || stmtLen > STATEMENT_MAX) {
-      return NextResponse.json(
-        { error: `Creator statement must be ${STATEMENT_MIN}–${STATEMENT_MAX} characters.` },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'statement_length' }, { status: 400 })
     }
 
     const seasonId: string =
@@ -51,27 +77,18 @@ export async function POST(request: NextRequest) {
 
     const season = await getSeasonById(seasonId)
     if (!season) {
-      return NextResponse.json(
-        { error: 'Season configuration not found. Please try again later.' },
-        { status: 503 }
-      )
+      return NextResponse.json({ error: 'season_not_found' }, { status: 503 })
     }
 
     if (isApplicationClosed(season)) {
-      return NextResponse.json(
-        { error: `${season.name} — applications are closed.` },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: 'season_closed' }, { status: 403 })
     }
 
     const dur = Number(body.video_duration_seconds)
     const minSec = season.application_video_min_seconds
     const maxSec = season.application_video_max_seconds
     if (!Number.isFinite(dur) || dur < minSec || dur > maxSec) {
-      return NextResponse.json(
-        { error: `Video duration must be between ${minSec} and ${maxSec} seconds.` },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'duration_range' }, { status: 400 })
     }
 
     const currentCount = await getActiveApplicationCount(season.id)
@@ -79,17 +96,12 @@ export async function POST(request: NextRequest) {
       ? 'waitlist'
       : 'pending'
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/genesis_applications`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        // Return the inserted row so we can pass application_id to email_logs.
-        Prefer: 'return=representation',
-      },
-      body: JSON.stringify({
-        email: body.email,
+    const admin = createSupabaseAdmin()
+    const { data: inserted, error: insertErr } = await admin
+      .from('genesis_applications')
+      .insert({
+        user_id: user.id,
+        email: user.email,
         creator_name: body.creator_name,
         country: body.country ?? null,
         channel_url: body.channel_url ?? null,
@@ -102,40 +114,30 @@ export async function POST(request: NextRequest) {
         agreed_to_integrity_notice: body.agreed_to_integrity_notice,
         season_id: season.id,
         status: resolvedStatus,
-      }),
-    })
+      })
+      .select('id')
+      .single()
 
-    const text = await res.text()
-    console.log('APPLY STATUS:', res.status, 'RESOLVED:', resolvedStatus)
-    console.log('APPLY RESPONSE:', text)
-
-    if (!res.ok) {
-      if (text.includes('duplicate key') || text.includes('23505')) {
-        return NextResponse.json(
-          { error: 'This email has already submitted an application.' },
-          { status: 409 }
-        )
+    if (insertErr) {
+      console.error('[apply] insert failed:', insertErr.code, insertErr.message)
+      // 23505 = unique_violation. Fires on UNIQUE(season_id, user_id) (Phase 1)
+      // or UNIQUE(season_id, lower(email)) (email-unique-fix) — either way the
+      // applicant already applied to THIS season. (The old global
+      // genesis_applications_email_unique — a real weekly-reapply blocker — was
+      // dropped in genesis_email_unique_fix_2026-06.sql.)
+      if (insertErr.code === '23505') {
+        return NextResponse.json({ error: 'already_applied_this_season' }, { status: 409 })
       }
-      return NextResponse.json({ error: text }, { status: res.status })
+      return NextResponse.json({ error: 'server_error' }, { status: 500 })
     }
 
-    // Pull the inserted id out of the PostgREST representation response. If
-    // parsing fails, log without applicationId — dedup loses its anchor but
-    // the email still goes out.
-    let insertedId: string | null = null
-    try {
-      const parsed = JSON.parse(text)
-      const row = Array.isArray(parsed) ? parsed[0] : parsed
-      if (row && typeof row.id === 'string') insertedId = row.id
-    } catch {
-      // ignore — email send proceeds without applicationId
-    }
+    const insertedId = inserted?.id ?? null
 
     // Fire the appropriate notification. Errors here are logged into
     // email_logs by the helper itself; we don't fail the apply request even
     // if Resend hiccups, since the application is already persisted.
     const emailCommon = {
-      toEmail: body.email,
+      toEmail: user.email,
       country: body.country ?? null,
       creatorName: body.creator_name,
       seasonName: season.display_name,
@@ -150,16 +152,19 @@ export async function POST(request: NextRequest) {
     } else {
       sendApplicationReceived({
         ...emailCommon,
-        // Newly inserted is the (currentCount + 1)th applicant.
         applicationCount: currentCount + 1,
       }).catch((e) =>
         console.error('[apply] sendApplicationReceived error:', e),
       )
     }
 
-    return NextResponse.json({ success: true, status: resolvedStatus, season_id: season.id })
+    return NextResponse.json({
+      success: true,
+      status: resolvedStatus,
+      season_id: season.id,
+    })
   } catch (e) {
-    console.log('APPLY ERROR:', e)
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+    console.error('[apply] unexpected error:', e)
+    return NextResponse.json({ error: 'server_error' }, { status: 500 })
   }
 }

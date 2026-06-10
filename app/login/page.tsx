@@ -1,37 +1,50 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { createSupabaseBrowser } from '@/lib/supabase-browser'
 
-export default function LoginPage() {
+// Magic-link login for public-site users (no password). Sending an OTP link
+// both signs in existing users and creates an account for new ones
+// (shouldCreateUser), so /signup is no longer a separate flow.
+// The link lands on /auth/callback, which exchanges the code for a cookie
+// session and redirects to `next` (or /profile).
+function LoginInner() {
+  const params = useSearchParams()
+  const nextPath = params.get('redirect') ?? params.get('next') ?? '/profile'
+  const errorParam = params.get('error')
+  const reason = params.get('reason')
+
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
-  const router = useRouter()
 
-  const handleLogin = async () => {
-    setLoading(true)
+  const callbackError =
+    errorParam === 'callback_failed'
+      ? `Login link could not be verified${reason ? `: ${reason}` : '.'}`
+      : errorParam === 'missing_code'
+        ? 'That login link was invalid or already used.'
+        : null
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault()
     setError('')
+    setLoading(true)
 
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+    const supabase = createSupabaseBrowser()
+    const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo, shouldCreateUser: true },
     })
 
-    const data = await res.json()
-
-    if (res.ok) {
-      if (data.access_token) {
-        localStorage.setItem('oxxovo_token', data.access_token)
-        localStorage.setItem('oxxovo_email', email)
-      }
-      router.push('/')
-    } else {
-      setError(data.error || 'Login failed.')
-    }
     setLoading(false)
+    if (otpError) {
+      setError(otpError.message)
+      return
+    }
+    setSent(true)
   }
 
   return (
@@ -39,42 +52,73 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
           <h1 className="text-3xl font-black text-[#8b22ff] mb-2">OXXOVO</h1>
-          <p className="text-white/50 text-sm">Log in to your account</p>
+          <p className="text-white/50 text-sm">
+            {sent ? 'Check your email' : 'Log in or sign up'}
+          </p>
         </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-white/60 mb-2">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg bg-white/95 text-black"
-            />
+
+        {callbackError && !sent && (
+          <div className="mb-5 px-4 py-3 rounded-lg border border-[#ff4444]/30 bg-[#ff4444]/10 text-sm text-[#ff8888]">
+            {callbackError}
           </div>
-          <div>
-            <label className="block text-sm text-white/60 mb-2">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg bg-[#1a1a1f] text-white border border-white/10"
-            />
+        )}
+
+        {sent ? (
+          <div className="space-y-4 text-center">
+            <p className="text-white/70 text-sm leading-relaxed">
+              We sent a login link to{' '}
+              <span className="text-white font-semibold">{email}</span>. Open it
+              on this device to continue. The link expires shortly — check your
+              spam folder if it doesn&apos;t arrive.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setSent(false)
+                setError('')
+              }}
+              className="text-[#8b22ff] hover:underline text-sm"
+            >
+              Use a different email
+            </button>
           </div>
-          {error && <p className="text-red-400 text-sm">{error}</p>}
-          <button
-            type="button"
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full py-3 rounded-lg bg-[#8b22ff] hover:bg-[#7a1de8] text-white font-bold disabled:opacity-50"
-          >
-            {loading ? 'Logging in...' : 'Log in'}
-          </button>
-        </div>
-        <p className="text-center text-white/40 text-sm mt-6">
-          Don't have an account?{' '}
-          <a href="/signup" className="text-[#8b22ff] hover:underline">Sign up</a>
-        </p>
+        ) : (
+          <form onSubmit={handleSend} className="space-y-4">
+            <div>
+              <label className="block text-sm text-white/60 mb-2">Email</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                className="w-full px-4 py-3 rounded-lg bg-white/95 text-black"
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-lg bg-[#8b22ff] hover:bg-[#7a1de8] text-white font-bold disabled:opacity-50"
+            >
+              {loading ? 'Sending link…' : 'Send login link'}
+            </button>
+            <p className="text-center text-white/40 text-xs mt-2">
+              No password needed — we&apos;ll email you a secure link.
+            </p>
+          </form>
+        )}
       </div>
     </main>
+  )
+}
+
+export default function LoginPage() {
+  // useSearchParams requires a Suspense boundary in Next 16.
+  return (
+    <Suspense fallback={null}>
+      <LoginInner />
+    </Suspense>
   )
 }

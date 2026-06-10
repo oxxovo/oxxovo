@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
-import { ApplicationDetail } from '../ApplicationDetail'
+import { ApplicationDetail, type ScoringDetail } from '../ApplicationDetail'
 import { type ApplicationRow } from '../ApplicationsView'
 
 export default async function ApplicationDetailPage({
@@ -25,18 +25,41 @@ export default async function ApplicationDetailPage({
     notFound()
   }
 
-  // Season name for context
-  const { data: season } = await supabase
-    .from('seasons')
-    .select('name, season_number')
-    .eq('id', data.season_id)
-    .single()
+  // Season name for context + scoring_results (application round) in parallel.
+  const [seasonRes, scoringRes] = await Promise.all([
+    supabase
+      .from('seasons')
+      .select('name, season_number')
+      .eq('id', data.season_id)
+      .single(),
+    supabase
+      .from('scoring_results')
+      .select('*')
+      .eq('application_id', id)
+      .eq('round', 'application')
+      .maybeSingle(),
+  ])
+
+  // Compose ApplicationRow with scoring summary fields the detail view also uses.
+  const scoring = scoringRes.data as ScoringDetail | null
+  const appRow: ApplicationRow = {
+    ...(data as Omit<ApplicationRow, 'verified_score' | 'grade' | 'integrity_confidence' | 'integrity_flag' | 'integrity_recommendation' | 'judged_status'>),
+    verified_score: scoring?.verified_score ?? null,
+    grade: (scoring?.grade as ApplicationRow['grade']) ?? null,
+    integrity_confidence: (scoring?.integrity_confidence as ApplicationRow['integrity_confidence']) ?? null,
+    integrity_flag: scoring?.integrity_flag ?? false,
+    integrity_recommendation: (scoring?.integrity_recommendation as ApplicationRow['integrity_recommendation']) ?? null,
+    judged_status: (scoring?.judged_status as ApplicationRow['judged_status']) ?? null,
+  }
 
   return (
     <ApplicationDetail
-      app={data as ApplicationRow}
+      app={appRow}
+      scoring={scoring}
       seasonLabel={
-        season ? `${season.name} (#${season.season_number})` : data.season_id
+        seasonRes.data
+          ? `${seasonRes.data.name} (#${seasonRes.data.season_number})`
+          : data.season_id
       }
     />
   )

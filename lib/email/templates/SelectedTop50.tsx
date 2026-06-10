@@ -58,7 +58,7 @@ function Korean(p: SelectedTop50Props) {
       <Text style={paragraph}>
         Triple-AI 채점 결과, <strong>{p.seasonName}</strong>의 상위{' '}
         <strong>{p.topNAdvance.toLocaleString()}명</strong>에 선정되셨습니다.
-        본선 라운드에서 다시 만나뵙겠습니다.
+        본선에서 다시 뵙겠습니다.
       </Text>
       <Text style={paragraph}>
         본선 시작: <strong>{formatDateKo(p.mainRoundStartAt)}</strong>

@@ -1,6 +1,6 @@
-// Admin 전용 browser Supabase client (httpOnly cookie 기반 Auth).
-// 일반 사용자 페이지는 lib/supabase.ts (oxxovo_token localStorage 패턴) 사용.
-// 두 시스템 병존 — 섞지 말 것 (feedback_auth_pattern memory 참조).
+// Browser Supabase client (httpOnly cookie 기반 Auth) — admin + 일반 사용자
+// 공통. 매직링크 로그인(signInWithOtp)/로그아웃(signOut)에 사용.
+// 단일 인증 시스템으로 통합됨 ([[feedback-auth-pattern]]).
 
 import { createBrowserClient } from '@supabase/ssr'
 

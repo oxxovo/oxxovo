@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   getCurrentSeason,
   getActiveApplicationCount,
@@ -11,6 +12,10 @@ import {
   formatPanelLabel,
   type Season,
 } from '@/lib/seasons'
+import { formatVideoPlatforms, validateVideoUrl } from '@/lib/video-url'
+import { useT } from '@/lib/admin-i18n'
+import type { ApplyErrorCode } from '@/app/api/apply/route'
+import { getSessionUser } from '@/app/_actions/auth'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 
 const AI_SERVICES = ['Sora', 'Veo', 'Runway', 'Kling', 'Pika', 'Other']
@@ -21,16 +26,15 @@ const ABSTRACT_WORDS = [
 const STATEMENT_MIN = 150
 const STATEMENT_MAX = 250
 
-type Mode = 'loading' | 'closed' | 'waitlist' | 'open'
+// Application stage accepts youtube/vimeo only — main round policy lives in
+// seasons.allowed_video_platforms and is a separate decision.
+const APPLICATION_ALLOWED_PLATFORMS = ['youtube', 'vimeo']
 
-function detectVideoPlatform(url: string): 'youtube' | 'vimeo' | null {
-  if (/^https?:\/\/(www\.)?(youtube\.com\/watch\?v=[\w-]+|youtu\.be\/[\w-]+)/i.test(url)) return 'youtube'
-  if (/^https?:\/\/(www\.)?vimeo\.com\/\d+/i.test(url)) return 'vimeo'
-  return null
-}
+type Mode = 'loading' | 'closed' | 'waitlist' | 'open'
 
 export default function ApplyPage() {
   const router = useRouter()
+  const t = useT()
   const [user, setUser] = useState<{ email: string } | null>(null)
   const [mode, setMode] = useState<Mode>('loading')
   const [season, setSeason] = useState<Season | null>(null)
@@ -54,13 +58,13 @@ export default function ApplyPage() {
 
   useEffect(() => {
     async function init() {
-      const token = localStorage.getItem('oxxovo_token')
-      const email = localStorage.getItem('oxxovo_email')
-      if (!token || !email) {
+      // Identity from the cookie session (A-1: must be signed in to apply).
+      const sessionUser = await getSessionUser()
+      if (!sessionUser) {
         router.push('/login?redirect=/apply')
         return
       }
-      setUser({ email })
+      setUser({ email: sessionUser.email })
 
       const s = await getCurrentSeason()
       if (!s) {
@@ -83,7 +87,10 @@ export default function ApplyPage() {
     init()
   }, [router])
 
-  const platform = useMemo(() => detectVideoPlatform(videoUrl), [videoUrl])
+  const platform = useMemo(() => {
+    const v = validateVideoUrl(videoUrl, APPLICATION_ALLOWED_PLATFORMS)
+    return v.valid ? v.platform : null
+  }, [videoUrl])
   const statementLen = statement.length
   const statementValid = statementLen >= STATEMENT_MIN && statementLen <= STATEMENT_MAX
   const abstractHit = useMemo(() => {
@@ -138,14 +145,36 @@ export default function ApplyPage() {
         }),
       })
       const data = await res.json().catch(() => ({}))
-      if (res.ok) {
+      if (res.ok && data.success) {
         setSubmitted(true)
         setSubmittedStatus(data.status === 'waitlist' ? 'waitlist' : 'pending')
       } else {
-        setError(typeof data.error === 'string' ? data.error : 'Submission failed. Please try again.')
+        const code: ApplyErrorCode | undefined =
+          typeof data.error === 'string' ? (data.error as ApplyErrorCode) : undefined
+        // Session expired between page load and submit → bounce to login.
+        if (code === 'unauthenticated') {
+          setLoading(false)
+          router.push('/login?redirect=/apply')
+          return
+        }
+        const errorMap: Record<ApplyErrorCode, string> = {
+          missing_field: t.profile.apply_err_missing_field,
+          agreements_required: t.profile.apply_err_agreements_required,
+          statement_length: t.profile.apply_err_statement_length,
+          duration_range: t.profile.apply_err_duration_range(minSec, maxSec),
+          season_not_found: t.profile.apply_err_season_not_found,
+          season_closed: t.profile.apply_err_season_closed,
+          // 23505 on UNIQUE(season_id, user_id) or (season_id, email) — already
+          // applied this season. Reuses the existing i18n string for now.
+          already_applied_this_season: t.profile.apply_err_duplicate_email,
+          unauthenticated: t.profile.apply_err_server_error, // unreachable (handled above)
+          server_error: t.profile.apply_err_server_error,
+        }
+        setError(code && errorMap[code] ? errorMap[code] : t.profile.apply_err_server_error)
       }
     } catch (err) {
-      setError(String(err))
+      console.error('[apply] submit failed:', err)
+      setError(t.profile.apply_err_server_error)
     }
     setLoading(false)
   }
@@ -169,7 +198,7 @@ export default function ApplyPage() {
           <p className="text-white/60 mb-8 leading-relaxed">
             The application period has ended. Sign up for notifications about the next season.
           </p>
-          <a href="/" className="text-white/40 text-sm hover:text-white/70">← Back to Home</a>
+          <Link href="/" className="text-white/40 text-sm hover:text-white/70">← Back to Home</Link>
         </div>
       </main>
     )
@@ -198,7 +227,7 @@ export default function ApplyPage() {
             >
               Go to Profile
             </a>
-            <a href="/" className="text-white/40 text-sm hover:text-white/70">← Back to Home</a>
+            <Link href="/" className="text-white/40 text-sm hover:text-white/70">← Back to Home</Link>
           </div>
         </div>
       </main>
@@ -211,14 +240,15 @@ export default function ApplyPage() {
   return (
     <main className="min-h-screen bg-[#030305] text-white">
       <header className="flex h-20 items-center justify-between px-6 md:px-12 border-b border-white/10">
-        <a href="/" className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/oxxovo_logo.png"
             alt="OXXOVO"
             className="h-12 drop-shadow-[0_0_18px_rgba(139,34,255,.6)]"
           />
           <span className="text-[22px] font-black tracking-wide text-[#8b22ff]">OXXOVO</span>
-        </a>
+        </Link>
         <span className="text-sm text-white/60 max-md:hidden">
           Signed in as <span className="text-white/80">{user?.email}</span>
         </span>
@@ -235,7 +265,7 @@ export default function ApplyPage() {
           </h1>
           {isWaitlistMode ? (
             <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
-              {season?.name} reached its capacity of {season?.max_applicants} applicants. Submit your entry to join the waitlist — you'll be promoted if a spot opens, or get priority access to the next season.
+              {season?.name} reached its capacity of {season?.max_applicants} applicants. Submit your entry to join the waitlist — you&apos;ll be promoted if a spot opens, or get priority access to the next season.
             </p>
           ) : (
             <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
@@ -280,7 +310,7 @@ export default function ApplyPage() {
                 )}
                 {platform && (
                   <p className="text-[#b66cff] text-xs mt-1.5">
-                    ✓ {platform === 'youtube' ? 'YouTube' : 'Vimeo'} URL detected
+                    ✓ {formatVideoPlatforms([platform])} URL detected
                   </p>
                 )}
               </div>

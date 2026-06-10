@@ -80,11 +80,17 @@ export type Season = {
   main_round_end_at: string | null
   awards_announcement_at: string | null
 
-  // Public theme, shown openly. The secret main_round_twist (and its legacy
-  // main_round_theme fallback) are intentionally NOT on this type: they live
-  // only on the base table and never travel through getSeasonById, which reads
-  // the secret-free seasons_public view. See getThemeDisplay / lib/seasons-theme.
+  // Public theme (#6 hybrid model), shown openly. The secret main_round_twist
+  // and its legacy main_round_theme fallback live only on the base table and
+  // never travel through getSeasonById, which reads the secret-free
+  // seasons_public view. See getThemeDisplay / lib/seasons-theme.
   season_theme: string | null
+  // Deprecated (kept for legacy #1 main-round UI refs only). NOT on the
+  // seasons_public view, so it is always undefined at runtime through
+  // getSeasonById -- no twist can leak. TODO 지수2: migrate MainRoundCard /
+  // main-results off season.main_round_theme to getThemeDisplay, then drop.
+  main_round_theme: string | null
+  allowed_video_platforms: string[]
 
   created_at: string
   updated_at: string
@@ -224,6 +230,75 @@ export function formatAiProviderList(models: AIModel[]): string {
 
 export function getIntegrityModel(models: AIModel[]): AIModel | null {
   return models.find((m) => m.is_integrity) || null
+}
+
+// ─── Main round submission helpers ──────────────────────────────────────
+// Single-submission model ([[project-main-round-single-submission]]):
+// one submission per selected creator, no edits after submit. Reason union
+// maps 1:1 to system_messages 'submission_block' rows (key=`main_round_block_*`).
+export type SubmitBlockReason =
+  | 'not_selected'           // status가 'selected'가 아닌 응모 단계 상태
+  | 'before_start'           // now < main_round_start_at
+  | 'after_close'            // now >= main_round_end_at
+  | 'season_dates_not_set'   // start_at or end_at NULL
+
+// reason: null → 별도 UI 분기로 전환해야 하는 상태 (main_round_submitted /
+// awarded / rejected / flagged). 호출자가 status를 직접 보고 제출본 / 결과 /
+// 검토 대기 카드 렌더. reason이 있는 경우만 message 표시 대상.
+export type SubmitCheck =
+  | { ok: true }
+  | { ok: false; reason: SubmitBlockReason | null }
+
+// Minimal shape — callers can pass any object with status; full
+// GenesisApplication row works without a cast.
+type ApplicationLike = { status: string }
+
+// When the theme should appear in the UI countdown → reveal transition.
+// Returns null when start_at is missing (season schedule not yet set).
+export function getThemeRevealTime(season: Season): Date | null {
+  if (!season.main_round_start_at) return null
+  const startMs = new Date(season.main_round_start_at).getTime()
+  const offsetMs = season.theme_announcement_minutes_before * 60 * 1000
+  return new Date(startMs - offsetMs)
+}
+
+export function isMainRoundThemeRevealed(
+  season: Season,
+  now: Date = new Date(),
+): boolean {
+  const revealTime = getThemeRevealTime(season)
+  if (!revealTime) return false
+  return now >= revealTime
+}
+
+export function canSubmitMainRound(
+  app: ApplicationLike,
+  season: Season,
+  now: Date = new Date(),
+): SubmitCheck {
+  // 별도 UI 화면으로 분기되는 상태 — reason 없이 false. 호출자가 status로
+  // 제출본 (main_round_submitted) / 결과 (awarded/rejected) / 검토 대기
+  // (flagged) 카드를 자체 렌더.
+  if (
+    app.status === 'main_round_submitted' ||
+    app.status === 'awarded' ||
+    app.status === 'rejected' ||
+    app.status === 'flagged'
+  ) {
+    return { ok: false, reason: null }
+  }
+  // pending / verifying / eligible / waitlist → Top 50 미선정 메시지
+  if (app.status !== 'selected') {
+    return { ok: false, reason: 'not_selected' }
+  }
+  if (!season.main_round_start_at || !season.main_round_end_at) {
+    return { ok: false, reason: 'season_dates_not_set' }
+  }
+  const start = new Date(season.main_round_start_at)
+  const end = new Date(season.main_round_end_at)
+  if (now < start) return { ok: false, reason: 'before_start' }
+  if (now >= end) return { ok: false, reason: 'after_close' }
+  return { ok: true }
 }
 
 // Derive panel label from model count (3 → "Triple-AI", 4 → "Quad-AI", etc.)
