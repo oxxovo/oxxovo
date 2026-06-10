@@ -14,6 +14,7 @@ type NavItemKey =
   | 'contacts'
   | 'winners'
   | 'emails'
+  | 'credits'
 
 const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean }> = [
   { href: '/admin', key: 'dashboard', emoji: '🏠' },
@@ -23,6 +24,7 @@ const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean 
   { href: '/admin/contacts', key: 'contacts', emoji: '📇' },
   { href: '/admin/winners', key: 'winners', emoji: '🏆', soon: true },
   { href: '/admin/emails', key: 'emails', emoji: '📧' },
+  { href: '/admin/credits', key: 'credits', emoji: '💳' },
 ]
 
 export function AdminShell({

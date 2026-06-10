@@ -55,6 +55,8 @@ export default async function SeasonEditPage({
     ai_models: season.ai_models,
     flag_integrity_threshold: season.flag_integrity_threshold,
     flag_spread_threshold: season.flag_spread_threshold,
+    studio_round: season.studio_round ?? 'main',
+    studio_max_generations_per_round: season.studio_max_generations_per_round ?? 10,
     application_open_at: season.application_open_at,
     application_close_at: season.application_close_at,
     scoring_complete_at: season.scoring_complete_at,

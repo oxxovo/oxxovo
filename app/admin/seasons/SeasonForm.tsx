@@ -195,6 +195,28 @@ export function SeasonForm({
         <Field label={t.season_form.field_flag_spread} name="flag_spread_threshold" type="number" defaultValue={initial.flag_spread_threshold} error={fieldError('flag_spread_threshold')} hint={t.season_form.hint_0_100} />
       </Group>
 
+      <Group title={t.season_form.group_studio}>
+        <Select
+          label={t.season_form.field_studio_round}
+          name="studio_round"
+          defaultValue={initial.studio_round}
+          options={[
+            { value: 'application', label: t.season_form.studio_round_application },
+            { value: 'main', label: t.season_form.studio_round_main },
+            { value: 'both', label: t.season_form.studio_round_both },
+          ]}
+          error={fieldError('studio_round')}
+        />
+        <Field
+          label={t.season_form.field_studio_max_gen}
+          name="studio_max_generations_per_round"
+          type="number"
+          defaultValue={initial.studio_max_generations_per_round}
+          error={fieldError('studio_max_generations_per_round')}
+          hint={t.season_form.hint_studio_round}
+        />
+      </Group>
+
       <Group title={t.season_form.group_schedule}>
         <DatetimeField label={t.season_form.field_app_open} name="application_open_at" defaultValue={toDatetimeLocal(initial.application_open_at)} error={fieldError('application_open_at')} />
         <DatetimeField label={t.season_form.field_app_close} name="application_close_at" defaultValue={toDatetimeLocal(initial.application_close_at)} error={fieldError('application_close_at')} />

@@ -17,6 +17,7 @@ import { useT } from '@/lib/admin-i18n'
 import type { ApplyErrorCode } from '@/app/api/apply/route'
 import { getSessionUser } from '@/app/_actions/auth'
 import { formatFooterStatusLine } from '@/lib/ip-info'
+import { getStudioApplicationFlag } from './actions'
 
 const AI_SERVICES = ['Sora', 'Veo', 'Runway', 'Kling', 'Pika', 'Other']
 const ABSTRACT_WORDS = [
@@ -39,6 +40,7 @@ export default function ApplyPage() {
   const [mode, setMode] = useState<Mode>('loading')
   const [season, setSeason] = useState<Season | null>(null)
   const [count, setCount] = useState(0)
+  const [studioApplication, setStudioApplication] = useState(false)
 
   const [videoUrl, setVideoUrl] = useState('')
   const [videoDuration, setVideoDuration] = useState<number | ''>('')
@@ -72,6 +74,7 @@ export default function ApplyPage() {
         return
       }
       setSeason(s)
+      getStudioApplicationFlag(s.id).then(setStudioApplication)
 
       const c = await getActiveApplicationCount(s.id)
       setCount(c)
@@ -85,7 +88,7 @@ export default function ApplyPage() {
       }
     }
     init()
-  }, [router])
+  }, [])
 
   const platform = useMemo(() => {
     const v = validateVideoUrl(videoUrl, APPLICATION_ALLOWED_PLATFORMS)
@@ -202,6 +205,17 @@ export default function ApplyPage() {
         </div>
       </main>
     )
+  }
+
+  // Unauthenticated visitor -> intro + sign-in CTA (returns here after login).
+  // Studio messaging only when the studio funnel is active (session6 ON).
+  if (!user) {
+    return <IntroScreen seasonName={season?.name ?? 'GENESIS'} studio={studioApplication} />
+  }
+
+  // Studio-based application round (session6 ON) -> funnel into /studio.
+  if (studioApplication) {
+    return <FunnelScreen email={user.email} season={season} mode={mode} count={count} />
   }
 
   if (submitted) {
@@ -531,6 +545,121 @@ export default function ApplyPage() {
         <p className="text-center text-white/30 text-xs mt-1">
           {formatFooterStatusLine()}
         </p>
+      </section>
+    </main>
+  )
+}
+
+function ApplyHeader({ email }: { email?: string }) {
+  return (
+    <header className="flex h-20 items-center justify-between px-6 md:px-12 border-b border-white/10">
+      <a href="/" className="flex items-center gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/oxxovo_logo.png" alt="OXXOVO" className="h-12 drop-shadow-[0_0_18px_rgba(139,34,255,.6)]" />
+        <span className="text-[22px] font-black tracking-wide text-[#8b22ff]">OXXOVO</span>
+      </a>
+      {email && (
+        <span className="text-sm text-white/60 max-md:hidden">
+          Signed in as <span className="text-white/80">{email}</span>
+        </span>
+      )}
+    </header>
+  )
+}
+
+// Unauthenticated entry screen: a short intro + sign-in CTA. After sign-in the
+// user returns to /apply (now authenticated) and sees the studio funnel.
+function IntroScreen({ seasonName, studio }: { seasonName: string; studio: boolean }) {
+  return (
+    <main className="min-h-screen bg-[#030305] text-white">
+      <ApplyHeader />
+      <section className="max-w-md mx-auto px-6 py-20 text-center">
+        <p className="inline-flex items-center gap-2.5 mb-4 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
+          <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
+          {seasonName}
+        </p>
+        <h1 className="text-4xl font-black mb-4">Apply to {seasonName}</h1>
+        <p className="text-white/55 leading-relaxed mb-8">
+          {studio
+            ? 'This season you create and submit your entry inside OXXOVO Studio — no external uploads. Sign in to get started; your first submission registers your application.'
+            : 'Sign in to submit your application.'}
+        </p>
+        <a
+          href="/login?redirect=/apply"
+          className="inline-block w-full bg-gradient-to-br from-[#7d23ff] to-[#6220dc] py-4 rounded-lg font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] hover:brightness-110 transition"
+        >
+          Sign in to apply
+        </a>
+        <p className="text-white/40 text-sm mt-5">
+          Don&apos;t have an account?{' '}
+          <a href="/signup" className="text-[#8b22ff] hover:underline">Sign up</a>
+        </p>
+      </section>
+    </main>
+  )
+}
+
+// Authenticated funnel: explain the studio flow and send the user into /studio.
+function FunnelScreen({
+  email,
+  season,
+  mode,
+  count,
+}: {
+  email: string
+  season: Season | null
+  mode: Mode
+  count: number
+}) {
+  const isWait = mode === 'waitlist'
+  const name = season?.name ?? 'GENESIS'
+  return (
+    <main className="min-h-screen bg-[#030305] text-white">
+      <ApplyHeader email={email} />
+      <section className="max-w-xl mx-auto px-6 py-16">
+        <div className="text-center mb-10">
+          <p className="inline-flex items-center gap-2.5 mb-4 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
+            <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
+            {name}
+          </p>
+          <h1 className="text-4xl font-black mb-3">
+            {isWait ? 'Join the Waitlist' : `Apply via Studio`}
+          </h1>
+          <p className="text-white/55 leading-relaxed">
+            {isWait
+              ? `${name} reached its capacity${season ? ` of ${season.max_applicants}` : ''}. You can still generate in Studio; submitting joins the waitlist.`
+              : 'This season runs entirely inside OXXOVO Studio. Generate your video here and submit it directly — no external links.'}
+          </p>
+        </div>
+
+        <ol className="space-y-3 mb-10">
+          {[
+            'Pick a model tier and describe your video.',
+            'Generate, preview, and re-generate until you are happy.',
+            'Submit — your first submission registers your application.',
+          ].map((step, i) => (
+            <li key={i} className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/[.02] px-4 py-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#8b22ff]/20 text-[#b66cff] text-xs font-bold">
+                {i + 1}
+              </span>
+              <span className="text-sm text-white/75">{step}</span>
+            </li>
+          ))}
+        </ol>
+
+        {!isWait && season && (
+          <p className="text-center mb-5 inline-flex w-full items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#b66cff]/80">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#b66cff]" />
+            Application #{count + 1} of {season.max_applicants}
+          </p>
+        )}
+
+        <a
+          href="/studio"
+          className="block text-center w-full bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] py-4 rounded-lg font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] hover:brightness-110 transition"
+        >
+          Open Studio →
+        </a>
       </section>
     </main>
   )
