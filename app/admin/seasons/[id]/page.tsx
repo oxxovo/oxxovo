@@ -57,6 +57,8 @@ export default async function SeasonEditPage({
     flag_spread_threshold: season.flag_spread_threshold,
     studio_round: season.studio_round ?? 'main',
     studio_max_generations_per_round: season.studio_max_generations_per_round ?? 10,
+    poster_url: season.poster_url ?? null,
+    lobby_featured: season.lobby_featured ?? false,
     application_open_at: season.application_open_at,
     application_close_at: season.application_close_at,
     scoring_complete_at: season.scoring_complete_at,

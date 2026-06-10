@@ -37,6 +37,7 @@ export function SeasonForm({
     initialState,
   )
   const [aiModels, setAiModels] = useState(initial.ai_models)
+  const [lobbyFeatured, setLobbyFeatured] = useState(!!initial.lobby_featured)
 
   // Pool + percentages are controlled so the live preview ("≈ $X") and the
   // sum indicator can react to every keystroke. All other fields stay
@@ -215,6 +216,26 @@ export function SeasonForm({
           error={fieldError('studio_max_generations_per_round')}
           hint={t.season_form.hint_studio_round}
         />
+      </Group>
+
+      <Group title={t.season_form.group_lobby}>
+        <Field
+          label={t.season_form.field_poster_url}
+          name="poster_url"
+          defaultValue={initial.poster_url ?? ''}
+          error={fieldError('poster_url')}
+          hint={t.season_form.hint_poster_url}
+        />
+        <label className="flex items-center gap-3 cursor-pointer pt-6">
+          <input
+            type="checkbox"
+            checked={lobbyFeatured}
+            onChange={(e) => setLobbyFeatured(e.target.checked)}
+            className="h-4 w-4 accent-[#ff8844]"
+          />
+          <span className="text-sm text-white/80">{t.season_form.field_lobby_featured}</span>
+          <input type="hidden" name="lobby_featured" value={String(lobbyFeatured)} />
+        </label>
       </Group>
 
       <Group title={t.season_form.group_schedule}>

@@ -14,6 +14,7 @@ import {
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { getSessionUser } from '@/app/_actions/auth'
 import { formatFooterStatusLine } from '@/lib/ip-info'
+import { LobbySection } from './_components/LobbySection'
 
 type TimeLeft = { days: string; hours: string; minutes: string; seconds: string }
 const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '00' }
@@ -209,6 +210,8 @@ export default function OXXOVOLandingPage() {
           </div>
         ))}
       </section>
+
+      <LobbySection />
 
       <section id="how" className="relative z-20 mx-auto max-w-6xl px-6 py-24 scroll-mt-24">
         <div className="text-center mb-14">

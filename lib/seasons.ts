@@ -104,6 +104,11 @@ export type Season = {
   commission_rate_override: number | null
   prize_funding_mode: PrizeFundingMode
 
+  // Lobby (home TOURNAMENTS section). poster_url null -> gradient fallback;
+  // lobby_featured pins the card first.
+  poster_url: string | null
+  lobby_featured: boolean
+
   created_at: string
   updated_at: string
 }

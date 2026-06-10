@@ -212,6 +212,10 @@ type Messages = {
     studio_round_main: string
     studio_round_both: string
     hint_studio_round: string
+    group_lobby: string
+    field_poster_url: string
+    field_lobby_featured: string
+    hint_poster_url: string
   }
   delete: {
     button: string
@@ -731,6 +735,10 @@ const MESSAGES_EN: Messages = {
     studio_round_main: 'Main round only',
     studio_round_both: 'Both (server resolves by schedule)',
     hint_studio_round: 'For "Both", the round is decided by main round start time.',
+    group_lobby: 'Lobby (home tournaments card)',
+    field_poster_url: 'Poster URL',
+    field_lobby_featured: 'Feature in lobby (pin first)',
+    hint_poster_url: 'Optional. Empty = purple gradient + theme fallback.',
   },
   delete: {
     button: 'Delete season',
@@ -1265,6 +1273,10 @@ const MESSAGES_KO: Messages = {
     studio_round_main: '본선만',
     studio_round_both: '둘 다 (서버가 일정으로 판정)',
     hint_studio_round: '"둘 다"는 본선 시작 시각 기준으로 라운드가 결정됩니다.',
+    group_lobby: '로비 (메인 토너먼트 카드)',
+    field_poster_url: '포스터 URL',
+    field_lobby_featured: '로비 featured (맨 앞 고정)',
+    hint_poster_url: '선택. 비우면 퍼플 그라데이션 + 테마 폴백.',
   },
   delete: {
     button: '시즌 삭제',
