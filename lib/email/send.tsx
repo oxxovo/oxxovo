@@ -60,10 +60,21 @@ import {
   subjectFor as awardedContactRequestSubject,
   type AwardedContactRequestProps,
 } from './templates/AwardedContactRequest'
+import {
+  PartnerInvitation,
+  subjectFor as partnerInvitationSubject,
+  type PartnerInvitationProps,
+} from './templates/PartnerInvitation'
+import {
+  PartnerEligible,
+  subjectFor as partnerEligibleSubject,
+  type PartnerEligibleProps,
+} from './templates/PartnerEligible'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 export type SendResult =
   | { ok: true; messageId: string | null; skipped?: false }
-  | { ok: true; messageId: null; skipped: true; reason: 'already_sent' }
+  | { ok: true; messageId: null; skipped: true; reason: 'already_sent' | 'member_hosted_disabled' }
   | { ok: false; error: string }
 
 type ExecuteSendInput = {
@@ -461,5 +472,76 @@ export async function sendAwardedContactRequest(
     element: <AwardedContactRequest {...props} />,
     applicationId: input.applicationId,
     seasonId: input.seasonId,
+  })
+}
+
+// ─── partner host emails ──────────────────────────────────────────────────
+// These are user/profile-scoped, not application-scoped, so they carry no
+// applicationId. executeSend's per-application dedup therefore does not run;
+// callers (admin invite action, awarded-rank eligibility hook) own the gating
+// of when to fire. Language: detected from the recipient's country, or forced.
+
+type SendPartnerInvitationInput = {
+  toEmail: string
+  country: string | null | undefined
+  // null when the invitee is not yet registered (invited by email only).
+  recipientName: string | null
+  tier: string
+  acceptUrl: string
+  forceLang?: EmailLang
+}
+
+export async function sendPartnerInvitation(
+  input: SendPartnerInvitationInput,
+): Promise<SendResult> {
+  // Suppressed while the member-hosted program is off (master switch).
+  if (!(await isMemberHostedEnabled())) {
+    return { ok: true, messageId: null, skipped: true, reason: 'member_hosted_disabled' }
+  }
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: PartnerInvitationProps = {
+    lang,
+    recipientName: input.recipientName,
+    tier: input.tier,
+    acceptUrl: input.acceptUrl,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'partner_invitation',
+    language: lang,
+    subject: partnerInvitationSubject(props),
+    element: <PartnerInvitation {...props} />,
+  })
+}
+
+type SendPartnerEligibleInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  tier: string
+  applyUrl: string
+  forceLang?: EmailLang
+}
+
+export async function sendPartnerEligible(
+  input: SendPartnerEligibleInput,
+): Promise<SendResult> {
+  // Suppressed while the member-hosted program is off (master switch).
+  if (!(await isMemberHostedEnabled())) {
+    return { ok: true, messageId: null, skipped: true, reason: 'member_hosted_disabled' }
+  }
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: PartnerEligibleProps = {
+    lang,
+    creatorName: input.creatorName,
+    tier: input.tier,
+    applyUrl: input.applyUrl,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'partner_eligible',
+    language: lang,
+    subject: partnerEligibleSubject(props),
+    element: <PartnerEligible {...props} />,
   })
 }

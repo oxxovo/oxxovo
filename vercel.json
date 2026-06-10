@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/season-tick",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/partner-stats",
+      "schedule": "0 0 * * 0"
     }
   ]
 }

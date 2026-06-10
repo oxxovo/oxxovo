@@ -84,6 +84,7 @@ type Messages = {
       pre_registrations: string
       contacts: string
       winners: string
+      partners: string
       emails: string
       credits: string
     }
@@ -601,6 +602,7 @@ const MESSAGES_EN: Messages = {
       pre_registrations: 'Pre-registrations',
       contacts: 'Winner contacts',
       winners: 'Winners',
+      partners: 'Partners',
       emails: 'Emails',
       credits: 'Credits',
     },
@@ -1134,6 +1136,7 @@ const MESSAGES_KO: Messages = {
       pre_registrations: '사전 등록',
       contacts: '시상자 연락처',
       winners: '수상자 관리',
+      partners: '파트너',
       emails: '이메일',
       credits: '크레딧',
     },

@@ -16,6 +16,8 @@ export type TemplateKey =
   | 'submission_deadline'
   | 'results_announced'
   | 'awarded_contact_request'
+  | 'partner_invitation'
+  | 'partner_eligible'
 
 export type LogStatus = 'sent' | 'failed' | 'queued' | 'skipped'
 
