@@ -22,11 +22,13 @@ if (!KEY) {
 const cmd = process.argv[2]
 
 async function call(path, init) {
+  // FormData(multipart) 면 Content-Type 을 직접 지정하지 않는다(boundary 자동).
+  const isForm = typeof FormData !== 'undefined' && init?.body instanceof FormData
   const res = await fetch(BASE + path, {
     ...init,
     headers: {
       Authorization: KEY, // Bearer 접두 없음 (lib/postiz.ts 와 동일)
-      'Content-Type': 'application/json',
+      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
       ...(init?.headers ?? {}),
     },
   })
@@ -66,6 +68,27 @@ if (cmd === 'integrations') {
   // lib/postiz.uploadMedia 가정: { url } 바디. 실패하면 multipart 필요 신호.
   const r = await call('/upload', { method: 'POST', body: JSON.stringify({ url }) })
   show('POST /upload {url}', r)
+} else if (cmd === 'uploadfile') {
+  // multipart 업로드: 영상 URL 을 받아 바이트로 내려받고 file 필드로 전송.
+  const url = process.argv[3]
+  if (!url) {
+    console.error('사용법: node scripts/postiz-probe.mjs uploadfile <공개영상URL>')
+    process.exit(1)
+  }
+  console.log(`downloading: ${url}`)
+  const dl = await fetch(url)
+  if (!dl.ok) {
+    console.error(`다운로드 실패: HTTP ${dl.status}`)
+    process.exit(1)
+  }
+  const buf = Buffer.from(await dl.arrayBuffer())
+  const ct = dl.headers.get('content-type') || 'video/mp4'
+  const name = url.split('/').pop()?.split('?')[0] || 'video.mp4'
+  console.log(`downloaded ${buf.length} bytes (${ct}) -> uploading as "${name}"`)
+  const form = new FormData()
+  form.append('file', new Blob([buf], { type: ct }), name)
+  const r = await call('/upload', { method: 'POST', body: form })
+  show('POST /upload (multipart file)', r)
 } else if (cmd === 'post') {
   const integrationId = process.argv[3]
   const provider = process.argv[4]
