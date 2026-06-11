@@ -64,12 +64,13 @@ export async function POST(req: Request) {
     await admin
       .from('promo_videos')
       .update({
-        postiz_post_id: r.postId,
+        // 채널당 postId 가 여러 개라 콤마 결합 (posted_channels 에 채널 목록 별도 기록).
+        postiz_post_id: r.postIds.join(','),
         posted_channels: r.channels,
         posted_at: new Date().toISOString(),
       })
       .eq('id', promoVideoId)
-    return NextResponse.json({ ok: true, postId: r.postId, channels: r.channels })
+    return NextResponse.json({ ok: true, postIds: r.postIds, channels: r.channels })
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: 'publish_failed', detail }, { status: 502 })

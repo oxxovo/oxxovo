@@ -110,7 +110,7 @@ export async function publishPost(args: {
   mediaUrl: string
   caption: string
   scheduledAt?: string
-}): Promise<{ postId: string; channels: PromoChannel[] }> {
+}): Promise<{ postIds: string[]; channels: PromoChannel[] }> {
   const chans = await getPostizChannelIds(args.channels)
   const media = await uploadMedia(args.mediaUrl)
   const postType: PostType = 'post' // 홍보영상은 피드(Reel/영상 자동 감지).
@@ -132,7 +132,17 @@ export async function publishPost(args: {
   }
 
   const res = await postizFetch('/posts', { method: 'POST', body: JSON.stringify(body) })
-  const json = (await res.json()) as { id?: string } | Array<{ id?: string }>
-  const postId = Array.isArray(json) ? (json[0]?.id ?? 'unknown') : (json.id ?? 'unknown')
-  return { postId, channels: args.channels }
+  // 2026-06 실측: 성공 응답은 채널당 한 엔트리 배열 [{ postId, integration }].
+  const json = (await res.json()) as Array<{ postId?: string; integration?: string }>
+  const arr = Array.isArray(json) ? json : []
+  // integration id -> channel 역매핑으로 실제 성공 채널을 기록.
+  const byIntegration = new Map(chans.map((c) => [c.integrationId, c.channel]))
+  const postIds = arr.map((r) => r.postId ?? 'unknown')
+  const postedChannels = arr
+    .map((r) => (r.integration ? byIntegration.get(r.integration) : undefined))
+    .filter((c): c is PromoChannel => !!c)
+  return {
+    postIds,
+    channels: postedChannels.length ? postedChannels : args.channels,
+  }
 }
