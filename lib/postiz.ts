@@ -17,13 +17,21 @@ const DEFAULT_BASE = 'https://api.postiz.com/public/v1'
 export const PROMO_CHANNELS = ['instagram', 'tiktok', 'youtube', 'x'] as const
 export type PromoChannel = (typeof PROMO_CHANNELS)[number]
 
-// Postiz settings.__type 매핑 (플랫폼별 식별자).
+// Postiz settings.__type 매핑 (플랫폼별 provider 식별자).
+// 값은 GET /integrations 의 provider 식별자와 일치해야 함. IG 는 연결 방식상
+// 'instagram-standalone' 으로 보고됨(2026-06 실측). 나머지는 동일.
 const SETTINGS_TYPE: Record<PromoChannel, string> = {
-  instagram: 'instagram',
+  instagram: 'instagram-standalone',
   tiktok: 'tiktok',
   youtube: 'youtube',
   x: 'x',
 }
+
+// Postiz 게시 종류 (피드 영상 = post, 스토리 = story). 홍보영상은 피드.
+type PostType = 'post' | 'story'
+
+// 업로드된 media 참조. /posts 의 value[].image 는 객체 배열을 요구.
+export type PostizMedia = { id: string; path: string }
 
 export function isPostizEnabled(): boolean {
   return !!process.env.POSTIZ_API_KEY
@@ -38,12 +46,14 @@ function postizConfig(): { key: string; base: string } {
 
 async function postizFetch(path: string, init?: RequestInit): Promise<Response> {
   const { key, base } = postizConfig()
+  // multipart(FormData) 면 Content-Type 을 직접 지정하지 않는다(boundary 자동).
+  const isForm = typeof FormData !== 'undefined' && init?.body instanceof FormData
   // Postiz 인증: Authorization 헤더에 키를 직접 (Bearer 접두 없음).
   const res = await fetch(base + path, {
     ...init,
     headers: {
       Authorization: key,
-      'Content-Type': 'application/json',
+      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
       ...(init?.headers ?? {}),
     },
   })
@@ -76,17 +86,22 @@ export async function getPostizChannelIds(
   })
 }
 
-// R2 영상 URL 을 Postiz 에 업로드. 반환 형식은 키 발급 후 실측으로 확정 (id/path/url).
-// NOTE: 키 받으면 GET /integrations + 실제 /upload 응답으로 아래 파싱 검증.
-export async function uploadMedia(videoUrl: string): Promise<string> {
-  const res = await postizFetch('/upload', {
-    method: 'POST',
-    body: JSON.stringify({ url: videoUrl }),
-  })
-  const json = (await res.json()) as { id?: string; path?: string; url?: string }
-  const ref = json.id ?? json.path ?? json.url
-  if (!ref) throw new Error('postiz upload: no media reference in response')
-  return ref
+// R2 영상 URL 을 Postiz 에 업로드. Postiz /upload 는 multipart(file 필드)만 받으므로
+// 원본 바이트를 내려받아 재업로드한다(2026-06 실측). 응답: { id, path }.
+export async function uploadMedia(videoUrl: string): Promise<PostizMedia> {
+  const dl = await fetch(videoUrl)
+  if (!dl.ok) throw new Error(`postiz upload: source fetch ${dl.status}`)
+  const bytes = await dl.arrayBuffer()
+  const contentType = dl.headers.get('content-type') || 'video/mp4'
+  const name = videoUrl.split('/').pop()?.split('?')[0] || 'video.mp4'
+
+  const form = new FormData()
+  form.append('file', new Blob([bytes], { type: contentType }), name)
+
+  const res = await postizFetch('/upload', { method: 'POST', body: form })
+  const json = (await res.json()) as { id?: string; path?: string }
+  if (!json.id || !json.path) throw new Error('postiz upload: missing id/path in response')
+  return { id: json.id, path: json.path }
 }
 
 // 4채널 예약/즉시 게시. scheduledAt(ISO-8601) 없으면 즉시(now).
@@ -98,14 +113,21 @@ export async function publishPost(args: {
 }): Promise<{ postId: string; channels: PromoChannel[] }> {
   const chans = await getPostizChannelIds(args.channels)
   const media = await uploadMedia(args.mediaUrl)
+  const postType: PostType = 'post' // 홍보영상은 피드(Reel/영상 자동 감지).
 
+  // /posts 바디는 2026-06 실측(400 응답)으로 확정한 모양:
+  //   top-level: shortLink(boolean), tags(array)
+  //   value[].image: media 객체 배열 [{ id, path }]
+  //   settings: __type(provider) + post_type
   const body = {
     type: args.scheduledAt ? 'schedule' : 'now',
     date: args.scheduledAt ?? new Date().toISOString(),
+    shortLink: false,
+    tags: [] as string[],
     posts: chans.map((c) => ({
       integration: { id: c.integrationId },
       value: [{ content: args.caption, image: [media] }],
-      settings: { __type: SETTINGS_TYPE[c.channel] },
+      settings: { __type: SETTINGS_TYPE[c.channel], post_type: postType },
     })),
   }
 

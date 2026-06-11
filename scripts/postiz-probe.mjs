@@ -92,21 +92,30 @@ if (cmd === 'integrations') {
 } else if (cmd === 'post') {
   const integrationId = process.argv[3]
   const provider = process.argv[4]
-  const mediaRef = process.argv[5]
-  if (!integrationId || !provider || !mediaRef) {
-    console.error('사용법: node scripts/postiz-probe.mjs post <integrationId> <provider> <mediaRefOrUrl>')
+  const mediaId = process.argv[5]
+  const mediaPath = process.argv[6]
+  if (!integrationId || !provider || !mediaId || !mediaPath) {
+    console.error('사용법: node scripts/postiz-probe.mjs post <integrationId> <provider> <mediaId> <mediaPath>')
     process.exit(1)
   }
   // 15분 뒤 예약 (확인 후 Postiz 화면에서 삭제). lib/postiz.publishPost 바디와 동일 모양.
+  // 2026-06 실측: shortLink/tags(top-level) + image 객체배열 + settings.post_type.
   const date = new Date(Date.now() + 15 * 60 * 1000).toISOString()
   const body = {
     type: 'schedule',
     date,
+    shortLink: false,
+    tags: [],
     posts: [
       {
         integration: { id: integrationId },
-        value: [{ content: '[OXXOVO probe] 무시하세요 - API 실측 테스트', image: [mediaRef] }],
-        settings: { __type: provider },
+        value: [
+          {
+            content: '[OXXOVO probe] 무시하세요 - API 실측 테스트',
+            image: [{ id: mediaId, path: mediaPath }],
+          },
+        ],
+        settings: { __type: provider, post_type: 'post' },
       },
     ],
   }
