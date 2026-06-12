@@ -8,7 +8,13 @@ import 'server-only'
 import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
-import { buildCryptoBind, verifyCryptoBind } from '@/lib/cryptobind'
+import {
+  buildCryptoBind,
+  verifyCryptoBind,
+  buildComposeRequestBind,
+  CRYPTOBIND_ALGO,
+  type EdlSegment,
+} from '@/lib/cryptobind'
 import {
   getSeasonById,
   getActiveApplicationCount,
@@ -437,4 +443,159 @@ export async function submitGeneration(args: {
   if (jUpErr) return { ok: false, reason: 'failed', detail: jUpErr.message }
 
   return { ok: true }
+}
+
+// ===========================================================================
+// Compose (in-platform stitching). createRender enqueues a render_jobs row from
+// an EDL (ordered { jobId, startMs, endMs } segments). It validates the segment
+// list, confirms every source clip is the participant's own, same-season, ready
+// generation (re-verifying each clip's CryptoBind), and stamps the request-stage
+// composition signature (v1sr). The worker (oxxovo-studio) renders it; submission
+// (a later step) verifies the full v1s chain. The render is the SCORED artifact.
+// ===========================================================================
+
+export type CreateRenderResult =
+  | { ok: true; renderId: string; totalDurationSeconds: number }
+  | {
+      ok: false
+      reason:
+        | 'compose_disabled'
+        | 'empty_edl'
+        | 'too_many_clips'
+        | 'too_long'
+        | 'bad_segment'
+        | 'source_not_found'
+        | 'source_not_owned'
+        | 'source_not_ready'
+        | 'source_cryptobind_failed'
+        | 'failed'
+      detail?: string
+    }
+
+export async function createRender(args: {
+  userId: string
+  seasonId: string
+  edl: EdlSegment[]
+}): Promise<CreateRenderResult> {
+  const admin = createSupabaseAdmin()
+  const edl = Array.isArray(args.edl) ? args.edl : []
+  if (!edl.length) return { ok: false, reason: 'empty_edl' }
+
+  // 1. Season compose config (caps are season-variable).
+  const { data: seasonRow, error: sErr } = await admin
+    .from('seasons')
+    .select('studio_compose_enabled, studio_compose_max_seconds, studio_compose_max_clips')
+    .eq('id', args.seasonId)
+    .single()
+  if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
+  if (!seasonRow.studio_compose_enabled) return { ok: false, reason: 'compose_disabled' }
+  const maxClips = Number(seasonRow.studio_compose_max_clips ?? 10)
+  const maxSeconds = Number(seasonRow.studio_compose_max_seconds ?? 30)
+
+  if (edl.length > maxClips) return { ok: false, reason: 'too_many_clips' }
+
+  // 2. Segment shape + total duration <= compose cap.
+  let totalMs = 0
+  for (const seg of edl) {
+    if (
+      !seg ||
+      typeof seg.jobId !== 'string' ||
+      !Number.isFinite(seg.startMs) ||
+      !Number.isFinite(seg.endMs)
+    ) {
+      return { ok: false, reason: 'bad_segment' }
+    }
+    if (seg.startMs < 0 || seg.endMs <= seg.startMs) return { ok: false, reason: 'bad_segment' }
+    totalMs += seg.endMs - seg.startMs
+  }
+  if (totalMs <= 0) return { ok: false, reason: 'empty_edl' }
+  if (totalMs > maxSeconds * 1000) return { ok: false, reason: 'too_long' }
+
+  // 3. Load distinct sources; each must be the participant's own, same-season,
+  //    ready clip with a valid CryptoBind, and each trim must fit the clip.
+  const ids = [...new Set(edl.map((s) => s.jobId))]
+  const { data: sources, error: srcErr } = await admin
+    .from('generation_jobs')
+    .select(
+      'id, user_id, season_id, status, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
+    )
+    .in('id', ids)
+  if (srcErr) return { ok: false, reason: 'failed', detail: srcErr.message }
+  const byId = new Map((sources ?? []).map((r) => [r.id as string, r]))
+
+  for (const id of ids) {
+    const row = byId.get(id)
+    if (!row) return { ok: false, reason: 'source_not_found', detail: id }
+    if (row.user_id !== args.userId) return { ok: false, reason: 'source_not_owned', detail: id }
+    if (row.season_id !== args.seasonId) {
+      return { ok: false, reason: 'source_not_owned', detail: id + ' (season mismatch)' }
+    }
+    if (row.status !== 'ready') {
+      return { ok: false, reason: 'source_not_ready', detail: `${id} (${row.status})` }
+    }
+    const v = verifyCryptoBind(row as Parameters<typeof verifyCryptoBind>[0], args.seasonId)
+    if (!v.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${v.reason}` }
+  }
+  // trim must lie within each clip's duration (a small +1ms tolerance for rounding).
+  for (const seg of edl) {
+    const row = byId.get(seg.jobId)!
+    const durMs = Number(row.duration_seconds) * 1000
+    if (seg.endMs > durMs + 1) {
+      return { ok: false, reason: 'bad_segment', detail: `${seg.jobId} trim exceeds clip length` }
+    }
+  }
+
+  // 4. Request-stage CryptoBind (v1sr) over EDL + the source signature bundle,
+  //    then insert the queued render.
+  const renderId = randomUUID()
+  const generatedAt = new Date()
+  const sourceSignatures = ids.map((id) => String(byId.get(id)!.cryptobind_signature))
+  const cb = buildComposeRequestBind({
+    pid: args.userId,
+    tid: args.seasonId,
+    renderId,
+    edl,
+    sourceSignatures,
+  })
+
+  const { error: insErr } = await admin.from('render_jobs').insert({
+    id: renderId,
+    user_id: args.userId,
+    season_id: args.seasonId,
+    status: 'queued',
+    edl,
+    source_job_ids: ids,
+    total_duration_seconds: totalMs / 1000,
+    cryptobind_pid: args.userId,
+    cryptobind_tid: args.seasonId,
+    cryptobind_generated_at: generatedAt.toISOString(),
+    cryptobind_algo: CRYPTOBIND_ALGO,
+    ...cb,
+  })
+  if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
+
+  return { ok: true, renderId, totalDurationSeconds: totalMs / 1000 }
+}
+
+export type StudioRender = {
+  id: string
+  status: 'queued' | 'rendering' | 'uploading' | 'ready' | 'submitted' | 'failed'
+  total_duration_seconds: number
+  video_url: string | null
+  error_message: string | null
+  edl: EdlSegment[]
+  submitted_at: string | null
+  created_at: string
+}
+
+export async function listUserRenders(userId: string, seasonId: string): Promise<StudioRender[]> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('render_jobs')
+    .select('id, status, total_duration_seconds, video_url, error_message, edl, submitted_at, created_at')
+    .eq('user_id', userId)
+    .eq('season_id', seasonId)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error('listUserRenders: ' + error.message)
+  return (data ?? []) as StudioRender[]
 }

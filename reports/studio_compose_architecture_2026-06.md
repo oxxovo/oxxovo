@@ -81,6 +81,10 @@ margin/credit_usd_value/daily_generation_cap 그대로. 렌더는 fal 비용 없
 ## 6. Genesis Rule (코드/UI/rules 페이지 반영)
 > Final submissions may be composed of multiple AI-generated clips, up to 30 seconds total. All clips generated within OXXOVO, tied to the account. Assembly within OXXOVO editor only. Only sequencing/trimming/cutting. No external editing, VFX, color grading, motion graphics, external assets, AI upscaling, or audio mixing. Each clip retains its own AI-generated audio only.
 
+## 6b. 설계 원칙 (TK 2026-06-11) + 로드맵
+- **원칙 [확정]**: **"Seamless transition = creator skill, not platform effect."** 클립을 자연스럽게 잇는 건 참가자 실력이고, 플랫폼이 전환효과(페이드/크로스페이드/모핑)로 가려주지 않는다. **하드컷 고정.** 이는 OXXOVO 철학(가공 최소화·실력 평가)과 정합.
+- **로드맵 후보**: **프레임 연속 생성** -- 앞 클립의 마지막 프레임을 다음 클립의 seed/시작 이미지로 사용해 연속성을 *생성 단계*에서 확보. 이는 *편집*이 아니라 *생성* 기능이므로 Genesis Rule(편집=seq/trim/cut만) 무위반. 향후 image-to-video 모델로 구현 가능.
+
 ## 7. 빌드 순서 (견적 A~F 매핑)
 1. [토대] 마이그레이션(render_jobs+genesis cols+seasons compose+config) + **CryptoBind v1s 양 레포** <- 이번 턴
 2. [B] 워커 ffmpeg 렌더 파이프라인 + Railway ffmpeg
