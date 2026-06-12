@@ -493,14 +493,20 @@ function Generator({
           </label>
           <label className="block">
             <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.duration_label}</div>
-            <input
-              type="number"
-              min={model?.min_duration_seconds ?? 1}
-              max={model?.max_duration_seconds ?? 30}
-              value={duration}
-              onChange={(e) => setDuration(Number(e.target.value))}
-              className={inputCls}
-            />
+            {model && model.min_duration_seconds === model.max_duration_seconds ? (
+              // Fixed length (e.g. Season 0 = 20s for all rounds): show it, don't
+              // offer an editable field. Range seasons fall through to the input.
+              <div className={`${inputCls} flex items-center text-white/70`}>{model.max_duration_seconds}s</div>
+            ) : (
+              <input
+                type="number"
+                min={model?.min_duration_seconds ?? 1}
+                max={model?.max_duration_seconds ?? 30}
+                value={duration}
+                onChange={(e) => setDuration(Number(e.target.value))}
+                className={inputCls}
+              />
+            )}
           </label>
         </div>
         <label className="block">
