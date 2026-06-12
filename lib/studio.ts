@@ -15,6 +15,11 @@ import {
   CRYPTOBIND_ALGO,
   type EdlSegment,
 } from '@/lib/cryptobind'
+
+// Re-export so callers (server actions, the editor) get the EDL segment type
+// from the studio module alongside createRender, without importing the
+// server-only cryptobind module directly.
+export type { EdlSegment } from '@/lib/cryptobind'
 import {
   getSeasonById,
   getActiveApplicationCount,

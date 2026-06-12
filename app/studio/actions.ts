@@ -16,9 +16,12 @@ import {
   listUserJobs,
   createGeneration,
   submitGeneration,
+  createRender,
+  listUserRenders,
   type StudioModel,
   type StudioJob,
   type ApplicantInfo,
+  type EdlSegment,
 } from '@/lib/studio'
 import { getBalance, getStudioPricing, getStudioPurchaseConfig } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
@@ -230,4 +233,95 @@ export async function submitGenerationAction(
   })
   if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
   return { ok: true }
+}
+
+// =========================================================================
+// Compose (in-platform stitching) actions. The editor lists the participant's
+// ready clips, sends an EDL to createRender, and polls render_jobs until ready.
+// =========================================================================
+
+export type ComposeClip = {
+  id: string
+  url: string
+  durationSeconds: number
+  prompt: string
+  createdAt: string
+}
+
+export type LoadComposeResult =
+  | { ok: true; data: { clips: ComposeClip[]; maxSeconds: number; maxClips: number } }
+  | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
+
+export async function loadComposeState(token: string): Promise<LoadComposeResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const season = await getCurrentSeason()
+  if (!season) return { ok: false, error: 'no_season' }
+  try {
+    const jobs = await listUserJobs(auth.userId, season.id)
+    const clips: ComposeClip[] = jobs
+      .filter((j) => j.status === 'ready' && j.video_url)
+      .map((j) => ({
+        id: j.id,
+        url: j.video_url as string,
+        durationSeconds: j.duration_seconds,
+        prompt: j.prompt,
+        createdAt: j.created_at,
+      }))
+    const admin = createSupabaseAdmin()
+    const { data: s } = await admin
+      .from('seasons')
+      .select('studio_compose_max_seconds, studio_compose_max_clips')
+      .eq('id', season.id)
+      .single()
+    return {
+      ok: true,
+      data: {
+        clips,
+        maxSeconds: Number(s?.studio_compose_max_seconds ?? 30),
+        maxClips: Number(s?.studio_compose_max_clips ?? 10),
+      },
+    }
+  } catch (e) {
+    return { ok: false, error: 'load_failed', detail: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export type CreateRenderActionResult = { ok: true; renderId: string } | { ok: false; error: string }
+
+export async function createRenderAction(token: string, edl: EdlSegment[]): Promise<CreateRenderActionResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const season = await getCurrentSeason()
+  if (!season) return { ok: false, error: 'no_season' }
+  const res = await createRender({ userId: auth.userId, seasonId: season.id, edl })
+  if (!res.ok) return { ok: false, error: res.reason }
+  return { ok: true, renderId: res.renderId }
+}
+
+export type RenderStatusDTO = {
+  status: 'queued' | 'rendering' | 'uploading' | 'ready' | 'failed'
+  videoUrl: string | null
+  totalSeconds: number
+  error?: string | null
+} | null
+
+export async function pollRenderAction(token: string, renderId: string): Promise<RenderStatusDTO> {
+  if (!(await isSession6Enabled())) return null
+  const auth = await verifyToken(token)
+  if (!auth) return null
+  const season = await getCurrentSeason()
+  if (!season) return null
+  const renders = await listUserRenders(auth.userId, season.id)
+  const r = renders.find((x) => x.id === renderId)
+  if (!r) return null
+  const status = (['queued', 'rendering', 'uploading', 'ready', 'failed'].includes(r.status) ? r.status : 'ready') as
+    | 'queued'
+    | 'rendering'
+    | 'uploading'
+    | 'ready'
+    | 'failed'
+  return { status, videoUrl: r.video_url, totalSeconds: Number(r.total_duration_seconds), error: r.error_message }
 }
