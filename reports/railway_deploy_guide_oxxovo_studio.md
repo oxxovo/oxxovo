@@ -1,12 +1,32 @@
 # Railway Deploy Guide -- oxxovo-studio worker
 
-Step-by-step for deploying the Studio generation worker (oxxovo/oxxovo-studio)
-to Railway. The worker is a long-running poller: it watches the generation_jobs
-queue, calls fal.ai, uploads to Cloudflare R2, and advances job state. It is NOT
-a website and has no public URL.
+Updated 2026-06-13: now covers the COMPOSE render pipeline (ffmpeg).
+
+Step-by-step for deploying the Studio worker (oxxovo/oxxovo-studio) to Railway.
+The worker is a long-running poller that drives TWO queues:
+  - generation_jobs -- calls fal.ai, uploads the clip to Cloudflare R2.
+  - render_jobs (compose) -- downloads the owner's clips, runs ffmpeg
+    (sequence + trim + cut), uploads the composed final to R2, signs v1sc.
+It is NOT a website and has no public URL.
 
 ASCII-only. Do not paste secret VALUES into this file or into chat -- copy them
 straight from the local `oxxovo-studio/.env` into Railway's Variables UI.
+
+=====================================================================
+KEY CHANGES SINCE THE GENERATION-ONLY DEPLOY (read first)
+=====================================================================
+- **ffmpeg is now REQUIRED.** The Dockerfile installs it (apt-get install
+  ffmpeg on node:22-slim). src/render.ts calls `ffmpeg`/`ffprobe` from PATH;
+  without them every compose render crashes with ENOENT. If you deployed the
+  old generation-only image, you MUST redeploy from the current branch so the
+  new Dockerfile (with ffmpeg) is built.
+- **Branch.** The compose worker (render pipeline) lives on
+  `feat/studio-compose`, not yet merged to main. Point the Railway service at
+  that branch until the studio-compose PR merges (see step 1.6). After merge,
+  switch the service back to `main`.
+- **No new env vars.** Compose reuses the same Supabase + R2 + CryptoBind
+  secret. STUDIO_CRYPTOBIND_SECRET must still byte-match the main app's Vercel
+  value (it now also signs the composed final, v1sc).
 
 =====================================================================
 0. Prerequisites
@@ -30,8 +50,13 @@ straight from the local `oxxovo-studio/.env` into Railway's Variables UI.
    - Builder: Dockerfile (already configured in railway.json)
    - Start command: `node dist/worker.js` (already configured)
    - Restart policy: ON_FAILURE (already configured)
+   - The Dockerfile installs ffmpeg (apt-get) -- the build is a bit slower than
+     the old generation-only image; that is expected.
    Do NOT change these; they ship in the repo.
-6. The first build will start. It will FAIL or crash-loop until you add the
+6. **Set the deploy branch to `feat/studio-compose`** (Service -> Settings ->
+   Source -> Branch). The compose render pipeline is on this branch until the
+   studio-compose PR merges to main. After merge, switch back to `main`.
+7. The first build will start. It will FAIL or crash-loop until you add the
    Variables in step 2 -- that is expected. Add them, then redeploy.
 
 =====================================================================
@@ -86,6 +111,18 @@ To prove end to end after deploy: enqueue one job (via /studio once session6 is
 ON, or the seed path), and watch the logs show:
   [job <id>] claimed ... -> fal ok ... -> uploaded to R2 ... -> READY
 
+COMPOSE render path (the new pipeline): once a participant has >=1 ready clip
+and builds a composition (/studio/compose), a render_jobs row is enqueued. The
+worker logs the render lifecycle (actual lines):
+  [render <id>] claimed (rendering, attempt 0, 3 segments)
+  [render <id>] composed 3 seg -> 28.00s @ 1280x720/24fps
+  [render <id>] READY (renders/<...>.mp4, 6.40 MB)
+If you instead see `[render <id>] FAILED: spawn ffmpeg ENOENT`, the image was
+built from the OLD Dockerfile (no ffmpeg) -- redeploy from feat/studio-compose.
+You can also check `ffmpeg -version` via Service -> Shell. NOTE: a render
+failure does NOT refund (renders cost no fal credits); generation failures
+still refund.
+
 Daily-cost guard: if you see
   [guard] daily cap reached: N/N generations today
 the worker has paused new generations for the day. Raise
@@ -97,5 +134,11 @@ conservative).
 =====================================================================
 - No domain / health-check port needed -- it is a worker, not a web service.
 - It shares the same Supabase project as the main app and oxxovo-scoring.
-- Redeploys on every push to the repo's default branch (main).
+- Redeploys on every push to the service's configured branch. While compose is
+  unmerged that is `feat/studio-compose`; switch to `main` after the PR merges.
+- One worker drives BOTH queues (generation + render) in the same tick loop --
+  no second service needed. Generation is gated by the daily fal cap; the
+  render path is NOT (it spends no fal credits).
+- ffmpeg/ffprobe ship in the image via the Dockerfile (apt-get). If you ever
+  swap to nixpacks, add ffmpeg to the nix packages or the render path breaks.
 - To stop it: pause or delete the Railway service.
