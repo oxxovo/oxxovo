@@ -12,6 +12,7 @@ import {
   buildCryptoBind,
   verifyCryptoBind,
   buildComposeRequestBind,
+  verifyComposeBind,
   CRYPTOBIND_ALGO,
   type EdlSegment,
 } from '@/lib/cryptobind'
@@ -603,4 +604,227 @@ export async function listUserRenders(userId: string, seasonId: string): Promise
     .order('created_at', { ascending: false })
   if (error) throw new Error('listUserRenders: ' + error.message)
   return (data ?? []) as StudioRender[]
+}
+
+// ===========================================================================
+// submitRender -- submit a READY composed final into the participant's
+// application for the season. This is the compose analogue of submitGeneration.
+// It verifies the FULL v1s integrity chain before writing:
+//   1. each source clip's own v1/v1c CryptoBind + ownership + same season
+//   2. the render's v1sr request signature (EDL + source bundle recomputed live)
+//   3. the worker's v1sc content signature (final hash) -- verifyComposeBind
+//   4. total duration <= the season compose cap
+// On success the render is locked ready->submitted (terminal); the SOURCE clips
+// are intentionally left 'ready' (a clip may be reused / individually tracked).
+// Status of the application row is NOT touched -- the scoring system owns that.
+// ===========================================================================
+
+export type SubmitRenderResult =
+  | { ok: true }
+  | {
+      ok: false
+      reason:
+        | 'render_not_found'
+        | 'not_owner'
+        | 'not_ready'
+        | 'compose_disabled'
+        | 'too_long'
+        | 'source_not_found'
+        | 'source_cryptobind_failed'
+        | 'compose_cryptobind_failed'
+        | 'no_application'
+        | 'already_submitted'
+        | 'application_info_required'
+        | 'bad_statement'
+        | 'agreements_required'
+        | 'name_required'
+        | 'application_closed'
+        | 'round_closed'
+        | 'failed'
+      detail?: string
+    }
+
+export async function submitRender(args: {
+  userId: string
+  email: string
+  seasonId: string
+  renderId: string
+  applicant?: ApplicantInfo
+}): Promise<SubmitRenderResult> {
+  const admin = createSupabaseAdmin()
+
+  // 1. Load the render + ownership + readiness.
+  const { data: render, error: rErr } = await admin
+    .from('render_jobs')
+    .select(
+      'id, user_id, season_id, status, video_url, total_duration_seconds, edl, source_job_ids, cryptobind_pid, cryptobind_tid, cryptobind_algo, cryptobind_render_signature, cryptobind_final_hash, cryptobind_final_signature',
+    )
+    .eq('id', args.renderId)
+    .single()
+  if (rErr || !render) return { ok: false, reason: 'render_not_found' }
+  if (render.user_id !== args.userId) return { ok: false, reason: 'not_owner' }
+  if (render.status !== 'ready') return { ok: false, reason: 'not_ready' }
+  if (!render.video_url) return { ok: false, reason: 'not_ready', detail: 'no video_url' }
+
+  // 2. Season compose gate + cap (defense; caps are season-variable).
+  const { data: seasonRow, error: sErr } = await admin
+    .from('seasons')
+    .select('studio_compose_enabled, studio_compose_max_seconds')
+    .eq('id', args.seasonId)
+    .single()
+  if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
+  if (!seasonRow.studio_compose_enabled) return { ok: false, reason: 'compose_disabled' }
+  const maxSeconds = Number(seasonRow.studio_compose_max_seconds ?? 30)
+  const totalSeconds = Number(render.total_duration_seconds)
+  if (totalSeconds > maxSeconds + 0.001) return { ok: false, reason: 'too_long' }
+
+  // 3. Re-verify EVERY source clip: own-account, same season, valid CryptoBind.
+  //    The signature bundle is rebuilt from these to check the render v1sr sig.
+  const sourceIds = (render.source_job_ids as string[] | null) ?? []
+  if (!sourceIds.length) return { ok: false, reason: 'source_not_found', detail: 'empty source set' }
+  const { data: sources, error: srcErr } = await admin
+    .from('generation_jobs')
+    .select(
+      'id, user_id, season_id, status, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
+    )
+    .in('id', sourceIds)
+  if (srcErr) return { ok: false, reason: 'failed', detail: srcErr.message }
+  const byId = new Map((sources ?? []).map((r) => [r.id as string, r]))
+
+  const sourceSignatures: string[] = []
+  for (const id of sourceIds) {
+    const row = byId.get(id)
+    if (!row) return { ok: false, reason: 'source_not_found', detail: id }
+    if (row.user_id !== args.userId) {
+      return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: not owned` }
+    }
+    if (row.season_id !== args.seasonId) {
+      return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: season mismatch` }
+    }
+    const v = verifyCryptoBind(row as Parameters<typeof verifyCryptoBind>[0], args.seasonId)
+    if (!v.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${v.reason}` }
+    sourceSignatures.push(String(row.cryptobind_signature))
+  }
+
+  // 4. Verify the composition itself: v1sr (EDL + source bundle) then v1sc (final).
+  const cv = verifyComposeBind(
+    {
+      id: render.id as string,
+      cryptobind_pid: String(render.cryptobind_pid),
+      cryptobind_tid: String(render.cryptobind_tid),
+      cryptobind_algo: String(render.cryptobind_algo),
+      cryptobind_render_signature: String(render.cryptobind_render_signature),
+      cryptobind_final_hash: render.cryptobind_final_hash as string | null,
+      cryptobind_final_signature: render.cryptobind_final_signature as string | null,
+      edl: (render.edl as EdlSegment[]) ?? [],
+    },
+    args.seasonId,
+    sourceSignatures,
+  )
+  if (!cv.ok) return { ok: false, reason: 'compose_cryptobind_failed', detail: cv.reason }
+
+  // 5. Studio round for this season -- effective round resolved server-side.
+  const cfg = await getSeasonStudioConfig(args.seasonId)
+  const effectiveRound = resolveEffectiveRound(cfg)
+
+  // S-3: main round closes at main_round_start_at + submission_hours.
+  if (effectiveRound === 'main') {
+    const deadlineMs = mainRoundDeadlineMs(cfg)
+    if (deadlineMs !== null && Date.now() > deadlineMs) {
+      return { ok: false, reason: 'round_closed' }
+    }
+  }
+
+  // 6. Find the participant's application (by email, like the rest of the site).
+  const email = args.email.toLowerCase()
+  const { data: appRow, error: aErr } = await admin
+    .from('genesis_applications')
+    .select('id, studio_application_submitted_at, main_round_submitted_at')
+    .eq('season_id', args.seasonId)
+    .ilike('email', email)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (aErr) return { ok: false, reason: 'failed', detail: aErr.message }
+
+  const now = new Date().toISOString()
+  const durationInt = Math.round(totalSeconds)
+
+  // 7a. No application row yet -- application round only (the compose IS the
+  //     application; main round requires a pre-existing row).
+  if (!appRow) {
+    if (effectiveRound === 'main') return { ok: false, reason: 'no_application' }
+    const info = args.applicant
+    if (!info) return { ok: false, reason: 'application_info_required' }
+    const name = (info.creatorName ?? '').trim()
+    const statement = (info.creatorStatement ?? '').trim()
+    if (!name) return { ok: false, reason: 'name_required' }
+    if (statement.length < STATEMENT_MIN || statement.length > STATEMENT_MAX) {
+      return { ok: false, reason: 'bad_statement' }
+    }
+    if (!info.agreedRules || !info.agreedPrivacy || !info.agreedIntegrity) {
+      return { ok: false, reason: 'agreements_required' }
+    }
+
+    // S-1/S-2: same gates as POST /api/apply -- window + capacity/waitlist split.
+    const season = await getSeasonById(args.seasonId)
+    if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
+    if (isApplicationClosed(season)) return { ok: false, reason: 'application_closed' }
+    const activeCount = await getActiveApplicationCount(args.seasonId)
+    const resolvedStatus: 'pending' | 'waitlist' = isCapacityFull(season, activeCount)
+      ? 'waitlist'
+      : 'pending'
+
+    const { error: insErr } = await admin.from('genesis_applications').insert({
+      season_id: args.seasonId,
+      user_id: args.userId,
+      email,
+      creator_name: name,
+      creator_statement: statement,
+      country: info.country?.trim() || null,
+      channel_url: info.channelUrl?.trim() || null,
+      ai_service: 'OXXOVO Studio',
+      free_entry_url: render.video_url,
+      video_duration_seconds: durationInt,
+      agreed_to_rules: true,
+      agreed_to_privacy: true,
+      agreed_to_integrity_notice: true,
+      status: resolvedStatus,
+      studio_application_render_id: render.id,
+      studio_application_submitted_at: now,
+    })
+    if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
+  } else {
+    // 7b. Row exists -- per-round immutability + update.
+    const update: Record<string, unknown> = {}
+    if (effectiveRound === 'main') {
+      if (appRow.main_round_submitted_at) return { ok: false, reason: 'already_submitted' }
+      update.main_round_video_url = render.video_url
+      update.main_round_submitted_at = now
+      update.studio_main_render_id = render.id
+    } else {
+      if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
+      update.free_entry_url = render.video_url
+      update.video_duration_seconds = durationInt
+      update.ai_service = 'OXXOVO Studio'
+      update.studio_application_render_id = render.id
+      update.studio_application_submitted_at = now
+    }
+    const { error: upErr } = await admin
+      .from('genesis_applications')
+      .update(update)
+      .eq('id', appRow.id)
+    if (upErr) return { ok: false, reason: 'failed', detail: upErr.message }
+  }
+
+  // 8. Lock the render: ready -> submitted (terminal). CAS guards a double
+  //    submit race. Source clips are intentionally left 'ready'.
+  const { error: rUpErr } = await admin
+    .from('render_jobs')
+    .update({ status: 'submitted', submitted_at: now, updated_at: now })
+    .eq('id', render.id)
+    .eq('status', 'ready')
+  if (rUpErr) return { ok: false, reason: 'failed', detail: rUpErr.message }
+
+  return { ok: true }
 }

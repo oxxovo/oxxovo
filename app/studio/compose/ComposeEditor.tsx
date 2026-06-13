@@ -22,6 +22,28 @@ export type EditorRenderStatus = {
   error?: string | null
 }
 
+// Applicant info collected at submission ONLY when the application round has no
+// existing application row (the compose IS the application). Mirrors lib/studio
+// ApplicantInfo without importing the server-only module into this client file.
+export type ComposeApplicant = {
+  creatorName: string
+  creatorStatement: string
+  country?: string
+  channelUrl?: string
+  agreedRules: boolean
+  agreedPrivacy: boolean
+  agreedIntegrity: boolean
+}
+
+export type ComposeSubmitCtx = {
+  round: 'application' | 'main'
+  hasApplication: boolean
+  alreadySubmitted: boolean
+  needsApplicantInfo: boolean
+  statementMin: number
+  statementMax: number
+}
+
 export type ComposeEditorProps = {
   lang: 'ko' | 'en'
   clips: SourceClip[]
@@ -32,6 +54,13 @@ export type ComposeEditorProps = {
     edl: { jobId: string; startMs: number; endMs: number }[],
   ) => Promise<{ ok: true; renderId: string } | { ok: false; error: string }>
   pollRender: (renderId: string) => Promise<EditorRenderStatus | null>
+  // Submission step (optional -- the editor renders the submit UI only when both
+  // are provided). The demo stubs these like onRender/pollRender.
+  submitCtx?: ComposeSubmitCtx
+  onSubmit?: (
+    renderId: string,
+    applicant?: ComposeApplicant,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
 }
 
 type Segment = { uid: string; jobId: string; startMs: number; endMs: number }
@@ -75,6 +104,23 @@ const DICT = {
     render_failed: '완성본 생성 실패',
     demo_badge: '데모 — 실제 생성/제출 없음',
     submit_next: '제출은 다음 단계에서 연결됩니다.',
+    submit_title: '완성본 제출',
+    submit_round: (r: string) => (r === 'main' ? '본선 라운드' : '예선 라운드'),
+    submit_btn: '제출하기',
+    submitting: '제출 중…',
+    submitted_ok: '제출 완료 — 채점 대기 중입니다. 제출 후에는 수정할 수 없습니다.',
+    already_submitted: '이번 라운드에 이미 제출했습니다.',
+    submit_warn: '제출하면 이 완성본이 채점에 들어가며 되돌릴 수 없습니다.',
+    need_info: '예선은 이 제출이 곧 참가 신청입니다 — 아래 정보를 입력하세요.',
+    f_name: '창작자 이름',
+    f_statement: (n: number, m: number) => `작품 설명 (${n}~${m}자)`,
+    f_country: '국가 (선택)',
+    f_channel: '채널 URL (선택)',
+    agree_rules: '대회 규칙에 동의합니다',
+    agree_privacy: '개인정보 처리방침에 동의합니다',
+    agree_integrity: '무결성 고지에 동의합니다',
+    submit_err: (e: string) => `제출 실패: ${e}`,
+    chars: '자',
     sec: '초',
   },
   en: {
@@ -115,6 +161,23 @@ const DICT = {
     render_failed: 'Render failed',
     demo_badge: 'Demo — no real generation/submission',
     submit_next: 'Submission is wired in the next step.',
+    submit_title: 'Submit final',
+    submit_round: (r: string) => (r === 'main' ? 'Main round' : 'Application round'),
+    submit_btn: 'Submit',
+    submitting: 'Submitting…',
+    submitted_ok: 'Submitted — awaiting scoring. Submissions cannot be edited.',
+    already_submitted: 'Already submitted for this round.',
+    submit_warn: 'Submitting enters this final into scoring and cannot be undone.',
+    need_info: 'In the application round this submission is your entry — fill in your info below.',
+    f_name: 'Creator name',
+    f_statement: (n: number, m: number) => `Creator statement (${n}–${m} chars)`,
+    f_country: 'Country (optional)',
+    f_channel: 'Channel URL (optional)',
+    agree_rules: 'I agree to the tournament rules',
+    agree_privacy: 'I agree to the privacy policy',
+    agree_integrity: 'I agree to the integrity notice',
+    submit_err: (e: string) => `Submission failed: ${e}`,
+    chars: 'chars',
     sec: 's',
   },
 } as const
@@ -133,6 +196,21 @@ export default function ComposeEditor(props: ComposeEditorProps) {
   const [renderState, setRenderState] = useState<EditorRenderStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [renderId, setRenderId] = useState<string | null>(null)
+
+  // submit step
+  const [submitting, setSubmitting] = useState(false)
+  const [submitErr, setSubmitErr] = useState<string | null>(null)
+  const [submitDone, setSubmitDone] = useState(false)
+  const [ap, setAp] = useState<ComposeApplicant>({
+    creatorName: '',
+    creatorStatement: '',
+    country: '',
+    channelUrl: '',
+    agreedRules: false,
+    agreedPrivacy: false,
+    agreedIntegrity: false,
+  })
 
   const totalMs = segments.reduce((a, s) => a + (s.endMs - s.startMs), 0)
   const maxMs = props.maxSeconds * 1000
@@ -227,6 +305,9 @@ export default function ComposeEditor(props: ComposeEditorProps) {
   const doRender = async () => {
     setErr(null)
     setBusy(true)
+    setSubmitDone(false)
+    setSubmitErr(null)
+    setRenderId(null)
     setRenderState({ status: 'queued', videoUrl: null, totalSeconds: totalMs / 1000 })
     const edl = segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
     const res = await props.onRender(edl)
@@ -236,6 +317,7 @@ export default function ComposeEditor(props: ComposeEditorProps) {
       setBusy(false)
       return
     }
+    setRenderId(res.renderId)
     // poll
     for (let i = 0; i < 60; i++) {
       await new Promise((r) => setTimeout(r, props.demo ? 600 : 2500))
@@ -245,6 +327,43 @@ export default function ComposeEditor(props: ComposeEditorProps) {
       if (st.status === 'ready' || st.status === 'failed') break
     }
     setBusy(false)
+  }
+
+  // --- submit ---
+  const needInfo = props.submitCtx?.needsApplicantInfo ?? false
+  const sMin = props.submitCtx?.statementMin ?? 150
+  const sMax = props.submitCtx?.statementMax ?? 250
+  const stmtLen = ap.creatorStatement.trim().length
+  const infoValid =
+    !needInfo ||
+    (ap.creatorName.trim().length > 0 &&
+      stmtLen >= sMin &&
+      stmtLen <= sMax &&
+      ap.agreedRules &&
+      ap.agreedPrivacy &&
+      ap.agreedIntegrity)
+  const canSubmit =
+    !!props.onSubmit && !!renderId && !submitting && !submitDone && infoValid && !props.submitCtx?.alreadySubmitted
+
+  const doSubmit = async () => {
+    if (!props.onSubmit || !renderId) return
+    setSubmitErr(null)
+    setSubmitting(true)
+    const applicant: ComposeApplicant | undefined = needInfo
+      ? {
+          creatorName: ap.creatorName.trim(),
+          creatorStatement: ap.creatorStatement.trim(),
+          country: ap.country?.trim() || undefined,
+          channelUrl: ap.channelUrl?.trim() || undefined,
+          agreedRules: ap.agreedRules,
+          agreedPrivacy: ap.agreedPrivacy,
+          agreedIntegrity: ap.agreedIntegrity,
+        }
+      : undefined
+    const res = await props.onSubmit(renderId, applicant)
+    if (res.ok) setSubmitDone(true)
+    else setSubmitErr(res.error)
+    setSubmitting(false)
   }
 
   // ---------- render ----------
@@ -448,10 +567,97 @@ export default function ComposeEditor(props: ComposeEditorProps) {
               <p className="text-sm text-[#ff8888]">{t.render_failed}{renderState.error ? `: ${renderState.error}` : ''}</p>
             )}
             {renderState.status === 'ready' && renderState.videoUrl && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold">{t.final_title} · {renderState.totalSeconds.toFixed(1)}{t.sec}</div>
                 <video src={renderState.videoUrl} controls playsInline className="aspect-video w-full rounded-xl border border-white/10 bg-black" />
-                <p className="text-[11px] text-white/40">{t.submit_next}</p>
+
+                {!props.onSubmit ? (
+                  <p className="text-[11px] text-white/40">{t.submit_next}</p>
+                ) : submitDone ? (
+                  <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/[.06] px-4 py-3 text-sm text-emerald-300">
+                    {t.submitted_ok}
+                  </div>
+                ) : props.submitCtx?.alreadySubmitted ? (
+                  <p className="text-[12px] text-white/50">{t.already_submitted}</p>
+                ) : (
+                  <div className="space-y-3 border-t border-white/10 pt-3">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold">{t.submit_title}</h3>
+                      {props.submitCtx && (
+                        <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/50">
+                          {t.submit_round(props.submitCtx.round)}
+                        </span>
+                      )}
+                    </div>
+
+                    {needInfo && (
+                      <div className="space-y-2.5">
+                        <p className="text-[11px] text-[#d9b8ff]">{t.need_info}</p>
+                        <label className="block">
+                          <span className="text-[10px] uppercase tracking-wider text-white/40">{t.f_name}</span>
+                          <input
+                            value={ap.creatorName}
+                            onChange={(e) => setAp((a) => ({ ...a, creatorName: e.target.value }))}
+                            className="mt-1 w-full rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white focus:border-[#8b22ff] focus:outline-none"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/40">
+                            <span>{t.f_statement(sMin, sMax)}</span>
+                            <span className={stmtLen < sMin || stmtLen > sMax ? 'text-[#ff8888]' : 'text-[#b66cff]'}>
+                              {stmtLen}{t.chars}
+                            </span>
+                          </span>
+                          <textarea
+                            value={ap.creatorStatement}
+                            onChange={(e) => setAp((a) => ({ ...a, creatorStatement: e.target.value }))}
+                            rows={3}
+                            className="mt-1 w-full rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white focus:border-[#8b22ff] focus:outline-none"
+                          />
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            value={ap.country}
+                            onChange={(e) => setAp((a) => ({ ...a, country: e.target.value }))}
+                            placeholder={t.f_country}
+                            className="rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white placeholder-white/30 focus:border-[#8b22ff] focus:outline-none"
+                          />
+                          <input
+                            value={ap.channelUrl}
+                            onChange={(e) => setAp((a) => ({ ...a, channelUrl: e.target.value }))}
+                            placeholder={t.f_channel}
+                            className="rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white placeholder-white/30 focus:border-[#8b22ff] focus:outline-none"
+                          />
+                        </div>
+                        {([
+                          ['agreedRules', t.agree_rules],
+                          ['agreedPrivacy', t.agree_privacy],
+                          ['agreedIntegrity', t.agree_integrity],
+                        ] as const).map(([key, label]) => (
+                          <label key={key} className="flex items-center gap-2 text-[12px] text-white/70">
+                            <input
+                              type="checkbox"
+                              checked={ap[key]}
+                              onChange={(e) => setAp((a) => ({ ...a, [key]: e.target.checked }))}
+                              className="accent-[#8b22ff]"
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    <p className="text-[11px] text-white/40">{t.submit_warn}</p>
+                    {submitErr && <p className="text-[12px] text-[#ff8888]">{t.submit_err(submitErr)}</p>}
+                    <button
+                      onClick={doSubmit}
+                      disabled={!canSubmit}
+                      className="w-full rounded-xl border border-emerald-400/50 bg-emerald-400/15 px-5 py-3 text-sm font-black uppercase tracking-wider text-emerald-200 transition hover:bg-emerald-400/25 disabled:opacity-40"
+                    >
+                      {submitting ? t.submitting : t.submit_btn}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

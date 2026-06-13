@@ -8,8 +8,14 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAdminLang, setAdminLang } from '@/lib/admin-i18n'
 import { useLocalToken } from '@/lib/use-local-user'
-import ComposeEditor from './ComposeEditor'
-import { loadComposeState, createRenderAction, pollRenderAction, type ComposeClip } from '../actions'
+import ComposeEditor, { type ComposeApplicant, type ComposeSubmitCtx } from './ComposeEditor'
+import {
+  loadComposeState,
+  createRenderAction,
+  pollRenderAction,
+  submitRenderAction,
+  type ComposeClip,
+} from '../actions'
 import type { EdlSegment } from '@/lib/studio'
 
 const T = {
@@ -21,7 +27,12 @@ export default function ComposePage() {
   const token = useLocalToken()
   const lang = useAdminLang()
   const t = T[lang]
-  const [data, setData] = useState<{ clips: ComposeClip[]; maxSeconds: number; maxClips: number } | null>(null)
+  const [data, setData] = useState<{
+    clips: ComposeClip[]
+    maxSeconds: number
+    maxClips: number
+    submit: ComposeSubmitCtx
+  } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -77,8 +88,12 @@ export default function ComposePage() {
             clips={data.clips}
             maxSeconds={data.maxSeconds}
             maxClips={data.maxClips}
+            submitCtx={data.submit}
             onRender={(edl: EdlSegment[]) => createRenderAction(token, edl)}
             pollRender={(renderId: string) => pollRenderAction(token, renderId)}
+            onSubmit={(renderId: string, applicant?: ComposeApplicant) =>
+              submitRenderAction(token, renderId, applicant)
+            }
           />
         )}
       </div>

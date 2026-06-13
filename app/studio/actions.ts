@@ -18,6 +18,9 @@ import {
   submitGeneration,
   createRender,
   listUserRenders,
+  submitRender,
+  STATEMENT_MIN,
+  STATEMENT_MAX,
   type StudioModel,
   type StudioJob,
   type ApplicantInfo,
@@ -248,8 +251,21 @@ export type ComposeClip = {
   createdAt: string
 }
 
+// Submission context the editor needs to drive the "submit final" step: which
+// round is live, whether the participant already has an application row, whether
+// a submission already landed for this round, and the statement bounds (only the
+// application round with NO existing row collects applicant info).
+export type ComposeSubmitCtx = {
+  round: 'application' | 'main'
+  hasApplication: boolean
+  alreadySubmitted: boolean
+  needsApplicantInfo: boolean
+  statementMin: number
+  statementMax: number
+}
+
 export type LoadComposeResult =
-  | { ok: true; data: { clips: ComposeClip[]; maxSeconds: number; maxClips: number } }
+  | { ok: true; data: { clips: ComposeClip[]; maxSeconds: number; maxClips: number; submit: ComposeSubmitCtx } }
   | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
 
 export async function loadComposeState(token: string): Promise<LoadComposeResult> {
@@ -275,12 +291,39 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
       .select('studio_compose_max_seconds, studio_compose_max_clips')
       .eq('id', season.id)
       .single()
+
+    // Submission context (round, application presence, already-submitted).
+    const cfg = await getSeasonStudioConfig(season.id)
+    const effectiveRound = resolveEffectiveRound(cfg)
+    const { data: appRow } = await admin
+      .from('genesis_applications')
+      .select('id, studio_application_submitted_at, main_round_submitted_at')
+      .eq('season_id', season.id)
+      .ilike('email', auth.email)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const hasApplication = !!appRow
+    const alreadySubmitted = !!(
+      appRow &&
+      (effectiveRound === 'main' ? appRow.main_round_submitted_at : appRow.studio_application_submitted_at)
+    )
+
     return {
       ok: true,
       data: {
         clips,
         maxSeconds: Number(s?.studio_compose_max_seconds ?? 30),
         maxClips: Number(s?.studio_compose_max_clips ?? 10),
+        submit: {
+          round: effectiveRound,
+          hasApplication,
+          alreadySubmitted,
+          // Only the application round with no existing row needs name/statement/agreements.
+          needsApplicantInfo: effectiveRound === 'application' && !hasApplication,
+          statementMin: STATEMENT_MIN,
+          statementMax: STATEMENT_MAX,
+        },
       },
     }
   } catch (e) {
@@ -324,4 +367,54 @@ export async function pollRenderAction(token: string, renderId: string): Promise
     | 'ready'
     | 'failed'
   return { status, videoUrl: r.video_url, totalSeconds: Number(r.total_duration_seconds), error: r.error_message }
+}
+
+export type SubmitRenderActionResult =
+  | { ok: true }
+  | {
+      ok: false
+      error:
+        | 'invalid_token'
+        | 'no_season'
+        | 'render_not_found'
+        | 'not_owner'
+        | 'not_ready'
+        | 'compose_disabled'
+        | 'too_long'
+        | 'source_not_found'
+        | 'source_cryptobind_failed'
+        | 'compose_cryptobind_failed'
+        | 'no_application'
+        | 'already_submitted'
+        | 'application_info_required'
+        | 'bad_statement'
+        | 'agreements_required'
+        | 'name_required'
+        | 'application_closed'
+        | 'round_closed'
+        | 'disabled'
+        | 'failed'
+      detail?: string
+    }
+
+export async function submitRenderAction(
+  token: string,
+  renderId: string,
+  applicant?: ApplicantInfo,
+): Promise<SubmitRenderActionResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const season = await getCurrentSeason()
+  if (!season) return { ok: false, error: 'no_season' }
+
+  const res = await submitRender({
+    userId: auth.userId,
+    email: auth.email,
+    seasonId: season.id,
+    renderId,
+    applicant,
+  })
+  if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
+  return { ok: true }
 }

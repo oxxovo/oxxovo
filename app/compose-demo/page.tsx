@@ -34,6 +34,9 @@ export default function ComposeDemoPage() {
     if (pollN.current < 4) return { status: 'rendering', videoUrl: null, totalSeconds: total.current }
     return { status: 'ready', videoUrl: FINAL_DEMO, totalSeconds: total.current }
   }
+  // Stubbed submit -- showcases the full submission UI (application round with no
+  // existing row, so the applicant-info form appears). No real DB write.
+  const onSubmit = async () => ({ ok: true as const })
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
@@ -48,7 +51,24 @@ export default function ComposeDemoPage() {
         </div>
       </header>
       <div className="mx-auto max-w-4xl px-6 py-8">
-        <ComposeEditor lang={lang} clips={CLIPS} maxSeconds={30} maxClips={10} demo onRender={onRender} pollRender={pollRender} />
+        <ComposeEditor
+          lang={lang}
+          clips={CLIPS}
+          maxSeconds={30}
+          maxClips={10}
+          demo
+          onRender={onRender}
+          pollRender={pollRender}
+          submitCtx={{
+            round: 'application',
+            hasApplication: false,
+            alreadySubmitted: false,
+            needsApplicantInfo: true,
+            statementMin: 150,
+            statementMax: 250,
+          }}
+          onSubmit={onSubmit}
+        />
       </div>
     </main>
   )
