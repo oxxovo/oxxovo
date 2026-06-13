@@ -55,26 +55,27 @@
 
 ### ② 워커 배선 실측 결과 — 완료 (2026-06-13)
 
-fal 6개 모델 스키마 실측 → **결정적 버그 발견·수정**.
+**중요: fal에 직접 프로브한 결과로 확정.** (WebFetch /api 요약은 duration 타입을 일부 오독했음 — 신뢰 불가. 잘못된 duration을 보내 fal이 반환하는 `expected` 리터럴 목록으로 ground-truth 확정.)
 
-**핵심: `duration`은 6개 모델 전부 문자열 enum.** 워커는 `duration: <숫자>`를 보내고 있었음 → 6/6 모델이 매 생성마다 fal 422 검증실패 → failed+환불 상태였음(라이브 미노출: studio 미가동).
+**duration 타입은 모델마다 다른 혼합형이었음** (전부 문자열이라는 1차 추정은 오류). 워커가 `duration:<숫자>` 고정 전송 → string 모델들은 실패. 수정 후 모델별 포맷.
 
-| 모델 | duration 타입 | 값 | 비고 |
+| 모델 | duration 실제 타입 | 값 | 비고 |
 |---|---|---|---|
-| LTX-2 Fast | 문자열 | "6".."20"(짝수) | **fps도 문자열** "25" (숫자→문자열 수정) |
-| Veo 3.1 Lite | 문자열+**s** | "4s","6s","8s" | |
-| Sora 2 | 문자열 | "4","8","12","16","20" | generate_audio 파라미터 없음(오디오 내장) |
-| Kling V3 Pro | 문자열 | "3".."15" | resolution 파라미터 없음(1080p 고정) |
-| Seedance 2.0 | 문자열 | "auto","4".."15" | 모델ID 정상, resolution 480p/720p |
-| Veo 3.1 full | 문자열+**s** | "4s","6s","8s" | |
+| LTX-2 Fast | **숫자(int)** | 6,8,10,12,14,16,18,20 | **fps도 숫자** 25/50 |
+| Veo 3.1 Lite | **문자열+s** | '4s','6s','8s' | |
+| Sora 2 | **숫자(int)** | 4,8,12,16,20 | generate_audio 파라미터 없음(오디오 내장) |
+| Kling V3 Pro | **문자열** | '3'..'15' | resolution 파라미터 없음(1080p 고정) |
+| Seedance 2.0 | **문자열** | 'auto','4'..'15' | 모델ID 정상, resolution 480p/720p |
+| Veo 3.1 full | **문자열+s** | '4s','6s','8s' | |
+
+resolution/aspect_ratio/generate_audio는 6개 전부 정상(다른 필드 에러 0). Kling=resolution 없음/Sora=generate_audio 없음 = 카탈로그도 이미 누락(정상).
 
 **수정(코드+데이터):**
-- 워커 `fal.ts`: `metadata.duration_format`(`string`|`string_s`|`int`)에 따라 duration을 문자열/`Ns`/숫자로 포맷. key는 `metadata.duration_key`(기본 `duration`).
-- 워커 `worker.ts`: `snapDuration()` 추가 — 요청 길이를 `metadata.durations` enum의 최근접값으로 스냅(enqueue가 범위만 검증 → off-enum 5초 등도 422 방지). Model.metadata 타입 확장.
-- 카탈로그: 6행에 `duration_format` 부여(ltx2/sora2/kling/seedance=`string`, veo 2종=`string_s`), LTX `fps` `"25"` 문자열화.
-- input_params 키명·모델ID는 (LTX fps 외) 전부 정상이었음. Kling=resolution 없음/Sora=generate_audio 없음 = 카탈로그도 이미 누락(정상).
+- 워커 `fal.ts`: `metadata.duration_format`(`int`|`string`|`string_s`)에 따라 duration을 숫자/`"N"`/`"Ns"`로 포맷. key는 `metadata.duration_key`(기본 `duration`).
+- 워커 `worker.ts`: `snapDuration()` — 요청 길이를 `metadata.durations` enum 최근접값으로 스냅(enqueue가 범위만 검증 → off-enum 방지). Model.metadata 타입 확장.
+- 카탈로그 duration_format: **ltx2/sora2=`int`**, kling/seedance=`string`, veo 2종=`string_s`. **LTX fps=숫자 25**.
 
-**마이그 재실행 필요:** `reports/_run/model_catalog_tiers.sql`(duration_format+fps 반영). TK가 다시 Run. 워커 tsc 0.
+**마이그 재실행 필요:** `reports/_run/model_catalog_tiers.sql`(ltx2/sora2=int, LTX fps 숫자 반영). TK가 다시 Run. 워커 tsc 0.
 
 ## 5. fal 공식 출처
 

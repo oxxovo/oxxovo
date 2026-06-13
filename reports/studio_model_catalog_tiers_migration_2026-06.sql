@@ -13,12 +13,14 @@
 -- Runway is NOT hosted on fal -> cannot be added via the fal-only integration.
 -- All 6 carry native audio (metadata.has_audio=true) -> audio plan C compatible.
 -- metadata.input_params = exact fal param names the worker forwards (B-wired).
--- metadata.duration_format = how the worker renders `duration` (MEASURED 2026-06-13:
---   EVERY current fal video model takes duration as a STRING enum, and Veo suffixes
---   it with 's'): 'string' for ltx2/sora2/kling/seedance, 'string_s' for both veo3.1.
---   Sending a bare number 422s -> the worker reads this to format correctly.
+-- metadata.duration_format = how the worker renders `duration` (PROBED DIRECTLY
+--   against fal 2026-06-13 -- the type is MIXED across models, do not assume):
+--     'int'      ltx2-fast (6/8/../20), sora2-std (4/8/12/16/20)  -> bare number
+--     'string'   kling-v3-pro ('3'..'15'), seedance2 ('auto'/'4'..'15')
+--     'string_s' veo3.1, veo3.1 lite ('4s'/'6s'/'8s')
+--   The wrong format 422s every generation for that model.
 -- metadata.durations = UI selector enum AND the worker's allowed-length snap set.
--- (LTX-2 fps is also a string enum -> input_params.fps = "25", not 25.)
+-- (LTX-2 fps is ALSO a numeric enum -> input_params.fps = 25, not "25".)
 -- Margin 40% applied at charge time.
 -- Old ltx-v1 / veo3.1-fast rows are deactivated (FK from generation_jobs -> never
 -- delete); veo3.1 row is REUSED (same fal model) and refreshed. Idempotent UPSERT.
@@ -35,13 +37,13 @@ INSERT INTO public.model_catalog
 VALUES
   ('ltx2-fast', 'budget', 'fal', 'fal-ai/ltx-2/text-to-video/fast', 'LTX-2 Fast',
    0.04, 6, 20, true, 1,
-   '{"input_params":{"resolution":"1080p","fps":"25","generate_audio":true},"duration_format":"string","durations":[6,8,10,12,14,16,18,20],"resolution_label":"1080p","has_audio":true}'::jsonb),
+   '{"input_params":{"resolution":"1080p","fps":25,"generate_audio":true},"duration_format":"int","durations":[6,8,10,12,14,16,18,20],"resolution_label":"1080p","has_audio":true}'::jsonb),
   ('veo31-lite', 'budget', 'fal', 'fal-ai/veo3.1/lite', 'Veo 3.1 Lite',
    0.05, 4, 8, true, 2,
    '{"input_params":{"resolution":"720p","generate_audio":true},"duration_format":"string_s","durations":[4,6,8],"resolution_label":"720p","has_audio":true}'::jsonb),
   ('sora2-std', 'standard', 'fal', 'fal-ai/sora-2/text-to-video', 'Sora 2',
    0.10, 4, 20, true, 3,
-   '{"input_params":{"resolution":"720p","aspect_ratio":"16:9"},"duration_format":"string","durations":[4,8,12,16,20],"resolution_label":"720p","has_audio":true}'::jsonb),
+   '{"input_params":{"resolution":"720p","aspect_ratio":"16:9"},"duration_format":"int","durations":[4,8,12,16,20],"resolution_label":"720p","has_audio":true}'::jsonb),
   ('kling-v3-pro', 'standard', 'fal', 'fal-ai/kling-video/v3/pro/text-to-video', 'Kling V3 Pro',
    0.168, 3, 15, true, 4,
    '{"input_params":{"aspect_ratio":"16:9","generate_audio":true},"duration_format":"string","durations":[3,4,5,6,7,8,9,10,11,12,13,14,15],"resolution_label":"1080p","has_audio":true}'::jsonb),
