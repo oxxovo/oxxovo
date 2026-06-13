@@ -53,11 +53,28 @@
 - 통합 마이그(6행 active + 옛 ltx-v1/veo3.1-fast 비활성, veo3.1 행 재사용 refresh):
   `reports/_run/model_catalog_tiers.sql`(주석0, TK Run) / 영구본 `studio_model_catalog_tiers_migration_2026-06.sql`.
 
-### ② 워커 배선 시 확인 메모(다음 단계)
-- Seedance `duration` 파라미터가 문자열("auto"/"4".."15")일 수 있음 → 워커가 숫자 전송 시 변환 필요 여부 확인.
-- Veo 3.1 full `duration` enum(4/6/8 가정) fal 재확인 — Lite와 동일 추정.
-- Seedance `resolution` 파라미터 키/허용값(480p/720p) 재확인 후 전송.
-- 이 항목들은 metadata.input_params만 손보면 되는 데이터 수정(코드 변경 아님).
+### ② 워커 배선 실측 결과 — 완료 (2026-06-13)
+
+fal 6개 모델 스키마 실측 → **결정적 버그 발견·수정**.
+
+**핵심: `duration`은 6개 모델 전부 문자열 enum.** 워커는 `duration: <숫자>`를 보내고 있었음 → 6/6 모델이 매 생성마다 fal 422 검증실패 → failed+환불 상태였음(라이브 미노출: studio 미가동).
+
+| 모델 | duration 타입 | 값 | 비고 |
+|---|---|---|---|
+| LTX-2 Fast | 문자열 | "6".."20"(짝수) | **fps도 문자열** "25" (숫자→문자열 수정) |
+| Veo 3.1 Lite | 문자열+**s** | "4s","6s","8s" | |
+| Sora 2 | 문자열 | "4","8","12","16","20" | generate_audio 파라미터 없음(오디오 내장) |
+| Kling V3 Pro | 문자열 | "3".."15" | resolution 파라미터 없음(1080p 고정) |
+| Seedance 2.0 | 문자열 | "auto","4".."15" | 모델ID 정상, resolution 480p/720p |
+| Veo 3.1 full | 문자열+**s** | "4s","6s","8s" | |
+
+**수정(코드+데이터):**
+- 워커 `fal.ts`: `metadata.duration_format`(`string`|`string_s`|`int`)에 따라 duration을 문자열/`Ns`/숫자로 포맷. key는 `metadata.duration_key`(기본 `duration`).
+- 워커 `worker.ts`: `snapDuration()` 추가 — 요청 길이를 `metadata.durations` enum의 최근접값으로 스냅(enqueue가 범위만 검증 → off-enum 5초 등도 422 방지). Model.metadata 타입 확장.
+- 카탈로그: 6행에 `duration_format` 부여(ltx2/sora2/kling/seedance=`string`, veo 2종=`string_s`), LTX `fps` `"25"` 문자열화.
+- input_params 키명·모델ID는 (LTX fps 외) 전부 정상이었음. Kling=resolution 없음/Sora=generate_audio 없음 = 카탈로그도 이미 누락(정상).
+
+**마이그 재실행 필요:** `reports/_run/model_catalog_tiers.sql`(duration_format+fps 반영). TK가 다시 Run. 워커 tsc 0.
 
 ## 5. fal 공식 출처
 

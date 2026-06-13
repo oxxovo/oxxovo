@@ -1,30 +1,3 @@
--- =========================================================================
--- model_catalog 6-model refresh (720p+, 5 popular families) -- 2026-06-13
--- =========================================================================
--- Compose makes single-model length limits moot (any model -> 30s by assembly),
--- so 6 models span 3 tiers by cost/quality. All 720p+ (rule boundary R1).
--- Specs measured from fal.ai official model + /api pages (no guessing):
---   budget   ltx2-fast    fal-ai/ltx-2/text-to-video/fast        $0.04/s 1080p 6-20s
---   budget   veo31-lite   fal-ai/veo3.1/lite                     $0.05/s 720p  4,6,8s (audio default true)
---   standard sora2-std    fal-ai/sora-2/text-to-video            $0.10/s 720p  4-20s
---   standard kling-v3-pro fal-ai/kling-video/v3/pro/text-to-video $0.168/s 1080p 3-15s
---   premium  seedance2    bytedance/seedance-2.0/text-to-video   $0.3034/s 720p 4-15s
---   premium  veo3.1       fal-ai/veo3.1                          $0.40/s 1080p 4-8s
--- Runway is NOT hosted on fal -> cannot be added via the fal-only integration.
--- All 6 carry native audio (metadata.has_audio=true) -> audio plan C compatible.
--- metadata.input_params = exact fal param names the worker forwards (B-wired).
--- metadata.duration_format = how the worker renders `duration` (MEASURED 2026-06-13:
---   EVERY current fal video model takes duration as a STRING enum, and Veo suffixes
---   it with 's'): 'string' for ltx2/sora2/kling/seedance, 'string_s' for both veo3.1.
---   Sending a bare number 422s -> the worker reads this to format correctly.
--- metadata.durations = UI selector enum AND the worker's allowed-length snap set.
--- (LTX-2 fps is also a string enum -> input_params.fps = "25", not 25.)
--- Margin 40% applied at charge time.
--- Old ltx-v1 / veo3.1-fast rows are deactivated (FK from generation_jobs -> never
--- delete); veo3.1 row is REUSED (same fal model) and refreshed. Idempotent UPSERT.
--- See studio_model_catalog_tiers_2026-06.md + studio_model_catalog_expansion_2026-06.md.
--- =========================================================================
-
 UPDATE public.model_catalog
 SET active = false, updated_at = now()
 WHERE id IN ('ltx-video', 'veo3.1-fast');
@@ -64,7 +37,6 @@ ON CONFLICT (id) DO UPDATE SET
   metadata = EXCLUDED.metadata,
   updated_at = now();
 
--- Verification
 SELECT id, tier, fal_model_id, cost_per_second_usd,
        min_duration_seconds, max_duration_seconds, active, sort_order, metadata
 FROM public.model_catalog
