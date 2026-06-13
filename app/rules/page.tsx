@@ -213,6 +213,14 @@ export default function RulesPage() {
           </RuleSection>
 
           <RuleSection num="⑥" title="Video Authenticity & AI Service Watermarks">
+            <div className="mb-5 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.07] px-4 py-3">
+              <p className="text-[#d9b8ff] font-bold text-sm">
+                Baseline: what the AI generated is allowed — what you add in post is not.
+              </p>
+              <p className="text-white/60 text-xs mt-1.5">
+                Any text, visual effect, or audio that appears <span className="text-white/80">within</span> a generated clip is part of the AI&rsquo;s output and is allowed. Adding text, effects, transitions, or external audio <span className="text-white/80">afterward</span> is not. OXXOVO&rsquo;s in-platform editor has no tools to add them, so what your AI generates is exactly what competes.
+              </p>
+            </div>
             <p className="mb-4">
               Visible watermarks from <span className="text-white">Sora</span>, <span className="text-white">Veo</span>, and <span className="text-white">Runway</span> are recognized as positive signals of AI authenticity. They will <span className="text-white">not</span> count against your visual score.
             </p>

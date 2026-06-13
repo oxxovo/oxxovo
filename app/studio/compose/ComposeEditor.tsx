@@ -47,6 +47,8 @@ const DICT = {
     why_seq: ['순서', '클립의 재생 순서 배열'],
     why_trim: ['트림', '클립의 앞 또는 끝을 짧게 자르기'],
     why_cut: ['컷', '전환효과 없이 클립을 하드컷으로 잇기'],
+    why_baseline:
+      '중요한 건 AI가 생성한 결과물입니다. 생성된 클립 안에 들어 있는 글자·효과·오디오는 모두 허용됩니다 — AI 생성물의 일부니까요. 반면 글자·효과·전환·오디오를 후편집으로 추가하는 것은 허용되지 않습니다. (OXXOVO 편집기엔 그런 도구가 아예 없으니, AI가 생성한 그대로가 경쟁에 오릅니다.)',
     why_close: '관건은 얼마나 편집하느냐가 아니라, 얼마나 효과적으로 AI로 창작하느냐입니다.',
     res_note: '해상도가 다른 클립을 섞으면 완성본이 가장 낮은 해상도로 수렴합니다 — 일관된 고화질 클립을 권장합니다.',
     my_clips: '내 클립',
@@ -85,6 +87,8 @@ const DICT = {
     why_seq: ['Sequence', 'arrange the order of clips'],
     why_trim: ['Trim', 'shorten the beginning or end of a clip'],
     why_cut: ['Cut', 'join clips with a hard cut (no transition)'],
+    why_baseline:
+      "What counts is what the AI generated. Any text, visual effect, or audio that appears within a generated clip is allowed — it's part of the AI's output. Adding text, effects, transitions, or audio afterward is not. (OXXOVO's editor has no tools to add them, so what your AI generates is exactly what competes.)",
     why_close: 'The challenge is not how much you can edit, but how effectively you can create with AI.',
     res_note: 'Mixing clips of different resolutions converges the final to the lowest one — use consistent high-quality clips.',
     my_clips: 'My clips',
@@ -282,6 +286,9 @@ export default function ComposeEditor(props: ComposeEditorProps) {
                 </li>
               ))}
             </ul>
+            <p className="rounded-lg border border-[#8b22ff]/25 bg-[#8b22ff]/[.05] px-3 py-2.5 text-white/75">
+              {t.why_baseline}
+            </p>
             <p className="text-[#d9b8ff]">{t.why_close}</p>
           </div>
         )}
