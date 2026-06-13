@@ -217,6 +217,9 @@ export default function RulesPage() {
               <p className="text-[#d9b8ff] font-bold text-sm">
                 Baseline: what the AI generated is allowed — what you add in post is not.
               </p>
+              <p className="text-[#d9b8ff]/80 font-bold text-sm mt-1" lang="ko">
+                기준선: AI가 생성한 것은 허용 &mdash; 후편집으로 추가한 것은 금지.
+              </p>
               <p className="text-white/60 text-xs mt-1.5">
                 Any text, visual effect, or audio that appears <span className="text-white/80">within</span> a generated clip is part of the AI&rsquo;s output and is allowed. Adding text, effects, transitions, or external audio <span className="text-white/80">afterward</span> is not. OXXOVO&rsquo;s in-platform editor has no tools to add them, so what your AI generates is exactly what competes.
               </p>
