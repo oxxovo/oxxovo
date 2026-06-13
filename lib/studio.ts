@@ -26,6 +26,7 @@ import {
   getActiveApplicationCount,
   isApplicationClosed,
   isCapacityFull,
+  canSubmitMainRound,
 } from '@/lib/seasons'
 
 export type StudioTier = 'budget' | 'standard' | 'premium'
@@ -303,6 +304,7 @@ export type SubmitResult =
         | 'name_required'
         | 'application_closed'
         | 'round_closed'
+        | 'not_selected'
         | 'failed'
       detail?: string
     }
@@ -337,24 +339,17 @@ export async function submitGeneration(args: {
   if (!v.ok) return { ok: false, reason: 'cryptobind_failed', detail: v.reason }
 
   // 3. Studio round for this season -- effective round resolved server-side.
+  //    The main-round window + 'selected' gate is enforced below at the CAS step
+  //    via canSubmitMainRound -- unified with the canonical saveMainRoundSubmission
+  //    path so a studio main-round submission transitions status the same way.
   const cfg = await getSeasonStudioConfig(args.seasonId)
   const effectiveRound = resolveEffectiveRound(cfg)
-
-  // S-3: the main round closes at main_round_start_at + submission_hours (48h
-  // by default). A studio submission after that instant is refused -- mirrors
-  // the single-submission deadline the scoring system relies on.
-  if (effectiveRound === 'main') {
-    const deadlineMs = mainRoundDeadlineMs(cfg)
-    if (deadlineMs !== null && Date.now() > deadlineMs) {
-      return { ok: false, reason: 'round_closed' }
-    }
-  }
 
   // 4. Find the participant's application (by email, like the rest of the site).
   const email = args.email.toLowerCase()
   const { data: appRow, error: aErr } = await admin
     .from('genesis_applications')
-    .select('id, studio_application_submitted_at, main_round_submitted_at')
+    .select('id, status, studio_application_submitted_at, main_round_submitted_at')
     .eq('season_id', args.seasonId)
     .ilike('email', email)
     .order('created_at', { ascending: false })
@@ -414,28 +409,53 @@ export async function submitGeneration(args: {
     })
     if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
     // Lock the job below (step 7).
-  } else {
-    // 5b. Row exists -- per-round immutability + update.
-    const update: Record<string, unknown> = {}
-    if (effectiveRound === 'main') {
-      if (appRow.main_round_submitted_at) return { ok: false, reason: 'already_submitted' }
-      update.main_round_video_url = job.video_url
-      update.main_round_submitted_at = now
-      update.studio_main_job_id = job.id
-      update.studio_main_signature = job.cryptobind_signature
-    } else {
-      if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
-      update.free_entry_url = job.video_url
-      update.video_duration_seconds = job.duration_seconds
-      update.ai_service = 'OXXOVO Studio'
-      update.studio_application_job_id = job.id
-      update.studio_application_signature = job.cryptobind_signature
-      update.studio_application_submitted_at = now
+  } else if (effectiveRound === 'main') {
+    // 5b-main. Mirror saveMainRoundSubmission EXACTLY: 'selected' gate via
+    // canSubmitMainRound (status + window, single source of truth), then a
+    // selected -> main_round_submitted CAS transition. This is what makes a
+    // studio main-round submission visible to the scorer (candidateStatus =
+    // 'main_round_submitted'). Score columns are never touched here.
+    const season = await getSeasonById(args.seasonId)
+    if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
+    const gate = canSubmitMainRound({ status: appRow.status }, season)
+    if (!gate.ok) {
+      if (gate.reason === 'not_selected') return { ok: false, reason: 'not_selected' }
+      // reason === null -> already main_round_submitted / awarded / rejected / flagged
+      if (gate.reason === null) return { ok: false, reason: 'already_submitted' }
+      // before_start / after_close / season_dates_not_set
+      return { ok: false, reason: 'round_closed', detail: gate.reason }
     }
-    // 6. Write the submission (status intentionally unchanged).
+    const { data: updated, error: upErr } = await admin
+      .from('genesis_applications')
+      .update({
+        status: 'main_round_submitted',
+        main_round_video_url: job.video_url,
+        main_round_submitted_at: now,
+        studio_main_job_id: job.id,
+        studio_main_signature: job.cryptobind_signature,
+      })
+      .eq('id', appRow.id)
+      .eq('status', 'selected')
+      .select('id')
+      .single()
+    if (upErr || !updated) {
+      // PGRST116 = no row matched (race lost or already submitted).
+      if (upErr?.code === 'PGRST116') return { ok: false, reason: 'already_submitted' }
+      return { ok: false, reason: 'failed', detail: upErr?.message }
+    }
+  } else {
+    // 5b-application. Row exists -- single application submission (status unchanged).
+    if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
     const { error: upErr } = await admin
       .from('genesis_applications')
-      .update(update)
+      .update({
+        free_entry_url: job.video_url,
+        video_duration_seconds: job.duration_seconds,
+        ai_service: 'OXXOVO Studio',
+        studio_application_job_id: job.id,
+        studio_application_signature: job.cryptobind_signature,
+        studio_application_submitted_at: now,
+      })
       .eq('id', appRow.id)
     if (upErr) return { ok: false, reason: 'failed', detail: upErr.message }
   }
@@ -640,6 +660,7 @@ export type SubmitRenderResult =
         | 'name_required'
         | 'application_closed'
         | 'round_closed'
+        | 'not_selected'
         | 'failed'
       detail?: string
     }
@@ -724,22 +745,16 @@ export async function submitRender(args: {
   if (!cv.ok) return { ok: false, reason: 'compose_cryptobind_failed', detail: cv.reason }
 
   // 5. Studio round for this season -- effective round resolved server-side.
+  //    Main-round window + 'selected' gate enforced below at the CAS step via
+  //    canSubmitMainRound (unified with saveMainRoundSubmission).
   const cfg = await getSeasonStudioConfig(args.seasonId)
   const effectiveRound = resolveEffectiveRound(cfg)
-
-  // S-3: main round closes at main_round_start_at + submission_hours.
-  if (effectiveRound === 'main') {
-    const deadlineMs = mainRoundDeadlineMs(cfg)
-    if (deadlineMs !== null && Date.now() > deadlineMs) {
-      return { ok: false, reason: 'round_closed' }
-    }
-  }
 
   // 6. Find the participant's application (by email, like the rest of the site).
   const email = args.email.toLowerCase()
   const { data: appRow, error: aErr } = await admin
     .from('genesis_applications')
-    .select('id, studio_application_submitted_at, main_round_submitted_at')
+    .select('id, status, studio_application_submitted_at, main_round_submitted_at')
     .eq('season_id', args.seasonId)
     .ilike('email', email)
     .order('created_at', { ascending: false })
@@ -794,25 +809,46 @@ export async function submitRender(args: {
       studio_application_submitted_at: now,
     })
     if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
-  } else {
-    // 7b. Row exists -- per-round immutability + update.
-    const update: Record<string, unknown> = {}
-    if (effectiveRound === 'main') {
-      if (appRow.main_round_submitted_at) return { ok: false, reason: 'already_submitted' }
-      update.main_round_video_url = render.video_url
-      update.main_round_submitted_at = now
-      update.studio_main_render_id = render.id
-    } else {
-      if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
-      update.free_entry_url = render.video_url
-      update.video_duration_seconds = durationInt
-      update.ai_service = 'OXXOVO Studio'
-      update.studio_application_render_id = render.id
-      update.studio_application_submitted_at = now
+  } else if (effectiveRound === 'main') {
+    // 7b-main. Mirror saveMainRoundSubmission EXACTLY: 'selected' gate via
+    // canSubmitMainRound, then a selected -> main_round_submitted CAS transition.
+    // This is what makes the composed main-round final visible to the scorer.
+    const season = await getSeasonById(args.seasonId)
+    if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
+    const gate = canSubmitMainRound({ status: appRow.status }, season)
+    if (!gate.ok) {
+      if (gate.reason === 'not_selected') return { ok: false, reason: 'not_selected' }
+      if (gate.reason === null) return { ok: false, reason: 'already_submitted' }
+      return { ok: false, reason: 'round_closed', detail: gate.reason }
     }
+    const { data: updated, error: upErr } = await admin
+      .from('genesis_applications')
+      .update({
+        status: 'main_round_submitted',
+        main_round_video_url: render.video_url,
+        main_round_submitted_at: now,
+        studio_main_render_id: render.id,
+      })
+      .eq('id', appRow.id)
+      .eq('status', 'selected')
+      .select('id')
+      .single()
+    if (upErr || !updated) {
+      if (upErr?.code === 'PGRST116') return { ok: false, reason: 'already_submitted' }
+      return { ok: false, reason: 'failed', detail: upErr?.message }
+    }
+  } else {
+    // 7b-application. Row exists -- single application submission (status unchanged).
+    if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
     const { error: upErr } = await admin
       .from('genesis_applications')
-      .update(update)
+      .update({
+        free_entry_url: render.video_url,
+        video_duration_seconds: durationInt,
+        ai_service: 'OXXOVO Studio',
+        studio_application_render_id: render.id,
+        studio_application_submitted_at: now,
+      })
       .eq('id', appRow.id)
     if (upErr) return { ok: false, reason: 'failed', detail: upErr.message }
   }

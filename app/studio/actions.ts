@@ -211,6 +211,7 @@ export type SubmitGenResult =
         | 'name_required'
         | 'application_closed'
         | 'round_closed'
+        | 'not_selected'
         | 'disabled'
         | 'failed'
       detail?: string
@@ -392,6 +393,7 @@ export type SubmitRenderActionResult =
         | 'name_required'
         | 'application_closed'
         | 'round_closed'
+        | 'not_selected'
         | 'disabled'
         | 'failed'
       detail?: string
