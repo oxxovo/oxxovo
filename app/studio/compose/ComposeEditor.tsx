@@ -40,9 +40,14 @@ const DICT = {
   ko: {
     title: '조합 편집기',
     subtitle: '내 클립을 골라 순서·트림·컷으로 완성작을 만드세요. 전환효과는 없습니다 — 자연스러운 연결은 실력입니다.',
-    rule_title: 'GENESIS RULE',
-    rule_body:
-      '완성작은 OXXOVO 안에서 생성한 클립들로만, 순서·트림·컷으로만 조합합니다. 외부 편집·VFX·색보정·모션그래픽·외부 에셋·업스케일·오디오 믹싱 금지. 각 클립은 자체 AI 오디오만 유지합니다.',
+    why_title: '왜 편집 기능이 제한되나요?',
+    why_intro: 'OXXOVO는 영상 편집이 아니라 순수 AI 창작을 겨루는 대회입니다.',
+    why_reason: '특수효과·전환·색보정·자막·외부 오디오 같은 고급 편집 도구를 허용하면, 전문 편집 실력을 가진 사람이 불공정하게 유리해집니다.',
+    why_allow: '대회의 초점을 AI 생성에 두기 위해, OXXOVO는 세 가지만 허용합니다:',
+    why_seq: ['순서', '클립의 재생 순서 배열'],
+    why_trim: ['트림', '클립의 앞 또는 끝을 짧게 자르기'],
+    why_cut: ['컷', '전환효과 없이 클립을 하드컷으로 잇기'],
+    why_close: '관건은 얼마나 편집하느냐가 아니라, 얼마나 효과적으로 AI로 창작하느냐입니다.',
     res_note: '해상도가 다른 클립을 섞으면 완성본이 가장 낮은 해상도로 수렴합니다 — 일관된 고화질 클립을 권장합니다.',
     my_clips: '내 클립',
     no_clips: '이번 라운드에 생성한 ready 클립이 없습니다. 먼저 Studio에서 클립을 생성하세요.',
@@ -73,9 +78,14 @@ const DICT = {
   en: {
     title: 'Compose',
     subtitle: 'Pick your clips and build a final with sequence, trim and cut. No transitions — a smooth join is your skill.',
-    rule_title: 'GENESIS RULE',
-    rule_body:
-      'A final is composed only from clips generated inside OXXOVO, using sequence, trim and cut only. No external editing, VFX, color grading, motion graphics, external assets, upscaling, or audio mixing. Each clip keeps its own AI audio only.',
+    why_title: 'Why are editing tools limited?',
+    why_intro: 'OXXOVO rewards pure AI creation — not editing.',
+    why_reason: 'If advanced editing tools such as visual effects, transitions, color grading, subtitles, or external audio were allowed, participants with professional editing skills would gain an unfair advantage.',
+    why_allow: 'To keep the competition focused on AI generation, OXXOVO allows only three actions:',
+    why_seq: ['Sequence', 'arrange the order of clips'],
+    why_trim: ['Trim', 'shorten the beginning or end of a clip'],
+    why_cut: ['Cut', 'join clips with a hard cut (no transition)'],
+    why_close: 'The challenge is not how much you can edit, but how effectively you can create with AI.',
     res_note: 'Mixing clips of different resolutions converges the final to the lowest one — use consistent high-quality clips.',
     my_clips: 'My clips',
     no_clips: 'No ready clips for this round yet. Generate clips in Studio first.',
@@ -114,6 +124,7 @@ export default function ComposeEditor(props: ComposeEditorProps) {
   const clipById = useMemo(() => new Map(props.clips.map((c) => [c.id, c])), [props.clips])
   const [segments, setSegments] = useState<Segment[]>([])
   const [dragUid, setDragUid] = useState<string | null>(null)
+  const [whyOpen, setWhyOpen] = useState(false)
 
   const [renderState, setRenderState] = useState<EditorRenderStatus | null>(null)
   const [busy, setBusy] = useState(false)
@@ -248,12 +259,35 @@ export default function ComposeEditor(props: ComposeEditorProps) {
         <p className="mt-1 text-sm text-white/55">{t.subtitle}</p>
       </div>
 
-      {/* Genesis Rule + resolution note */}
-      <div className="rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/[.06] p-4">
-        <div className="text-[10px] uppercase tracking-[0.25em] text-[#b66cff] font-bold">{t.rule_title}</div>
-        <p className="mt-1.5 text-[12px] leading-relaxed text-white/70">{t.rule_body}</p>
-        <p className="mt-2 text-[11px] leading-relaxed text-[#d9b8ff]">{t.res_note}</p>
+      {/* "Why are editing tools limited?" — collapsed by default; keeps the editor clean */}
+      <div className="rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/[.06]">
+        <button
+          type="button"
+          onClick={() => setWhyOpen((o) => !o)}
+          aria-expanded={whyOpen}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        >
+          <span className="text-[12px] font-bold text-[#b66cff]">{t.why_title}</span>
+          <span className={`text-[11px] text-[#b66cff] transition-transform ${whyOpen ? 'rotate-180' : ''}`}>▾</span>
+        </button>
+        {whyOpen && (
+          <div className="space-y-3 border-t border-[#8b22ff]/20 px-4 py-3.5 text-[12px] leading-relaxed text-white/70">
+            <p>{t.why_intro}</p>
+            <p>{t.why_reason}</p>
+            <p>{t.why_allow}</p>
+            <ul className="space-y-1.5">
+              {[t.why_seq, t.why_trim, t.why_cut].map(([term, desc]) => (
+                <li key={term}>
+                  <span className="font-bold text-[#d9b8ff]">{term}</span> — {desc}
+                </li>
+              ))}
+            </ul>
+            <p className="text-[#d9b8ff]">{t.why_close}</p>
+          </div>
+        )}
       </div>
+      {/* practical resolution note stays visible (functional UX, not philosophy) */}
+      <p className="-mt-3 text-[11px] leading-relaxed text-white/40">{t.res_note}</p>
 
       {/* My clips */}
       <section>
