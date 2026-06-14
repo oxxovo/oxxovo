@@ -27,6 +27,7 @@ import {
   isApplicationClosed,
   isCapacityFull,
   canSubmitMainRound,
+  canSubmitFinal,
 } from '@/lib/seasons'
 
 export type StudioTier = 'budget' | 'standard' | 'premium'
@@ -53,12 +54,19 @@ export type StudioJob = {
 }
 
 export type StudioRoundSetting = 'application' | 'main' | 'both'
-export type EffectiveRound = 'application' | 'main'
+// 3-stage tournament: preliminary(application) -> semifinal(main) -> final.
+// 'final' is reached once the season's final_start_at opens (see
+// resolveEffectiveRound) -- dormant until an admin sets that date.
+export type EffectiveRound = 'application' | 'main' | 'final'
 
 export type SeasonStudioConfig = {
   round: StudioRoundSetting
   maxGenerationsPerRound: number
   mainRoundStartAt: string | null
+  // Final-stage opening instant (seasons.final_start_at). NULL until an admin
+  // sets the schedule -> resolveEffectiveRound never returns 'final' yet, so the
+  // final submission path stays dormant (date-safe). Mirrors mainRoundStartAt.
+  finalStartAt: string | null
   // S-3: main-round submission window = mainRoundStartAt + submissionHours.
   submissionHours: number
   // S-7: per-round video-length bounds (seconds). The generation duration must
@@ -80,9 +88,13 @@ export function videoBoundsForRound(
   cfg: SeasonStudioConfig,
   round: EffectiveRound,
 ): { min: number; max: number } {
-  return round === 'main'
-    ? { min: cfg.mainRoundVideoMinSeconds, max: cfg.mainRoundVideoMaxSeconds }
-    : { min: cfg.applicationVideoMinSeconds, max: cfg.applicationVideoMaxSeconds }
+  if (round === 'main') {
+    return { min: cfg.mainRoundVideoMinSeconds, max: cfg.mainRoundVideoMaxSeconds }
+  }
+  // application AND final share the common per-round video length
+  // (application_video_* is the single source -- all rounds 15..30s; there is no
+  // separate final_video_* column).
+  return { min: cfg.applicationVideoMinSeconds, max: cfg.applicationVideoMaxSeconds }
 }
 
 // S-3: the absolute submission deadline for the main round (ms epoch), or null
@@ -98,9 +110,16 @@ export function mainRoundDeadlineMs(cfg: SeasonStudioConfig): number | null {
 // starts it is the application round; at/after main_round_start_at it is the
 // main round. The client never chooses.
 export function resolveEffectiveRound(
-  cfg: Pick<SeasonStudioConfig, 'round' | 'mainRoundStartAt'>,
+  cfg: Pick<SeasonStudioConfig, 'round' | 'mainRoundStartAt' | 'finalStartAt'>,
   now: Date = new Date(),
 ): EffectiveRound {
+  // Final stage takes precedence once it opens. finalStartAt is NULL until an
+  // admin sets the schedule, so this is dormant until then (date-safe) and
+  // mirrors the main_round_start_at signal. Finalists are gated separately at
+  // submission by canSubmitFinal (status='final_selected').
+  if (cfg.finalStartAt && now.getTime() >= new Date(cfg.finalStartAt).getTime()) {
+    return 'final'
+  }
   if (cfg.round === 'application') return 'application'
   if (cfg.round === 'main') return 'main'
   // 'both'
@@ -125,7 +144,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled')
+    .select('studio_round, studio_max_generations_per_round, main_round_start_at, final_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -133,6 +152,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     round: (data.studio_round as StudioRoundSetting) ?? 'main',
     maxGenerationsPerRound: Number(data.studio_max_generations_per_round ?? 10),
     mainRoundStartAt: (data.main_round_start_at as string | null) ?? null,
+    finalStartAt: (data.final_start_at as string | null) ?? null,
     submissionHours: Number(data.submission_hours ?? 48),
     applicationVideoMinSeconds: Number(data.application_video_min_seconds ?? 0),
     applicationVideoMaxSeconds: Number(data.application_video_max_seconds ?? 0),
@@ -376,7 +396,9 @@ export async function submitGeneration(args: {
   //     IS the application, so create the row (with the applicant info + the
   //     Intent-scoring statement). The main round requires a pre-existing row.
   if (!appRow) {
-    if (effectiveRound === 'main') return { ok: false, reason: 'no_application' }
+    // Only the application round can mint a new row; main AND final both require
+    // a pre-existing application (finalists already applied).
+    if (effectiveRound !== 'application') return { ok: false, reason: 'no_application' }
     const info = args.applicant
     if (!info) return { ok: false, reason: 'application_info_required' }
     const name = (info.creatorName ?? '').trim()
@@ -456,8 +478,38 @@ export async function submitGeneration(args: {
       if (upErr?.code === 'PGRST116') return { ok: false, reason: 'already_submitted' }
       return { ok: false, reason: 'failed', detail: upErr?.message }
     }
+  } else if (effectiveRound === 'final') {
+    // 5b-final. Mirror the main-round path EXACTLY for the final stage:
+    // canSubmitFinal ('final_selected' gate + final window), then a
+    // final_selected -> final_submitted CAS. This makes a studio final
+    // submission visible to the scorer (round='final'). Scores untouched.
+    const season = await getSeasonById(args.seasonId)
+    if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
+    const gate = canSubmitFinal({ status: appRow.status }, season)
+    if (!gate.ok) {
+      if (gate.reason === 'not_selected') return { ok: false, reason: 'not_selected' }
+      if (gate.reason === null) return { ok: false, reason: 'already_submitted' }
+      return { ok: false, reason: 'round_closed', detail: gate.reason }
+    }
+    const { data: updated, error: upErr } = await admin
+      .from('genesis_applications')
+      .update({
+        status: 'final_submitted',
+        final_video_url: job.video_url,
+        final_submitted_at: now,
+        studio_final_job_id: job.id,
+        studio_final_signature: job.cryptobind_signature,
+      })
+      .eq('id', appRow.id)
+      .eq('status', 'final_selected')
+      .select('id')
+      .single()
+    if (upErr || !updated) {
+      if (upErr?.code === 'PGRST116') return { ok: false, reason: 'already_submitted' }
+      return { ok: false, reason: 'failed', detail: upErr?.message }
+    }
   } else {
-    // 5b-application. Row exists -- single application submission (status unchanged).
+    // 5c-application. Row exists -- single application submission (status unchanged).
     if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
     const { error: upErr } = await admin
       .from('genesis_applications')
@@ -787,7 +839,9 @@ export async function submitRender(args: {
   // 7a. No application row yet -- application round only (the compose IS the
   //     application; main round requires a pre-existing row).
   if (!appRow) {
-    if (effectiveRound === 'main') return { ok: false, reason: 'no_application' }
+    // Only the application round can mint a new row; main AND final both require
+    // a pre-existing application (finalists already applied).
+    if (effectiveRound !== 'application') return { ok: false, reason: 'no_application' }
     const info = args.applicant
     if (!info) return { ok: false, reason: 'application_info_required' }
     const name = (info.creatorName ?? '').trim()
@@ -856,8 +910,37 @@ export async function submitRender(args: {
       if (upErr?.code === 'PGRST116') return { ok: false, reason: 'already_submitted' }
       return { ok: false, reason: 'failed', detail: upErr?.message }
     }
+  } else if (effectiveRound === 'final') {
+    // 7b-final. Mirror the main-round path EXACTLY for the final stage:
+    // canSubmitFinal ('final_selected' gate + final window), then a
+    // final_selected -> final_submitted CAS. Makes the composed final visible to
+    // the scorer (round='final'). Score columns are never touched here.
+    const season = await getSeasonById(args.seasonId)
+    if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
+    const gate = canSubmitFinal({ status: appRow.status }, season)
+    if (!gate.ok) {
+      if (gate.reason === 'not_selected') return { ok: false, reason: 'not_selected' }
+      if (gate.reason === null) return { ok: false, reason: 'already_submitted' }
+      return { ok: false, reason: 'round_closed', detail: gate.reason }
+    }
+    const { data: updated, error: upErr } = await admin
+      .from('genesis_applications')
+      .update({
+        status: 'final_submitted',
+        final_video_url: render.video_url,
+        final_submitted_at: now,
+        studio_final_render_id: render.id,
+      })
+      .eq('id', appRow.id)
+      .eq('status', 'final_selected')
+      .select('id')
+      .single()
+    if (upErr || !updated) {
+      if (upErr?.code === 'PGRST116') return { ok: false, reason: 'already_submitted' }
+      return { ok: false, reason: 'failed', detail: upErr?.message }
+    }
   } else {
-    // 7b-application. Row exists -- single application submission (status unchanged).
+    // 7c-application. Row exists -- single application submission (status unchanged).
     if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
     const { error: upErr } = await admin
       .from('genesis_applications')

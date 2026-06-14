@@ -25,6 +25,7 @@ import {
   type StudioJob,
   type ApplicantInfo,
   type EdlSegment,
+  type EffectiveRound,
 } from '@/lib/studio'
 import { getBalance, getStudioPricing, getStudioPurchaseConfig } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
@@ -55,7 +56,7 @@ export type StudioState = {
     id: string
     displayName: string
     seasonNumber: number
-    round: 'application' | 'main'
+    round: EffectiveRound
     theme: string | null
     twist: string | null
     twistRevealed: boolean
@@ -101,7 +102,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
     const admin = createSupabaseAdmin()
     const { data: appRow } = await admin
       .from('genesis_applications')
-      .select('id, studio_application_submitted_at, main_round_submitted_at')
+      .select('id, studio_application_submitted_at, main_round_submitted_at, final_submitted_at')
       .eq('season_id', season.id)
       .ilike('email', auth.email)
       .order('created_at', { ascending: false })
@@ -112,7 +113,9 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
       appRow &&
       (effectiveRound === 'main'
         ? appRow.main_round_submitted_at
-        : appRow.studio_application_submitted_at)
+        : effectiveRound === 'final'
+          ? appRow.final_submitted_at
+          : appRow.studio_application_submitted_at)
     )
 
     return {
@@ -257,7 +260,7 @@ export type ComposeClip = {
 // a submission already landed for this round, and the statement bounds (only the
 // application round with NO existing row collects applicant info).
 export type ComposeSubmitCtx = {
-  round: 'application' | 'main'
+  round: EffectiveRound
   hasApplication: boolean
   alreadySubmitted: boolean
   needsApplicantInfo: boolean
@@ -298,7 +301,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     const effectiveRound = resolveEffectiveRound(cfg)
     const { data: appRow } = await admin
       .from('genesis_applications')
-      .select('id, studio_application_submitted_at, main_round_submitted_at')
+      .select('id, studio_application_submitted_at, main_round_submitted_at, final_submitted_at')
       .eq('season_id', season.id)
       .ilike('email', auth.email)
       .order('created_at', { ascending: false })
@@ -307,7 +310,11 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     const hasApplication = !!appRow
     const alreadySubmitted = !!(
       appRow &&
-      (effectiveRound === 'main' ? appRow.main_round_submitted_at : appRow.studio_application_submitted_at)
+      (effectiveRound === 'main'
+        ? appRow.main_round_submitted_at
+        : effectiveRound === 'final'
+          ? appRow.final_submitted_at
+          : appRow.studio_application_submitted_at)
     )
 
     return {
