@@ -75,21 +75,15 @@ ALTER TABLE public.genesis_applications
 -- ===========================================================================
 -- 3. scoring_results -- round 에 'final' 추가 (라운드별 채점 이미 지원)
 -- ===========================================================================
+-- NOTE: DO $$ ... END $$ 블록 제거됨. Supabase SQL Editor가 $$ 내부 세미콜론을
+-- statement 경계로 오인해 "unterminated dollar-quoted string"(42601)을 내고 1번
+-- 전체가 롤백됐음(2026-06-13 실측). 그 블록은 "이름이 다른 round 제약도 지운다"는
+-- 방어용이었으나, 2026-05 scoring_results 마이그가 인라인 CHECK(round IN(...))로
+-- 생성 -> Postgres 자동 명명 = scoring_results_round_check (이 round 제약은 단 1개).
+-- 따라서 아래 DROP CONSTRAINT IF EXISTS 한 줄로 충분. DO/plpgsql 불필요.
+-- (사전 확인 쿼리는 파일 하단 Verification 0) 참조.)
 ALTER TABLE public.scoring_results
   DROP CONSTRAINT IF EXISTS scoring_results_round_check;
--- 원래 익명 CHECK(round IN ('application','main'))도 제거 시도 (이름 다를 수 있어 둘 다)
-DO $$
-DECLARE c TEXT;
-BEGIN
-  FOR c IN
-    SELECT conname FROM pg_constraint
-    WHERE conrelid = 'public.scoring_results'::regclass
-      AND contype = 'c'
-      AND pg_get_constraintdef(oid) ILIKE '%round%'
-  LOOP
-    EXECUTE format('ALTER TABLE public.scoring_results DROP CONSTRAINT %I', c);
-  END LOOP;
-END $$;
 ALTER TABLE public.scoring_results
   ADD CONSTRAINT scoring_results_round_check
     CHECK (round IN ('application', 'main', 'final'));
@@ -164,6 +158,15 @@ COMMIT;
 -- ===========================================================================
 -- Verification (COMMIT 후 별도 실행)
 -- ===========================================================================
+-- 0) [선택, 본체 Run 전 사전확인] scoring_results의 round 관련 CHECK 제약이
+--    'scoring_results_round_check' 하나뿐인지 확인. 이 한 줄만 나오면 본체의
+--    명명 DROP으로 충분. 다른 이름이 같이 나오면 멈추고 알려줄 것.
+SELECT conname, pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conrelid = 'public.scoring_results'::regclass
+  AND contype = 'c'
+  AND pg_get_constraintdef(oid) ILIKE '%round%';
+
 -- 1) seasons 새 컬럼 + 시즌0 값
 SELECT season_number, max_applicants, min_participants,
        total_prize_pool, prize_first, prize_second, prize_third,
