@@ -92,7 +92,7 @@ const DICT = {
     up: '↑',
     down: '↓',
     total: '총 길이',
-    over: '30초를 초과했습니다. 트림하거나 클립을 줄이세요.',
+    over: (n: number) => `${n}초를 초과했습니다. 트림하거나 클립을 줄이세요.`,
     clip_over: (n: number) => `클립 수가 최대 ${n}개를 초과했습니다.`,
     preview: '시퀀스 미리보기',
     stop: '정지',
@@ -149,7 +149,7 @@ const DICT = {
     up: '↑',
     down: '↓',
     total: 'Total',
-    over: 'Over 30s. Trim or remove a clip.',
+    over: (n: number) => `Over ${n}s. Trim or remove a clip.`,
     clip_over: (n: number) => `More than the max of ${n} clips.`,
     preview: 'Preview sequence',
     stop: 'Stop',
@@ -271,7 +271,10 @@ export default function ComposeEditor(props: ComposeEditorProps) {
       playIdx.current = idx
       const seg = segments[idx]
       const clip = clipById.get(seg.jobId)
-      if (!clip) return
+      if (!clip) {
+        setPlaying(false)
+        return
+      }
       v.src = clip.url
       v.currentTime = seg.startMs / 1000
       try {
@@ -465,7 +468,7 @@ export default function ComposeEditor(props: ComposeEditorProps) {
             style={{ width: `${Math.min(100, (totalMs / maxMs) * 100)}%` }}
           />
         </div>
-        {over && <p className="mb-2 text-[11px] text-[#ff8888]">{t.over}</p>}
+        {over && <p className="mb-2 text-[11px] text-[#ff8888]">{t.over(props.maxSeconds)}</p>}
         {tooMany && <p className="mb-2 text-[11px] text-[#ff8888]">{t.clip_over(props.maxClips)}</p>}
 
         {segments.length === 0 ? (
