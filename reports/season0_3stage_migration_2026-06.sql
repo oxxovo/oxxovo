@@ -90,15 +90,15 @@ ALTER TABLE public.scoring_results
 
 -- ===========================================================================
 -- 4. 시즌 0 데이터 확정값
---   상금: 풀 3000 -> GENERATED prize_first/second/third = 1950/600/450 (pct 65/20/15)
+--   상금: 풀 3000 -> GENERATED prize_first/second/third = 1800/750/450 (pct 60/25/15)
 --   길이: 전 라운드 15~30 (application_video_* 단일 출처; main_round_video_* 동기화+폐기)
 -- ===========================================================================
 UPDATE public.seasons SET
   max_applicants               = 500,
   min_participants             = 50,
   total_prize_pool             = 3000,
-  prize_first_pct              = 65,
-  prize_second_pct             = 20,
+  prize_first_pct              = 60,
+  prize_second_pct             = 25,
   prize_third_pct              = 15,
   application_video_min_seconds = 15,
   application_video_max_seconds = 30,
