@@ -114,6 +114,51 @@ UPDATE public.seasons SET
   final_n = 3
 WHERE season_number = 0;
 
+-- ===========================================================================
+-- 5. seasons_public VIEW -- 새 3단계 컬럼 노출 (전부 공개 구조값, 비밀 아님)
+--   getSeasonById()는 base table이 아니라 이 VIEW를 읽음. VIEW는 명시적 컬럼
+--   리스트라 새 컬럼을 여기 추가하지 않으면 공개 페이지(rules/faq/apply/profile)가
+--   값을 못 봄. 진출 정책 + 결승 일정 = 토너먼트 구조라 공개 대상.
+--   *** 비밀 컬럼(main_round_twist/main_round_theme)은 계속 제외 ***
+--   기존 컬럼 순서 보존 + 끝에 신규 컬럼만 append (CREATE OR REPLACE VIEW 제약).
+-- ===========================================================================
+CREATE OR REPLACE VIEW public.seasons_public AS
+  SELECT
+    id, name, season_number, status,
+    max_applicants, top_n_advance,
+    application_video_min_seconds, application_video_max_seconds,
+    total_prize_pool, entry_fee,
+    main_round_video_seconds, theme_announcement_minutes_before, submission_hours,
+    community_vote_weight, ai_score_weight,
+    scoring_intent_clarity_weight, scoring_execution_weight,
+    scoring_originality_weight, scoring_integrity_weight,
+    ai_models,
+    flag_integrity_threshold, flag_spread_threshold,
+    application_open_at, application_close_at, scoring_complete_at,
+    main_round_start_at, main_round_end_at, awards_announcement_at,
+    created_at, updated_at,
+    prize_first_pct, prize_second_pct, prize_third_pct,
+    prize_first, prize_second, prize_third,
+    display_name,
+    main_round_video_min_seconds, main_round_video_max_seconds,
+    deadline_reminder_hours, award_prizes,
+    flag_integrity_high_threshold, flag_integrity_medium_threshold,
+    flag_integrity_low_threshold,
+    season_theme,
+    allowed_video_platforms, scoring_start_at,
+    host_type, host_user_id,
+    prize_pool_escrow_status, prize_pool_escrow_paid_at,
+    commission_rate_override, prize_funding_mode,
+    poster_url, lobby_featured,
+    -- ── 신규: 3단계 진출 정책 + 연기 + 결승 일정 ──
+    min_participants, application_defer_count, defer_extension_days, max_defer_count,
+    advance_pct, advance_min, advance_max,
+    final_n, final_start_at, final_end_at
+  FROM public.seasons;
+
+GRANT SELECT ON public.seasons_public TO anon, authenticated;
+NOTIFY pgrst, 'reload schema';
+
 COMMIT;
 
 -- ===========================================================================
@@ -144,4 +189,13 @@ WHERE conrelid = 'public.scoring_results'::regclass
 SELECT column_name FROM information_schema.columns
 WHERE table_schema='public' AND table_name='genesis_applications'
   AND column_name IN ('final_video_url','final_submitted_at')
+ORDER BY column_name;
+
+-- 5) seasons_public VIEW -- 새 3단계 컬럼 10개 노출 확인
+SELECT column_name FROM information_schema.columns
+WHERE table_schema='public' AND table_name='seasons_public'
+  AND column_name IN (
+    'min_participants','application_defer_count','defer_extension_days','max_defer_count',
+    'advance_pct','advance_min','advance_max','final_n','final_start_at','final_end_at'
+  )
 ORDER BY column_name;

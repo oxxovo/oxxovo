@@ -36,6 +36,15 @@ export default async function SeasonEditPage({
     status: season.status as SeasonInput['status'],
     max_applicants: season.max_applicants,
     top_n_advance: season.top_n_advance,
+    // 3-stage advancement policy. Fallbacks cover rows read before the
+    // season0_3stage migration adds the columns (?? null/undefined -> default).
+    min_participants: season.min_participants ?? 50,
+    defer_extension_days: season.defer_extension_days ?? 7,
+    max_defer_count: season.max_defer_count ?? 2,
+    advance_pct: season.advance_pct ?? 0.1,
+    advance_min: season.advance_min ?? 10,
+    advance_max: season.advance_max ?? 50,
+    final_n: season.final_n ?? 3,
     application_video_min_seconds: season.application_video_min_seconds,
     application_video_max_seconds: season.application_video_max_seconds,
     total_prize_pool: season.total_prize_pool,
@@ -64,6 +73,8 @@ export default async function SeasonEditPage({
     scoring_complete_at: season.scoring_complete_at,
     main_round_start_at: season.main_round_start_at,
     main_round_end_at: season.main_round_end_at,
+    final_start_at: season.final_start_at ?? null,
+    final_end_at: season.final_end_at ?? null,
     awards_announcement_at: season.awards_announcement_at,
   }
 

@@ -33,6 +33,35 @@ export type Season = {
 
   max_applicants: number
   top_n_advance: number
+
+  // ── 3-stage tournament structure (preliminary -> semifinal -> final) ──
+  // The tournament runs in three judged stages. Canonical naming lives in
+  // reports/season0_3stage_migration_2026-06.sql:
+  //   application_* = PRELIMINARY (예선, 자유작, up to max_applicants; min_participants floor)
+  //   main_round_*  = SEMIFINAL (준결승). "main_round" is the historical column
+  //                   name -- semantically it is the SEMIFINAL stage. Entrants =
+  //                   top_n_advance, computed from the advance_* policy below.
+  //   final_*       = FINAL (결승, new top stage). Entrants = final_n.
+  //
+  // Preliminary shortfall (< min_participants) triggers DEFERRAL -- extend the
+  // application deadline, never a rollover: a free Season 0 cannot carry
+  // applicants into a paid season. The cron extends application_close_at by
+  // defer_extension_days, up to max_defer_count times (application_defer_count
+  // tracks how many extensions have fired).
+  min_participants: number
+  application_defer_count: number
+  defer_extension_days: number
+  max_defer_count: number
+  // Preliminary -> semifinal advancement policy. top_n_advance stores the
+  // computed RESULT; computeAdvanceCount() is the single source of the math
+  // (clamp(round(N * advance_pct), advance_min, advance_max)).
+  advance_pct: number
+  advance_min: number
+  advance_max: number
+  // Semifinal -> final: number of finalists taken from the top of the semifinal
+  // leaderboard.
+  final_n: number
+
   application_video_min_seconds: number
   application_video_max_seconds: number
 
@@ -83,6 +112,11 @@ export type Season = {
   scoring_complete_at: string | null
   main_round_start_at: string | null
   main_round_end_at: string | null
+  // Final stage window. NULL until an admin sets the schedule -- dates are never
+  // hardcoded ([[feedback-no-hardcode]]); each season's timeline is entered in
+  // /admin/seasons. Until both are set, canSubmitFinal returns season_dates_not_set.
+  final_start_at: string | null
+  final_end_at: string | null
   awards_announcement_at: string | null
 
   // Public theme (#6 hybrid model), shown openly. The secret main_round_twist
@@ -391,6 +425,58 @@ export function canSubmitMainRound(
   }
   const start = new Date(season.main_round_start_at)
   const end = new Date(season.main_round_end_at)
+  if (now < start) return { ok: false, reason: 'before_start' }
+  if (now >= end) return { ok: false, reason: 'after_close' }
+  return { ok: true }
+}
+
+// ─── Preliminary → semifinal advancement count ──────────────────────────
+// Single source of truth for how many preliminary (예선) entrants advance to
+// the semifinal (main_round). Pure and side-effect free:
+//   clamp(round(eligibleCount × advance_pct), advance_min, advance_max)
+// further capped at eligibleCount (never advance more than exist). `eligibleCount`
+// is the number of scored/eligible preliminary entrants. The result is what gets
+// written to seasons.top_n_advance when the preliminary closes — there is no
+// per-season hardcoded N ([[feedback-no-hardcode]]). Date-independent.
+export function computeAdvanceCount(
+  eligibleCount: number,
+  policy: Pick<Season, 'advance_pct' | 'advance_min' | 'advance_max'>,
+): number {
+  if (eligibleCount <= 0) return 0
+  const raw = Math.round(eligibleCount * policy.advance_pct)
+  const clamped = Math.max(policy.advance_min, Math.min(policy.advance_max, raw))
+  return Math.min(clamped, eligibleCount)
+}
+
+// ─── Final round submission gate ────────────────────────────────────────
+// Mirrors canSubmitMainRound for the FINAL (결승) stage. Single-submission
+// model: one final video per finalist, no edits after submit. Statuses that
+// branch to a separate UI (already submitted / decided / under review) return
+// reason: null, exactly like the main-round gate. Date values come entirely
+// from season.final_start_at / final_end_at — NULL → season_dates_not_set.
+export function canSubmitFinal(
+  app: ApplicationLike,
+  season: Pick<Season, 'final_start_at' | 'final_end_at'>,
+  now: Date = new Date(),
+): SubmitCheck {
+  // final_submitted / awarded / rejected / flagged → caller renders its own card.
+  if (
+    app.status === 'final_submitted' ||
+    app.status === 'awarded' ||
+    app.status === 'rejected' ||
+    app.status === 'flagged'
+  ) {
+    return { ok: false, reason: null }
+  }
+  // Only finalists (status 'final_selected') may submit a final video.
+  if (app.status !== 'final_selected') {
+    return { ok: false, reason: 'not_selected' }
+  }
+  if (!season.final_start_at || !season.final_end_at) {
+    return { ok: false, reason: 'season_dates_not_set' }
+  }
+  const start = new Date(season.final_start_at)
+  const end = new Date(season.final_end_at)
   if (now < start) return { ok: false, reason: 'before_start' }
   if (now >= end) return { ok: false, reason: 'after_close' }
   return { ok: true }
