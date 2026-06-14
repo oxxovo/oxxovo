@@ -266,7 +266,7 @@ export type ComposeSubmitCtx = {
 }
 
 export type LoadComposeResult =
-  | { ok: true; data: { clips: ComposeClip[]; maxSeconds: number; maxClips: number; submit: ComposeSubmitCtx } }
+  | { ok: true; data: { clips: ComposeClip[]; minSeconds: number; maxSeconds: number; maxClips: number; submit: ComposeSubmitCtx } }
   | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
 
 export async function loadComposeState(token: string): Promise<LoadComposeResult> {
@@ -289,7 +289,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     const admin = createSupabaseAdmin()
     const { data: s } = await admin
       .from('seasons')
-      .select('studio_compose_max_seconds, studio_compose_max_clips')
+      .select('studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips')
       .eq('id', season.id)
       .single()
 
@@ -314,6 +314,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
       ok: true,
       data: {
         clips,
+        minSeconds: Number(s?.studio_compose_min_seconds ?? 15),
         maxSeconds: Number(s?.studio_compose_max_seconds ?? 30),
         maxClips: Number(s?.studio_compose_max_clips ?? 10),
         submit: {
@@ -381,6 +382,7 @@ export type SubmitRenderActionResult =
         | 'not_owner'
         | 'not_ready'
         | 'compose_disabled'
+        | 'too_short'
         | 'too_long'
         | 'source_not_found'
         | 'source_cryptobind_failed'

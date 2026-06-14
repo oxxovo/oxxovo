@@ -29,6 +29,7 @@ export default function ComposePage() {
   const t = T[lang]
   const [data, setData] = useState<{
     clips: ComposeClip[]
+    minSeconds: number
     maxSeconds: number
     maxClips: number
     submit: ComposeSubmitCtx
@@ -86,6 +87,7 @@ export default function ComposePage() {
           <ComposeEditor
             lang={lang}
             clips={data.clips}
+            minSeconds={data.minSeconds}
             maxSeconds={data.maxSeconds}
             maxClips={data.maxClips}
             submitCtx={data.submit}

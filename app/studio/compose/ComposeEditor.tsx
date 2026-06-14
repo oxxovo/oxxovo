@@ -47,6 +47,7 @@ export type ComposeSubmitCtx = {
 export type ComposeEditorProps = {
   lang: 'ko' | 'en'
   clips: SourceClip[]
+  minSeconds: number
   maxSeconds: number
   maxClips: number
   demo?: boolean
@@ -92,6 +93,7 @@ const DICT = {
     up: '↑',
     down: '↓',
     total: '총 길이',
+    under: (n: number) => `최소 ${n}초가 필요합니다. 클립을 추가하거나 트림을 늘리세요.`,
     over: (n: number) => `${n}초를 초과했습니다. 트림하거나 클립을 줄이세요.`,
     clip_over: (n: number) => `클립 수가 최대 ${n}개를 초과했습니다.`,
     preview: '시퀀스 미리보기',
@@ -149,6 +151,7 @@ const DICT = {
     up: '↑',
     down: '↓',
     total: 'Total',
+    under: (n: number) => `At least ${n}s required. Add a clip or extend a trim.`,
     over: (n: number) => `Over ${n}s. Trim or remove a clip.`,
     clip_over: (n: number) => `More than the max of ${n} clips.`,
     preview: 'Preview sequence',
@@ -213,10 +216,14 @@ export default function ComposeEditor(props: ComposeEditorProps) {
   })
 
   const totalMs = segments.reduce((a, s) => a + (s.endMs - s.startMs), 0)
+  const minMs = props.minSeconds * 1000
   const maxMs = props.maxSeconds * 1000
   const over = totalMs > maxMs
+  // under = below the floor, but only once the user has started a sequence (an
+  // empty sequence shows no error, just the empty hint).
+  const under = props.minSeconds > 0 && segments.length > 0 && totalMs < minMs
   const tooMany = segments.length > props.maxClips
-  const canRender = segments.length > 0 && !over && !tooMany && !busy
+  const canRender = segments.length > 0 && !over && !under && !tooMany && !busy
 
   // --- sequence ops ---
   const addClip = (clip: SourceClip) => {
@@ -456,18 +463,26 @@ export default function ComposeEditor(props: ComposeEditorProps) {
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className={headCls}>{t.seq_title}</h2>
-          <span className={`text-xs font-bold ${over ? 'text-[#ff8888]' : 'text-[#b66cff]'}`}>
-            {t.total}: {fmt(totalMs)} / {props.maxSeconds}{t.sec}
+          <span className={`text-xs font-bold ${over || under ? 'text-[#ff8888]' : 'text-[#b66cff]'}`}>
+            {t.total}: {fmt(totalMs)} / {props.minSeconds}~{props.maxSeconds}{t.sec}
           </span>
         </div>
 
-        {/* length meter */}
-        <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        {/* length meter -- fill vs the max; a tick marks the min (floor) so the
+            valid window [min, max] is visible at a glance. Red below min or over max. */}
+        <div className="relative mb-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
           <div
-            className={`h-full transition-all ${over ? 'bg-[#ff4444]' : 'bg-[#8b22ff]'}`}
+            className={`h-full transition-all ${over || under ? 'bg-[#ff4444]' : 'bg-[#8b22ff]'}`}
             style={{ width: `${Math.min(100, (totalMs / maxMs) * 100)}%` }}
           />
+          {props.minSeconds > 0 && props.minSeconds < props.maxSeconds && (
+            <div
+              className="absolute top-0 h-full w-px bg-white/50"
+              style={{ left: `${(minMs / maxMs) * 100}%` }}
+            />
+          )}
         </div>
+        {under && <p className="mb-2 text-[11px] text-[#ff8888]">{t.under(props.minSeconds)}</p>}
         {over && <p className="mb-2 text-[11px] text-[#ff8888]">{t.over(props.maxSeconds)}</p>}
         {tooMany && <p className="mb-2 text-[11px] text-[#ff8888]">{t.clip_over(props.maxClips)}</p>}
 

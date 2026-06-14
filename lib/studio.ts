@@ -63,10 +63,15 @@ export type SeasonStudioConfig = {
   submissionHours: number
   // S-7: per-round video-length bounds (seconds). The generation duration must
   // fall within the bounds of the round it belongs to, not just the model's.
+  // NOTE: in compose mode a generation is a building-block CLIP whose final
+  // length is governed by studio_compose_* on the composed render, so S-7 is
+  // SKIPPED when studioComposeEnabled (see createGeneration).
   applicationVideoMinSeconds: number
   applicationVideoMaxSeconds: number
   mainRoundVideoMinSeconds: number
   mainRoundVideoMaxSeconds: number
+  // Compose on? When true, clip generation is gated by model-native bounds only.
+  studioComposeEnabled: boolean
 }
 
 // Per-round video-length bounds, resolved from the season config. Application
@@ -120,7 +125,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds')
+    .select('studio_round, studio_max_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -133,6 +138,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     applicationVideoMaxSeconds: Number(data.application_video_max_seconds ?? 0),
     mainRoundVideoMinSeconds: Number(data.main_round_video_min_seconds ?? 0),
     mainRoundVideoMaxSeconds: Number(data.main_round_video_max_seconds ?? 0),
+    studioComposeEnabled: Boolean(data.studio_compose_enabled),
   }
 }
 
@@ -212,9 +218,16 @@ export async function createGeneration(args: {
 
   // S-7: duration must also satisfy the SEASON's video-length bounds for this
   // round, not only the model's. A configured bound of 0 means "unset" -> skip.
-  const bounds = videoBoundsForRound(cfg, effectiveRound)
-  if (bounds.min > 0 && duration < bounds.min) return { ok: false, reason: 'bad_duration' }
-  if (bounds.max > 0 && duration > bounds.max) return { ok: false, reason: 'bad_duration' }
+  // In compose mode this generation is a building-block CLIP -- its length is
+  // capped only by the model's native enum; the FINAL composed length is gated
+  // by studio_compose_min/max_seconds in createRender. So the round submission
+  // bounds (application_video_*/main_round_video_* = 15..30) must NOT reject a
+  // short clip here. Skip S-7 when compose is on.
+  if (!cfg.studioComposeEnabled) {
+    const bounds = videoBoundsForRound(cfg, effectiveRound)
+    if (bounds.min > 0 && duration < bounds.min) return { ok: false, reason: 'bad_duration' }
+    if (bounds.max > 0 && duration > bounds.max) return { ok: false, reason: 'bad_duration' }
+  }
 
   const used = await countGenerationsForRound(args.userId, args.seasonId, cfg, effectiveRound)
   if (used >= cfg.maxGenerationsPerRound) return { ok: false, reason: 'cap_reached' }
@@ -488,6 +501,7 @@ export type CreateRenderResult =
         | 'compose_disabled'
         | 'empty_edl'
         | 'too_many_clips'
+        | 'too_short'
         | 'too_long'
         | 'bad_segment'
         | 'source_not_found'
@@ -510,12 +524,13 @@ export async function createRender(args: {
   // 1. Season compose config (caps are season-variable).
   const { data: seasonRow, error: sErr } = await admin
     .from('seasons')
-    .select('studio_compose_enabled, studio_compose_max_seconds, studio_compose_max_clips')
+    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
   if (!seasonRow.studio_compose_enabled) return { ok: false, reason: 'compose_disabled' }
   const maxClips = Number(seasonRow.studio_compose_max_clips ?? 10)
+  const minSeconds = Number(seasonRow.studio_compose_min_seconds ?? 0)
   const maxSeconds = Number(seasonRow.studio_compose_max_seconds ?? 30)
 
   if (edl.length > maxClips) return { ok: false, reason: 'too_many_clips' }
@@ -535,6 +550,7 @@ export async function createRender(args: {
     totalMs += seg.endMs - seg.startMs
   }
   if (totalMs <= 0) return { ok: false, reason: 'empty_edl' }
+  if (minSeconds > 0 && totalMs < minSeconds * 1000) return { ok: false, reason: 'too_short' }
   if (totalMs > maxSeconds * 1000) return { ok: false, reason: 'too_long' }
 
   // 3. Load distinct sources; each must be the participant's own, same-season,
@@ -648,6 +664,7 @@ export type SubmitRenderResult =
         | 'not_owner'
         | 'not_ready'
         | 'compose_disabled'
+        | 'too_short'
         | 'too_long'
         | 'source_not_found'
         | 'source_cryptobind_failed'
@@ -690,13 +707,15 @@ export async function submitRender(args: {
   // 2. Season compose gate + cap (defense; caps are season-variable).
   const { data: seasonRow, error: sErr } = await admin
     .from('seasons')
-    .select('studio_compose_enabled, studio_compose_max_seconds')
+    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
   if (!seasonRow.studio_compose_enabled) return { ok: false, reason: 'compose_disabled' }
+  const minSeconds = Number(seasonRow.studio_compose_min_seconds ?? 0)
   const maxSeconds = Number(seasonRow.studio_compose_max_seconds ?? 30)
   const totalSeconds = Number(render.total_duration_seconds)
+  if (minSeconds > 0 && totalSeconds < minSeconds - 0.001) return { ok: false, reason: 'too_short' }
   if (totalSeconds > maxSeconds + 0.001) return { ok: false, reason: 'too_long' }
 
   // 3. Re-verify EVERY source clip: own-account, same season, valid CryptoBind.

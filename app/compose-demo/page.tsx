@@ -54,6 +54,7 @@ export default function ComposeDemoPage() {
         <ComposeEditor
           lang={lang}
           clips={CLIPS}
+          minSeconds={15}
           maxSeconds={30}
           maxClips={10}
           demo
