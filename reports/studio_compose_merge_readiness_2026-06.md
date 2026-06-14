@@ -14,10 +14,10 @@
 | 2 | **genesis_status_constraint_fix** | `genesis_applications_status_check` 9값(main_round_submitted/flagged 포함). 옛 stale `genesis_apps_status_check` DROP | ✅ 반영(프로브 9값 + 본선 CAS E2E 22/22 통과) |
 | 3 | **model_catalog_tiers** | active 6모델 + duration_format(ltx2/sora2=int, kling/seedance=string, veo 2종=string_s) + 옛 2모델 비활성 | ✅ active 6 확인 |
 | 4 | **studio_content_bind** | `generation_jobs` cryptobind_content_*(v1c) + `render_jobs` cryptobind_render/edl/source/final_*(v1sr/v1sc) | ✅ 컬럼 전부 present |
-| 5 | **studio_compose_min_seconds** (신규 2026-06-13) | `seasons.studio_compose_min_seconds`(default 15) + `seasons_compose_len_chk` CHECK(min>=1, max>=min) + 시즌0 min/max=15/30. `reports/_run/studio_compose_min_seconds.sql` | ⛔ **미실행 — TK Run 대기** |
+| 5 | **studio_compose_min_seconds** (신규 2026-06-13) | `seasons.studio_compose_min_seconds`(default 15) + `seasons_compose_len_chk` CHECK(min>=1, max>=min) + 시즌0 min/max=15/30. `reports/_run/studio_compose_min_seconds.sql` | ✅ **실행 완료**(라이브 min=15/max=30 + E2E 14/14 확인) |
 
-**→ compose 마이그 1~4는 라이브. #5(min 15초)는 TK Run 대기.**
-⚠️ **#5는 코드-마이그 의존**: lib/studio.ts createRender/submitRender + actions.ts loadComposeState가 `studio_compose_min_seconds`를 **select**하므로, 이 컬럼이 없는 DB에 코드가 먼저 라이브되면 compose 생성/제출/로드가 전부 `failed`(PostgREST column-missing). **반드시 #5를 코드 라이브(머지→배포) 전에 실행.** feature 브랜치라 현재 영향 없음.
+**→ compose 마이그 1~5 전부 라이브 반영 완료. 머지 시 추가 실행 불필요.**
+#5(min 15초)는 2026-06-13 TK 실행 완료, 라이브 E2E(`scripts/e2e-compose-length.mjs`) 14/14 통과로 확인: min=15/max=30 + 5.1s→too_short / 15·20·30s→ok / 35s→too_long, 코드의 정확한 select가 라이브 PostgREST에서 정상 동작.
 전제: 이전 studio 파이프라인 마이그(studio_phase1/phase4 = generation_jobs/model_catalog/credit_transactions)는 이전 세션에 이미 라이브(이번 E2E·스모크에서 사용 확인).
 
 **길이 정합(min 15초 / 지수 3단계 SQL)**: `studio_compose_min/max=15/30`(최종 조합 = 채점물, 엔진 단일 소스) = `application_video_min/max` = `main_round_video_min/max`=15/30(지수 season0_3stage, 공개표시·비스튜디오 게이트). **전부 15/30 일치.** 클립 생성은 모델 네이티브 bounds로만 게이트(S-7가 compose 모드에서 라운드 bounds 건너뜀) → 지수가 application_video_*=15/30로 둬도 짧은 클립 생성 안전, 실행 순서 무관.
@@ -82,7 +82,7 @@
 - no-hardcode 위반: 초과경고문 "30초" 고정 → 동적 `maxSeconds` 함수화(ko/en).
 - 미리보기 상태 누출: `playSeq` 누락클립 early-return에 `setPlaying(false)` 추가.
 
-**기능 추가(2026-06-13, min 15초):** createRender/submitRender에 `too_short` 검증(studio_compose_min_seconds, 하드코딩 X) + S-7 compose 모드 디커플 + 편집기 미터 `15~30초`·미달 경고·floor 틱 + 마이그 #5. 길이 게이트 7/7 로직 테스트 통과(5.1s→too_short, 15~30→ok, >30→too_long). tsc 0. **라이브 3-케이스 E2E는 #5 실행 후.**
+**기능 추가(2026-06-13, min 15초):** createRender/submitRender에 `too_short` 검증(studio_compose_min_seconds, 하드코딩 X) + S-7 compose 모드 디커플 + 편집기 미터 `15~30초`·미달 경고·floor 틱 + 마이그 #5. tsc 0. **라이브 3-케이스 E2E 14/14 통과**(`scripts/e2e-compose-length.mjs`, 마이그 #5 실행 후): 5.1s→too_short / 15·20·30s→ok(20s 실 render row 기록) / 35s→too_long, 경계값 포함.
 
 **머지 담당자에게 넘기는 노트(비차단):**
 - **N1 (i18n, → 지수 큐)**: createRender/submit 에러가 원시 토큰(`source_cryptobind_failed` 등)으로 노출. /rules 이중언어화와 함께 reason→문구 매핑 정리 권장. 해피패스/레이아웃엔 영향 없음.
@@ -97,5 +97,5 @@
 - 코드 범위(merge-base 대비, reports 제외): 10파일 +1994/−40. 핵심=lib/studio.ts, lib/cryptobind.ts, app/studio/{actions,compose/*}, app/compose-demo, app/rules(§⑥ 기준선 11줄).
 - tsc 0 / 이전 세션 build 0. 워커 tsc 0.
 - **vercel.json cron 충돌 주의**([[feedback-vercel-cron-limits]]): 트레인에 season(#2)+partner(#3) cron 공존 → plan limit 내 수동 유지. compose는 cron 추가 없음.
-- 부수 산출물(머지 대상 아님): `scripts/e2e-submit-render.mjs`·`scripts/probe-status-constraint.mjs`(검증 도구), `reports/*`(문서). 워커 레포 `_fal_test/`는 untracked 테스트물.
+- 부수 산출물(머지 대상 아님): `scripts/e2e-submit-render.mjs`·`scripts/e2e-compose-length.mjs`·`scripts/probe-status-constraint.mjs`(검증 도구), `reports/*`(문서). 워커 레포 `_fal_test/`는 untracked 테스트물.
 - /rules 짜깁기 조항 후속 인계: `reports/rules_compose_clauses_handoff_2026-06.md`(지수 큐, 인계 가능).
