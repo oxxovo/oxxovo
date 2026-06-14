@@ -38,11 +38,13 @@ ALTER TABLE public.seasons
        AND studio_compose_max_seconds >= studio_compose_min_seconds);
 
 -- Season 0 = compose final 15..30s.
+-- WHERE season_number = 0 (not id='season_0') to stay identical to the 3-stage
+-- migration's predicate -- same row, removes any id-string mismatch doubt.
 UPDATE public.seasons
 SET studio_compose_min_seconds = 15,
     studio_compose_max_seconds = 30,
     updated_at = now()
-WHERE id = 'season_0';
+WHERE season_number = 0;
 
 COMMIT;
 
@@ -53,4 +55,4 @@ SELECT id, studio_compose_enabled,
        studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips,
        application_video_min_seconds, application_video_max_seconds,
        main_round_video_min_seconds, main_round_video_max_seconds
-FROM public.seasons WHERE id = 'season_0';
+FROM public.seasons WHERE season_number = 0;
