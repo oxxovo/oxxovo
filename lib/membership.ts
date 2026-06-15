@@ -25,6 +25,7 @@
 import 'server-only'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
+import { getPlatformConfigMap } from '@/lib/partners'
 
 // ─── participation axis ─────────────────────────────────────────────────────
 
@@ -194,4 +195,165 @@ export async function isMembershipEnabled(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+// ─── P2: Founding Creator claim ─────────────────────────────────────────────
+// First N creator signups (N = platform_config membership_founding_free_count)
+// get a free creator membership for membership_founding_free_months. The slot is
+// claimed from membership_founding_counter; the badge is DERIVED from
+// founding_creator_number (no separate flag). All values from config -- no
+// hardcoded cap/term.
+
+export type FoundingClaimResult =
+  | { outcome: 'claimed'; foundingNumber: number; expiresAt: string }
+  | { outcome: 'already_founding'; foundingNumber: number }
+  | { outcome: 'already_creator' } // already an active (paid) creator -- no slot taken
+  | { outcome: 'quota_full' } // cap reached -> caller routes to the paid path (P4)
+  | { outcome: 'disabled' } // membership master switch off (dark launch)
+  | { outcome: 'no_profile' } // no profiles row for this user
+  | { outcome: 'config_missing' } // cap/months key absent/invalid -> fail closed
+  | { outcome: 'error'; reason: string }
+
+// CAS retry backstop. With only ~100 slots real contention is negligible; this
+// just bounds a pathological hot loop.
+const FOUNDING_CAS_MAX_RETRIES = 8
+
+// Calendar month add (12 months = same date next year). JS rolls month overflow.
+function addMonths(fromMs: number, months: number): string {
+  const d = new Date(fromMs)
+  d.setMonth(d.getMonth() + months)
+  return d.toISOString()
+}
+
+type AdminClient = ReturnType<typeof createSupabaseAdmin>
+
+// Best-effort slot release after a lost same-user race. Decrements ONLY if the
+// counter is still at the value we took (we were the top); otherwise the counter
+// has moved on and we leave it -- a leaked slot fails safe (fewer than cap
+// granted), never over-grants.
+async function releaseFoundingSlot(admin: AdminClient, takenNumber: number): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    const { data: cur } = await admin
+      .from('membership_founding_counter')
+      .select('claimed')
+      .eq('id', 1)
+      .maybeSingle()
+    if (!cur) return
+    const claimed = cur.claimed as number
+    if (claimed !== takenNumber) return // moved on -> leave it (fail safe)
+    const { data: won } = await admin
+      .from('membership_founding_counter')
+      .update({ claimed: claimed - 1 })
+      .eq('id', 1)
+      .eq('claimed', claimed)
+      .select('claimed')
+      .maybeSingle()
+    if (won) return
+  }
+}
+
+// Claim a Founding Creator slot for `userId`. Idempotent per user (never burns
+// two slots for one person). SERVER ONLY; call with a service-role context after
+// the caller's own gating (P3). Returns a discriminated outcome.
+export async function claimFoundingCreator(userId: string): Promise<FoundingClaimResult> {
+  // Dark-launch guard: never mutate membership while the master switch is off.
+  if (!(await isMembershipEnabled())) return { outcome: 'disabled' }
+
+  const admin = createSupabaseAdmin()
+
+  // 1. Pre-check: skip the slot entirely if the user already holds membership.
+  const { data: pre, error: preErr } = await admin
+    .from('profiles')
+    .select(MEMBERSHIP_PROFILE_COLUMNS)
+    .eq('id', userId)
+    .maybeSingle()
+  if (preErr) return { outcome: 'error', reason: preErr.message }
+  if (!pre) return { outcome: 'no_profile' }
+  const preState = classifyMembership(pre as MembershipProfile, Date.now())
+  if (preState.isFoundingCreator) {
+    return { outcome: 'already_founding', foundingNumber: preState.foundingNumber as number }
+  }
+  if (preState.isActiveCreator) {
+    return { outcome: 'already_creator' }
+  }
+
+  // 2. Config (fail closed on missing/invalid keys -- never invent a cap/term).
+  const cfg = await getPlatformConfigMap()
+  const cap = Number(cfg.get('membership_founding_free_count') ?? 0)
+  const months = Number(cfg.get('membership_founding_free_months') ?? 0)
+  if (!Number.isInteger(cap) || cap <= 0 || !Number.isInteger(months) || months <= 0) {
+    console.error('[membership] founding config missing/invalid:', { cap, months })
+    return { outcome: 'config_missing' }
+  }
+
+  // 3. Atomic slot claim via optimistic CAS loop (see file header rationale).
+  //    Same guarantees as a single UPDATE...RETURNING: race-safe, gap-free,
+  //    cap-atomic -- without a plpgsql RPC ($$ body trips Supabase 42601).
+  let foundingNumber: number | null = null
+  for (let i = 0; i < FOUNDING_CAS_MAX_RETRIES; i++) {
+    const { data: cur, error: rErr } = await admin
+      .from('membership_founding_counter')
+      .select('claimed')
+      .eq('id', 1)
+      .maybeSingle()
+    if (rErr) return { outcome: 'error', reason: rErr.message }
+    if (!cur) return { outcome: 'error', reason: 'founding counter row missing' }
+    const claimed = cur.claimed as number
+    if (claimed >= cap) return { outcome: 'quota_full' }
+    const { data: won, error: uErr } = await admin
+      .from('membership_founding_counter')
+      .update({ claimed: claimed + 1 })
+      .eq('id', 1)
+      .eq('claimed', claimed) // CAS guard -- only one concurrent writer wins
+      .select('claimed')
+      .maybeSingle()
+    if (uErr) return { outcome: 'error', reason: uErr.message }
+    if (won) {
+      foundingNumber = won.claimed as number // == claimed + 1, the ordinal
+      break
+    }
+    // lost the race -> re-read and retry
+  }
+  if (foundingNumber == null) {
+    return { outcome: 'error', reason: 'founding counter contention (retries exhausted)' }
+  }
+
+  // 4. Assign to the profile, guarded so a concurrent self-claim cannot
+  //    double-assign. Grant: creator/active/founding_free + 12-month window.
+  const nowMs = Date.now()
+  const startedAt = new Date(nowMs).toISOString()
+  const expiresAt = addMonths(nowMs, months)
+  const { data: assigned, error: aErr } = await admin
+    .from('profiles')
+    .update({
+      founding_creator_number: foundingNumber,
+      membership_tier: 'creator',
+      membership_status: 'active',
+      membership_source: 'founding_free',
+      membership_started_at: startedAt,
+      membership_expires_at: expiresAt,
+      updated_at: startedAt,
+    })
+    .eq('id', userId)
+    .is('founding_creator_number', null) // guard: only if not already claimed
+    .select('id')
+    .maybeSingle()
+
+  if (aErr || !assigned) {
+    // Lost a same-user race (or row vanished): release our slot so cap headroom
+    // is not leaked, then report the already-claimed number if one now exists.
+    await releaseFoundingSlot(admin, foundingNumber)
+    if (aErr) return { outcome: 'error', reason: aErr.message }
+    const { data: now2 } = await admin
+      .from('profiles')
+      .select('founding_creator_number')
+      .eq('id', userId)
+      .maybeSingle()
+    const n = (now2?.founding_creator_number as number | null) ?? null
+    return n != null
+      ? { outcome: 'already_founding', foundingNumber: n }
+      : { outcome: 'no_profile' }
+  }
+
+  return { outcome: 'claimed', foundingNumber, expiresAt }
 }
