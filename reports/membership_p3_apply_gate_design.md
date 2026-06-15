@@ -101,3 +101,34 @@ export async function claimFoundingForCurrentUser(): Promise<FoundingClaimResult
 - membership_enabled=false -> checkApplyGate 무조건 { ok:true } -> **기존 흐름 0 변경**.
 - 신규 헬퍼/액션은 enabled=true 일 때만 동작. 와이어링해도 라이브 영향 0(스위치 OFF).
 - 스위치 ON 시점 = 멤버십 발사 결정(시즌0 오픈 전, P4 결제 준비 후).
+
+===========================================================================
+## F. 지수2 인계 — studio INSERT 2곳 게이트 연결 (#2 #3)
+===========================================================================
+본체가 공유 헬퍼 제공 완료(`checkApplyGate` in lib/membership.ts, 라이브). #1(/api/apply)
+연결 완료. studio.ts 의 신청 생성 INSERT 2곳만 지수2가 한 줄씩 삽입.
+
+### 대상 (둘 다 "새 application row 생성" 지점, 이후 라운드 UPDATE는 대상 아님)
+- submitGeneration: `lib/studio.ts` INSERT (현재 line 426). 바로 위에 이미
+  "S-1/S-2: this auto-created row IS an application, so it must obey the same
+  gates as POST /api/apply" 주석 있음 -> 그 게이트 자리.
+- submitRender: `lib/studio.ts` INSERT (현재 line 866). 동일 구조.
+
+### 삽입 (각 INSERT 직전, season/closed/capacity 체크 다음)
+```ts
+// at top of file:
+import { checkApplyGate } from '@/lib/membership'
+
+// right before `admin.from('genesis_applications').insert({...})`:
+// P3 membership gate -- same creator-membership prerequisite as POST /api/apply.
+// Fail-OPEN: in season-0 dark launch (membership_enabled=false) this passes and
+// the studio flow is unchanged.
+const gate = await checkApplyGate(args.userId)
+if (!gate.ok) return { ok: false, reason: 'membership_required' }
+```
+
+### 지수2 할 일 2가지
+1. 위 가드를 #2 #3 두 INSERT 직전에 삽입(args.userId 사용).
+2. studio submit 결과 reason 유니온에 `'membership_required'` 추가(클라이언트 매핑).
+- 라운드 UPDATE(준결승/결승)에는 넣지 말 것 — 신청 시점에 이미 통과.
+- dark launch라 지금 삽입해도 라이브 영향 0(스위치 OFF).
