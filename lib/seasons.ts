@@ -272,8 +272,14 @@ export async function getCurrentSeason(): Promise<Season | null> {
   // `.lte` excludes NULL application_open_at automatically. During a normal
   // application week this resolves to that week's season; in the brief gap
   // before the next Monday it stays on the latest opened season.
+  //
+  // Reads seasons_public (NOT the base table): this runs through the fixed-anon
+  // browser client, and anon's SELECT on public.seasons was revoked by the
+  // theme-hybrid migration. The view is granted to anon/authenticated and
+  // exposes application_open_at/close_at; the secret twist/theme columns stay
+  // out of it. (getSeasonById already reads the view -- keep them consistent.)
   const { data: opened, error: openedErr } = await supabase
-    .from('seasons')
+    .from('seasons_public')
     .select('*')
     .lte('application_open_at', nowIso)
     .order('application_open_at', { ascending: false })
@@ -289,7 +295,7 @@ export async function getCurrentSeason(): Promise<Season | null> {
   // Fallback (pre-launch): nothing has opened yet — surface the soonest
   // upcoming season so the site can render an "applications open soon" state.
   const { data: upcoming, error: upcomingErr } = await supabase
-    .from('seasons')
+    .from('seasons_public')
     .select('*')
     .order('application_open_at', { ascending: true })
     .limit(1)
