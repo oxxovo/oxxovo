@@ -14,6 +14,10 @@ import {
   claimFoundingCreator,
   type FoundingClaimResult,
 } from '@/lib/membership'
+import {
+  createMembershipCheckoutSession,
+  type MembershipCheckoutResult,
+} from '@/lib/membership-billing'
 import type { ApplyMembershipState } from './types'
 
 export async function getStudioApplicationFlag(seasonId: string): Promise<boolean> {
@@ -63,4 +67,13 @@ export async function claimFoundingForCurrentUser(): Promise<FoundingClaimResult
   const user = await getUserOrNull()
   if (!user) return { outcome: 'no_profile' }
   return claimFoundingCreator(user.id)
+}
+
+// Open a paid creator-membership subscription checkout for the current user
+// (the Founding-full path). Returns the Stripe Checkout URL for the client to
+// redirect to. Fails closed when not signed in or not configured.
+export async function startMembershipCheckout(): Promise<MembershipCheckoutResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, reason: 'disabled' }
+  return createMembershipCheckoutSession(user.id, user.email)
 }

@@ -21,6 +21,7 @@ import {
   getStudioApplicationFlag,
   getApplyMembershipState,
   claimFoundingForCurrentUser,
+  startMembershipCheckout,
 } from './actions'
 import type { ApplyMembershipState } from './types'
 
@@ -642,6 +643,29 @@ function MembershipGateScreen({
 }) {
   const [claiming, setClaiming] = useState(false)
   const [claimErr, setClaimErr] = useState('')
+  const [subscribing, setSubscribing] = useState(false)
+  const [subErr, setSubErr] = useState('')
+
+  async function handleSubscribe() {
+    setSubscribing(true)
+    setSubErr('')
+    try {
+      const r = await startMembershipCheckout()
+      if (r.ok) {
+        window.location.href = r.url // off to Stripe Checkout
+        return
+      }
+      setSubErr(
+        r.reason === 'not_configured'
+          ? 'Memberships are not open yet. Please check back soon.'
+          : 'We could not start checkout. Please try again.',
+      )
+    } catch {
+      setSubErr('We could not start checkout. Please try again.')
+    } finally {
+      setSubscribing(false)
+    }
+  }
 
   async function handleClaim() {
     setClaiming(true)
@@ -704,12 +728,24 @@ function MembershipGateScreen({
           <>
             <h1 className="text-4xl font-black mb-4">Creator Membership</h1>
             <p className="text-white/55 leading-relaxed mb-8">
-              All Founding Creator spots have been claimed. Paid creator membership is coming soon — you&apos;ll be able to join and apply to {seasonName} shortly.
+              All Founding Creator spots have been claimed. Activate a creator membership to apply to {seasonName}.
             </p>
-            <Link
-              href="/"
-              className="inline-block text-white/40 text-sm hover:text-white/70"
+            <button
+              onClick={handleSubscribe}
+              disabled={subscribing}
+              className="block w-full bg-gradient-to-br from-[#7d23ff] to-[#6220dc] py-4 rounded-lg font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
+              {subscribing ? 'Opening checkout…' : 'Subscribe to Creator Membership'}
+            </button>
+            <p className="text-white/40 text-xs mt-4 leading-relaxed">
+              Billed monthly. Cancel anytime — your access continues until the end of the paid period.
+            </p>
+            {subErr && (
+              <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 mt-6">
+                {subErr}
+              </p>
+            )}
+            <Link href="/" className="inline-block text-white/40 text-sm hover:text-white/70 mt-6">
               ← Back to Home
             </Link>
           </>
