@@ -37,13 +37,16 @@ export const MEMBERSHIP_STATUSES = ['none', 'active', 'past_due', 'canceled'] as
 export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number]
 
 // Statuses that grant creator participation access WHILE within the expiry
-// window. Per the v2.1 spec (TK, 2026-06-14) this is 'active' ONLY. Kept as a
-// named constant so P4 (Stripe subscription) has ONE seam to extend once the
-// real lifecycle states exist -- e.g. whether 'canceled' = cancel-at-period-end
-// keeps access until membership_expires_at, and whether 'past_due' gets a
-// dunning grace. Those are P4 policy decisions; do NOT pre-add them here.
-// (In P0/P1 no row can be 'canceled'/'past_due' yet -- there is no Stripe flow.)
-export const CREATOR_ACCESS_STATUSES: readonly MembershipStatus[] = ['active']
+// window.
+//   active   = subscription live (or founding_free within its term).
+//   past_due = renewal payment failed but in Stripe dunning -- access is KEPT so
+//              a transient card decline never drops a creator mid-season (TK
+//              decision, 2026-06-14). Dunning's final failure flips the sub to
+//              'canceled', which removes access.
+// 'canceled' is intentionally excluded: cancel-at-period-end keeps the sub
+// 'active' (with cancel_at_period_end=true) until membership_expires_at, so the
+// window guard handles that grace; only a fully-ended sub becomes 'canceled'.
+export const CREATOR_ACCESS_STATUSES: readonly MembershipStatus[] = ['active', 'past_due']
 
 // ─── profile shape + result ─────────────────────────────────────────────────
 
@@ -129,10 +132,15 @@ export function classifyMembership(
 
   // Creator access = stored tier 'creator' AND an access-granting status AND
   // still inside the expiry window. Any miss collapses to 'general'.
+  // past_due (Stripe dunning) bypasses the window: the renewal failed so
+  // expires_at may already be in the past, but access is kept while Stripe
+  // retries -- Stripe bounds the grace and flips the sub to 'canceled' on final
+  // failure, which then removes access.
   const storedCreator = profile.membership_tier === 'creator'
   const accessGranting = CREATOR_ACCESS_STATUSES.includes(status)
-  const isActiveCreator =
-    storedCreator && accessGranting && withinWindow(profile.membership_expires_at, nowMs)
+  const withinGrace =
+    status === 'past_due' || withinWindow(profile.membership_expires_at, nowMs)
+  const isActiveCreator = storedCreator && accessGranting && withinGrace
 
   const participationTier: ParticipationTier = isActiveCreator ? 'creator' : 'general'
 
