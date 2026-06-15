@@ -550,6 +550,7 @@ type Messages = {
     apply_err_season_not_found: string
     apply_err_season_closed: string
     apply_err_duplicate_email: string
+    apply_err_membership_required: string
     apply_err_server_error: string
     // saveMainRoundSubmission server action errors (단계 7)
     main_round_err_invalid_token: string
@@ -1097,6 +1098,7 @@ const MESSAGES_EN: Messages = {
     apply_err_season_not_found: 'Season configuration not found. Please try again later.',
     apply_err_season_closed: 'Applications for this season are closed.',
     apply_err_duplicate_email: 'This email has already submitted an application.',
+    apply_err_membership_required: 'A creator membership is required to apply. Please activate your membership and try again.',
     apply_err_server_error: 'Submission failed. Please try again later.',
     main_round_err_invalid_token: 'Your session has expired. Please sign in again.',
     main_round_err_not_found: 'Application not found.',
@@ -1647,6 +1649,7 @@ const MESSAGES_KO: Messages = {
     apply_err_season_not_found: '시즌 설정을 찾을 수 없습니다. 잠시 후 다시 시도해주세요.',
     apply_err_season_closed: '이번 시즌 신청이 마감되었습니다.',
     apply_err_duplicate_email: '이 이메일로 이미 신청서가 제출되었습니다.',
+    apply_err_membership_required: '신청하려면 크리에이터 멤버십이 필요합니다. 멤버십을 활성화한 뒤 다시 시도해주세요.',
     apply_err_server_error: '신청 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.',
     main_round_err_invalid_token: '세션이 만료되었습니다. 다시 로그인해 주세요.',
     main_round_err_not_found: '신청을 찾을 수 없습니다.',

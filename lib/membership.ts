@@ -357,3 +357,75 @@ export async function claimFoundingCreator(userId: string): Promise<FoundingClai
 
   return { outcome: 'claimed', foundingNumber, expiresAt }
 }
+
+// ─── P3: /apply gate + founding status ──────────────────────────────────────
+
+export type ApplyGateResult =
+  | { ok: true }
+  | { ok: false; reason: 'membership_required' }
+// NOTE: entry_fee enforcement (paid seasons) is a P4 seam -- season 0 entry_fee
+// is 0, so the apply gate is membership-only for now. When P4 adds the payment
+// record, extend this with an 'entry_fee_unpaid' branch keyed off season.entry_fee.
+
+// Server-authoritative apply gate. Fail-OPEN at every early return so that a
+// disabled switch / non-gating config / unreadable state all preserve the
+// existing login-only flow (dark launch safety). Only a confirmed
+// non-active-creator with the gate ON is blocked.
+export async function checkApplyGate(userId: string): Promise<ApplyGateResult> {
+  // 1. Master switch off -> gate disabled entirely.
+  if (!(await isMembershipEnabled())) return { ok: true }
+
+  // 2. Membership not configured as an apply prerequisite -> no gate.
+  const cfg = await getPlatformConfigMap()
+  const required = cfg.get('membership_required_for_apply')
+  if (required !== true) return { ok: true }
+
+  // 3. Require an active creator membership (expiry-aware, P1 single source).
+  const state = await getMembershipState(userId)
+  if (!state.isActiveCreator) return { ok: false, reason: 'membership_required' }
+
+  return { ok: true }
+}
+
+// UI-facing variant of the gate: exposes whether the gate is active AND the
+// current user's creator status separately (checkApplyGate conflates "gate off"
+// with "user passes"). Used by the /apply funnel to decide whether to show the
+// membership screen. Fail-open (active:false) when the switch is off.
+export async function getApplyGateState(
+  userId: string,
+): Promise<{ active: boolean; isActiveCreator: boolean }> {
+  if (!(await isMembershipEnabled())) return { active: false, isActiveCreator: false }
+  const cfg = await getPlatformConfigMap()
+  const active = cfg.get('membership_required_for_apply') === true
+  const state = await getMembershipState(userId)
+  return { active, isActiveCreator: state.isActiveCreator }
+}
+
+export type FoundingStatus = {
+  claimed: number
+  cap: number
+  remaining: number
+  open: boolean
+}
+
+// Founding Creator availability for the apply funnel. cap from config; claimed
+// from the counter. Fails closed (open:false) if anything is unreadable so the
+// UI never invites a claim it can't honor.
+export async function getFoundingStatus(): Promise<FoundingStatus> {
+  const closed: FoundingStatus = { claimed: 0, cap: 0, remaining: 0, open: false }
+  try {
+    const admin = createSupabaseAdmin()
+    const [cntRes, cfg] = await Promise.all([
+      admin.from('membership_founding_counter').select('claimed').eq('id', 1).maybeSingle(),
+      getPlatformConfigMap(),
+    ])
+    if (cntRes.error || !cntRes.data) return closed
+    const claimed = Number(cntRes.data.claimed ?? 0)
+    const cap = Number(cfg.get('membership_founding_free_count') ?? 0)
+    if (!Number.isInteger(cap) || cap <= 0) return { claimed, cap: 0, remaining: 0, open: false }
+    const remaining = Math.max(0, cap - claimed)
+    return { claimed, cap, remaining, open: remaining > 0 }
+  } catch {
+    return closed
+  }
+}

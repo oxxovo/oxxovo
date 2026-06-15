@@ -17,7 +17,12 @@ import { useT } from '@/lib/admin-i18n'
 import type { ApplyErrorCode } from '@/app/api/apply/route'
 import { getSessionUser } from '@/app/_actions/auth'
 import { formatFooterStatusLine } from '@/lib/ip-info'
-import { getStudioApplicationFlag } from './actions'
+import {
+  getStudioApplicationFlag,
+  getApplyMembershipState,
+  claimFoundingForCurrentUser,
+} from './actions'
+import type { ApplyMembershipState } from './types'
 
 const AI_SERVICES = ['Sora', 'Veo', 'Runway', 'Kling', 'Pika', 'Other']
 const ABSTRACT_WORDS = [
@@ -41,6 +46,8 @@ export default function ApplyPage() {
   const [season, setSeason] = useState<Season | null>(null)
   const [count, setCount] = useState(0)
   const [studioApplication, setStudioApplication] = useState(false)
+  const [membership, setMembership] = useState<ApplyMembershipState | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   const [videoUrl, setVideoUrl] = useState('')
   const [videoDuration, setVideoDuration] = useState<number | ''>('')
@@ -76,6 +83,10 @@ export default function ApplyPage() {
       setSeason(s)
       getStudioApplicationFlag(s.id).then(setStudioApplication)
 
+      // P3 membership gate state. When the switch is off (season-0 dark launch)
+      // gateActive is false and the flow is unchanged.
+      getApplyMembershipState().then(setMembership)
+
       const c = await getActiveApplicationCount(s.id)
       setCount(c)
 
@@ -88,7 +99,7 @@ export default function ApplyPage() {
       }
     }
     init()
-  }, [])
+  }, [reloadKey])
 
   const platform = useMemo(() => {
     const v = validateVideoUrl(videoUrl, APPLICATION_ALLOWED_PLATFORMS)
@@ -171,6 +182,9 @@ export default function ApplyPage() {
           // applied this season. Reuses the existing i18n string for now.
           already_applied_this_season: t.profile.apply_err_duplicate_email,
           unauthenticated: t.profile.apply_err_server_error, // unreachable (handled above)
+          // Reachable only if membership lapses between page load and submit
+          // (the gate screen otherwise precedes the form).
+          membership_required: t.profile.apply_err_membership_required,
           server_error: t.profile.apply_err_server_error,
         }
         setError(code && errorMap[code] ? errorMap[code] : t.profile.apply_err_server_error)
@@ -211,6 +225,20 @@ export default function ApplyPage() {
   // Studio messaging only when the studio funnel is active (session6 ON).
   if (!user) {
     return <IntroScreen seasonName={season?.name ?? 'GENESIS'} studio={studioApplication} />
+  }
+
+  // P3 membership gate. Only when the switch is ON and configured as required
+  // (membership?.gateActive) AND the user is not already an active creator. In
+  // season-0 dark launch gateActive is false, so this never renders. Precedes
+  // BOTH the studio funnel and the external form (a prerequisite to applying).
+  if (membership?.gateActive && !membership.isActiveCreator) {
+    return (
+      <MembershipGateScreen
+        seasonName={season?.name ?? 'GENESIS'}
+        founding={membership.founding}
+        onClaimed={() => setReloadKey((k) => k + 1)}
+      />
+    )
   }
 
   // Studio-based application round (session6 ON) -> funnel into /studio.
@@ -594,6 +622,104 @@ function IntroScreen({ seasonName, studio }: { seasonName: string; studio: boole
           Don&apos;t have an account?{' '}
           <a href="/signup" className="text-[#8b22ff] hover:underline">Sign up</a>
         </p>
+      </section>
+    </main>
+  )
+}
+
+// Membership gate: shown to an authenticated non-creator when the apply gate is
+// active. Founding window open -> free claim CTA; full -> paid path placeholder
+// (P4, not yet purchasable). Signup tone. Price is intentionally NOT shown here
+// (no hardcode; the priced paid flow arrives with P4).
+function MembershipGateScreen({
+  seasonName,
+  founding,
+  onClaimed,
+}: {
+  seasonName: string
+  founding: ApplyMembershipState['founding']
+  onClaimed: () => void
+}) {
+  const [claiming, setClaiming] = useState(false)
+  const [claimErr, setClaimErr] = useState('')
+
+  async function handleClaim() {
+    setClaiming(true)
+    setClaimErr('')
+    try {
+      const r = await claimFoundingForCurrentUser()
+      // Success / terminal-reload outcomes: re-read state. 'claimed' &
+      // 'already_*' advance to the form; 'quota_full'/'disabled' re-render this
+      // screen in the right mode.
+      if (
+        r.outcome === 'claimed' ||
+        r.outcome === 'already_founding' ||
+        r.outcome === 'already_creator' ||
+        r.outcome === 'quota_full' ||
+        r.outcome === 'disabled'
+      ) {
+        onClaimed()
+        return
+      }
+      setClaimErr('We could not start your membership. Please try again.')
+    } catch {
+      setClaimErr('We could not start your membership. Please try again.')
+    } finally {
+      setClaiming(false)
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-[#030305] text-white">
+      <ApplyHeader />
+      <section className="max-w-md mx-auto px-6 py-20 text-center">
+        <p className="inline-flex items-center gap-2.5 mb-4 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
+          <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
+          {seasonName}
+        </p>
+
+        {founding.open ? (
+          <>
+            <h1 className="text-4xl font-black mb-4">Become a Creator</h1>
+            <p className="text-white/55 leading-relaxed mb-2">
+              Applying to {seasonName} requires a creator membership. You qualify for a{' '}
+              <span className="text-white/90 font-bold">Founding Creator</span> spot — free for one year.
+            </p>
+            <p className="mb-8 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#b66cff]/90">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#b66cff]" />
+              Founding Creator #{founding.claimed + 1} of {founding.cap}
+            </p>
+            <button
+              onClick={handleClaim}
+              disabled={claiming}
+              className="block w-full bg-gradient-to-br from-[#7d23ff] to-[#6220dc] py-4 rounded-lg font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              {claiming ? 'Activating…' : 'Start free — claim my Founding spot'}
+            </button>
+            <p className="text-white/40 text-xs mt-4 leading-relaxed">
+              Free for 12 months. Renews automatically afterward unless cancelled — we&apos;ll remind you before it does.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="text-4xl font-black mb-4">Creator Membership</h1>
+            <p className="text-white/55 leading-relaxed mb-8">
+              All Founding Creator spots have been claimed. Paid creator membership is coming soon — you&apos;ll be able to join and apply to {seasonName} shortly.
+            </p>
+            <Link
+              href="/"
+              className="inline-block text-white/40 text-sm hover:text-white/70"
+            >
+              ← Back to Home
+            </Link>
+          </>
+        )}
+
+        {claimErr && (
+          <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 mt-6">
+            {claimErr}
+          </p>
+        )}
       </section>
     </main>
   )

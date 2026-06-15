@@ -8,6 +8,7 @@ import {
 } from '@/lib/seasons'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
+import { checkApplyGate } from '@/lib/membership'
 import { sendApplicationReceived, sendWaitlisted } from '@/lib/email/send'
 
 const STATEMENT_MIN = 150
@@ -17,6 +18,7 @@ const STATEMENT_MAX = 250
 // Server holds state/decision, client holds wording (단일 i18n 진실원천).
 export type ApplyErrorCode =
   | 'unauthenticated'
+  | 'membership_required'
   | 'missing_field'
   | 'agreements_required'
   | 'statement_length'
@@ -40,6 +42,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
     const user = await getUserOrNull()
     if (!user) {
       return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    }
+
+    // P3 membership gate. Fail-OPEN: when the membership switch is off (current
+    // season-0 dark launch) this returns ok and the flow is unchanged. Only a
+    // confirmed non-active-creator with the gate ON is blocked here.
+    const gate = await checkApplyGate(user.id)
+    if (!gate.ok) {
+      return NextResponse.json({ error: 'membership_required' }, { status: 403 })
     }
 
     const body = await request.json()
