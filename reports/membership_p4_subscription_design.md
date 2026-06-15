@@ -127,3 +127,18 @@ mode:'subscription'
 4. **founding 만료 기본동작**: 만료까지 미구독시 자동 general 강등(읽기시점 이미 그럼). grace 없음 확인?
 5. **past_due 접근정책**: 연체중(past_due) creator 접근 즉시 차단(P1 현재=active만) vs dunning동안 유지?
    P1 기본=즉시차단. dunning 유예 원하면 CREATOR_ACCESS_STATUSES에 past_due 추가(여기서 결정).
+
+===========================================================================
+## H. TK 결정 (2026-06-14 확정)
+===========================================================================
+- 가격 모델 = **inline price_data + Product 그룹핑**(C-1 추천 채택).
+- webhook = **전용 /api/membership/stripe-webhook**(C-3 추천 채택).
+- founding 만료 = **자동 general 강등, grace 없음**(P1 읽기시점 이미 그럼).
+- **past_due = dunning 동안 접근 유지(결정5)** -> P4c에서 `CREATOR_ACCESS_STATUSES`에
+  'past_due' 추가(현재 ['active']). dunning 최종 실패 -> Stripe가 canceled 전환 ->
+  그때 차단. (지금은 past_due 행이 없어 P1 미변경, P4c webhook 도입 시 함께 반영.)
+- 진행 = **P4a 스키마 먼저**(TK Run) + 병행 P4b 코드. webhook(P4c)은 TK Product+secret 후.
+
+진행상태: P4a SQL 작성완료(reports/membership_p4a_migration_2026-06.sql, TK Run 대기).
+P4b 코드 완료(lib/membership-billing.ts + startMembershipCheckout + 게이트 구독버튼,
+tsc0+build0, dark launch inert). 다음=TK Stripe 외부작업 -> P4c webhook.
