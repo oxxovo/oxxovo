@@ -21,9 +21,16 @@ import {
   sendMainRoundStart,
   sendSubmissionDeadline,
   sendResultsAnnounced,
+  sendMembershipRenewal,
+  sendMembershipFoundingExpiry,
   type SendResult,
 } from '@/lib/email/send'
+import { isMembershipEnabled } from '@/lib/membership'
+import { getPlatformConfigMap } from '@/lib/partners'
 import type { Season } from '@/lib/seasons'
+
+const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
+const VALID_INTERVALS = ['day', 'week', 'month', 'year']
 
 // Force the handler to run at request time. Cron payloads have no useful
 // cache, and a prerendered 'now' would silently ignore time-based triggers.
@@ -49,6 +56,14 @@ type TickReport = {
     failed: number
   }[]
   resultsAnnounced: { season: string; sent: number; skipped: number; failed: number }[]
+  // P4e membership notices (profile-scoped, not per-season). Absent when the
+  // membership master switch is off (dark launch).
+  membershipNotices?: {
+    renewalSent: number
+    foundingSent: number
+    skipped: number
+    failed: number
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -137,7 +152,154 @@ async function handle(request: NextRequest) {
     }
   }
 
+  // P4e: membership renewal / founding-expiry notices. Gated on the membership
+  // master switch so nothing fires in dark launch.
+  if (await isMembershipEnabled()) {
+    report.membershipNotices = await fireMembershipNotices(now)
+  }
+
   return NextResponse.json(report)
+}
+
+// ── membership notices (P4e) ──────────────────────────────────────────────
+// Profile-scoped, fired ~membership_renewal_notice_days before
+// membership_expires_at. Dedup via profiles.membership_renewal_notified_at
+// (set only on a successful send; P4c resets it each invoice.paid). All
+// thresholds/price/interval from platform_config -- fail-closed on missing keys.
+
+type MembershipCandidate = {
+  id: string
+  email: string
+  membership_source: string | null
+  membership_expires_at: string | null
+  membership_cancel_at_period_end: boolean | null
+  founding_creator_number: number | null
+}
+
+async function fireMembershipNotices(now: Date) {
+  const counts = { renewalSent: 0, foundingSent: 0, skipped: 0, failed: 0 }
+  const supabase = createSupabaseAdmin()
+
+  // Config (fail-closed: a missing/invalid key skips the whole block -- never
+  // invent a notice window / price / interval).
+  const cfg = await getPlatformConfigMap()
+  const noticeDays = Number(cfg.get('membership_renewal_notice_days') ?? 0)
+  const priceUsd = Number(cfg.get('membership_creator_price_usd') ?? 0)
+  const interval = String(cfg.get('membership_billing_interval') ?? '')
+  if (
+    !Number.isInteger(noticeDays) ||
+    noticeDays <= 0 ||
+    !Number.isFinite(priceUsd) ||
+    priceUsd <= 0 ||
+    !VALID_INTERVALS.includes(interval)
+  ) {
+    console.warn('[cron] membership notices config missing/invalid -- skipping', {
+      noticeDays,
+      priceUsd,
+      interval,
+    })
+    return counts
+  }
+
+  const nowIso = now.toISOString()
+  const thresholdIso = new Date(
+    now.getTime() + noticeDays * 86_400_000,
+  ).toISOString()
+
+  // Candidates: active creator memberships entering their notice window that
+  // haven't been notified this period.
+  const { data: rows, error } = await supabase
+    .from('profiles')
+    .select(
+      'id, email, membership_source, membership_expires_at, membership_cancel_at_period_end, founding_creator_number',
+    )
+    .eq('membership_tier', 'creator')
+    .eq('membership_status', 'active')
+    .not('membership_expires_at', 'is', null)
+    .gt('membership_expires_at', nowIso)
+    .lte('membership_expires_at', thresholdIso)
+    .is('membership_renewal_notified_at', null)
+    .in('membership_source', ['paid', 'founding_free'])
+  if (error) {
+    console.error('[cron] membership candidate load failed:', error.message)
+    counts.failed++
+    return counts
+  }
+
+  for (const row of (rows ?? []) as MembershipCandidate[]) {
+    // Paid members who already chose to cancel get no renewal notice (the
+    // /profile card shows "Cancels on <date>"). Skip without marking notified.
+    if (row.membership_source === 'paid' && row.membership_cancel_at_period_end) {
+      counts.skipped++
+      continue
+    }
+
+    // Name/country: from the user's most recent application (profiles has no
+    // name/country) -- same pattern as lib/partners.ts. Best-effort; defaults
+    // to English + email-as-name.
+    const { data: appRows } = await supabase
+      .from('genesis_applications')
+      .select('creator_name, country, created_at')
+      .ilike('email', row.email)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const latest = appRows?.[0]
+    const creatorName = (latest?.creator_name as string | undefined) ?? row.email
+    const country = (latest?.country as string | null | undefined) ?? null
+
+    let result: SendResult
+    if (row.membership_source === 'founding_free') {
+      if (row.founding_creator_number == null) {
+        // founding_free with no number is inconsistent -- skip defensively.
+        counts.skipped++
+        continue
+      }
+      result = await sendMembershipFoundingExpiry({
+        toEmail: row.email,
+        country,
+        creatorName,
+        foundingNumber: row.founding_creator_number,
+        endsOn: row.membership_expires_at,
+        priceUsd,
+        interval,
+        subscribeUrl: `${APP_URL}/apply`,
+      })
+    } else {
+      result = await sendMembershipRenewal({
+        toEmail: row.email,
+        country,
+        creatorName,
+        priceUsd,
+        interval,
+        renewsOn: row.membership_expires_at,
+      })
+    }
+
+    if (!result.ok) {
+      // Leave notified_at null so the next tick retries (failure already logged
+      // to email_logs by executeSend).
+      counts.failed++
+      continue
+    }
+
+    // Mark notified for this period so we don't resend. (Paid: P4c resets this
+    // on the next invoice.paid. Founding: one-time, never resets.)
+    const { error: markErr } = await supabase
+      .from('profiles')
+      .update({
+        membership_renewal_notified_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      })
+      .eq('id', row.id)
+    if (markErr) {
+      console.error('[cron] membership notified_at update failed:', markErr.message)
+    }
+
+    if (row.membership_source === 'founding_free') counts.foundingSent++
+    else counts.renewalSent++
+  }
+
+  return counts
 }
 
 // ── main_round_start ──────────────────────────────────────────────────────

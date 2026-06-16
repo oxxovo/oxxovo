@@ -70,6 +70,16 @@ import {
   subjectFor as partnerEligibleSubject,
   type PartnerEligibleProps,
 } from './templates/PartnerEligible'
+import {
+  MembershipRenewal,
+  subjectFor as membershipRenewalSubject,
+  type MembershipRenewalProps,
+} from './templates/MembershipRenewal'
+import {
+  MembershipFoundingExpiry,
+  subjectFor as membershipFoundingExpirySubject,
+  type MembershipFoundingExpiryProps,
+} from './templates/MembershipFoundingExpiry'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 export type SendResult =
@@ -543,5 +553,75 @@ export async function sendPartnerEligible(
     language: lang,
     subject: partnerEligibleSubject(props),
     element: <PartnerEligible {...props} />,
+  })
+}
+
+// ─── membership notices (P4e) ─────────────────────────────────────────────
+// Profile-scoped (no applicationId -> executeSend's per-application dedup does
+// not run). Dedup is owned by the caller (email-tick) via the profiles
+// membership_renewal_notified_at column. The cron gates the whole block on the
+// membership master switch, so these never fire in dark launch.
+
+type SendMembershipRenewalInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  priceUsd: number
+  interval: string
+  renewsOn: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendMembershipRenewal(
+  input: SendMembershipRenewalInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: MembershipRenewalProps = {
+    lang,
+    creatorName: input.creatorName,
+    priceUsd: input.priceUsd,
+    interval: input.interval,
+    renewsOn: input.renewsOn,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'membership_renewal',
+    language: lang,
+    subject: membershipRenewalSubject(props),
+    element: <MembershipRenewal {...props} />,
+  })
+}
+
+type SendMembershipFoundingExpiryInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  foundingNumber: number
+  endsOn: string | null
+  priceUsd: number
+  interval: string
+  subscribeUrl: string
+  forceLang?: EmailLang
+}
+
+export async function sendMembershipFoundingExpiry(
+  input: SendMembershipFoundingExpiryInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: MembershipFoundingExpiryProps = {
+    lang,
+    creatorName: input.creatorName,
+    foundingNumber: input.foundingNumber,
+    endsOn: input.endsOn,
+    priceUsd: input.priceUsd,
+    interval: input.interval,
+    subscribeUrl: input.subscribeUrl,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'membership_founding_expiry',
+    language: lang,
+    subject: membershipFoundingExpirySubject(props),
+    element: <MembershipFoundingExpiry {...props} />,
   })
 }

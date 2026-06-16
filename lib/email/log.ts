@@ -18,6 +18,10 @@ export type TemplateKey =
   | 'awarded_contact_request'
   | 'partner_invitation'
   | 'partner_eligible'
+  // P4e membership notices (profile-scoped; dedup via profiles.
+  // membership_renewal_notified_at, not email_logs). Logged for transparency.
+  | 'membership_renewal'
+  | 'membership_founding_expiry'
 
 export type LogStatus = 'sent' | 'failed' | 'queued' | 'skipped'
 
