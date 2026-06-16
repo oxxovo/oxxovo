@@ -5,6 +5,12 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
 import { canSubmitMainRound, canSubmitFinal, getSeasonById } from '@/lib/seasons'
 import { validateVideoUrl } from '@/lib/video-url'
+import { getMembershipState, isMembershipEnabled } from '@/lib/membership'
+import { getStripe } from '@/lib/stripe'
+import type {
+  MembershipDashboard,
+  MembershipActionResult,
+} from './membership-types'
 
 // Public-site users authenticate via the @supabase/ssr cookie session
 // ([[feedback-auth-pattern]]). Each action derives the caller's verified
@@ -422,4 +428,118 @@ export async function saveFinalSubmission(
   revalidatePath(`/admin/applications/${input.applicationId}`)
 
   return { ok: true }
+}
+
+// ─── P4d: membership dashboard + cancel/resume ──────────────────────────────
+// /profile membership card. Display reuses the P1 classifier (single source of
+// truth for expiry/access); cancel/resume nudge Stripe and the P4c webhook
+// reconciles profiles. dark launch: actions fail-closed on membership_enabled,
+// and the dashboard's `show` is false for non-members so the card is invisible.
+
+const DASHBOARD_HIDDEN: MembershipDashboard = {
+  show: false,
+  tier: 'general',
+  status: 'none',
+  source: null,
+  expiresAt: null,
+  cancelAtPeriodEnd: false,
+  isFounding: false,
+  foundingNumber: null,
+  canManageStripe: false,
+}
+
+// Read the current cookie user's membership snapshot for the /profile card.
+// Returns a hidden dashboard when signed out or when there is no membership
+// signal (so dark launch / general members render nothing).
+export async function loadMembershipDashboard(): Promise<MembershipDashboard> {
+  const user = await getUserOrNull()
+  if (!user) return DASHBOARD_HIDDEN
+
+  const admin = createSupabaseAdmin()
+  const [state, subRes] = await Promise.all([
+    getMembershipState(user.id),
+    admin
+      .from('profiles')
+      .select('stripe_subscription_id')
+      .eq('id', user.id)
+      .maybeSingle(),
+  ])
+
+  const hasSub = Boolean(subRes.data?.stripe_subscription_id)
+  // A membership "signal" = anything beyond a bare general member: an active/
+  // past_due/canceled status, a founding badge, or a stored creator tier.
+  const show =
+    state.membershipStatus !== 'none' ||
+    state.isFoundingCreator ||
+    state.isActiveCreator
+
+  return {
+    show,
+    tier: state.isActiveCreator ? 'creator' : 'general',
+    status: state.membershipStatus,
+    source: state.membershipSource,
+    expiresAt: state.expiresAt,
+    cancelAtPeriodEnd: state.cancelAtPeriodEnd,
+    isFounding: state.isFoundingCreator,
+    foundingNumber: state.foundingNumber,
+    // Only a paid subscription can be canceled/resumed in Stripe. founding_free
+    // members have no subscription -- nothing to manage.
+    canManageStripe: state.membershipSource === 'paid' && hasSub,
+  }
+}
+
+// Shared cancel/resume core: flip Stripe's cancel_at_period_end, then mirror it
+// onto profiles optimistically (the webhook is the authority and will confirm).
+async function setCancelAtPeriodEnd(
+  cancelAtPeriodEnd: boolean,
+): Promise<MembershipActionResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, reason: 'unauthenticated' }
+
+  // Fail-closed in dark launch: never mutate a subscription while the switch is
+  // off.
+  if (!(await isMembershipEnabled())) return { ok: false, reason: 'disabled' }
+
+  const admin = createSupabaseAdmin()
+  const { data: row } = await admin
+    .from('profiles')
+    .select('stripe_subscription_id, membership_source')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  const subId = (row?.stripe_subscription_id as string | null | undefined) ?? null
+  const source = (row?.membership_source as string | null | undefined) ?? null
+  if (!subId) return { ok: false, reason: 'no_subscription' }
+  // founding_free (or any non-paid) has no real Stripe subscription to manage.
+  if (source !== 'paid') return { ok: false, reason: 'not_cancelable' }
+
+  try {
+    const stripe = getStripe()
+    await stripe.subscriptions.update(subId, { cancel_at_period_end: cancelAtPeriodEnd })
+    await admin
+      .from('profiles')
+      .update({
+        membership_cancel_at_period_end: cancelAtPeriodEnd,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id)
+    return { ok: true, cancelAtPeriodEnd }
+  } catch (e) {
+    console.error(
+      '[membership] cancel/resume failed:',
+      e instanceof Error ? e.message : e,
+    )
+    return { ok: false, reason: 'stripe_error' }
+  }
+}
+
+// Cancel at period end (keeps access until membership_expires_at, then the P4c
+// webhook flips the sub to canceled and P1 collapses creator -> general).
+export async function cancelMembership(): Promise<MembershipActionResult> {
+  return setCancelAtPeriodEnd(true)
+}
+
+// Undo a pending period-end cancel (re-enable auto-renew) before the boundary.
+export async function resumeMembership(): Promise<MembershipActionResult> {
+  return setCancelAtPeriodEnd(false)
 }

@@ -471,6 +471,24 @@ type Messages = {
     section_scoring: string
     section_winner_form: string
     section_history: string
+    // P4d membership dashboard
+    mem_section: string
+    mem_tier_creator: string
+    mem_tier_general: string
+    mem_status_active: string
+    mem_status_past_due: string
+    mem_status_canceled: string
+    mem_founding_badge: (n: number) => string
+    mem_renews_on: (date: string) => string
+    mem_cancels_on: (date: string) => string
+    mem_free_until: (date: string) => string
+    mem_past_due_note: string
+    mem_cancel_btn: string
+    mem_resume_btn: string
+    mem_cancel_confirm: string
+    mem_canceling: string
+    mem_resuming: string
+    mem_action_err: string
     no_application_title: string
     no_application_body: string
     no_application_cta: string
@@ -1015,6 +1033,25 @@ const MESSAGES_EN: Messages = {
     section_scoring: 'Triple-AI scoring',
     section_winner_form: 'Winner contact info',
     section_history: 'Season history',
+    mem_section: 'Membership',
+    mem_tier_creator: 'Creator membership',
+    mem_tier_general: 'Member',
+    mem_status_active: 'Active',
+    mem_status_past_due: 'Payment failed',
+    mem_status_canceled: 'Canceled',
+    mem_founding_badge: (n: number) => `Founding Creator #${n}`,
+    mem_renews_on: (date: string) => `Renews on ${date}`,
+    mem_cancels_on: (date: string) => `Cancels on ${date} — access until then`,
+    mem_free_until: (date: string) => `Free until ${date}`,
+    mem_past_due_note:
+      'Your last payment failed. Please update your card — we will retry automatically.',
+    mem_cancel_btn: 'Cancel membership',
+    mem_resume_btn: 'Resume membership',
+    mem_cancel_confirm:
+      'Cancel your membership? You keep creator access until the end of the current period, then your account returns to a free member.',
+    mem_canceling: 'Canceling…',
+    mem_resuming: 'Resuming…',
+    mem_action_err: 'Could not update your membership. Please try again.',
     no_application_title: 'No application on file',
     no_application_body:
       'You haven’t applied to any season with this email yet.',
@@ -1568,6 +1605,25 @@ const MESSAGES_KO: Messages = {
     section_scoring: 'Triple-AI 채점',
     section_winner_form: '시상자 연락처 입력',
     section_history: '시즌 기록',
+    mem_section: '멤버십',
+    mem_tier_creator: '크리에이터 멤버십',
+    mem_tier_general: '멤버',
+    mem_status_active: '활성',
+    mem_status_past_due: '결제 실패',
+    mem_status_canceled: '해지됨',
+    mem_founding_badge: (n: number) => `파운딩 크리에이터 #${n}`,
+    mem_renews_on: (date: string) => `${date}에 갱신`,
+    mem_cancels_on: (date: string) => `${date}에 해지 — 그때까지 이용 가능`,
+    mem_free_until: (date: string) => `${date}까지 무료`,
+    mem_past_due_note:
+      '최근 결제가 실패했습니다. 카드를 업데이트해주세요 — 자동으로 재시도합니다.',
+    mem_cancel_btn: '멤버십 해지',
+    mem_resume_btn: '멤버십 재개',
+    mem_cancel_confirm:
+      '멤버십을 해지하시겠어요? 현재 기간이 끝날 때까지 크리에이터 권한이 유지되며, 이후 무료 멤버로 전환됩니다.',
+    mem_canceling: '해지 중…',
+    mem_resuming: '재개 중…',
+    mem_action_err: '멤버십을 변경하지 못했습니다. 다시 시도해주세요.',
     no_application_title: '신청 기록 없음',
     no_application_body: '이 이메일로 신청한 시즌이 없습니다.',
     no_application_cta: '지금 신청하기',

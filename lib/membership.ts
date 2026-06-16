@@ -58,6 +58,7 @@ export type MembershipProfile = {
   membership_source: string | null
   membership_started_at: string | null
   membership_expires_at: string | null
+  membership_cancel_at_period_end: boolean | null
   founding_creator_number: number | null
   partner_tier: string | null
 }
@@ -70,6 +71,10 @@ export type MembershipState = {
   membershipSource: string | null
   startedAt: string | null
   expiresAt: string | null
+  // Stripe period-end cancel flag (P4d dashboard). Passthrough only -- does NOT
+  // affect access (access is gated by status + window above). A 'paid' sub with
+  // this true stays creator until expiresAt, then becomes 'canceled'.
+  cancelAtPeriodEnd: boolean
   // Founding Creator -- derived, single source of truth.
   isFoundingCreator: boolean
   foundingNumber: number | null
@@ -82,7 +87,7 @@ export type MembershipState = {
 }
 
 const MEMBERSHIP_PROFILE_COLUMNS =
-  'membership_tier, membership_status, membership_source, membership_started_at, membership_expires_at, founding_creator_number, partner_tier'
+  'membership_tier, membership_status, membership_source, membership_started_at, membership_expires_at, membership_cancel_at_period_end, founding_creator_number, partner_tier'
 
 // ─── pure classifier ────────────────────────────────────────────────────────
 
@@ -113,6 +118,7 @@ export function classifyMembership(
       membershipSource: null,
       startedAt: null,
       expiresAt: null,
+      cancelAtPeriodEnd: false,
       isFoundingCreator: false,
       foundingNumber: null,
       isPartner: false,
@@ -150,6 +156,7 @@ export function classifyMembership(
     membershipSource: profile.membership_source ?? null,
     startedAt: profile.membership_started_at ?? null,
     expiresAt: profile.membership_expires_at ?? null,
+    cancelAtPeriodEnd: profile.membership_cancel_at_period_end ?? false,
     isFoundingCreator,
     foundingNumber,
     isPartner,

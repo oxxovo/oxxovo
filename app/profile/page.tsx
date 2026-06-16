@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useT, useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
@@ -13,9 +13,13 @@ import { loadSystemMessages, type SystemMessages } from '@/lib/system-messages'
 import {
   loadProfileData,
   saveWinnerInfo,
+  loadMembershipDashboard,
+  cancelMembership,
+  resumeMembership,
   type ProfileApplication,
   type ProfileData,
 } from './actions'
+import type { MembershipDashboard } from './membership-types'
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-white/10 text-white/70 border-white/20',
@@ -59,7 +63,24 @@ function ProfilePageInner() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [messages, setMessages] = useState<SystemMessages | null>(null)
   const [season, setSeason] = useState<Season | null>(null)
+  const [membership, setMembership] = useState<MembershipDashboard | null>(null)
   const mockOverrides = useMockOverrides()
+
+  // Membership dashboard (P4d) — loaded independently of the application data so
+  // the card shows for any creator member (incl. those with no application yet).
+  // Hidden (show:false) in dark launch / for non-members.
+  const reloadMembership = useCallback(() => {
+    loadMembershipDashboard().then(setMembership)
+  }, [])
+  useEffect(() => {
+    let cancelled = false
+    loadMembershipDashboard().then((d) => {
+      if (!cancelled) setMembership(d)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Identity now lives in the @supabase/ssr cookie session; loadProfileData()
   // reads it server-side, so the client just calls it once on mount. State is
@@ -156,6 +177,10 @@ function ProfilePageInner() {
 
       <section className="max-w-3xl mx-auto px-6 py-12">
         <ProfileHero email={data.email} />
+
+        {membership?.show && (
+          <MembershipCard dashboard={membership} onReload={reloadMembership} />
+        )}
 
         {!currentApp ? (
           <NoApplicationCard />
@@ -275,6 +300,152 @@ function ProfileHero({ email }: { email: string }) {
       <h1 className="text-3xl font-black mb-2">{email.split('@')[0]}</h1>
       <p className="text-white/50 text-sm">{email}</p>
     </div>
+  )
+}
+
+// P4d membership dashboard card. Rendered only when dashboard.show. Reuses the
+// shared <Card>. Cancel/Resume go through the server actions (Stripe period-end
+// cancel); the P4c webhook is the authority, this just reloads after.
+function MembershipCard({
+  dashboard,
+  onReload,
+}: {
+  dashboard: MembershipDashboard
+  onReload: () => void
+}) {
+  const t = useT()
+  const [pending, setPending] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fmtDate = (iso: string | null) =>
+    iso
+      ? new Date(iso).toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })
+      : '—'
+
+  const statusTone =
+    dashboard.status === 'active'
+      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+      : dashboard.status === 'past_due'
+        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+        : 'bg-white/5 text-white/40 border-white/10'
+  const statusLabel =
+    dashboard.status === 'active'
+      ? t.profile.mem_status_active
+      : dashboard.status === 'past_due'
+        ? t.profile.mem_status_past_due
+        : t.profile.mem_status_canceled
+
+  // Expiry line — source-aware (renews / cancels / free-until).
+  const expiryLine = (() => {
+    const d = fmtDate(dashboard.expiresAt)
+    if (dashboard.source === 'founding_free') return t.profile.mem_free_until(d)
+    if (dashboard.source === 'paid') {
+      return dashboard.cancelAtPeriodEnd
+        ? t.profile.mem_cancels_on(d)
+        : t.profile.mem_renews_on(d)
+    }
+    return null
+  })()
+
+  const run = async (fn: () => Promise<{ ok: boolean }>) => {
+    setError(null)
+    setPending(true)
+    const res = await fn()
+    setPending(false)
+    setConfirming(false)
+    if (!res.ok) {
+      setError(t.profile.mem_action_err)
+      return
+    }
+    onReload()
+  }
+
+  return (
+    <Card title={t.profile.mem_section}>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-sm font-bold text-white/90">
+          {dashboard.tier === 'creator'
+            ? t.profile.mem_tier_creator
+            : t.profile.mem_tier_general}
+        </span>
+        <span
+          className={`inline-block px-2.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border ${statusTone}`}
+        >
+          {statusLabel}
+        </span>
+        {dashboard.isFounding && dashboard.foundingNumber != null && (
+          <span className="inline-block px-2.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border border-[#8b22ff]/40 bg-[#8b22ff]/15 text-[#b66cff]">
+            {t.profile.mem_founding_badge(dashboard.foundingNumber)}
+          </span>
+        )}
+      </div>
+
+      {expiryLine && <p className="text-sm text-white/70">{expiryLine}</p>}
+
+      {dashboard.status === 'past_due' && (
+        <p className="mt-3 text-xs text-amber-300/90 leading-relaxed">
+          {t.profile.mem_past_due_note}
+        </p>
+      )}
+
+      {error && (
+        <div className="mt-3 px-3 py-2 rounded border border-[#ff4444]/30 bg-[#ff4444]/10 text-xs text-[#ff8888]">
+          {error}
+        </div>
+      )}
+
+      {dashboard.canManageStripe && (
+        <div className="mt-5 pt-4 border-t border-white/10">
+          {dashboard.cancelAtPeriodEnd ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(resumeMembership)}
+              className="px-4 py-2 rounded border border-[#8b22ff]/60 text-sm font-bold text-[#b66cff] hover:bg-[#8b22ff]/10 transition disabled:opacity-50"
+            >
+              {pending ? t.profile.mem_resuming : t.profile.mem_resume_btn}
+            </button>
+          ) : confirming ? (
+            <div className="space-y-3">
+              <p className="text-xs text-white/70 leading-relaxed">
+                {t.profile.mem_cancel_confirm}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => run(cancelMembership)}
+                  className="px-4 py-2 rounded bg-[#ff4444]/90 text-sm font-bold text-white hover:brightness-110 transition disabled:opacity-50"
+                >
+                  {pending ? t.profile.mem_canceling : t.profile.mem_cancel_btn}
+                </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setConfirming(false)}
+                  className="px-4 py-2 rounded border border-white/20 text-sm font-bold text-white/70 hover:text-white hover:border-white/40 transition disabled:opacity-50"
+                >
+                  {t.profile.main_round_modal_cancel}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              className="px-4 py-2 rounded border border-white/20 text-sm font-bold text-white/60 hover:text-white hover:border-white/40 transition"
+            >
+              {t.profile.mem_cancel_btn}
+            </button>
+          )}
+        </div>
+      )}
+    </Card>
   )
 }
 
