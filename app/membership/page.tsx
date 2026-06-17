@@ -97,27 +97,36 @@ export default function MembershipPage() {
           {m.compare_title}
         </h2>
         <div className="overflow-x-auto -mx-6 px-6 mb-4">
-          <table className="w-full min-w-[560px] border-collapse text-sm">
+          <table className="w-full min-w-[600px] table-fixed border-collapse text-sm">
+            <colgroup>
+              <col className="w-[34%]" />
+              <col className="w-[16.5%]" />
+              <col className="w-[16.5%]" />
+              <col className="w-[16.5%]" />
+              <col className="w-[16.5%]" />
+            </colgroup>
             <thead>
               <tr>
                 <th className="py-3 pr-3" />
                 {columns.map((col, i) => (
                   <th
                     key={i}
-                    className={`py-3 px-2 text-center align-bottom ${
+                    className={`py-3 px-2 text-center align-top ${
                       col.highlight ? 'rounded-t-lg bg-[#8b22ff]/10' : ''
                     }`}
                   >
                     <div
-                      className={`font-black ${col.highlight ? 'text-[#b66cff]' : 'text-white/85'}`}
+                      className={`font-black leading-tight ${
+                        col.highlight ? 'text-[#b66cff]' : 'text-white/85'
+                      }`}
                     >
                       {col.name}
                     </div>
-                    {col.sub && (
-                      <div className="text-[11px] text-white/45 mt-0.5 font-medium leading-tight">
-                        {col.sub}
-                      </div>
-                    )}
+                    {/* Always rendered (even empty) with a min height so every
+                        header column is the same height -> names stay on one row. */}
+                    <div className="text-[11px] text-white/45 mt-1 font-medium leading-tight min-h-[2.4em]">
+                      {col.sub}
+                    </div>
                   </th>
                 ))}
               </tr>
