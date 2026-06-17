@@ -96,7 +96,51 @@ export default function MembershipPage() {
         <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-5 font-bold text-center">
           {m.compare_title}
         </h2>
-        <div className="overflow-x-auto -mx-6 px-6 mb-4">
+
+        {/* Mobile: stacked tier cards (the desktop table would otherwise need
+            awkward horizontal scrolling). Each card = tier name + price + its
+            ✓ perks. Creator (the main product) is highlighted. */}
+        <div className="md:hidden space-y-4 mb-4">
+          {columns.map((col, ci) => {
+            const perks = rows.filter((r) => r.cells[ci]).map((r) => r.label)
+            return (
+              <div
+                key={ci}
+                className={`rounded-xl border px-5 py-4 ${
+                  col.highlight
+                    ? 'border-[#8b22ff]/50 bg-[#8b22ff]/[.08]'
+                    : 'border-white/10 bg-white/[.02]'
+                }`}
+              >
+                <div className="flex items-baseline justify-between gap-3 mb-3">
+                  <span
+                    className={`font-black text-lg ${
+                      col.highlight ? 'text-[#b66cff]' : 'text-white/90'
+                    }`}
+                  >
+                    {col.name}
+                  </span>
+                  {col.sub && (
+                    <span className="text-xs text-white/50 font-medium text-right leading-tight">
+                      {col.sub}
+                    </span>
+                  )}
+                </div>
+                <ul className="space-y-1.5">
+                  {perks.map((p, pi) => (
+                    <li key={pi} className="flex items-center gap-2 text-sm text-white/70">
+                      <span className="text-[#b66cff] text-xs">✓</span>
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Desktop: full comparison table. */}
+        <div className="hidden md:block overflow-x-auto -mx-6 px-6 mb-4">
           <table className="w-full min-w-[600px] table-fixed border-collapse text-sm">
             <colgroup>
               <col className="w-[34%]" />
