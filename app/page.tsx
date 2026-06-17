@@ -94,6 +94,7 @@ export default function OXXOVOLandingPage() {
         <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
           <a className="transition hover:text-[#b66cff]" href="#how">How It Works</a>
           <a className="transition hover:text-[#b66cff]" href="#about">About</a>
+          <a className="transition hover:text-[#b66cff]" href="/membership">Membership</a>
           <a className="transition hover:text-[#b66cff]" href="#faq">FAQ</a>
         </nav>
 
@@ -359,6 +360,7 @@ export default function OXXOVOLandingPage() {
           </div>
           <span>OXXOVO Labs Inc. · Las Vegas, Nevada, USA · oxxovo.com · oxxovo.ai</span>
           <div className="flex items-center gap-4">
+            <a href="/membership" className="hover:text-white/70">Membership</a>
             <a href="/terms" className="hover:text-white/70">Terms</a>
             <a href="/privacy" className="hover:text-white/70">Privacy</a>
             <a href="/rules" className="hover:text-white/70">Rules</a>

@@ -622,6 +622,37 @@ type Messages = {
     override_err_required: string
     override_err_rank: string
   }
+  membership: {
+    brand_tag: string
+    hero_title: string
+    hero_subtitle: string
+    founding_badge: (remaining: number, cap: number) => string
+    founding_full: string
+    compare_title: string
+    col_anonymous: string
+    col_general: string
+    col_creator: string
+    col_partner: string
+    price_free: string
+    price_creator: (price: string, interval: string) => string
+    partner_track_caption: string
+    interval_unit: (interval: string) => string
+    row_browse: string
+    row_vote: string
+    row_compete: string
+    row_studio: string
+    row_host: string
+    vote_note: string
+    founding_section_title: string
+    founding_section_body: (cap: number, months: number) => string
+    founding_renew_note: string
+    cta_coming_soon: string
+    cta_signup: string
+    cta_become_creator: string
+    cta_youre_creator: string
+    cta_creator_note: string
+    back_home: string
+  }
 }
 
 const MESSAGES_EN: Messages = {
@@ -1194,6 +1225,43 @@ const MESSAGES_EN: Messages = {
     override_err_required: 'An override reason is required.',
     override_err_rank: 'Award rank must be 1-99, or leave blank to clear.',
   },
+  membership: {
+    brand_tag: 'OXXOVO MEMBERSHIP',
+    hero_title: 'Creator Membership',
+    hero_subtitle:
+      'Join the arena. Compete, create, and vote — choose the tier that fits how you want to take part.',
+    founding_badge: (remaining, cap) => `${remaining} of ${cap} Founding Creator spots left`,
+    founding_full: 'All Founding Creator spots have been claimed.',
+    compare_title: 'What each tier can do',
+    col_anonymous: 'Visitor',
+    col_general: 'Member',
+    col_creator: 'Creator',
+    col_partner: 'Partner',
+    price_free: 'Free',
+    price_creator: (price, interval) => `$${price} / ${interval}`,
+    partner_track_caption: 'Separate track — hosting right',
+    interval_unit: (interval) =>
+      (({ day: 'day', week: 'week', month: 'month', year: 'year' } as Record<string, string>)[
+        interval
+      ] ?? interval),
+    row_browse: 'Browse tournaments',
+    row_vote: 'Vote on entries',
+    row_compete: 'Enter tournaments',
+    row_studio: 'Create in Studio',
+    row_host: 'Host tournaments',
+    vote_note: 'Community voting opens in a later season.',
+    founding_section_title: 'Founding Creator',
+    founding_section_body: (cap, months) =>
+      `The first ${cap} creators join free for ${months} months.`,
+    founding_renew_note:
+      'Renews automatically afterward unless cancelled — we’ll remind you before it does.',
+    cta_coming_soon: 'Coming soon',
+    cta_signup: 'Sign up to get started',
+    cta_become_creator: 'Become a Creator',
+    cta_youre_creator: 'You’re a Creator ✓ — go to profile',
+    cta_creator_note: 'Membership unlocks tournament entry and Studio.',
+    back_home: '← Back to Home',
+  },
 }
 
 const MESSAGES_KO: Messages = {
@@ -1761,6 +1829,40 @@ const MESSAGES_KO: Messages = {
     override_cancel_btn: '취소',
     override_err_required: 'override 사유는 필수입니다.',
     override_err_rank: '수상 순위는 1-99, 또는 비워서 해제하세요.',
+  },
+  membership: {
+    brand_tag: 'OXXOVO 멤버십',
+    hero_title: '크리에이터 멤버십',
+    hero_subtitle:
+      '아레나에 합류하세요. 참가하고, 창작하고, 투표하세요 — 참여 방식에 맞는 등급을 고르세요.',
+    founding_badge: (remaining, cap) => `Founding Creator 잔여 ${remaining} / ${cap}`,
+    founding_full: 'Founding Creator 자리가 모두 마감되었습니다.',
+    compare_title: '등급별 권한',
+    col_anonymous: '비회원',
+    col_general: '일반 멤버',
+    col_creator: '크리에이터',
+    col_partner: '파트너',
+    price_free: '무료',
+    price_creator: (price, interval) => `$${price} / ${interval}`,
+    partner_track_caption: '별도 트랙 — 개설 권한',
+    interval_unit: (interval) =>
+      (({ day: '일', week: '주', month: '월', year: '년' } as Record<string, string>)[interval] ??
+        interval),
+    row_browse: '시합 둘러보기',
+    row_vote: '작품 투표',
+    row_compete: '시합 참가',
+    row_studio: 'Studio 창작',
+    row_host: '시합 개설',
+    vote_note: '커뮤니티 투표는 추후 시즌에 열립니다.',
+    founding_section_title: 'Founding Creator',
+    founding_section_body: (cap, months) => `선착순 ${cap}명은 ${months}개월 무료로 시작합니다.`,
+    founding_renew_note: '이후 취소하지 않으면 자동 갱신됩니다 — 갱신 전에 미리 알려드립니다.',
+    cta_coming_soon: '준비 중',
+    cta_signup: '가입하고 시작하기',
+    cta_become_creator: '크리에이터 되기',
+    cta_youre_creator: '크리에이터입니다 ✓ — 프로필로',
+    cta_creator_note: '멤버십으로 시합 참가와 Studio가 열립니다.',
+    back_home: '← 홈으로',
   },
 }
 
