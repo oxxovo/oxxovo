@@ -79,7 +79,7 @@ export default function MembershipPage() {
             {m.brand_tag}
           </p>
           <h1 className="text-4xl md:text-5xl font-black mb-4">{m.hero_title}</h1>
-          <p className="text-white/55 text-sm md:text-base max-w-xl mx-auto leading-relaxed">
+          <p className="text-white/55 text-sm md:text-[15px] max-w-xl md:max-w-none md:whitespace-nowrap mx-auto leading-relaxed">
             {m.hero_subtitle}
           </p>
           {data?.enabled && (

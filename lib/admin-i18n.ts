@@ -1229,7 +1229,7 @@ const MESSAGES_EN: Messages = {
     brand_tag: 'OXXOVO MEMBERSHIP',
     hero_title: 'Creator Membership',
     hero_subtitle:
-      'Join the arena. Compete, create, and vote — choose the tier that fits how you want to take part.',
+      'Join the OXXOVO arena. Choose the membership that fits you and start creating, competing, and voting.',
     founding_badge: (remaining, cap) => `${remaining} of ${cap} Founding Creator spots left`,
     founding_full: 'All Founding Creator spots have been claimed.',
     compare_title: 'What each tier can do',
@@ -1834,7 +1834,7 @@ const MESSAGES_KO: Messages = {
     brand_tag: 'OXXOVO 멤버십',
     hero_title: '크리에이터 멤버십',
     hero_subtitle:
-      '아레나에 합류하세요. 참가하고, 창작하고, 투표하세요 — 참여 방식에 맞는 등급을 고르세요.',
+      'OXXOVO 아레나에 합류하세요. 참여 방식에 맞는 멤버십을 선택하고 창작, 경쟁, 투표를 시작하세요.',
     founding_badge: (remaining, cap) => `Founding Creator 잔여 ${remaining} / ${cap}`,
     founding_full: 'Founding Creator 자리가 모두 마감되었습니다.',
     compare_title: '등급별 권한',
