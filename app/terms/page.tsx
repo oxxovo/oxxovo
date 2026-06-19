@@ -4,7 +4,7 @@ export default function TermsPage() {
   return (
     <main className="min-h-screen bg-[#030305] text-white px-8 py-16 max-w-4xl mx-auto">
       <h1 className="text-4xl font-black mb-2">Terms of Service</h1>
-      <p className="text-white/40 text-sm mb-12">Last updated: May 2026</p>
+      <p className="text-white/40 text-sm mb-12">Last updated: June 2026</p>
 
       <section className="space-y-8 text-white/70 leading-relaxed">
 
@@ -44,17 +44,30 @@ export default function TermsPage() {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-white mb-3">8. Termination</h2>
+          <h2 className="text-xl font-bold text-white mb-3">8. Creator Membership, Billing &amp; Refunds</h2>
+          <p>OXXOVO offers an optional paid Creator Membership that grants tournament participation rights. The following terms apply to all memberships:</p>
+          <ul className="list-disc pl-5 space-y-2 mt-3">
+            <li><span className="text-white/90 font-semibold">Recurring subscription.</span> Creator Membership is a subscription that bills automatically each billing period (monthly unless otherwise stated at checkout) at the rate shown at checkout, until you cancel.</li>
+            <li><span className="text-white/90 font-semibold">Founding Creators.</span> A limited number of Founding Creator memberships are granted free for an introductory term. After the free term, the membership renews automatically at the then-current rate unless cancelled. We will notify you before the first paid renewal.</li>
+            <li><span className="text-white/90 font-semibold">Automatic renewal.</span> Your membership renews automatically at the end of each period. By subscribing you authorize OXXOVO Labs Inc. to charge your payment method for each renewal until you cancel.</li>
+            <li><span className="text-white/90 font-semibold">Cancellation.</span> You may cancel at any time from your profile page. Cancellation stops future renewals and takes effect at the end of your current paid period — you keep creator access until then, after which your account reverts to a free member.</li>
+            <li><span className="text-white/90 font-semibold">No refunds.</span> All payments are non-refundable. Cancelling stops future charges but does not entitle you to a refund of the current or any prior billing period, and we do not provide partial or pro-rated refunds, except where a refund is required by applicable law.</li>
+            <li><span className="text-white/90 font-semibold">Price changes.</span> We may change membership pricing. Any change applies to renewals after we notify you, and you may cancel before the change takes effect.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-bold text-white mb-3">9. Termination</h2>
           <p>We reserve the right to suspend or terminate any account that violates these Terms at our sole discretion.</p>
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-white mb-3">9. Limitation of Liability</h2>
+          <h2 className="text-xl font-bold text-white mb-3">10. Limitation of Liability</h2>
           <p>OXXOVO Labs Inc. is not liable for any indirect, incidental, or consequential damages arising from your use of the Platform.</p>
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-white mb-3">10. Contact</h2>
+          <h2 className="text-xl font-bold text-white mb-3">11. Contact</h2>
           <p>For questions regarding these Terms, contact us at <a href="mailto:oxxovolabs@gmail.com" className="text-[#8b22ff] hover:underline">oxxovolabs@gmail.com</a></p>
         </div>
 

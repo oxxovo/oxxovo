@@ -645,6 +645,7 @@ function MembershipGateScreen({
   const [claimErr, setClaimErr] = useState('')
   const [subscribing, setSubscribing] = useState(false)
   const [subErr, setSubErr] = useState('')
+  const [agreeTerms, setAgreeTerms] = useState(false)
 
   async function handleSubscribe() {
     setSubscribing(true)
@@ -721,24 +722,43 @@ function MembershipGateScreen({
               {claiming ? 'Activating…' : 'Start free — claim my Founding spot'}
             </button>
             <p className="text-white/40 text-xs mt-4 leading-relaxed">
-              Free for 12 months. Renews automatically afterward unless cancelled — we&apos;ll remind you before it does.
+              Free for 12 months. Renews automatically afterward unless cancelled — we&apos;ll remind you before it does. See the{' '}
+              <a href="/terms" target="_blank" rel="noopener" className="text-[#8b22ff] hover:underline">
+                Membership Terms
+              </a>
+              .
             </p>
           </>
         ) : (
           <>
             <h1 className="text-4xl font-black mb-4">Creator Membership</h1>
-            <p className="text-white/55 leading-relaxed mb-8">
+            <p className="text-white/55 leading-relaxed mb-6">
               All Founding Creator spots have been claimed. Activate a creator membership to apply to {seasonName}.
             </p>
+            <label className="flex items-start gap-3 text-left text-sm text-white/70 mb-5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={agreeTerms}
+                onChange={(e) => setAgreeTerms(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[#8b22ff] flex-shrink-0"
+              />
+              <span>
+                I agree to the{' '}
+                <a href="/terms" target="_blank" rel="noopener" className="text-[#8b22ff] hover:underline">
+                  Membership Terms &amp; Refund Policy
+                </a>
+                . This membership auto-renews each period until cancelled, and payments are non-refundable.
+              </span>
+            </label>
             <button
               onClick={handleSubscribe}
-              disabled={subscribing}
+              disabled={subscribing || !agreeTerms}
               className="block w-full bg-gradient-to-br from-[#7d23ff] to-[#6220dc] py-4 rounded-lg font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               {subscribing ? 'Opening checkout…' : 'Subscribe to Creator Membership'}
             </button>
             <p className="text-white/40 text-xs mt-4 leading-relaxed">
-              Billed monthly. Cancel anytime — your access continues until the end of the paid period.
+              Billed monthly. Cancel anytime in your profile — access continues until the end of the paid period. Payments are non-refundable.
             </p>
             {subErr && (
               <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 mt-6">

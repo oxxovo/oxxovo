@@ -235,6 +235,13 @@ export default function MembershipPage() {
           {data?.enabled && !data.isActiveCreator && (
             <p className="text-white/40 text-xs mt-4">{m.cta_creator_note}</p>
           )}
+          {data?.enabled && (
+            <p className="text-white/30 text-xs mt-4">
+              <Link href="/terms" className="underline hover:text-white/60">
+                Membership Terms &amp; Refund Policy
+              </Link>
+            </p>
+          )}
           <Link href="/" className="inline-block text-white/40 text-sm hover:text-white/70 mt-6">
             {m.back_home}
           </Link>
