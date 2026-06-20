@@ -20,7 +20,7 @@ import {
 import type { ReactNode } from 'react'
 import type { EmailLang } from '../lang'
 
-const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
+const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'
 
 type Props = {
   lang: EmailLang

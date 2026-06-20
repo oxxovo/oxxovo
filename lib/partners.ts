@@ -15,7 +15,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { sendPartnerEligible } from '@/lib/email/send'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
-const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
+const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'
 
 // ─── platform_config ──────────────────────────────────────────────────────
 

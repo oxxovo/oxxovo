@@ -8,7 +8,7 @@ import { getStripe } from '@/lib/stripe'
 import { getStudioPurchaseConfig, creditsForUsd } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
 
-const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
+const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'
 
 export async function POST(req: Request) {
   let body: { token?: string; usd?: number }

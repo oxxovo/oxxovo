@@ -16,7 +16,7 @@ import { isMembershipEnabled, type MembershipStatus } from '@/lib/membership'
 
 type AdminClient = ReturnType<typeof createSupabaseAdmin>
 
-const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
+const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'
 
 const VALID_INTERVALS = ['day', 'week', 'month', 'year'] as const
 type BillingInterval = (typeof VALID_INTERVALS)[number]

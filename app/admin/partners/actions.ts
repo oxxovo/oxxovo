@@ -7,7 +7,7 @@ import { getTierConfigs, logPartnerStatusEvent } from '@/lib/partners'
 import { sendPartnerInvitation } from '@/lib/email/send'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
-const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
+const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'
 
 export type PartnerActionState = {
   ok: boolean

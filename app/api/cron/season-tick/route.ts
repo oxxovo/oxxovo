@@ -204,7 +204,7 @@ async function handle(request: NextRequest) {
              (season #${created.season_number}) as a <strong>draft</strong>.</p>
           <p>Applications open: <strong>${created.application_open_at}</strong> (UTC)</p>
           <p>Set its codename, display name, and main-round theme in
-             <a href="https://oxxovo.com/admin/seasons">/admin/seasons</a> before it
+             <a href="https://www.oxxovo.ai/admin/seasons">/admin/seasons</a> before it
              auto-activates.</p>
         </div>`,
       ),

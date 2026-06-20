@@ -29,7 +29,7 @@ import { isMembershipEnabled } from '@/lib/membership'
 import { getPlatformConfigMap } from '@/lib/partners'
 import type { Season } from '@/lib/seasons'
 
-const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
+const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'
 const VALID_INTERVALS = ['day', 'week', 'month', 'year']
 
 // Force the handler to run at request time. Cron payloads have no useful

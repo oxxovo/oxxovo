@@ -25,4 +25,4 @@ export const EMAIL_FROM = process.env.EMAIL_FROM
   ? `OXXOVO <${process.env.EMAIL_FROM}>`
   : 'OXXOVO <info@oxxovo.com>'
 
-export const APP_URL = process.env.APP_URL ?? 'https://oxxovo.com'
+export const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'

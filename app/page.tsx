@@ -358,7 +358,7 @@ export default function OXXOVOLandingPage() {
             <img src="/oxxovo_logo.png" alt="OXXOVO" className="h-6 opacity-70" />
             <span className="text-[#b66cff]">The New Standard for AI Creativity</span>
           </div>
-          <span>OXXOVO Labs Inc. · Las Vegas, Nevada, USA · oxxovo.com · oxxovo.ai</span>
+          <span>OXXOVO Labs Inc. · Las Vegas, Nevada, USA · oxxovo.ai</span>
           <div className="flex items-center gap-4">
             <a href="/membership" className="hover:text-white/70">Membership</a>
             <a href="/terms" className="hover:text-white/70">Terms</a>
