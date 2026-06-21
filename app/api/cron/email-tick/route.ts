@@ -18,6 +18,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { canSend } from '@/lib/email/log'
 import {
+  sendSelectedTop50,
+  sendNotSelected,
   sendMainRoundStart,
   sendSubmissionDeadline,
   sendResultsAnnounced,
@@ -56,6 +58,10 @@ type TickReport = {
     failed: number
   }[]
   resultsAnnounced: { season: string; sent: number; skipped: number; failed: number }[]
+  // Finalist advancement notices (SelectedTop50 + NotSelected), fired once a
+  // season's scoring window has completed and season-tick has set the
+  // selected/rejected statuses. Dedup-safe (canSend + executeSend).
+  finalistResults: { season: string; sent: number; skipped: number; failed: number }[]
   // P4e membership notices (profile-scoped, not per-season). Absent when the
   // membership master switch is off (dark launch).
   membershipNotices?: {
@@ -111,6 +117,7 @@ async function handle(request: NextRequest) {
     mainRoundStart: [],
     submissionDeadline: [],
     resultsAnnounced: [],
+    finalistResults: [],
   }
 
   for (const season of seasons) {
@@ -141,6 +148,19 @@ async function handle(request: NextRequest) {
           })
         }
       }
+    }
+
+    // Finalist advancement notices: once scoring is complete, season-tick has
+    // (or soon will) set selected/rejected statuses. Fire SelectedTop50 to the
+    // Finalists and NotSelected to the rest. Before advancement runs there are
+    // no selected/rejected rows yet, so this is a no-op until they exist; dedup
+    // makes the eventual fire once-only.
+    if (
+      season.scoring_complete_at &&
+      new Date(season.scoring_complete_at) <= now
+    ) {
+      const result = await fireFinalistResults(season)
+      report.finalistResults.push({ season: season.id, ...result })
     }
 
     if (
@@ -400,9 +420,73 @@ async function fireResultsAnnounced(season: Season) {
   )
 }
 
+// ── finalist results (SelectedTop50 + NotSelected) ────────────────────────
+// Fired after season-tick advancement has set selected/rejected statuses.
+// SelectedTop50 -> Finalists; NotSelected -> the rest of the scored pool.
+// Each batch is dedup-safe (canSend + executeSend per applicationId+template).
+async function fireFinalistResults(season: Season) {
+  const supabase = createSupabaseAdmin()
+  const [selRes, rejRes] = await Promise.all([
+    supabase
+      .from('genesis_applications')
+      .select('id, email, creator_name, country, main_round_submitted_at')
+      .eq('season_id', season.id)
+      .eq('status', 'selected'),
+    supabase
+      .from('genesis_applications')
+      .select('id, email, creator_name, country, main_round_submitted_at')
+      .eq('season_id', season.id)
+      .eq('status', 'rejected'),
+  ])
+  if (selRes.error || rejRes.error) {
+    console.error(
+      '[cron] finalist_results applicant load failed:',
+      selRes.error?.message ?? rejRes.error?.message,
+    )
+    return { sent: 0, skipped: 0, failed: 1 }
+  }
+
+  const selected = await dispatchBatch(
+    (selRes.data ?? []) as ApplicantRow[],
+    'selected_top50',
+    async (row) =>
+      sendSelectedTop50({
+        toEmail: row.email,
+        country: row.country,
+        creatorName: row.creator_name,
+        seasonName: season.display_name,
+        topNAdvance: season.top_n_advance,
+        mainRoundStartAt: season.main_round_start_at,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
+  )
+  const rejected = await dispatchBatch(
+    (rejRes.data ?? []) as ApplicantRow[],
+    'not_selected',
+    async (row) =>
+      sendNotSelected({
+        toEmail: row.email,
+        country: row.country,
+        creatorName: row.creator_name,
+        seasonName: season.display_name,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
+  )
+
+  return {
+    sent: selected.sent + rejected.sent,
+    skipped: selected.skipped + rejected.skipped,
+    failed: selected.failed + rejected.failed,
+  }
+}
+
 // ── shared dispatcher ─────────────────────────────────────────────────────
 
 type TemplateName =
+  | 'selected_top50'
+  | 'not_selected'
   | 'main_round_start'
   | 'submission_deadline'
   | 'results_announced'
