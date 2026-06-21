@@ -6,12 +6,15 @@ import {
   formatPanelLabel,
   formatWeightPercent,
   advanceCountLabel,
+  formatAccessCopy,
   type Season,
 } from '@/lib/seasons';
+import { getMembershipLandingData } from '@/app/membership/actions';
+import type { MembershipLandingData } from '@/app/membership/types';
 
 type Faq = { q: string; a: string };
 
-function buildFaqs(season: Season): Faq[] {
+function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
   const panelLabel = formatPanelLabel(season.ai_models);
   const providerList = formatAiProviderList(season.ai_models);
   const prizePool = Number(season.total_prize_pool).toLocaleString();
@@ -22,8 +25,15 @@ function buildFaqs(season: Season): Faq[] {
   const advanceLabel = advanceCountLabel(season);
   const communityPct = formatWeightPercent(season.community_vote_weight);
   const aiPct = formatWeightPercent(season.ai_score_weight);
-  const entryFee = Number(season.entry_fee);
-  const feeText = entryFee === 0 ? 'free' : `$${entryFee.toLocaleString()} entry`;
+  const accessCopy = formatAccessCopy({
+    seasonName: season.name,
+    entryFee: Number(season.entry_fee),
+    membershipEnabled: mem.enabled,
+    price: mem.price,
+    interval: mem.interval,
+    foundingMonths: mem.foundingMonths,
+    foundingCap: mem.founding.cap,
+  });
 
   return [
     {
@@ -63,16 +73,16 @@ function buildFaqs(season: Season): Faq[] {
       a: `${season.name} runs without human judges. Results are decided by competition, community response, and the AI-based verification system.`,
     },
     {
-      q: 'What is a Founding Creator?',
-      a: `The finalists who advance to the ${season.name} Main Round all become Founding Creators. They receive a permanent badge and a place in the ${season.name} Archive.`,
+      q: 'What is a Finalist?',
+      a: `The creators who advance to the ${season.name} Main Round become Finalists. They receive a permanent badge and a place in the ${season.name} Archive.`,
     },
     {
       q: 'Why does OXXOVO emphasize verification?',
       a: 'As AI-generated content grows rapidly, authenticity and trust in the creation process matter more and more. OXXOVO is building systems for creation integrity, fair competition, and AI creation verification.',
     },
     {
-      q: 'Are tournaments always free?',
-      a: `${season.name} is a ${feeText} founding event. Tournament structure, prize pools, and entry fees may vary by season.`,
+      q: 'How much does it cost to compete?',
+      a: `${accessCopy} Tournament structure, prize pools, and fees may vary by season.`,
     },
     {
       q: 'Is OXXOVO only for short-form video?',
@@ -90,9 +100,12 @@ function buildFaqs(season: Season): Faq[] {
 }
 
 export default async function FAQPage() {
-  const season = await getCurrentSeason();
+  const [season, mem] = await Promise.all([
+    getCurrentSeason(),
+    getMembershipLandingData(),
+  ]);
   const seasonName = season?.name ?? 'GENESIS';
-  const faqs: Faq[] = season ? buildFaqs(season) : [];
+  const faqs: Faq[] = season ? buildFaqs(season, mem) : [];
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">

@@ -4,11 +4,14 @@ import { useEffect, useState } from 'react'
 import {
   getCurrentSeason,
   advanceCountLabel,
+  formatAccessCopy,
   formatModelName,
   formatWeightPercent,
   getIntegrityModel,
   type Season,
 } from '@/lib/seasons'
+import { getMembershipLandingData } from '@/app/membership/actions'
+import type { MembershipLandingData } from '@/app/membership/types'
 import {
   IP_INFO,
   formatFooterStatusLine,
@@ -20,9 +23,11 @@ const SUPPORT_EMAIL = 'hello@oxxovo.com'
 
 export default function RulesPage() {
   const [season, setSeason] = useState<Season | null>(null)
+  const [membership, setMembership] = useState<MembershipLandingData | null>(null)
 
   useEffect(() => {
     getCurrentSeason().then(setSeason)
+    getMembershipLandingData().then(setMembership).catch(() => setMembership(null))
   }, [])
 
   if (!season) {
@@ -255,7 +260,7 @@ export default function RulesPage() {
             <p className="mb-4">
               {season.name} accepts up to{' '}
               <span className="text-white">{season.max_applicants.toLocaleString()}</span> applicants. After all entries are scored, the{' '}
-              <span className="text-white">{advanceCountLabel(season)}</span> advance as Founding Creators of OXXOVO.
+              <span className="text-white">{advanceCountLabel(season)}</span> advance as Finalists of OXXOVO.
             </p>
             <div className="rounded-lg border border-[#8b22ff]/20 bg-[#8b22ff]/[.04] px-5 py-4">
               <p className="text-[#b66cff] text-[11px] uppercase tracking-widest font-bold mb-3">
@@ -279,8 +284,16 @@ export default function RulesPage() {
                 </div>
               </div>
               <p className="text-white/40 text-xs mt-3 italic">
-                Entry fee:{' '}
-                {Number(season.entry_fee) === 0 ? 'Free' : `$${Number(season.entry_fee).toLocaleString()}`}.
+                {formatAccessCopy({
+                  seasonName: season.name,
+                  entryFee: Number(season.entry_fee),
+                  membershipEnabled: membership?.enabled ?? false,
+                  price: membership?.price ?? null,
+                  interval: membership?.interval ?? 'month',
+                  foundingMonths: membership?.foundingMonths ?? null,
+                  foundingCap: membership?.founding.cap ?? 0,
+                  concise: true,
+                })}
               </p>
             </div>
           </RuleSection>

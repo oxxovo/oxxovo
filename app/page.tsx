@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   getCurrentSeason,
   advanceCountLabel,
+  formatAccessCopy,
+  formatDeadlinePT,
   formatAiModelList,
   formatAiProviderList,
   formatModelName,
@@ -14,6 +16,8 @@ import {
 } from '@/lib/seasons'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { getSessionUser } from '@/app/_actions/auth'
+import { getMembershipLandingData } from '@/app/membership/actions'
+import type { MembershipLandingData } from '@/app/membership/types'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 import { LobbySection } from './_components/LobbySection'
 
@@ -23,10 +27,12 @@ const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '
 export default function OXXOVOLandingPage() {
   const [user, setUser] = useState<{ email: string } | null>(null)
   const [season, setSeason] = useState<Season | null>(null)
+  const [membership, setMembership] = useState<MembershipLandingData | null>(null)
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(ZERO_TIME)
 
   useEffect(() => {
     getCurrentSeason().then(setSeason)
+    getMembershipLandingData().then(setMembership).catch(() => setMembership(null))
   }, [])
 
   // Reflect the cookie-session sign-in state in the nav.
@@ -178,9 +184,14 @@ export default function OXXOVOLandingPage() {
 
             {SHOW_COUNTDOWN && (
               <div className="mt-7 w-[min(100%,500px)] border-t border-white/10 pt-5">
-                <div className="mb-3.5 text-[12px] font-bold uppercase tracking-widest text-[#b66cff]">
+                <div className="mb-1 text-[12px] font-bold uppercase tracking-widest text-[#b66cff]">
                   Application Closes In
                 </div>
+                {formatDeadlinePT(season?.application_close_at) && (
+                  <div className="mb-3.5 text-[12px] text-white/50">
+                    {formatDeadlinePT(season?.application_close_at)}
+                  </div>
+                )}
                 <div className="grid max-w-[400px] grid-cols-4">
                   {[['Days', timeLeft.days], ['Hrs', timeLeft.hours], ['Min', timeLeft.minutes], ['Sec', timeLeft.seconds]].map(([label, val], i) => (
                     <div key={label} className={`${i > 0 ? 'border-l border-white/10 pl-5' : ''} ${i < 3 ? 'pr-5' : ''}`}>
@@ -255,7 +266,7 @@ export default function OXXOVOLandingPage() {
               title="Earn Your Title"
               body={
                 <>
-                  The {advanceCountLabel(season)} advance as Founding Creators, competing for the {season.name} prize pool of ${Number(season.total_prize_pool).toLocaleString()} (${Number(season.prize_first).toLocaleString()} / ${Number(season.prize_second).toLocaleString()} / ${Number(season.prize_third).toLocaleString()}).
+                  The {advanceCountLabel(season)} advance as Finalists, competing for the {season.name} prize pool of ${Number(season.total_prize_pool).toLocaleString()} (${Number(season.prize_first).toLocaleString()} / ${Number(season.prize_second).toLocaleString()} / ${Number(season.prize_third).toLocaleString()}).
                 </>
               }
             />
@@ -304,10 +315,16 @@ export default function OXXOVOLandingPage() {
               Anyone, anywhere. There are no nationality, age, or experience requirements. You just need an AI-generated video ({season.application_video_min_seconds}–{season.application_video_max_seconds} seconds) and a free OXXOVO account.
             </Faq>
 
-            <Faq q="Is there an entry fee?">
-              {Number(season.entry_fee) === 0
-                ? `No. ${season.name} is free to enter. We believe creators should compete on merit, not budget.`
-                : `${season.name} has an entry fee of $${Number(season.entry_fee).toLocaleString()}. Entry fees vary by tournament.`}
+            <Faq q="What does it cost to compete?">
+              {formatAccessCopy({
+                seasonName: season.name,
+                entryFee: Number(season.entry_fee),
+                membershipEnabled: membership?.enabled ?? false,
+                price: membership?.price ?? null,
+                interval: membership?.interval ?? 'month',
+                foundingMonths: membership?.foundingMonths ?? null,
+                foundingCap: membership?.founding.cap ?? 0,
+              })}
             </Faq>
 
             <Faq q="What AI tools can I use?">
@@ -337,7 +354,7 @@ export default function OXXOVOLandingPage() {
             </Faq>
 
             <Faq q="What are the prizes?">
-              {season.name} features a ${Number(season.total_prize_pool).toLocaleString()} prize pool (${Number(season.prize_first).toLocaleString()} for 1st, ${Number(season.prize_second).toLocaleString()} for 2nd, ${Number(season.prize_third).toLocaleString()} for 3rd). The {advanceCountLabel(season)} earn the Founding Creator title. Future seasons&apos; prize pools scale with participation. The Grand Final prize pool will be announced based on tournament participation.
+              {season.name} features a ${Number(season.total_prize_pool).toLocaleString()} prize pool (${Number(season.prize_first).toLocaleString()} for 1st, ${Number(season.prize_second).toLocaleString()} for 2nd, ${Number(season.prize_third).toLocaleString()} for 3rd). The {advanceCountLabel(season)} earn the Finalist title. Future seasons&apos; prize pools scale with participation. The Grand Final prize pool will be announced based on tournament participation.
             </Faq>
 
             <Faq q="How does OXXOVO prevent cheating?">

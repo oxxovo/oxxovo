@@ -457,10 +457,12 @@ export function isAdvanceCountDecided(
   return now >= new Date(season.scoring_complete_at).getTime()
 }
 
-// Human label for how many preliminary entrants advance as Founding Creators,
-// designed to read after "The "/"the ". Before the count is decided it states
-// the POLICY ("top 10% (10–50)"); after, the computed number ("Top 50"). Single
-// source so page/faq/rules stay in sync ([[feedback-no-hardcode]]).
+// Human label for how many preliminary entrants advance to the main round as
+// Finalists, designed to read after "The "/"the ". Before the count is decided
+// it states the POLICY ("top 10% (10–50)"); after, the computed number
+// ("Top 50"). Single source so page/faq/rules stay in sync ([[feedback-no-hardcode]]).
+// NB: "Finalist" = main-round advancer (tournament). Distinct from "Founding
+// Creator" = the first N membership signups (see formatAccessCopy).
 export function advanceCountLabel(
   season: Pick<
     Season,
@@ -471,6 +473,63 @@ export function advanceCountLabel(
   if (isAdvanceCountDecided(season, now)) return `Top ${season.top_n_advance}`
   const pct = Math.round(season.advance_pct * 100)
   return `top ${pct}% (${season.advance_min}–${season.advance_max})`
+}
+
+// Format a season deadline (UTC timestamptz) in OXXOVO's canonical competition
+// timezone (US Pacific) so the shown date is stable regardless of the visitor's
+// locale. Returns null for a missing/invalid value -> caller hides the line.
+export function formatDeadlinePT(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const date = d.toLocaleDateString('en-US', {
+    timeZone: 'America/Los_Angeles',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  const time = d.toLocaleTimeString('en-US', {
+    timeZone: 'America/Los_Angeles',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+  return `${date} · ${time} PT`
+}
+
+// Canonical "what does it cost to compete" copy. Two separate things, both
+// config-driven (no hardcoded amounts — [[feedback-no-hardcode]]):
+//   1) tournament entry fee (season.entry_fee, 0 for Season 0)
+//   2) creator-membership access: the first `foundingCap` signups join free as
+//      Founding Creators for `foundingMonths`, then `price`/`interval`.
+// Falls back to fee-only copy when membership is off/unconfigured (dark launch).
+export function formatAccessCopy(opts: {
+  seasonName: string
+  entryFee: number
+  membershipEnabled: boolean
+  price: number | null
+  interval: string
+  foundingMonths: number | null
+  foundingCap: number
+  concise?: boolean
+}): string {
+  const { seasonName, entryFee, membershipEnabled, price, interval, foundingMonths, foundingCap, concise } = opts
+  const hasMembership = membershipEnabled && !!price && !!foundingMonths && foundingCap > 0
+  const term = foundingMonths === 12 ? 'one year' : `${foundingMonths} months`
+  const priceText = price != null ? `$${price.toFixed(2)}/${interval}` : ''
+
+  if (concise) {
+    if (!hasMembership) return entryFee === 0 ? 'No entry fee.' : `$${entryFee.toLocaleString()} entry fee.`
+    const fee = entryFee === 0 ? 'No entry fee' : `$${entryFee.toLocaleString()} entry fee`
+    return `${fee}. Competing requires a creator membership — the first ${foundingCap} join free for ${term}, then ${priceText}.`
+  }
+
+  const feePart = entryFee === 0
+    ? `There is no entry fee for ${seasonName}.`
+    : `${seasonName} has a $${entryFee.toLocaleString()} entry fee.`
+  if (!hasMembership) {
+    return `${feePart} We believe creators should compete on merit, not budget.`
+  }
+  return `${feePart} Competing on OXXOVO requires a creator membership: the first ${foundingCap} creators join free as Founding Creators for ${term}, then it's ${priceText}. We believe creators should compete on merit, not budget.`
 }
 
 // Derive panel label from model count (3 → "Triple-AI", 4 → "Quad-AI", etc.)

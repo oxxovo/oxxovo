@@ -10,6 +10,7 @@ import {
   isCapacityFull,
   formatAiModelList,
   formatPanelLabel,
+  formatDeadlinePT,
   type Season,
 } from '@/lib/seasons'
 import { formatVideoPlatforms, validateVideoUrl } from '@/lib/video-url'
@@ -225,7 +226,7 @@ export default function ApplyPage() {
   // Unauthenticated visitor -> intro + sign-in CTA (returns here after login).
   // Studio messaging only when the studio funnel is active (session6 ON).
   if (!user) {
-    return <IntroScreen seasonName={season?.name ?? 'GENESIS'} studio={studioApplication} />
+    return <IntroScreen seasonName={season?.name ?? 'GENESIS'} studio={studioApplication} closeDate={formatDeadlinePT(season?.application_close_at)} />
   }
 
   // P3 membership gate. Only when the switch is ON and configured as required
@@ -320,6 +321,11 @@ export default function ApplyPage() {
             <p className="mt-5 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#b66cff]/80">
               <span className="h-1.5 w-1.5 rounded-full bg-[#b66cff]" />
               Application #{count + 1} of {season.max_applicants}
+            </p>
+          )}
+          {!isWaitlistMode && formatDeadlinePT(season?.application_close_at) && (
+            <p className="mt-2 text-[11px] text-white/40">
+              Applications close {formatDeadlinePT(season?.application_close_at)}
             </p>
           )}
           {isWaitlistMode && (
@@ -598,7 +604,7 @@ function ApplyHeader({ email }: { email?: string }) {
 
 // Unauthenticated entry screen: a short intro + sign-in CTA. After sign-in the
 // user returns to /apply (now authenticated) and sees the studio funnel.
-function IntroScreen({ seasonName, studio }: { seasonName: string; studio: boolean }) {
+function IntroScreen({ seasonName, studio, closeDate }: { seasonName: string; studio: boolean; closeDate: string | null }) {
   return (
     <main className="min-h-screen bg-[#030305] text-white">
       <ApplyHeader />
@@ -608,6 +614,11 @@ function IntroScreen({ seasonName, studio }: { seasonName: string; studio: boole
           {seasonName}
         </p>
         <h1 className="text-4xl font-black mb-4">Apply to {seasonName}</h1>
+        {closeDate && (
+          <p className="text-[11px] uppercase tracking-[0.16em] text-white/40 mb-4">
+            Applications close {closeDate}
+          </p>
+        )}
         <p className="text-white/55 leading-relaxed mb-8">
           {studio
             ? 'This season you create and submit your entry inside OXXOVO Studio — no external uploads. Sign in to get started; your first submission registers your application.'
