@@ -61,6 +61,8 @@ type SeasonTickReport = {
   ranAt: string
   created: { id: string; season_number: number; application_open_at: string | null } | null
   transitions: { id: string; from: string; to: string }[]
+  deferrals: { id: string; newClose: string | null; deferCount: number }[]
+  advancements: { id: string; advanced: number; rejected: number; nTarget: number }[]
   skippedCreation?: string
   errors: string[]
 }
@@ -167,9 +169,38 @@ async function handle(request: NextRequest) {
     }
   }
 
+  // ── 1.5. DEFERRAL ────────────────────────────────────────────────────────
+  // Runs BEFORE status transitions: a season whose application window just
+  // closed with too few applicants gets its whole calendar pushed forward
+  // instead of closing. The RPC is atomic + idempotent; it self-gates on
+  // now >= application_close_at, defer budget, and applicant count. A season
+  // deferred THIS tick is skipped in the transition loop below, because the
+  // in-memory row still carries the pre-shift (past) close date — using it
+  // would wrongly mark the season 'closed'. Next tick reads the shifted dates.
+  const deferrals: SeasonTickReport['deferrals'] = []
+  const deferredThisTick = new Set<string>()
+  for (const s of seasons) {
+    if (!s.application_close_at || nowMs < new Date(s.application_close_at).getTime()) continue
+    const { data, error } = await supabase.rpc('defer_season_schedule', { p_season_id: s.id })
+    if (error) {
+      errors.push(`season-tick: defer ${s.id} failed: ${error.message}`)
+      continue
+    }
+    const row = Array.isArray(data) ? data[0] : data
+    if (row?.deferred) {
+      deferredThisTick.add(s.id)
+      deferrals.push({
+        id: s.id,
+        newClose: row.new_close ?? null,
+        deferCount: Number(row.new_defer_count ?? 0),
+      })
+    }
+  }
+
   // ── 2. STATUS TRANSITIONS ────────────────────────────────────────────────
   const transitions: SeasonTickReport['transitions'] = []
   for (const s of seasons) {
+    if (deferredThisTick.has(s.id)) continue
     const desired = desiredStatus(s, nowMs)
     const currentRank = STATUS_RANK[s.status] ?? -1
     const desiredRank = STATUS_RANK[desired] ?? -1
@@ -192,8 +223,80 @@ async function handle(request: NextRequest) {
     }
   }
 
+  // ── 2.5. ADVANCEMENT ──────────────────────────────────────────────────────
+  // Once a season's scoring window has fully completed, promote the top
+  // computeAdvanceCount() eligible entrants to 'selected' (Finalist) and reject
+  // the rest of the scored pool. The RPC is atomic + idempotent and self-gates
+  // (scoring_complete_at reached, no scoring in progress, no flagged rows, not
+  // already advanced). A 'flagged_pending' block means an admin must clear
+  // integrity reviews before finalists can be picked — surfaced as an alert.
+  // Participant emails (Finalist / not-selected) are wired in step 5.
+  const advancements: SeasonTickReport['advancements'] = []
+  const flaggedBlocks: string[] = []
+  for (const s of seasons) {
+    if (!s.scoring_complete_at || nowMs < new Date(s.scoring_complete_at).getTime()) continue
+    const { data, error } = await supabase.rpc('advance_season_finalists', { p_season_id: s.id })
+    if (error) {
+      errors.push(`season-tick: advance ${s.id} failed: ${error.message}`)
+      continue
+    }
+    const row = Array.isArray(data) ? data[0] : data
+    if (!row) continue
+    if (row.blocked === 'flagged_pending') {
+      flaggedBlocks.push(s.id)
+    } else if (!row.blocked && Number(row.advanced) > 0) {
+      advancements.push({
+        id: s.id,
+        advanced: Number(row.advanced),
+        rejected: Number(row.rejected),
+        nTarget: Number(row.n_target),
+      })
+    }
+  }
+
   // ── 3. NOTIFY ────────────────────────────────────────────────────────────
   const alerts: Promise<boolean>[] = []
+  for (const d of deferrals) {
+    alerts.push(
+      sendAdminAlert(
+        `[OXXOVO] Season ${d.id} application deadline deferred`,
+        `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
+          <h2 style="color: #8B22FF;">Application window extended</h2>
+          <p><strong>${d.id}</strong> had fewer than the minimum applicants at close,
+             so the whole calendar shifted forward (deferral #${d.deferCount}).</p>
+          <p>New application close: <strong>${d.newClose}</strong> (UTC)</p>
+        </div>`,
+      ),
+    )
+  }
+  for (const a of advancements) {
+    alerts.push(
+      sendAdminAlert(
+        `[OXXOVO] ${a.id}: ${a.advanced} Finalists advanced`,
+        `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
+          <h2 style="color: #8B22FF;">Finalists selected</h2>
+          <p><strong>${a.id}</strong> scoring is complete. ${a.advanced} entrant(s)
+             advanced to the main round (target N=${a.nTarget}); ${a.rejected}
+             were not selected.</p>
+        </div>`,
+      ),
+    )
+  }
+  for (const id of flaggedBlocks) {
+    alerts.push(
+      sendAdminAlert(
+        `[OXXOVO] ${id}: Finalist advancement blocked by flagged reviews`,
+        `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
+          <h2 style="color: #c0392b;">Integrity reviews pending</h2>
+          <p>Scoring for <strong>${id}</strong> is complete, but one or more
+             applications are <strong>flagged</strong> for integrity review.
+             Finalists cannot be advanced until each flagged application is
+             resolved to 'eligible' or 'rejected' in
+             <a href="https://www.oxxovo.ai/admin/applications">/admin/applications</a>.</p>
+        </div>`,
+      ),
+    )
+  }
   if (created) {
     alerts.push(
       sendAdminAlert(
@@ -228,6 +331,8 @@ async function handle(request: NextRequest) {
     ranAt: now.toISOString(),
     created,
     transitions,
+    deferrals,
+    advancements,
     ...(skippedCreation ? { skippedCreation } : {}),
     errors,
   }
