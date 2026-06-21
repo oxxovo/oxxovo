@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import {
   getCurrentSeason,
+  advanceCountLabel,
   formatModelName,
   formatWeightPercent,
   getIntegrityModel,
@@ -254,7 +255,7 @@ export default function RulesPage() {
             <p className="mb-4">
               {season.name} accepts up to{' '}
               <span className="text-white">{season.max_applicants.toLocaleString()}</span> applicants. After all entries are scored, the{' '}
-              <span className="text-white">Top {season.top_n_advance}</span> advance as Founding Creators of OXXOVO.
+              <span className="text-white">{advanceCountLabel(season)}</span> advance as Founding Creators of OXXOVO.
             </p>
             <div className="rounded-lg border border-[#8b22ff]/20 bg-[#8b22ff]/[.04] px-5 py-4">
               <p className="text-[#b66cff] text-[11px] uppercase tracking-widest font-bold mb-3">

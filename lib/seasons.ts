@@ -444,6 +444,35 @@ export function computeAdvanceCount(
   return Math.min(clamped, eligibleCount)
 }
 
+// Whether seasons.top_n_advance holds the FINAL advancement count or a stale
+// default. The cron (advance_season_finalists) computes the real N only at
+// scoring_complete_at — before then top_n_advance is whatever default the row
+// was seeded with (e.g. 50), which would mislead applicants on public pages.
+// `now` is injectable so SSR/tests stay deterministic.
+export function isAdvanceCountDecided(
+  season: Pick<Season, 'scoring_complete_at'>,
+  now: number = Date.now(),
+): boolean {
+  if (!season.scoring_complete_at) return false
+  return now >= new Date(season.scoring_complete_at).getTime()
+}
+
+// Human label for how many preliminary entrants advance as Founding Creators,
+// designed to read after "The "/"the ". Before the count is decided it states
+// the POLICY ("top 10% (10–50)"); after, the computed number ("Top 50"). Single
+// source so page/faq/rules stay in sync ([[feedback-no-hardcode]]).
+export function advanceCountLabel(
+  season: Pick<
+    Season,
+    'scoring_complete_at' | 'top_n_advance' | 'advance_pct' | 'advance_min' | 'advance_max'
+  >,
+  now: number = Date.now(),
+): string {
+  if (isAdvanceCountDecided(season, now)) return `Top ${season.top_n_advance}`
+  const pct = Math.round(season.advance_pct * 100)
+  return `top ${pct}% (${season.advance_min}–${season.advance_max})`
+}
+
 // Derive panel label from model count (3 → "Triple-AI", 4 → "Quad-AI", etc.)
 export function formatPanelLabel(models: AIModel[]): string {
   const PREFIX_BY_COUNT: Record<number, string> = {

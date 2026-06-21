@@ -5,6 +5,7 @@ import {
   formatAiProviderList,
   formatPanelLabel,
   formatWeightPercent,
+  advanceCountLabel,
   type Season,
 } from '@/lib/seasons';
 
@@ -18,7 +19,7 @@ function buildFaqs(season: Season): Faq[] {
   const prize2 = Number(season.prize_second).toLocaleString();
   const prize3 = Number(season.prize_third).toLocaleString();
   const capacity = season.max_applicants.toLocaleString();
-  const topN = season.top_n_advance;
+  const advanceLabel = advanceCountLabel(season);
   const communityPct = formatWeightPercent(season.community_vote_weight);
   const aiPct = formatWeightPercent(season.ai_score_weight);
   const entryFee = Number(season.entry_fee);
@@ -51,7 +52,7 @@ function buildFaqs(season: Season): Faq[] {
     },
     {
       q: 'How are winners decided?',
-      a: `In ${season.name}, every entry is first scored by the ${panelLabel} system, and the top ${topN} advance to the Main Round. In the Main Round, winners are decided by a community vote (${communityPct}) combined with the ${panelLabel} score (${aiPct}).`,
+      a: `In ${season.name}, every entry is first scored by the ${panelLabel} system, and the ${advanceLabel} advance to the Main Round. In the Main Round, winners are decided by a community vote (${communityPct}) combined with the ${panelLabel} score (${aiPct}).`,
     },
     {
       q: `What is ${panelLabel} Scoring?`,
@@ -63,7 +64,7 @@ function buildFaqs(season: Season): Faq[] {
     },
     {
       q: 'What is a Founding Creator?',
-      a: `The ${topN} finalists who advance to the ${season.name} Main Round all become Founding Creators. They receive a permanent badge and a place in the ${season.name} Archive.`,
+      a: `The finalists who advance to the ${season.name} Main Round all become Founding Creators. They receive a permanent badge and a place in the ${season.name} Archive.`,
     },
     {
       q: 'Why does OXXOVO emphasize verification?',

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   getCurrentSeason,
+  advanceCountLabel,
   formatAiModelList,
   formatAiProviderList,
   formatModelName,
@@ -254,7 +255,7 @@ export default function OXXOVOLandingPage() {
               title="Earn Your Title"
               body={
                 <>
-                  The Top {season.top_n_advance} advance as Founding Creators, competing for the {season.name} prize pool of ${Number(season.total_prize_pool).toLocaleString()} (${Number(season.prize_first).toLocaleString()} / ${Number(season.prize_second).toLocaleString()} / ${Number(season.prize_third).toLocaleString()}).
+                  The {advanceCountLabel(season)} advance as Founding Creators, competing for the {season.name} prize pool of ${Number(season.total_prize_pool).toLocaleString()} (${Number(season.prize_first).toLocaleString()} / ${Number(season.prize_second).toLocaleString()} / ${Number(season.prize_third).toLocaleString()}).
                 </>
               }
             />
@@ -336,7 +337,7 @@ export default function OXXOVOLandingPage() {
             </Faq>
 
             <Faq q="What are the prizes?">
-              {season.name} features a ${Number(season.total_prize_pool).toLocaleString()} prize pool (${Number(season.prize_first).toLocaleString()} for 1st, ${Number(season.prize_second).toLocaleString()} for 2nd, ${Number(season.prize_third).toLocaleString()} for 3rd). The Top {season.top_n_advance} earn the Founding Creator title. Future seasons&apos; prize pools scale with participation. The Grand Final prize pool will be announced based on tournament participation.
+              {season.name} features a ${Number(season.total_prize_pool).toLocaleString()} prize pool (${Number(season.prize_first).toLocaleString()} for 1st, ${Number(season.prize_second).toLocaleString()} for 2nd, ${Number(season.prize_third).toLocaleString()} for 3rd). The {advanceCountLabel(season)} earn the Founding Creator title. Future seasons&apos; prize pools scale with participation. The Grand Final prize pool will be announced based on tournament participation.
             </Faq>
 
             <Faq q="How does OXXOVO prevent cheating?">
