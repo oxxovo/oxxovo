@@ -106,7 +106,6 @@ export function SeasonForm({
         <Field label={t.season_form.field_advance_pct} name="advance_pct" type="number" step="0.01" defaultValue={initial.advance_pct} error={fieldError('advance_pct')} hint={t.season_form.hint_advance_pct} />
         <Field label={t.season_form.field_advance_min} name="advance_min" type="number" defaultValue={initial.advance_min} error={fieldError('advance_min')} />
         <Field label={t.season_form.field_advance_max} name="advance_max" type="number" defaultValue={initial.advance_max} error={fieldError('advance_max')} />
-        <Field label={t.season_form.field_final_n} name="final_n" type="number" defaultValue={initial.final_n} error={fieldError('final_n')} />
         <Field label={t.season_form.field_defer_days} name="defer_extension_days" type="number" defaultValue={initial.defer_extension_days} error={fieldError('defer_extension_days')} hint={t.season_form.hint_defer} />
         <Field label={t.season_form.field_max_defer} name="max_defer_count" type="number" defaultValue={initial.max_defer_count} error={fieldError('max_defer_count')} />
       </Group>
@@ -254,8 +253,6 @@ export function SeasonForm({
         <DatetimeField label={t.season_form.field_scoring_complete} name="scoring_complete_at" defaultValue={toDatetimeLocal(initial.scoring_complete_at)} error={fieldError('scoring_complete_at')} />
         <DatetimeField label={t.season_form.field_main_start} name="main_round_start_at" defaultValue={toDatetimeLocal(initial.main_round_start_at)} error={fieldError('main_round_start_at')} />
         <DatetimeField label={t.season_form.field_main_end} name="main_round_end_at" defaultValue={toDatetimeLocal(initial.main_round_end_at)} error={fieldError('main_round_end_at')} />
-        <DatetimeField label={t.season_form.field_final_start} name="final_start_at" defaultValue={toDatetimeLocal(initial.final_start_at)} error={fieldError('final_start_at')} />
-        <DatetimeField label={t.season_form.field_final_end} name="final_end_at" defaultValue={toDatetimeLocal(initial.final_end_at)} error={fieldError('final_end_at')} />
         <DatetimeField label={t.season_form.field_awards} name="awards_announcement_at" defaultValue={toDatetimeLocal(initial.awards_announcement_at)} error={fieldError('awards_announcement_at')} />
       </Group>
 

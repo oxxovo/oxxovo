@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
-import { canSubmitMainRound, canSubmitFinal, getSeasonById } from '@/lib/seasons'
+import { canSubmitMainRound, getSeasonById } from '@/lib/seasons'
 import { validateVideoUrl } from '@/lib/video-url'
 import { getMembershipState, isMembershipEnabled } from '@/lib/membership'
 import { getStripe } from '@/lib/stripe'
@@ -312,107 +312,6 @@ export async function saveMainRoundSubmission(
     })
     .eq('id', input.applicationId)
     .eq('status', 'selected')
-    .select('id')
-    .single()
-
-  if (updateErr || !updated) {
-    if (updateErr?.code === 'PGRST116') {
-      return { ok: false, error: 'race_or_already_submitted' }
-    }
-    return { ok: false, error: 'save_failed', detail: updateErr?.message }
-  }
-
-  // 8. revalidate admin caches
-  revalidatePath('/admin/applications')
-  revalidatePath(`/admin/applications/${input.applicationId}`)
-
-  return { ok: true }
-}
-
-// ─── saveFinalSubmission ────────────────────────────────────────────────
-// 3-stage FINAL round (결승). 100% mirror of saveMainRoundSubmission for the
-// final stage: single-submission, no edits, race-safe via UPDATE WHERE
-// status='final_selected'. Score columns are NEVER touched here
-// ([[project-scoring-integrity-rules]]). Gate = canSubmitFinal (final_selected +
-// final_start_at/final_end_at window). Dormant until an admin sets the final
-// schedule -- season_dates_not_set until then.
-
-export type SaveFinalSubmissionInput = {
-  applicationId: string
-  videoUrl: string
-}
-
-// Reuses the same error vocabulary as the main round (the gate reasons are
-// identical); only the round differs.
-export type FinalSubmissionError = MainRoundSubmissionError
-
-export type SaveFinalSubmissionResult =
-  | { ok: true }
-  | { ok: false; error: FinalSubmissionError; detail?: string }
-
-export async function saveFinalSubmission(
-  input: SaveFinalSubmissionInput,
-): Promise<SaveFinalSubmissionResult> {
-  // 1. cookie session verify
-  const user = await getUserOrNull()
-  if (!user) return { ok: false, error: 'unauthenticated' }
-  const callerEmail = user.email
-  const admin = createSupabaseAdmin()
-
-  // 2. fetch application (by row id)
-  const { data: row, error: lookupErr } = await admin
-    .from('genesis_applications')
-    .select('id, email, status, season_id')
-    .eq('id', input.applicationId)
-    .single()
-  if (lookupErr || !row) {
-    return { ok: false, error: 'not_found', detail: lookupErr?.message }
-  }
-
-  // 3. ownership
-  if ((row.email ?? '').toLowerCase() !== callerEmail) {
-    return { ok: false, error: 'not_owner' }
-  }
-
-  // 4. fetch season
-  const season = await getSeasonById(row.season_id)
-  if (!season) {
-    return { ok: false, error: 'season_not_found' }
-  }
-
-  // 5. business gate — canSubmitFinal (single source of truth, client/server 동일)
-  const check = canSubmitFinal({ status: row.status }, season)
-  if (!check.ok) {
-    if (check.reason === 'not_selected') return { ok: false, error: 'not_selected' }
-    if (check.reason === 'before_start') return { ok: false, error: 'before_start' }
-    if (check.reason === 'after_close') return { ok: false, error: 'after_close' }
-    if (check.reason === 'season_dates_not_set') {
-      return { ok: false, error: 'season_dates_not_set' }
-    }
-    // reason === null → already final_submitted / awarded / rejected / flagged
-    return { ok: false, error: 'race_or_already_submitted' }
-  }
-
-  // 6. URL validation — same lib/video-url.ts helper as client
-  const validation = validateVideoUrl(input.videoUrl, season.allowed_video_platforms)
-  if (!validation.valid) {
-    if (validation.error === 'empty') return { ok: false, error: 'video_url_required' }
-    if (validation.error === 'unknown_platform') {
-      return { ok: false, error: 'video_url_invalid' }
-    }
-    return { ok: false, error: 'video_url_not_allowed' }
-  }
-
-  // 7. UPDATE atomic with race guard — second concurrent submit returns 0 rows.
-  const { data: updated, error: updateErr } = await admin
-    .from('genesis_applications')
-    .update({
-      status: 'final_submitted',
-      final_video_url: input.videoUrl,
-      final_submitted_at: new Date().toISOString(),
-    })
-    .eq('id', input.applicationId)
-    .eq('status', 'final_selected')
     .select('id')
     .single()
 

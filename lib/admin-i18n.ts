@@ -175,9 +175,6 @@ type Messages = {
     field_advance_pct: string
     field_advance_min: string
     field_advance_max: string
-    field_final_n: string
-    field_final_start: string
-    field_final_end: string
     hint_main_round_semifinal: string
     hint_advance_pct: string
     hint_defer: string
@@ -755,17 +752,14 @@ const MESSAGES_EN: Messages = {
     field_status: 'Status',
     field_max_applicants: 'Max applicants',
     field_top_n: 'Top N advance (computed result)',
-    group_advancement: 'Advancement & deferral (3-stage)',
+    group_advancement: 'Advancement & deferral (2-stage)',
     field_min_participants: 'Min participants (preliminary)',
     field_defer_days: 'Defer extension (days)',
     field_max_defer: 'Max defer count',
-    field_advance_pct: 'Advance % (prelim → semifinal)',
+    field_advance_pct: 'Advance % (prelim → main round)',
     field_advance_min: 'Advance min (clamp)',
     field_advance_max: 'Advance max (clamp)',
-    field_final_n: 'Finalists (semifinal → final)',
-    field_final_start: 'Final round start',
-    field_final_end: 'Final round end',
-    hint_main_round_semifinal: 'main_round = semifinal (준결승)',
+    hint_main_round_semifinal: 'main_round = main round (본선)',
     hint_advance_pct: 'e.g. 0.10 = top 10%, then clamped to [min, max]',
     hint_defer: 'If under min participants, extend deadline N days, up to max times',
     field_video_app_min: 'Application min',
@@ -1363,18 +1357,15 @@ const MESSAGES_KO: Messages = {
     field_season_number: '시즌 번호',
     field_status: '상태',
     field_max_applicants: '최대 지원자',
-    field_top_n: '준결승 진출자 수 (자동 산출 결과)',
-    group_advancement: '진출 및 연기 정책 (3단계)',
+    field_top_n: '본선 진출자 수 (자동 산출 결과)',
+    group_advancement: '진출 및 연기 정책 (2단계)',
     field_min_participants: '최소 참가자 (예선)',
     field_defer_days: '연기 연장 (일)',
     field_max_defer: '최대 연기 횟수',
-    field_advance_pct: '진출 비율 (예선 → 준결승)',
+    field_advance_pct: '진출 비율 (예선 → 본선)',
     field_advance_min: '진출 최소 (클램프)',
     field_advance_max: '진출 최대 (클램프)',
-    field_final_n: '결승 진출자 수 (준결승 → 결승)',
-    field_final_start: '결승 시작',
-    field_final_end: '결승 종료',
-    hint_main_round_semifinal: 'main_round = 준결승',
+    hint_main_round_semifinal: 'main_round = 본선',
     hint_advance_pct: '예: 0.10 = 상위 10%, 이후 [최소, 최대]로 클램프',
     hint_defer: '최소 참가자 미달 시 마감 N일 연장, 최대 횟수까지',
     field_video_app_min: '지원 영상 최소',

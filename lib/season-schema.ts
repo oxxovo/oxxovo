@@ -20,7 +20,7 @@ export const seasonSchema = z
     max_applicants: z.coerce.number().int().positive(),
     top_n_advance: z.coerce.number().int().positive(),
 
-    // 3-stage advancement policy (preliminary -> semifinal -> final).
+    // 2-stage advancement policy (preliminary -> main round).
     // application_defer_count is NOT here: it's a system counter managed by the
     // cron, not an admin-set field, so the form never sends/clobbers it.
     min_participants: z.coerce.number().int().positive(),
@@ -29,7 +29,6 @@ export const seasonSchema = z
     advance_pct: z.coerce.number().gt(0).max(1),
     advance_min: z.coerce.number().int().positive(),
     advance_max: z.coerce.number().int().positive(),
-    final_n: z.coerce.number().int().positive(),
 
     application_video_min_seconds: z.coerce.number().int().positive(),
     application_video_max_seconds: z.coerce.number().int().positive(),
@@ -76,10 +75,6 @@ export const seasonSchema = z
     scoring_complete_at: nullableTimestamp,
     main_round_start_at: nullableTimestamp,
     main_round_end_at: nullableTimestamp,
-    // Final stage window. Empty/NULL until the admin enters the schedule; dates
-    // are never hardcoded in code ([[feedback-no-hardcode]]).
-    final_start_at: nullableTimestamp,
-    final_end_at: nullableTimestamp,
     awards_announcement_at: nullableTimestamp,
   })
   .refine(
@@ -128,12 +123,6 @@ export const seasonSchema = z
     message: 'advance_max must be <= max_applicants',
     path: ['advance_max'],
   })
-  // Finalists are drawn from semifinalists, so final_n can't exceed the largest
-  // possible semifinal field.
-  .refine((s) => s.final_n <= s.advance_max, {
-    message: 'final_n must be <= advance_max',
-    path: ['final_n'],
-  })
   // A season can't require more participants than its own capacity.
   .refine((s) => s.min_participants <= s.max_applicants, {
     message: 'min_participants must be <= max_applicants',
@@ -162,7 +151,6 @@ export const DEFAULT_SEASON: SeasonInput = {
   advance_pct: 0.1,
   advance_min: 10,
   advance_max: 50,
-  final_n: 3,
   application_video_min_seconds: 15,
   application_video_max_seconds: 30,
   total_prize_pool: 2000,
@@ -195,7 +183,5 @@ export const DEFAULT_SEASON: SeasonInput = {
   scoring_complete_at: null,
   main_round_start_at: null,
   main_round_end_at: null,
-  final_start_at: null,
-  final_end_at: null,
   awards_announcement_at: null,
 }

@@ -111,15 +111,9 @@ const NON_CLONED_KEYS = [
   'scoring_complete_at',
   'main_round_start_at',
   'main_round_end_at',
-  // Final-stage schedule + the per-season deferral counter must never be copied
-  // from the previous season. final_start_at/end_at are absolute dates (cloning
-  // would carry stale ones); application_defer_count is runtime state that must
-  // reset to 0 for a fresh season. TODO (schedule design, 내일): once the 3-stage
-  // timeline offsets are confirmed, compute final_start_at/final_end_at inside
-  // computeSeasonSchedule and re-add them via the schedule spread. Until then a
-  // cloned season opens with NULL final dates (admin sets them per season).
-  'final_start_at',
-  'final_end_at',
+  // The per-season deferral counter must never be copied from the previous
+  // season: application_defer_count is runtime state that must reset to 0 for a
+  // fresh season.
   'application_defer_count',
   'awards_announcement_at',
   'ai_score_weight',

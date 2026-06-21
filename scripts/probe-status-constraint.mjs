@@ -11,7 +11,7 @@ import { createHash } from 'crypto'
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
 const sha = (p) => createHash('sha256').update(p).digest('hex')
 
-const CANDIDATES = ['pending', 'waitlist', 'verifying', 'flagged', 'eligible', 'selected', 'main_round_submitted', 'final_selected', 'awarded', 'rejected', 'soak']
+const CANDIDATES = ['pending', 'waitlist', 'verifying', 'flagged', 'eligible', 'selected', 'main_round_submitted', 'awarded', 'rejected', 'soak']
 
 async function main() {
   const { data: s } = await admin.from('seasons').select('id').limit(1)

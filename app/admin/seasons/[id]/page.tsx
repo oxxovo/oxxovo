@@ -44,7 +44,6 @@ export default async function SeasonEditPage({
     advance_pct: season.advance_pct ?? 0.1,
     advance_min: season.advance_min ?? 10,
     advance_max: season.advance_max ?? 50,
-    final_n: season.final_n ?? 3,
     application_video_min_seconds: season.application_video_min_seconds,
     application_video_max_seconds: season.application_video_max_seconds,
     total_prize_pool: season.total_prize_pool,
@@ -73,8 +72,6 @@ export default async function SeasonEditPage({
     scoring_complete_at: season.scoring_complete_at,
     main_round_start_at: season.main_round_start_at,
     main_round_end_at: season.main_round_end_at,
-    final_start_at: season.final_start_at ?? null,
-    final_end_at: season.final_end_at ?? null,
     awards_announcement_at: season.awards_announcement_at,
   }
 
