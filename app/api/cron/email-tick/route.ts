@@ -395,11 +395,15 @@ async function fireSubmissionDeadline(season: Season, reminderHour: number) {
 
 async function fireResultsAnnounced(season: Season) {
   const supabase = createSupabaseAdmin()
+  // Results go to the main-round cohort only: Finalists (selected /
+  // main_round_submitted) and winners (awarded). Preliminary-round rejects
+  // already received NotSelected at finalist advancement (step 5), so they are
+  // intentionally excluded here -- no second, mismatched notice.
   const { data: rows, error } = await supabase
     .from('genesis_applications')
     .select('id, email, creator_name, country, main_round_submitted_at')
     .eq('season_id', season.id)
-    .in('status', ['selected', 'awarded', 'rejected'])
+    .in('status', ['selected', 'main_round_submitted', 'awarded'])
   if (error) {
     console.error('[cron] results_announced applicant load failed:', error.message)
     return { sent: 0, skipped: 0, failed: 1 }
