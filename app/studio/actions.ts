@@ -102,7 +102,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
     const admin = createSupabaseAdmin()
     const { data: appRow } = await admin
       .from('genesis_applications')
-      .select('id, studio_application_submitted_at, main_round_submitted_at, final_submitted_at')
+      .select('id, studio_application_submitted_at, main_round_submitted_at')
       .eq('season_id', season.id)
       .ilike('email', auth.email)
       .order('created_at', { ascending: false })
@@ -113,9 +113,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
       appRow &&
       (effectiveRound === 'main'
         ? appRow.main_round_submitted_at
-        : effectiveRound === 'final'
-          ? appRow.final_submitted_at
-          : appRow.studio_application_submitted_at)
+        : appRow.studio_application_submitted_at)
     )
 
     return {
@@ -301,7 +299,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     const effectiveRound = resolveEffectiveRound(cfg)
     const { data: appRow } = await admin
       .from('genesis_applications')
-      .select('id, studio_application_submitted_at, main_round_submitted_at, final_submitted_at')
+      .select('id, studio_application_submitted_at, main_round_submitted_at')
       .eq('season_id', season.id)
       .ilike('email', auth.email)
       .order('created_at', { ascending: false })
@@ -312,9 +310,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
       appRow &&
       (effectiveRound === 'main'
         ? appRow.main_round_submitted_at
-        : effectiveRound === 'final'
-          ? appRow.final_submitted_at
-          : appRow.studio_application_submitted_at)
+        : appRow.studio_application_submitted_at)
     )
 
     return {

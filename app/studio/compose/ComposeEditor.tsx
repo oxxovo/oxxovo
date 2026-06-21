@@ -36,7 +36,7 @@ export type ComposeApplicant = {
 }
 
 export type ComposeSubmitCtx = {
-  round: 'application' | 'main' | 'final'
+  round: 'application' | 'main'
   hasApplication: boolean
   alreadySubmitted: boolean
   needsApplicantInfo: boolean
@@ -108,7 +108,7 @@ const DICT = {
     submit_next: '제출은 다음 단계에서 연결됩니다.',
     submit_title: '완성본 제출',
     submit_round: (r: string) =>
-      r === 'main' ? '준결승 라운드' : r === 'final' ? '결승 라운드' : '예선 라운드',
+      r === 'main' ? '본선 라운드' : '예선 라운드',
     submit_btn: '제출하기',
     submitting: '제출 중…',
     submitted_ok: '제출 완료 — 채점 대기 중입니다. 제출 후에는 수정할 수 없습니다.',
@@ -167,7 +167,7 @@ const DICT = {
     submit_next: 'Submission is wired in the next step.',
     submit_title: 'Submit final',
     submit_round: (r: string) =>
-      r === 'main' ? 'Semifinal round' : r === 'final' ? 'Final round' : 'Application round',
+      r === 'main' ? 'Main round' : 'Application round',
     submit_btn: 'Submit',
     submitting: 'Submitting…',
     submitted_ok: 'Submitted — awaiting scoring. Submissions cannot be edited.',
