@@ -48,6 +48,10 @@ async function cloneSeason(srcId, newId, overrides) {
   if (error) throw new Error(`clone read failed: ${error.message}`)
   const row = { ...src, ...overrides, id: newId }
   delete row.created_at
+  // GENERATED ALWAYS columns -- cannot be inserted.
+  delete row.prize_first
+  delete row.prize_second
+  delete row.prize_third
   const { error: insErr } = await admin.from('seasons').insert(row)
   if (insErr) throw new Error(`clone insert ${newId} failed: ${insErr.message}`)
 }
