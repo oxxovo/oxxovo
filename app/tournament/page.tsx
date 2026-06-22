@@ -2,15 +2,14 @@
 // and bio links (TK + 메인 제니, 2026-06-21). Server-rendered so the poster +
 // season info are in the initial HTML (SEO + share previews). Every operating
 // number is read live from the seasons row + membership config -- no hardcode
-// ([[feedback-no-hardcode]]). Structured info (dates/prize/access) is final;
-// the narrative marketing copy is placeholder until 제니3 delivers it (marked
-// COPY-PENDING below).
+// ([[feedback-no-hardcode]]). Narrative copy is the HQ-reviewed Season 0 "THE
+// LAST HOPE" 8-section copy (TK + 메인 제니, 2026-06-22); section [6] = Founding
+// 2-benefit block, kept distinct from the "What it costs" fee/price line.
 
 import Link from 'next/link'
 import {
   getCurrentSeason,
   advanceCountLabel,
-  formatAccessCopy,
   formatDeadlinePT,
   type Season,
 } from '@/lib/seasons'
@@ -43,6 +42,10 @@ function ScheduleRow({ label, value }: { label: string; value: string | null }) 
   )
 }
 
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="mb-4 text-[12px] font-bold uppercase tracking-[0.2em] text-[#8B22FF]">{children}</h2>
+}
+
 export default async function TournamentPage() {
   const [season, mem] = await Promise.all([
     getCurrentSeason(),
@@ -59,22 +62,25 @@ export default async function TournamentPage() {
 
   const cta = resolveCta(season)
   const m: MembershipLandingData = mem
-  const accessCopy = formatAccessCopy({
-    seasonName: season.name,
-    entryFee: Number(season.entry_fee),
-    membershipEnabled: m.enabled,
-    price: m.price,
-    interval: m.interval,
-    foundingMonths: m.foundingMonths,
-    foundingCap: m.founding.cap,
-  })
+
+  // Dynamic numbers (no hardcode -- [[feedback-no-hardcode]]).
+  const pool = Number(season.total_prize_pool).toLocaleString()
+  const p1 = Number(season.prize_first).toLocaleString()
+  const p2 = Number(season.prize_second).toLocaleString()
+  const p3 = Number(season.prize_third).toLocaleString()
+  const cap = m.founding.cap
+  const foundingTerm = m.foundingMonths === 12 ? '1-year' : `${m.foundingMonths}-month`
+  const priceText = m.price != null ? `$${m.price.toFixed(2)}/${m.interval}` : '$19.99/month'
+  const entryFee = Number(season.entry_fee)
+  const feeLine = entryFee === 0 ? `There is no entry fee for ${season.name}.` : `${season.name} has a $${entryFee.toLocaleString()} entry fee.`
+  const advanceLabel = advanceCountLabel(season)
   const themeText = season.season_theme && season.season_theme.trim().length > 0
     ? season.season_theme
     : 'Open theme — create anything'
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
-      {/* ---- Hero: poster + title ------------------------------------------ */}
+      {/* ---- [1] Hero: poster + title + tagline ---------------------------- */}
       <section className="px-6 pt-24 pb-12 md:pt-32 border-b border-white/5">
         <div className="max-w-5xl mx-auto grid gap-10 md:grid-cols-[minmax(0,360px)_1fr] md:items-center">
           {/* Poster (poster_url from admin; placeholder until 제니3 uploads). */}
@@ -96,15 +102,14 @@ export default async function TournamentPage() {
           <div>
             <p className="mb-4 inline-flex items-center gap-2.5 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
               <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
-              OXXOVO Tournament
+              Season {season.season_number}
             </p>
             <h1 className="text-4xl md:text-6xl font-black tracking-tight leading-[0.95]">
-              {season.display_name ?? season.name}
+              {season.name}
             </h1>
 
-            {/* COPY-PENDING (제니3): hero tagline / one-line pitch. */}
             <p className="mt-5 max-w-xl text-lg text-white/70 leading-relaxed">
-              An AI-native video tournament. Create, compete, and earn your place.
+              The AI video tournament where creators compete — and AI decides.
             </p>
 
             <div className="mt-7 flex flex-wrap items-center gap-4">
@@ -122,12 +127,22 @@ export default async function TournamentPage() {
         </div>
       </section>
 
+      {/* ---- [2] What OXXOVO is -------------------------------------------- */}
+      <section className="px-6 pt-14 md:pt-16">
+        <div className="max-w-3xl mx-auto text-center">
+          <p className="text-lg md:text-xl text-white/80 leading-relaxed">
+            OXXOVO is an AI video creation tournament. Make a short AI video, go up against
+            creators worldwide, and let AI judge it — 100%, no connections, no popularity votes.
+          </p>
+        </div>
+      </section>
+
       {/* ---- Info: all live from the seasons row + membership config -------- */}
       <section className="px-6 py-16 md:py-20">
         <div className="max-w-5xl mx-auto grid gap-10 md:grid-cols-2">
           {/* Schedule */}
           <div>
-            <h2 className="mb-5 text-[12px] font-bold uppercase tracking-[0.2em] text-[#8B22FF]">Schedule</h2>
+            <SectionHeading>Schedule</SectionHeading>
             <ScheduleRow label="Applications open" value={formatDeadlinePT(season.application_open_at)} />
             <ScheduleRow label="Applications close" value={formatDeadlinePT(season.application_close_at)} />
             <ScheduleRow label="Main round" value={formatDeadlinePT(season.main_round_start_at)} />
@@ -139,45 +154,125 @@ export default async function TournamentPage() {
 
           {/* Prize + advancement */}
           <div>
-            <h2 className="mb-5 text-[12px] font-bold uppercase tracking-[0.2em] text-[#8B22FF]">Prizes</h2>
+            <SectionHeading>Prizes</SectionHeading>
             <div className="rounded-lg border border-[#8b22ff]/20 bg-[#8b22ff]/[.04] px-5 py-4">
-              <p className="text-3xl font-black text-white">${Number(season.total_prize_pool).toLocaleString()}</p>
+              <p className="text-3xl font-black text-white">${pool}</p>
               <p className="mt-1 text-xs uppercase tracking-widest text-[#b66cff]">Total prize pool</p>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                <div><p className="text-white/40 text-xs uppercase">1st</p><p className="font-bold">${Number(season.prize_first).toLocaleString()}</p></div>
-                <div><p className="text-white/40 text-xs uppercase">2nd</p><p className="font-bold">${Number(season.prize_second).toLocaleString()}</p></div>
-                <div><p className="text-white/40 text-xs uppercase">3rd</p><p className="font-bold">${Number(season.prize_third).toLocaleString()}</p></div>
+                <div><p className="text-white/40 text-xs uppercase">1st</p><p className="font-bold">${p1}</p></div>
+                <div><p className="text-white/40 text-xs uppercase">2nd</p><p className="font-bold">${p2}</p></div>
+                <div><p className="text-white/40 text-xs uppercase">3rd</p><p className="font-bold">${p3}</p></div>
               </div>
             </div>
             <p className="mt-4 text-sm text-white/60 leading-relaxed">
-              The {advanceCountLabel(season)} advance to the Main Round as Finalists.
+              The {advanceLabel} advance to the Main Round as Finalists.
             </p>
           </div>
 
           {/* Theme */}
           <div>
-            <h2 className="mb-3 text-[12px] font-bold uppercase tracking-[0.2em] text-[#8B22FF]">Theme</h2>
+            <SectionHeading>Theme</SectionHeading>
             <p className="text-sm text-white/70 leading-relaxed">{themeText}</p>
           </div>
 
-          {/* Cost / access */}
+          {/* Cost / access -- baseline fee + membership price only; the Founding
+              perk lives in its own section below ([6]) to avoid duplication. */}
           <div>
-            <h2 className="mb-3 text-[12px] font-bold uppercase tracking-[0.2em] text-[#8B22FF]">What it costs</h2>
-            <p className="text-sm text-white/70 leading-relaxed">{accessCopy}</p>
+            <SectionHeading>What it costs</SectionHeading>
+            <p className="text-sm text-white/70 leading-relaxed">
+              {feeLine} Competing on OXXOVO requires a Creator Membership ({priceText}).
+            </p>
           </div>
-        </div>
-
-        {/* COPY-PENDING (제니3): longer narrative / why-compete body goes here. */}
-        <div className="max-w-5xl mx-auto mt-12 rounded-lg border border-dashed border-white/10 bg-white/[.02] px-6 py-5 text-sm text-white/50 leading-relaxed">
-          Why compete on OXXOVO, the experience, and the story — copy pending.
         </div>
       </section>
 
-      {/* ---- CTA ----------------------------------------------------------- */}
+      {/* ---- [3] Why compete ----------------------------------------------- */}
+      <section className="px-6 py-14 md:py-16 border-t border-white/5">
+        <div className="max-w-3xl mx-auto">
+          <SectionHeading>Why compete</SectionHeading>
+          <p className="text-base md:text-lg text-white/75 leading-relaxed">
+            A ${pool} prize pool for {season.name} — 1st ${p1}, 2nd ${p2}, 3rd ${p3}. The
+            first {cap} creators join as Founding Creators. And this is only the beginning:
+            the road leads to a World Championship with prizes up to $250,000 (TBD).
+          </p>
+        </div>
+      </section>
+
+      {/* ---- [4] How it works: two stages ---------------------------------- */}
+      <section className="px-6 py-14 md:py-16 border-t border-white/5">
+        <div className="max-w-3xl mx-auto">
+          <SectionHeading>How it works</SectionHeading>
+          <p className="mb-6 text-base md:text-lg text-white/75 leading-relaxed">Two stages, then the podium.</p>
+          <ul className="space-y-4">
+            <li className="rounded-lg border border-white/10 bg-white/[.02] px-5 py-4">
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-[#b66cff]">Preliminary</p>
+              <p className="mt-1.5 text-sm text-white/70 leading-relaxed">
+                Submit a {season.application_video_min_seconds}–{season.application_video_max_seconds}s AI video made with any tool. Open theme. Everyone competes.
+              </p>
+            </li>
+            <li className="rounded-lg border border-white/10 bg-white/[.02] px-5 py-4">
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-[#b66cff]">Main round</p>
+              <p className="mt-1.5 text-sm text-white/70 leading-relaxed">
+                The {advanceLabel} become Finalists and create in OXXOVO Studio.
+              </p>
+            </li>
+            <li className="rounded-lg border border-white/10 bg-white/[.02] px-5 py-4">
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-[#b66cff]">The podium</p>
+              <p className="mt-1.5 text-sm text-white/70 leading-relaxed">1st · 2nd · 3rd.</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      {/* ---- [5] The main round: Studio + Genesis Rule --------------------- */}
+      <section className="px-6 py-14 md:py-16 border-t border-white/5">
+        <div className="max-w-3xl mx-auto">
+          <SectionHeading>The main round</SectionHeading>
+          <p className="text-base md:text-lg text-white/75 leading-relaxed">
+            Reach the main round and you&apos;ll build your entry inside OXXOVO Studio, under the
+            Genesis Rule — composed only from clips made in Studio, no external assets or separate
+            VFX, audio from the AI clips only.
+          </p>
+          <p className="mt-3 text-sm text-white/45 leading-relaxed">
+            (From Season 1, Studio applies from the preliminary too.)
+          </p>
+        </div>
+      </section>
+
+      {/* ---- [6] Join as a Founding Creator -- the 2-benefit block --------- */}
+      <section className="px-6 py-14 md:py-16 border-t border-white/5">
+        <div className="max-w-3xl mx-auto">
+          <SectionHeading>Join as a Founding Creator</SectionHeading>
+          <p className="text-base md:text-lg text-white/75 leading-relaxed">
+            The first {cap} creators join as Founding Creators:
+          </p>
+          <ul className="mt-5 space-y-3">
+            <li className="flex items-start gap-3 rounded-lg border border-[#8b22ff]/25 bg-[#8b22ff]/[.05] px-5 py-4">
+              <span className="mt-0.5 text-[#b66cff]">✦</span>
+              <span className="text-sm text-white/85"><strong>{foundingTerm} free Creator Membership</strong></span>
+            </li>
+            <li className="flex items-start gap-3 rounded-lg border border-[#8b22ff]/25 bg-[#8b22ff]/[.05] px-5 py-4">
+              <span className="mt-0.5 text-[#b66cff]">✦</span>
+              <span className="text-sm text-white/85"><strong>Founding badge</strong></span>
+            </li>
+          </ul>
+          <p className="mt-5 text-sm text-white/55 leading-relaxed">
+            After the first {cap}, Creator Membership is {priceText}. Membership is required to compete.
+          </p>
+        </div>
+      </section>
+
+      {/* ---- [7] CTA ------------------------------------------------------- */}
       <section className="px-6 py-16 md:py-24 text-center border-t border-white/5">
         <div className="max-w-2xl mx-auto">
           <div className="text-xs tracking-[0.3em] text-[#8B22FF] mb-6">READY?</div>
-          <h2 className="text-3xl md:text-5xl font-black mb-8 tracking-tight">Enter the arena.</h2>
+          <h2 className="text-3xl md:text-5xl font-black mb-5 tracking-tight">This is THE LAST HOPE.</h2>
+          <p className="mb-8 text-base md:text-lg text-white/70 leading-relaxed">
+            Make your video, submit the link, and let the work speak.
+            {formatDeadlinePT(season.application_close_at)
+              ? ` Applications close ${formatDeadlinePT(season.application_close_at)}.`
+              : ''}
+          </p>
           <Link
             href={cta.href}
             className="inline-block bg-[#8B22FF] hover:bg-[#9B32FF] text-white font-bold tracking-[0.2em] px-10 py-5 transition"
@@ -185,6 +280,14 @@ export default async function TournamentPage() {
             {cta.label.toUpperCase()}
           </Link>
         </div>
+      </section>
+
+      {/* ---- [8] Questions ------------------------------------------------- */}
+      <section className="px-6 pb-4 text-center">
+        <p className="text-sm text-white/45">
+          Questions? Ask the OXXOVO assistant below, or email{' '}
+          <a href="mailto:info@oxxovo.com" className="text-white/70 underline hover:text-white">info@oxxovo.com</a>.
+        </p>
       </section>
 
       <footer className="px-6 py-12 border-t border-white/5">
