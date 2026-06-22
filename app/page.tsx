@@ -99,6 +99,7 @@ export default function OXXOVOLandingPage() {
         </a>
 
         <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
+          <a className="transition hover:text-[#b66cff]" href="/tournament">Tournament</a>
           <a className="transition hover:text-[#b66cff]" href="#how">How It Works</a>
           <a className="transition hover:text-[#b66cff]" href="#about">About</a>
           <a className="transition hover:text-[#b66cff]" href="/membership">Membership</a>
@@ -170,6 +171,12 @@ export default function OXXOVOLandingPage() {
                 className="flex h-[64px] items-center justify-center rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-8 text-[16px] font-extrabold uppercase tracking-wide text-white shadow-[0_0_28px_rgba(139,34,255,.5)] transition hover:brightness-110"
               >
                 Apply to {season?.name ?? 'GENESIS'}
+              </a>
+              <a
+                href="/tournament"
+                className="mt-3 flex h-[52px] items-center justify-center rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.06] px-8 text-[15px] font-bold uppercase tracking-wide text-white/90 transition hover:bg-[#8b22ff]/[.12]"
+              >
+                Tournament Info
               </a>
               <p className="mt-2.5 text-xs text-white/50">
                 Submit your AI video. {season ? (
@@ -378,6 +385,7 @@ export default function OXXOVOLandingPage() {
           </div>
           <span>OXXOVO Labs Inc. · Las Vegas, Nevada, USA · oxxovo.ai</span>
           <div className="flex items-center gap-4">
+            <a href="/tournament" className="hover:text-white/70">Tournament</a>
             <a href="/membership" className="hover:text-white/70">Membership</a>
             <a href="/terms" className="hover:text-white/70">Terms</a>
             <a href="/privacy" className="hover:text-white/70">Privacy</a>
