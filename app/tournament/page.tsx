@@ -17,6 +17,7 @@ import {
 import { getMembershipLandingData } from '@/app/membership/actions'
 import type { MembershipLandingData } from '@/app/membership/types'
 import { formatFooterStatusLine } from '@/lib/ip-info'
+import { ChatWidget } from '@/app/_components/ChatWidget'
 
 export const dynamic = 'force-dynamic'
 
@@ -195,6 +196,8 @@ export default async function TournamentPage() {
           OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. &middot; {formatFooterStatusLine()}
         </div>
       </footer>
+
+      <ChatWidget />
     </main>
   )
 }
