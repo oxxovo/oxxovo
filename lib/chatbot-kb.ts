@@ -122,8 +122,8 @@ Q. How does membership work?
 - KR: 선착순 100명은 "Founding Creator"로 1년간 멤버십이 무료입니다. 이후 멤버십은 월 $19.99입니다. 멤버십은 대회 참가 자격이며, 영상 생성 크레딧과는 별개입니다.
 - EN: The first 100 members join as "Founding Creators" with a free 1-year membership. After that, membership is $19.99/month. Membership is your entry to compete and is separate from video-generation credits.
 Q. What do Founding Creators get?
-- KR: 선착순 100명 한정 - 시즌0 무료 참가, 1년 무료 멤버십, Founding 디지털 배지(프로필 표시, 실물 아님), 영구 아카이브 등재. ("무료 참가"는 시즌0 참가가 무료라는 뜻이며, 본선 Studio 크레딧은 별도 본인 부담입니다.)
-- EN: Limited to first 100 - Free entry to Season 0, 1-year free membership, Founding digital badge (shown on your profile; not a physical item), permanent archive recognition. ("Free entry" means Season 0 entry is free; main-round Studio credits are still paid by the creator.)
+- KR: 선착순 100명 한정 — 두 가지 혜택: 1년 무료 멤버십, Founding 디지털 배지(프로필에 영구 표시, 실물 아님). (멤버십은 대회 참가 자격이며, 본선 Studio 크레딧은 별도 본인 부담입니다.)
+- EN: Limited to the first 100 — two benefits: a 1-year free membership and a Founding digital badge (shown permanently on your profile; not a physical item). (Membership is your entry to compete; main-round Studio credits are still paid by the creator.)
 Q. Is there an entry fee?
 - KR: 토너먼트 참가비는 없습니다. 다만 참가하려면 창작자 멤버십이 필요한데, 선착순 100명은 1년 무료(Founding Creator)이고 이후에는 월 $19.99입니다. (본선 영상 제작 시의 크레딧은 별도 — 아래 H 참조)
 - EN: There is no tournament entry fee. To compete you need a Creator membership — the first 100 join free for one year as Founding Creators, then $19.99/month. (Credits for main-round video creation are separate — see section H.)
@@ -161,7 +161,7 @@ Treat these as outside the knowledge base. Do NOT guess; reply with the standard
 - Undecided future topics (Season 2/3/4, World Championship themes) -- only "to be announced".
 - Prize payout method, taxes, settlement -> info@oxxovo.com.
 - Video copyright / ownership -> terms area, info@oxxovo.com.
-- Founding Creator benefits beyond the stated four (free Season 0 entry, 1-year free membership, Founding digital badge, permanent archive) -- undecided, do not assert.
+- Founding Creator benefits beyond the stated two (1-year free membership, Founding digital badge) -- undecided, do not assert. There is NO permanent-archive / Hall-of-Fame listing benefit and no "free Season 0 entry" perk; do not claim either.
 
 ## FORBIDDEN OUTPUTS (never say)
 - "FREE ENTRY" alone -> say "no tournament entry fee + membership free for first 100, then $19.99/month".

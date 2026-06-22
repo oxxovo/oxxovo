@@ -97,10 +97,10 @@ const CASES = [
     mustNot: ['$5,000', '$10,000'],
   },
   {
-    label: 'Founding 4 benefits (KR)',
+    label: 'Founding 2 benefits (KR)',
     q: 'Founding Creator 혜택이 뭐예요?',
-    must: [['시즌0', '참가'], ['멤버십'], ['배지'], ['아카이브']],
-    mustNot: ['$10', '웰컴'],
+    must: [['멤버십'], ['배지']],
+    mustNot: ['$10', '웰컴', '아카이브', '영구 기록'],
   },
   {
     label: 'Founding digital badge (EN)',

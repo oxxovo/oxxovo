@@ -1248,7 +1248,7 @@ const MESSAGES_EN: Messages = {
     vote_note: 'Community voting opens in a later season.',
     founding_section_title: 'Founding Creator',
     founding_section_body: (cap, months) =>
-      `First ${cap} only — Free entry to Season 0 · ${months === 12 ? '1-year' : `${months}-month`} free membership · Founding digital badge · permanent archive`,
+      `First ${cap} only — ${months === 12 ? '1-year' : `${months}-month`} free membership · Founding digital badge`,
     founding_renew_note:
       'Renews automatically afterward unless cancelled — we’ll remind you before it does.',
     cta_coming_soon: 'Coming soon',
@@ -1850,7 +1850,7 @@ const MESSAGES_KO: Messages = {
     vote_note: '커뮤니티 투표는 추후 시즌에 열립니다.',
     founding_section_title: 'Founding Creator',
     founding_section_body: (cap, months) =>
-      `선착순 ${cap}명 한정 — 시즌0 무료 참가 · ${months === 12 ? '1년' : `${months}개월`} 무료 멤버십 · Founding 디지털 배지 · 영구 아카이브`,
+      `선착순 ${cap}명 한정 — ${months === 12 ? '1년' : `${months}개월`} 무료 멤버십 · Founding 디지털 배지`,
     founding_renew_note: '이후 취소하지 않으면 자동 갱신됩니다 — 갱신 전에 미리 알려드립니다.',
     cta_coming_soon: '준비 중',
     cta_signup: '가입하고 시작하기',
