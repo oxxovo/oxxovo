@@ -96,6 +96,18 @@ const CASES = [
     must: [['3,000', '3000'], ['1,800', '1800'], ['750'], ['450']],
     mustNot: ['$5,000', '$10,000'],
   },
+  {
+    label: 'Founding 4 benefits (KR)',
+    q: 'Founding Creator 혜택이 뭐예요?',
+    must: [['시즌0', '참가'], ['멤버십'], ['배지'], ['아카이브']],
+    mustNot: ['$10', '웰컴'],
+  },
+  {
+    label: 'Founding digital badge (EN)',
+    q: 'Is the Founding badge a physical item?',
+    must: [['digital', 'profile']],
+    mustNot: ['physical badge', 'physical Founding'],
+  },
 ]
 
 function check(reply, c) {
