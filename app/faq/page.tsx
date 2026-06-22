@@ -74,7 +74,7 @@ function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
     },
     {
       q: 'What is a Finalist?',
-      a: `The creators who advance to the ${season.name} Main Round become Finalists. They receive a permanent badge and a place in the ${season.name} Archive.`,
+      a: `Applicants who place in the ${advanceLabel} advance to the ${season.name} Main Round as Finalists, where they create their competition video in OXXOVO Studio.`,
     },
     {
       q: 'Why does OXXOVO emphasize verification?',

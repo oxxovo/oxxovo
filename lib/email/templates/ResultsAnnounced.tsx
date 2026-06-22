@@ -41,10 +41,6 @@ function Korean(p: ResultsAnnouncedProps) {
         1·2·3위 수상자에게는 상금 지급을 위한 안내 메일이 별도로 자동
         발송됩니다. 그 외 참가자분들의 결과도 모두 프로필에 영구 기록됩니다.
       </Text>
-      <Text style={muted}>
-        Hall of Fame은 시즌이 바뀌어도 사라지지 않고 누적됩니다 — 본 시즌의
-        기록은 다음 시즌이 열려도 그대로 남습니다.
-      </Text>
       <Text style={signoff}>OXXOVO Genesis 운영팀 드림</Text>
     </Layout>
   )
@@ -69,10 +65,6 @@ function English(p: ResultsAnnouncedProps) {
         payout instructions. Every participant&rsquo;s result is permanently
         recorded on their profile.
       </Text>
-      <Text style={muted}>
-        Hall of Fame accumulates across seasons — your record from this season
-        stays even as new seasons open.
-      </Text>
       <Text style={signoff}>— The OXXOVO Genesis team</Text>
     </Layout>
   )
@@ -91,13 +83,6 @@ const paragraph: React.CSSProperties = {
   fontSize: 15,
   lineHeight: 1.7,
   margin: '0 0 14px',
-}
-
-const muted: React.CSSProperties = {
-  color: '#666666',
-  fontSize: 13,
-  lineHeight: 1.7,
-  margin: '20px 0 0',
 }
 
 const signoff: React.CSSProperties = {
