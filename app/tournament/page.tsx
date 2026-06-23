@@ -193,7 +193,7 @@ export default async function TournamentPage() {
           <p className="text-base md:text-lg text-white/75 leading-relaxed">
             A ${pool} prize pool for {season.name} — 1st ${p1}, 2nd ${p2}, 3rd ${p3}. The
             first {cap} creators join as Founding Creators. And this is only the beginning:
-            the road leads to a World Championship with prizes up to $250,000 (TBD).
+            the road leads to a World Championship with prizes up to $250,000, plus sponsorship prizes (TBD).
           </p>
         </div>
       </section>
