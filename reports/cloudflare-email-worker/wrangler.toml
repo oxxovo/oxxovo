@@ -1,0 +1,13 @@
+name = "oxxovo-inbound-email"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Non-secret config. The secret (EMAIL_INBOUND_SECRET) is set separately with
+#   wrangler secret put EMAIL_INBOUND_SECRET
+# so it never lands in this committed file.
+[vars]
+INBOUND_WEBHOOK_URL = "https://www.oxxovo.ai/api/email/inbound"
+# Verified Cloudflare Email Routing destination address (ops inbox). The Worker
+# forwards every original message here in addition to the auto-reply pipeline.
+FORWARD_TO = "REPLACE_WITH_OPS_DESTINATION@example.com"
