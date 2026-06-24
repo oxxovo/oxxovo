@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/admin-auth'
+import { requireStaff } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { type Season } from '@/lib/seasons'
 import { EmailsView, type EmailLogRow } from './EmailsView'
@@ -14,7 +14,7 @@ export default async function EmailsPage({
 }: {
   searchParams: Promise<{ season?: string; page?: string }>
 }) {
-  await requireAdmin()
+  await requireStaff()
   const { season: seasonParam, page: pageParam } = await searchParams
   const supabase = createSupabaseAdmin()
 

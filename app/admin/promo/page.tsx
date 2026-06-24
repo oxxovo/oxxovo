@@ -1,10 +1,10 @@
-import { requireAdmin } from '@/lib/admin-auth'
+import { requireStaff } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { isPostizEnabled, PROMO_CHANNELS } from '@/lib/postiz'
 import { PromoView, type PromoRow } from './PromoView'
 
 export default async function PromoPage() {
-  await requireAdmin()
+  await requireStaff()
   const admin = createSupabaseAdmin()
 
   const { data } = await admin

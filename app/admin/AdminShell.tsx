@@ -18,19 +18,22 @@ type NavItemKey =
   | 'credits'
   | 'promo'
   | 'messages'
+  | 'managers'
 
-const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean }> = [
+// `super: true` -> visible to admin(super=TK) only; managers don't see it.
+const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean; super?: boolean }> = [
   { href: '/admin', key: 'dashboard', emoji: '🏠' },
-  { href: '/admin/seasons', key: 'seasons', emoji: '🏗️' },
+  { href: '/admin/seasons', key: 'seasons', emoji: '🏗️', super: true },
   { href: '/admin/applications', key: 'applications', emoji: '📹' },
-  { href: '/admin/pre-registrations', key: 'pre_registrations', emoji: '📨' },
+  { href: '/admin/pre-registrations', key: 'pre_registrations', emoji: '📨', super: true },
   { href: '/admin/contacts', key: 'contacts', emoji: '📇' },
   { href: '/admin/winners', key: 'winners', emoji: '🏆', soon: true },
-  { href: '/admin/partners', key: 'partners', emoji: '🤝' },
+  { href: '/admin/partners', key: 'partners', emoji: '🤝', super: true },
   { href: '/admin/emails', key: 'emails', emoji: '📧' },
-  { href: '/admin/credits', key: 'credits', emoji: '💳' },
+  { href: '/admin/credits', key: 'credits', emoji: '💳', super: true },
   { href: '/admin/promo', key: 'promo', emoji: '🎬' },
   { href: '/admin/messages', key: 'messages', emoji: '💬' },
+  { href: '/admin/managers', key: 'managers', emoji: '🛡️', super: true },
 ]
 
 export function AdminShell({
@@ -44,8 +47,15 @@ export function AdminShell({
 }) {
   const t = useT()
 
-  // Member-hosted nav entry is hidden unless the program is on (master switch).
-  const nav = NAV.filter((item) => item.key !== 'partners' || memberHostedEnabled)
+  const isSuper = admin.role === 'admin'
+  // Filter nav by:
+  //   - role: super-only items (seasons/credits/partners/pre-reg/managers) hidden from managers.
+  //   - master switch: member-hosted (partners) entry hidden unless the program is on.
+  const nav = NAV.filter((item) => {
+    if (item.super && !isSuper) return false
+    if (item.key === 'partners' && !memberHostedEnabled) return false
+    return true
+  })
 
   return (
     <div className="min-h-screen bg-[#0a0608] text-white flex">

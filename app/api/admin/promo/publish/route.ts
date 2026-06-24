@@ -1,5 +1,5 @@
 // admin 홍보영상 자동게시 -- Postiz 4채널(IG/TikTok/YouTube/X) 예약/즉시 게시.
-// server-only route. admin 인증(쿠키 세션 + profiles.role='admin'). 서버 권위:
+// server-only route. staff 인증(쿠키 세션 + profiles.role in admin/manager). 서버 권위:
 // 영상 URL/채널 id 는 DB/platform_config 에서 서버가 해석, 클라이언트 신뢰 X.
 // 조건부: POSTIZ_API_KEY 없으면 503(자동게시 비활성, 생성/아카이브는 별개).
 
@@ -9,7 +9,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { isPostizEnabled, publishPost, PROMO_CHANNELS, type PromoChannel } from '@/lib/postiz'
 
 export async function POST(req: Request) {
-  // 1. admin 인증 (쿠키 세션 + profiles.role).
+  // 1. staff 인증 (쿠키 세션 + profiles.role in admin/manager). promo 는 매니저 허용.
   const supa = await createSupabaseServer()
   const {
     data: { user },
@@ -22,7 +22,9 @@ export async function POST(req: Request) {
     .select('role')
     .eq('id', user.id)
     .single()
-  if (prof?.role !== 'admin') return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  if (prof?.role !== 'admin' && prof?.role !== 'manager') {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
 
   // 2. 조건부 활성 -- 키 없으면 자동게시만 비활성.
   if (!isPostizEnabled()) return NextResponse.json({ error: 'postiz_disabled' }, { status: 503 })

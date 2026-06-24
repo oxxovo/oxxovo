@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getResend, EMAIL_FROM } from '@/lib/email/client'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
+import { getStaffEmails } from '@/lib/managers'
 import { classifyAndDraft } from '@/lib/email/inbound-reply'
 
 export const dynamic = 'force-dynamic'
@@ -166,12 +167,16 @@ export async function POST(req: NextRequest) {
   // 6. Classify with KB v4.
   const decision = await classifyAndDraft({ subject, body: text })
 
+  // Escalations fan out to all staff (admin + manager) + the ops mailbox backstop.
+  const staffEmails = await getStaffEmails()
+
   if (decision.action === 'escalate') {
     // Forward to ops -- a human replies. No auto-reply to the sender.
     const safeSubject = subject || '(no subject)'
     await sendAdminAlert(
       `[Inbound] Needs human: ${safeSubject}`,
       escalationHtml({ from, subject: safeSubject, reason: decision.reason, text }),
+      staffEmails,
     )
     await logInbound({ messageId, from, to, subject, action: 'escalated' })
     return NextResponse.json({ ok: true, action: 'escalated', reason: decision.reason })
@@ -207,6 +212,7 @@ export async function POST(req: NextRequest) {
     await sendAdminAlert(
       `[Inbound] Auto-reply FAILED: ${subject || '(no subject)'}`,
       escalationHtml({ from, subject: subject || '(no subject)', reason: 'reply_send_failed', text }),
+      staffEmails,
     )
     await logInbound({ messageId, from, to, subject, action: 'escalated', skipReason: 'reply_send_failed' })
     return NextResponse.json({ ok: true, action: 'escalated', reason: 'reply_send_failed' })

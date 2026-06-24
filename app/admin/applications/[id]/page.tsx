@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { requireAdmin } from '@/lib/admin-auth'
+import { requireStaff } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { ApplicationDetail, type ScoringDetail } from '../ApplicationDetail'
 import { type ApplicationRow } from '../ApplicationsView'
@@ -9,7 +9,7 @@ export default async function ApplicationDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  await requireAdmin()
+  await requireStaff()
   const { id } = await params
   const supabase = await createSupabaseServer()
 

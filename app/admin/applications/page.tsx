@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/admin-auth'
+import { requireStaff } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { type Season } from '@/lib/seasons'
@@ -13,7 +13,7 @@ export default async function ApplicationsPage({
 }: {
   searchParams: Promise<{ season?: string }>
 }) {
-  await requireAdmin()
+  await requireStaff()
   const { season: seasonParam } = await searchParams
   const supabase = await createSupabaseServer()
 

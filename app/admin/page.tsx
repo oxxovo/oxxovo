@@ -1,10 +1,10 @@
-import { requireAdmin } from '@/lib/admin-auth'
+import { requireStaff } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { type Season } from '@/lib/seasons'
 import { DashboardView, type ScoringStats } from './DashboardView'
 
 export default async function AdminDashboard() {
-  const admin = await requireAdmin()
+  const admin = await requireStaff()
   const supabase = await createSupabaseServer()
 
   const { data: seasons } = await supabase

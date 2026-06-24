@@ -89,6 +89,7 @@ type Messages = {
       credits: string
       promo: string
       messages: string
+      managers: string
     }
   }
   dashboard: {
@@ -673,6 +674,7 @@ const MESSAGES_EN: Messages = {
       credits: 'Credits',
       promo: 'Promo videos',
       messages: 'Messages',
+      managers: 'Managers',
     },
   },
   dashboard: {
@@ -1280,6 +1282,7 @@ const MESSAGES_KO: Messages = {
       credits: '크레딧',
       promo: '홍보영상',
       messages: '메시지',
+      managers: '매니저',
     },
   },
   dashboard: {

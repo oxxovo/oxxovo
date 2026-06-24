@@ -1,10 +1,10 @@
 import { ReactNode } from 'react'
-import { getAdminOrNull } from '@/lib/admin-auth'
+import { getStaffOrNull } from '@/lib/admin-auth'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 import { AdminShell } from './AdminShell'
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  const admin = await getAdminOrNull()
+  const admin = await getStaffOrNull()
 
   // /admin/login still mounts this layout; we render children without the chrome
   // when there's no admin session (login page handles its own UI).
