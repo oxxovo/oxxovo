@@ -11,8 +11,12 @@
 //
 // 2026-06-23: added sections K (Account & Login -- passwordless magic link),
 // L (Membership Billing & Refunds -- non-refundable per /terms §8, cancel from
-// profile), M (Technical Issues). HQ compiles the rest (rules/championship/
-// partner/scoring/video/marketing) incrementally in this same KR/EN format.
+// profile), M (Technical Issues), N (Video & Studio), O (Rules, World
+// Championship & Operator). HQ "P (overflow)" was dropped as a full duplicate
+// of B/F. Two HQ facts were corrected to match the live site/official rules:
+// operator location = Las Vegas, Nevada (NOT Delaware); championship name =
+// "World Championship" (NOT "Grand Championship"). HQ compiles the rest
+// (partner/scoring/marketing) incrementally in this same KR/EN format.
 
 import 'server-only'
 
@@ -209,6 +213,37 @@ Q. A page won't load or a video won't play.
 Q. My profile or application isn't showing.
 - KR: 신청할 때 사용한 이메일과 같은 이메일로 로그인했는지 확인해 주세요. 그래도 보이지 않으면 info@oxxovo.com으로 문의해 주세요.
 - EN: Make sure you're logged in with the same email you used to apply. If it still doesn't show, contact info@oxxovo.com.
+
+## N. Video & Studio
+Q. How do I submit my preliminary video?
+- KR: 시즌0 예선은 어떤 AI 도구로든 만든 15~30초 영상을 외부 링크(URL)로 제출합니다. OXXOVO Studio는 본선부터 사용합니다.
+- EN: For the Season 0 preliminary, submit a 15-30 second video made with any AI tool as an external link. OXXOVO Studio is used from the main round.
+Q. What is OXXOVO Studio?
+- KR: 플랫폼 안에서 AI 클립을 생성·조합해 완성 영상을 만드는 제작 도구입니다. 본선 진출자가 사용합니다.
+- EN: An in-platform tool to generate and combine AI clips into a finished video, used by main-round finalists.
+Q. What if a generation fails?
+- KR: 생성이 실패하면 해당 크레딧은 자동 환불됩니다. 재생성도 크레딧을 사용합니다.
+- EN: Failed generations are automatically refunded. Each regeneration uses credits.
+Q. When is Studio available?
+- KR: 시즌0에서는 본선 진출자가 9월 본선부터 사용합니다. 시즌1(GENESIS, 9/28)부터는 예선부터 Studio입니다.
+- EN: In Season 0, finalists use it from the September main round. From Season 1 (GENESIS, Sep 28), Studio is used starting in the preliminary.
+
+## O. Rules, World Championship & Operator
+Q. Where can I see the rules?
+- KR: www.oxxovo.ai/rules에서 보실 수 있습니다. 영어가 기본이며 한국어를 제공합니다.
+- EN: At www.oxxovo.ai/rules. English is the default, with Korean provided.
+Q. How is judging kept fair?
+- KR: 100% AI 심사입니다. 여러 AI 모델이 함께 평가하며, 인맥이나 인기 투표는 순위에 반영되지 않습니다.
+- EN: Judging is 100% AI. Multiple AI models evaluate together; connections or popularity votes do not affect ranking.
+Q. What is the World Championship?
+- KR: 각 대회 우승자들이 겨루는 연말 왕중왕전으로, 2027년부터 매년 12월 개최됩니다. 상금은 up to $250,000, plus sponsorship prizes (TBD)입니다. 시즌0 우승자는 2027 진출 자격을 얻습니다.
+- EN: A year-end World Championship among contest winners, held each December from 2027. The prize is up to $250,000, plus sponsorship prizes (TBD). The Season 0 winner qualifies for 2027.
+Q. Can I host my own contest?
+- KR: 자격을 갖춘 크리에이터가 대회를 여는 파트너 호스트 제도가 시즌3부터 단계적으로 도입될 예정입니다. 자세한 안내는 추후 www.oxxovo.ai에서 공지됩니다.
+- EN: A partner host program for qualified creators is planned from Season 3 onward. Details will be announced later at www.oxxovo.ai.
+Q. Who operates OXXOVO?
+- KR: OXXOVO Labs Inc.(미국 라스베이거스, 네바다 소재)가 운영하며, 상표·특허를 출원 중입니다(OXXOVO™).
+- EN: Operated by OXXOVO Labs Inc. (Las Vegas, Nevada, USA); trademark and patent applications pending (OXXOVO™).
 
 ## OUT-OF-SCOPE RULES
 Treat these as outside the knowledge base. Do NOT guess; reply with the standard info@oxxovo.com message and the team follows up:
