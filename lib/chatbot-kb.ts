@@ -8,6 +8,11 @@
 // When the KB content changes, update this file from the source .md and redeploy.
 // Source of truth: Season 0 = external preliminary / Studio main round / NO
 // welcome credit (v4). Keep in sync with the live system + page copy.
+//
+// 2026-06-23: added sections K (Account & Login -- passwordless magic link),
+// L (Membership Billing & Refunds -- non-refundable per /terms §8, cancel from
+// profile), M (Technical Issues). HQ compiles the rest (rules/championship/
+// partner/scoring/video/marketing) incrementally in this same KR/EN format.
 
 import 'server-only'
 
@@ -150,6 +155,60 @@ Q. Is Korean supported?
 ## J. Contact
 Q. Where can I get more help?
 - KR / EN: info@oxxovo.com.
+
+## K. Account & Login
+Q. How do I create an account / sign up?
+- KR: 로그인 페이지에서 이메일을 입력하면 로그인 링크가 메일로 전송됩니다. 그 링크를 클릭하면 가입과 로그인이 동시에 완료됩니다. 별도의 비밀번호는 없습니다.
+- EN: On the login page, enter your email and we send you a sign-in link. Click it to create your account and sign in at the same time. There is no separate password.
+Q. How do I log in?
+- KR: 가입할 때 사용한 이메일을 로그인 페이지에 입력하면 1회용 로그인 링크가 전송됩니다. 메일의 링크를 클릭하면 로그인됩니다.
+- EN: Enter the email you used on the login page, and we email you a one-time sign-in link. Click the link to log in.
+Q. I forgot my password / how do I reset it?
+- KR: OXXOVO는 비밀번호가 없는 매직 링크 방식입니다. 재설정할 비밀번호가 없으며, 로그인 페이지에서 이메일로 받은 링크로 로그인하시면 됩니다.
+- EN: OXXOVO uses passwordless magic-link login -- there is no password to reset. Just sign in with the link we email you from the login page.
+Q. I didn't receive the login (magic link) email.
+- KR: 스팸·프로모션함을 확인하시고 잠시 후 로그인 페이지에서 다시 요청해 주세요. 그래도 오지 않으면 info@oxxovo.com으로 문의해 주세요.
+- EN: Please check your spam/promotions folder and request the link again from the login page after a moment. If it still doesn't arrive, contact info@oxxovo.com.
+Q. The login link doesn't work or says expired.
+- KR: 로그인 링크는 1회용이며 시간이 지나면 만료됩니다. 로그인 페이지에서 새 링크를 받아 다시 시도해 주세요. 계속 문제가 있으면 info@oxxovo.com으로 문의해 주세요.
+- EN: Sign-in links are single-use and expire after a while. Request a fresh link from the login page and try again. If the problem persists, contact info@oxxovo.com.
+Q. Which email should I use to log in?
+- KR: 신청 시 사용한 이메일과 동일한 이메일로 로그인하셔야 신청 내역과 프로필이 연결됩니다.
+- EN: Log in with the same email you used to apply, so your application and profile stay linked.
+
+## L. Membership Billing & Refunds
+Q. How do I pay for membership?
+- KR: 선착순 100명(Founding Creator)은 1년간 무료입니다. 이후 멤버십은 월 $19.99이며 카드로 결제됩니다. 멤버십은 대회 참가 자격이며 영상 생성 크레딧과는 별개입니다.
+- EN: The first 100 (Founding Creators) are free for one year. After that, membership is $19.99/month paid by card. Membership is your entry to compete and is separate from video-generation credits.
+Q. How do I cancel my membership?
+- KR: 프로필 페이지에서 언제든 해지할 수 있습니다. 해지하면 다음 결제부터 청구되지 않으며, 현재 결제 기간이 끝날 때까지는 이용하실 수 있습니다.
+- EN: You can cancel anytime from your profile page. Cancelling stops future charges, and you keep access until the end of your current paid period.
+Q. Can I get a refund?
+- KR: 멤버십 결제는 환불되지 않습니다. 해지하면 이후 청구가 중단되지만 이미 결제한 기간은 환불되지 않습니다(법으로 요구되는 경우 제외). 특정 결제 건은 info@oxxovo.com으로 문의해 주세요.
+- EN: Membership payments are non-refundable. Cancelling stops future charges, but already-paid periods are not refunded (except where required by law). For a specific charge, please contact info@oxxovo.com.
+Q. What happens when my Founding free year ends?
+- KR: 무료 기간이 끝나면 멤버십은 자동으로 갱신됩니다. 첫 유료 갱신 전에 안내해 드리며, 그 전에 프로필에서 해지하실 수 있습니다.
+- EN: When the free year ends, the membership renews automatically. We notify you before the first paid renewal, and you can cancel from your profile before then.
+Q. Will my membership renew automatically?
+- KR: 네. 매 결제 주기마다 자동 갱신되며, 프로필에서 해지하면 자동 갱신이 중단됩니다.
+- EN: Yes. It renews automatically each billing period; cancelling from your profile stops auto-renewal.
+Q. I have a question about a specific charge or payment.
+- KR: 특정 결제·청구 건은 info@oxxovo.com으로 문의해 주시면 정확히 확인해 드리겠습니다.
+- EN: For a specific payment or charge, please contact info@oxxovo.com and we'll look into it for you.
+
+## M. Technical Issues
+Q. I'm having trouble signing in.
+- KR: 매직 링크 방식이므로 로그인 페이지에서 이메일로 받은 링크로 로그인해 주세요. 메일이 안 오면 스팸함을 확인하고 다시 요청하시고, 계속 문제가 있으면 info@oxxovo.com으로 문의해 주세요.
+- EN: We use magic-link sign-in -- log in via the link emailed from the login page. If it doesn't arrive, check spam and request again; if problems persist, contact info@oxxovo.com.
+Q. Checkout or payment failed.
+- KR: 잠시 후 다시 시도해 주세요. 계속 실패하거나, 결제는 되었는데 멤버십이 적용되지 않았다면 info@oxxovo.com으로 문의해 주세요.
+- EN: Please try again after a moment. If it keeps failing, or you were charged but membership didn't activate, contact info@oxxovo.com.
+Q. A page won't load or a video won't play.
+- KR: 페이지를 새로고침하거나 다른 브라우저로 시도해 주세요. 문제가 계속되면 info@oxxovo.com으로 알려 주세요.
+- EN: Try refreshing the page or using a different browser. If it continues, let us know at info@oxxovo.com.
+Q. My profile or application isn't showing.
+- KR: 신청할 때 사용한 이메일과 같은 이메일로 로그인했는지 확인해 주세요. 그래도 보이지 않으면 info@oxxovo.com으로 문의해 주세요.
+- EN: Make sure you're logged in with the same email you used to apply. If it still doesn't show, contact info@oxxovo.com.
 
 ## OUT-OF-SCOPE RULES
 Treat these as outside the knowledge base. Do NOT guess; reply with the standard info@oxxovo.com message and the team follows up:
