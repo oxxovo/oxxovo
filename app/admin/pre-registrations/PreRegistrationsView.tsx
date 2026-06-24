@@ -28,10 +28,14 @@ export function PreRegistrationsView({
   seasons,
   selectedSeasonScope,
   rows,
+  isSuper,
 }: {
   seasons: SeasonOption[]
   selectedSeasonScope: string // 'all' or a season id
   rows: PreRegRow[]
+  // Bulk CSV export is super-only (대량 개인정보 export). Managers can view the
+  // list but not download it in bulk.
+  isSuper: boolean
 }) {
   const t = useT()
   const router = useRouter()
@@ -120,14 +124,16 @@ export function PreRegistrationsView({
           />
         </label>
 
-        <button
-          type="button"
-          onClick={handleCsvExport}
-          disabled={filtered.length === 0}
-          className="px-4 py-2 rounded border border-[#ff8844]/40 text-[#ff8844] text-xs font-bold uppercase tracking-wider hover:bg-[#ff8844]/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {t.pre_reg.csv_export}
-        </button>
+        {isSuper && (
+          <button
+            type="button"
+            onClick={handleCsvExport}
+            disabled={filtered.length === 0}
+            className="px-4 py-2 rounded border border-[#ff8844]/40 text-[#ff8844] text-xs font-bold uppercase tracking-wider hover:bg-[#ff8844]/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {t.pre_reg.csv_export}
+          </button>
+        )}
       </div>
 
       <div className="border border-white/10 rounded overflow-hidden">

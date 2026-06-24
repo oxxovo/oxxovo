@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/admin-auth'
+import { requireStaff } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { PreRegistrationsView, type PreRegRow } from './PreRegistrationsView'
@@ -9,7 +9,8 @@ export default async function PreRegistrationsPage({
 }: {
   searchParams: Promise<{ season?: string }>
 }) {
-  await requireAdmin()
+  // Managers may view the list; only super (admin) gets the bulk CSV export.
+  const staff = await requireStaff()
   const { season: seasonParam } = await searchParams
   const supabase = await createSupabaseServer()
 
@@ -69,6 +70,7 @@ export default async function PreRegistrationsPage({
       seasons={seasons}
       selectedSeasonScope={seasonScope}
       rows={rows}
+      isSuper={staff.role === 'admin'}
     />
   )
 }
