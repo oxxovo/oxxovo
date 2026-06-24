@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
 import { canSubmitMainRound, getSeasonById } from '@/lib/seasons'
@@ -217,6 +218,109 @@ export async function saveWinnerInfo(input: SaveWinnerInfoInput): Promise<SaveRe
   revalidatePath('/admin/applications')
 
   return { ok: true }
+}
+
+// ─── SMS opt-in (A2P 10DLC / TCPA) ──────────────────────────────────────
+// /profile 의 선택 전화번호 + SMS 수신 동의. TCPA 는 동의 증거(시각/IP/고지문구)
+// 보관을 요구하므로 opt-in 시 sms_consent_at/ip/text 를 함께 기록한다. 동의는
+// 서비스 이용 조건이 아니므로 전부 선택. 발신 파이프라인(Twilio)은 별개 후속.
+
+// 화면 체크박스 옆에 표시하는 고지 문구. opt-in 시 이 문구 스냅샷을 저장한다
+// (감사: "사용자가 정확히 무엇에 동의했는가"). 클라이언트 카피와 반드시 일치.
+// 'use server' 모듈은 async 함수만 export 가능 -> 모듈 내부 상수(비export)로 둔다.
+const SMS_CONSENT_DISCLOSURE =
+  'I agree to receive recurring SMS text messages from OXXOVO about tournament updates (round openings, deadlines, results). Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. Consent is not a condition of using OXXOVO.'
+
+export type SmsConsentData = {
+  phone: string
+  optIn: boolean
+  consentAt: string | null
+}
+
+// Read the current cookie user's SMS preferences for the /profile card.
+export async function loadSmsConsent(): Promise<
+  { ok: true; data: SmsConsentData } | { ok: false }
+> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false }
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('profiles')
+    .select('phone, sms_opt_in, sms_consent_at')
+    .eq('id', user.id)
+    .maybeSingle()
+  return {
+    ok: true,
+    data: {
+      phone: (data?.phone as string | null) ?? '',
+      optIn: Boolean(data?.sms_opt_in),
+      consentAt: (data?.sms_consent_at as string | null) ?? null,
+    },
+  }
+}
+
+export type SaveSmsConsentInput = { phone: string; optIn: boolean }
+export type SaveSmsConsentResult =
+  | { ok: true; optIn: boolean; consentAt: string | null }
+  | {
+      ok: false
+      error: 'unauthenticated' | 'phone_required' | 'phone_invalid' | 'save_failed'
+      detail?: string
+    }
+
+// Best-effort caller IP for the consent record (proxy sets x-forwarded-for).
+async function callerIp(): Promise<string | null> {
+  try {
+    const h = await headers()
+    const fwd = h.get('x-forwarded-for')
+    const first = fwd ? fwd.split(',')[0].trim() : ''
+    return first || h.get('x-real-ip') || null
+  } catch {
+    return null
+  }
+}
+
+export async function saveSmsConsent(
+  input: SaveSmsConsentInput,
+): Promise<SaveSmsConsentResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'unauthenticated' }
+
+  const phone = (input.phone ?? '').trim()
+
+  // Opt-in requires a plausible phone. Lenient international check: optional '+'
+  // then 7-15 digits after stripping spaces/().-. Blocks junk without rejecting
+  // legitimate international formats.
+  if (input.optIn) {
+    if (!phone) return { ok: false, error: 'phone_required' }
+    const normalized = phone.replace(/[\s()\-.]/g, '')
+    if (!/^\+?[1-9]\d{6,14}$/.test(normalized)) {
+      return { ok: false, error: 'phone_invalid' }
+    }
+  }
+
+  const now = new Date().toISOString()
+  const admin = createSupabaseAdmin()
+
+  const update: Record<string, unknown> = { phone: phone || null }
+  if (input.optIn) {
+    // Record the consent proof (TCPA): when, from where, and exactly what text.
+    update.sms_opt_in = true
+    update.sms_consent_at = now
+    update.sms_consent_ip = await callerIp()
+    update.sms_consent_text = SMS_CONSENT_DISCLOSURE
+    update.sms_opt_out_at = null
+  } else {
+    // Withdraw consent (equivalent to STOP). Keep the historical consent_* fields
+    // as the audit trail; just stamp the opt-out time.
+    update.sms_opt_in = false
+    update.sms_opt_out_at = now
+  }
+
+  const { error } = await admin.from('profiles').update(update).eq('id', user.id)
+  if (error) return { ok: false, error: 'save_failed', detail: error.message }
+
+  return { ok: true, optIn: input.optIn, consentAt: input.optIn ? now : null }
 }
 
 // ─── saveMainRoundSubmission ────────────────────────────────────────────

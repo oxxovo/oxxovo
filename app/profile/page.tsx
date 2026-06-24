@@ -7,6 +7,7 @@ import { useT, useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { VideoEmbed } from '@/app/_components/VideoEmbed'
 import { WinnerCelebrationCard } from './WinnerCelebrationCard'
+import { SmsConsentCard } from './SmsConsentCard'
 import { MainRoundCard, type MockOverrides } from './MainRoundCard'
 import { getSeasonById, type Season } from '@/lib/seasons'
 import { loadSystemMessages, type SystemMessages } from '@/lib/system-messages'
@@ -181,6 +182,8 @@ function ProfilePageInner() {
         {membership?.show && (
           <MembershipCard dashboard={membership} onReload={reloadMembership} />
         )}
+
+        <SmsConsentCard />
 
         {!currentApp ? (
           <NoApplicationCard />

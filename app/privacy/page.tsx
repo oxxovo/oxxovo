@@ -54,7 +54,14 @@ export default function PrivacyPage() {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-white mb-3">10. Contact</h2>
+          <h2 className="text-xl font-bold text-white mb-3">10. SMS / Text Messaging</h2>
+          <p>If you provide your mobile phone number and opt in, we use it solely to send you SMS text messages about OXXOVO tournaments (for example, round openings, deadlines, and results). When you opt in, we record the date and time, your IP address, and the consent text shown to you as proof of your opt-in.</p>
+          <p className="mt-3"><span className="text-white/90 font-semibold">We do not sell, rent, or share your mobile number or SMS opt-in information with third parties or affiliates for their own marketing purposes.</span> SMS opt-in data is used only to deliver the messages you requested.</p>
+          <p className="mt-3">Message frequency varies. Message and data rates may apply. You can opt out of SMS at any time by replying <span className="text-white/90 font-semibold">STOP</span>, or get help by replying <span className="text-white/90 font-semibold">HELP</span>. You can also manage your phone number and consent at any time on your <a href="/profile" className="text-[#8b22ff] hover:underline">profile page</a>. Providing your number is optional and is never required to use OXXOVO.</p>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-bold text-white mb-3">11. Contact</h2>
           <p>For privacy-related questions, contact us at <a href="mailto:oxxovolabs@gmail.com" className="text-[#8b22ff] hover:underline">oxxovolabs@gmail.com</a></p>
         </div>
 

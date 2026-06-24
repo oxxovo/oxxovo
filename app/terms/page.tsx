@@ -67,7 +67,25 @@ export default function TermsPage() {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-white mb-3">11. Contact</h2>
+          <h2 className="text-xl font-bold text-white mb-3">11. SMS / Text Messaging Program</h2>
+          <p>OXXOVO offers an optional SMS text messaging program operated by OXXOVO Labs Inc. ("OXXOVO"). The following terms govern that program:</p>
+          <ul className="list-disc pl-5 space-y-2 mt-3">
+            <li><span className="text-white/90 font-semibold">Program & message types.</span> By providing your mobile number and opting in on your profile page, you consent to receive SMS text messages from OXXOVO about tournaments — such as round openings, submission deadlines, and results notifications.</li>
+            <li><span className="text-white/90 font-semibold">Message frequency.</span> Message frequency varies depending on tournament activity.</li>
+            <li><span className="text-white/90 font-semibold">Cost.</span> Message and data rates may apply. OXXOVO does not charge for the messages, but your mobile carrier&apos;s standard rates apply.</li>
+            <li>
+              <span className="text-white/90 font-semibold">Opt-out and help.</span> You can cancel the SMS program at any time by texting{' '}
+              <span className="text-white font-bold">STOP</span>. After you send <span className="text-white font-bold">STOP</span>, we will send a confirmation message and then stop sending SMS messages. For help, text{' '}
+              <span className="text-white font-bold">HELP</span> or contact us at <a href="mailto:info@oxxovo.com" className="text-[#8b22ff] hover:underline">info@oxxovo.com</a>. You can also remove your number and withdraw consent at any time on your <a href="/profile" className="text-[#8b22ff] hover:underline">profile page</a>.
+            </li>
+            <li><span className="text-white/90 font-semibold">Optional.</span> Participation is optional and is not a condition of using OXXOVO or of any purchase.</li>
+            <li><span className="text-white/90 font-semibold">Carriers.</span> Mobile carriers are not liable for delayed or undelivered messages.</li>
+            <li><span className="text-white/90 font-semibold">Privacy.</span> Your mobile number and opt-in are handled per our <a href="/privacy" className="text-[#8b22ff] hover:underline">Privacy Policy</a>. We do not sell or share SMS opt-in data with third parties for their marketing.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-bold text-white mb-3">12. Contact</h2>
           <p>For questions regarding these Terms, contact us at <a href="mailto:oxxovolabs@gmail.com" className="text-[#8b22ff] hover:underline">oxxovolabs@gmail.com</a></p>
         </div>
 
