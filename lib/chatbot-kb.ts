@@ -47,8 +47,8 @@ const KNOWLEDGE_BASE = `# KNOWLEDGE BASE
 
 ## A. About
 Q. What is OXXOVO?
-- KR: OXXOVO는 AI 영상 창작 토너먼트 플랫폼입니다. 크리에이터들이 짧은 AI 영상을 만들어 겨루고, 100% AI 심사로 순위를 가립니다.
-- EN: OXXOVO is an AI video creation tournament platform. Creators make short AI videos to compete, and rankings are decided by 100% AI judging.
+- KR: OXXOVO는 AI 영상 창작 토너먼트 플랫폼입니다. 크리에이터들이 짧은 AI 영상을 만들어 겨루고, 공정한 AI 심사로 순위를 가립니다. (본선은 관객 투표가 함께 반영됩니다.)
+- EN: OXXOVO is an AI video creation tournament platform. Creators make short AI videos to compete, with rankings decided by fair AI judging. (The main round also factors in an audience vote.)
 Q. Who can join?
 - KR: AI 영상 창작에 관심 있는 누구나 참가할 수 있습니다. 자세한 신청 안내는 신청 페이지에서 확인해 주세요.
 - EN: Anyone interested in AI video creation can join. Please see the application page for full details.
