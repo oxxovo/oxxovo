@@ -10,7 +10,8 @@
 //   3. Dedup: Message-ID is the unique key in email_inbound_log.
 //   4. Rate cap: per-sender daily limit on actioned messages.
 //   5. classifyAndDraft (KB v4): in-scope -> Resend auto-reply (threaded);
-//      out-of-scope / sensitive -> escalate to ops (no auto-reply).
+//      out-of-scope / sensitive -> escalate to ops AND send the sender a neutral
+//      "received, a human will reply" ack (no outcome stated, idempotent).
 //   6. Every decision is logged to email_inbound_log (admin transparency).
 //
 // Fail safe everywhere: a parsing/model/DB hiccup escalates or no-ops rather
@@ -178,14 +179,19 @@ export async function POST(req: NextRequest) {
   const decision = await classifyAndDraft({ subject, body: text })
 
   if (decision.action === 'escalate') {
-    // Forward to ops -- a human replies. No auto-reply to the sender.
+    // Forward to ops -- a human writes the real reply (no KB answer on sensitive
+    // topics). We still send the SENDER a neutral "received" ack so they aren't
+    // left in silence; the ack states nothing about the outcome.
     const safeSubject = subject || '(no subject)'
     await sendAdminAlert(
       `[Inbound] Needs human: ${safeSubject}`,
       escalationHtml({ from, subject: safeSubject, reason: decision.reason, text }),
     )
-    await logInbound({ messageId, from, to, subject, action: 'escalated' })
-    return NextResponse.json({ ok: true, action: 'escalated', reason: decision.reason })
+    // Skip the ack for empty/system-ish escalations -- nothing to acknowledge.
+    const ackEligible = decision.reason !== 'empty_body' && decision.reason !== 'no_api_key'
+    const ackSent = ackEligible ? await sendReceiptAck({ from, subject, body: text, messageId }) : false
+    await logInbound({ messageId, from, to, subject, action: 'escalated', replySent: ackSent })
+    return NextResponse.json({ ok: true, action: 'escalated', reason: decision.reason, ack: ackSent })
   }
 
   // In-scope: send the threaded auto-reply via Resend.
@@ -229,6 +235,55 @@ export async function POST(req: NextRequest) {
 
   await logInbound({ messageId, from, to, subject, action: 'replied', replySent: true })
   return NextResponse.json({ ok: true, action: 'replied' })
+}
+
+// Korean if any Hangul syllable is present (subject + body), else English.
+function isKorean(s: string): boolean {
+  return /[가-힣]/.test(s)
+}
+
+// "We received your message" acknowledgement sent to the SENDER on escalation.
+// Sensitive mail (refund/legal/etc.) is forwarded to ops with no KB answer, so
+// without this the sender hears nothing. Deliberately says nothing about the
+// outcome (e.g. refund yes/no) -- only that the message arrived and a human will
+// reply. Idempotent: the inbound message is deduped by Message-ID and processed
+// once, so exactly one ack goes out. Loop-safe: tagged Auto-Submitted +
+// X-Auto-Response-Suppress, and if it ever bounces back to info@ the loopGuard
+// (self_send / auto_submitted) drops it. Returns true if the ack was sent.
+async function sendReceiptAck(o: {
+  from: string
+  subject: string
+  body: string
+  messageId: string | null
+}): Promise<boolean> {
+  const kr = isKorean(`${o.subject}\n${o.body}`)
+  const text = kr
+    ? '문의해 주셔서 감사합니다. 메일이 정상 접수되었으며, 담당자가 확인 후 곧 답변드리겠습니다.\n\n— OXXOVO 팀\ninfo@oxxovo.com'
+    : 'Thank you for contacting us. Your message has been received, and our team will review it and reply to you shortly.\n\n— OXXOVO Team\ninfo@oxxovo.com'
+  const replySubject = /^re:/i.test(o.subject) ? o.subject : `Re: ${o.subject || 'Your message'}`
+  try {
+    const resend = getResend()
+    const { error } = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: o.from,
+      subject: replySubject,
+      text,
+      replyTo: 'info@oxxovo.com',
+      headers: {
+        'Auto-Submitted': 'auto-replied',
+        'X-Auto-Response-Suppress': 'All',
+        ...(o.messageId ? { 'In-Reply-To': o.messageId, References: o.messageId } : {}),
+      },
+    })
+    if (error) {
+      console.error('[inbound] ack send error:', error.message)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error('[inbound] ack send failed:', e instanceof Error ? e.message : e)
+    return false
+  }
 }
 
 function escape(s: string): string {
