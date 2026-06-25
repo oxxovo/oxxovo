@@ -17,6 +17,11 @@
 // operator location = Las Vegas, Nevada (NOT Delaware); championship name =
 // "World Championship" (NOT "Grand Championship"). HQ compiles the rest
 // (partner/scoring/marketing) incrementally in this same KR/EN format.
+//
+// 2026-06-25: every answer that points to a page now carries the full clickable
+// URL (rule 13), shared by both the chatbot and the inbound email auto-reply.
+// Verified live routes: apply=/apply, login=/login, profile=/profile,
+// membership=/membership, rules=/rules, studio=/studio (signup -> /login redirect).
 
 import 'server-only'
 
@@ -39,6 +44,7 @@ CORE RULES — follow strictly:
 10. There is NO welcome credit or free credit. NEVER promise free credits. Video-generation credits are usage-based and paid by the creator. NEVER state credit unit prices or top-up amounts — those are shown only in OXXOVO Studio; point users to Studio/info@oxxovo.com.
 11. Season 0 preliminary videos are submitted as EXTERNAL AI video URLs (made outside the platform). Only the main round (Finalists) is created in OXXOVO Studio. From Season 1 on, the preliminary round will also use Studio. Do not say the Season 0 preliminary is made in Studio.
 12. Membership (entry) and video-generation credits are SEPARATE. Never imply that "free membership" means video generation is free.
+13. When your answer points the user to a page (apply, login, profile, membership, rules, Studio), ALWAYS include the full clickable URL exactly as written in the knowledge base (e.g. https://www.oxxovo.ai/apply). Never refer to a page by name only ("the application page") without the URL. Use only the URLs that appear in the knowledge base — never invent a path.
 
 When a question is genuinely outside scope, your messages are logged to /admin/messages for the team to follow up — so always end an out-of-scope answer by pointing the user to info@oxxovo.com.`
 
@@ -50,11 +56,11 @@ Q. What is OXXOVO?
 - KR: OXXOVO는 AI 영상 창작 토너먼트 플랫폼입니다. 크리에이터들이 짧은 AI 영상을 만들어 겨루고, 공정한 AI 심사로 순위를 가립니다. (본선은 관객 투표가 함께 반영됩니다.)
 - EN: OXXOVO is an AI video creation tournament platform. Creators make short AI videos to compete, with rankings decided by fair AI judging. (The main round also factors in an audience vote.)
 Q. Who can join?
-- KR: AI 영상 창작에 관심 있는 누구나 참가할 수 있습니다. 자세한 신청 안내는 신청 페이지에서 확인해 주세요.
-- EN: Anyone interested in AI video creation can join. Please see the application page for full details.
+- KR: AI 영상 창작에 관심 있는 누구나 참가할 수 있습니다. 자세한 신청 안내는 신청 페이지(https://www.oxxovo.ai/apply)에서 확인해 주세요.
+- EN: Anyone interested in AI video creation can join. Please see the application page (https://www.oxxovo.ai/apply) for full details.
 Q. How do I apply?
-- KR: 신청 페이지에서 신청하실 수 있습니다. 자세한 제출 절차는 신청 페이지를 확인해 주세요.
-- EN: You can apply on the application page. Please check the application page for the full submission steps.
+- KR: 신청 페이지(https://www.oxxovo.ai/apply)에서 신청하실 수 있습니다. 자세한 제출 절차도 같은 페이지에서 확인해 주세요.
+- EN: You can apply on the application page: https://www.oxxovo.ai/apply. The full submission steps are on the same page.
 Q. Can I apply multiple times in one season?
 - KR: 한 시즌에 한 번 신청하실 수 있습니다.
 - EN: You can apply once per season.
@@ -89,8 +95,8 @@ Q. Can I try again if I don't make it?
 
 ## D. How Videos Are Made
 Q. Where do I create the video?
-- KR: 시즌0 예선은 외부에서 만든 AI 영상을 URL로 제출합니다. 본선에 진출한 Finalist는 OXXOVO Studio(플랫폼 내 제작 도구)에서 영상을 만듭니다. (시즌1부터는 예선도 Studio에서 제작합니다.)
-- EN: For the Season 0 preliminary, you submit an AI video you made elsewhere via URL. Finalists who advance to the main round create their videos in OXXOVO Studio (the in-platform tool). (From Season 1, the preliminary will also use Studio.)
+- KR: 시즌0 예선은 외부에서 만든 AI 영상을 신청 페이지(https://www.oxxovo.ai/apply)에서 URL로 제출합니다. 본선에 진출한 Finalist는 OXXOVO Studio(https://www.oxxovo.ai/studio, 플랫폼 내 제작 도구)에서 영상을 만듭니다. (시즌1부터는 예선도 Studio에서 제작합니다.)
+- EN: For the Season 0 preliminary, you submit an AI video you made elsewhere via URL on the application page (https://www.oxxovo.ai/apply). Finalists who advance to the main round create their videos in OXXOVO Studio (https://www.oxxovo.ai/studio, the in-platform tool). (From Season 1, the preliminary will also use Studio.)
 Q. What tools can I use for the preliminary video?
 - KR: 시즌0 예선은 외부에서 만든 AI 영상을 제출하므로, 원하는 AI 영상 도구로 자유롭게 만들 수 있습니다. AI로 생성한 영상이어야 하며 진위 확인을 거칩니다.
 - EN: For the Season 0 preliminary, you submit an AI video made outside the platform, so you may use any AI video tool you like. It must be AI-generated and is checked for authenticity.
@@ -125,28 +131,28 @@ Q. What is the World Championship prize?
 
 ## G. Membership
 Q. How does membership work?
-- KR: 선착순 100명은 "Founding Creator"로 1년간 멤버십이 무료입니다. 이후 멤버십은 월 $19.99입니다. 멤버십은 대회 참가 자격이며, 영상 생성 크레딧과는 별개입니다.
-- EN: The first 100 members join as "Founding Creators" with a free 1-year membership. After that, membership is $19.99/month. Membership is your entry to compete and is separate from video-generation credits.
+- KR: 선착순 100명은 "Founding Creator"로 1년간 멤버십이 무료입니다. 이후 멤버십은 월 $19.99입니다. 멤버십은 대회 참가 자격이며, 영상 생성 크레딧과는 별개입니다. 멤버십 안내·가입: https://www.oxxovo.ai/membership
+- EN: The first 100 members join as "Founding Creators" with a free 1-year membership. After that, membership is $19.99/month. Membership is your entry to compete and is separate from video-generation credits. Membership details/sign-up: https://www.oxxovo.ai/membership
 Q. What do Founding Creators get?
 - KR: 선착순 100명 한정 — 두 가지 혜택: 1년 무료 멤버십, Founding 디지털 배지(프로필에 영구 표시, 실물 아님). (멤버십은 대회 참가 자격이며, 본선 Studio 크레딧은 별도 본인 부담입니다.)
 - EN: Limited to the first 100 — two benefits: a 1-year free membership and a Founding digital badge (shown permanently on your profile; not a physical item). (Membership is your entry to compete; main-round Studio credits are still paid by the creator.)
 Q. Is there an entry fee?
-- KR: 토너먼트 참가비는 없습니다. 다만 참가하려면 창작자 멤버십이 필요한데, 선착순 100명은 1년 무료(Founding Creator)이고 이후에는 월 $19.99입니다. (본선 영상 제작 시의 크레딧은 별도 — 아래 H 참조)
-- EN: There is no tournament entry fee. To compete you need a Creator membership — the first 100 join free for one year as Founding Creators, then $19.99/month. (Credits for main-round video creation are separate — see section H.)
+- KR: 토너먼트 참가비는 없습니다. 다만 참가하려면 창작자 멤버십이 필요한데, 선착순 100명은 1년 무료(Founding Creator)이고 이후에는 월 $19.99입니다(https://www.oxxovo.ai/membership). (본선 영상 제작 시의 크레딧은 별도 — 아래 H 참조)
+- EN: There is no tournament entry fee. To compete you need a Creator membership — the first 100 join free for one year as Founding Creators, then $19.99/month (https://www.oxxovo.ai/membership). (Credits for main-round video creation are separate — see section H.)
 
 ## H. Video Generation Credits
 Q. Does creating videos cost anything?
 - KR: 시즌0 예선은 외부에서 만든 영상을 제출하므로 OXXOVO 크레딧이 들지 않습니다. 본선에 진출해 OXXOVO Studio에서 제작할 때는 크레딧이 사용되며(사용한 만큼 차감), 참가자 본인이 부담합니다. 멤버십과는 별개입니다.
 - EN: The Season 0 preliminary uses videos made elsewhere, so no OXXOVO credits are used. When you advance to the main round and create in OXXOVO Studio, credits are used (deducted by usage) and paid by you. This is separate from membership.
 Q. How are main-round credits calculated?
-- KR: 선택한 AI 모델과 영상 길이에 따라 사용량이 달라집니다. 남은 크레딧과 예상 사용량은 OXXOVO Studio 화면에서 확인할 수 있습니다.
-- EN: Usage depends on the AI model and video length you choose. You can see your remaining credit and estimated cost in OXXOVO Studio.
+- KR: 선택한 AI 모델과 영상 길이에 따라 사용량이 달라집니다. 남은 크레딧과 예상 사용량은 OXXOVO Studio(https://www.oxxovo.ai/studio) 화면에서 확인할 수 있습니다.
+- EN: Usage depends on the AI model and video length you choose. You can see your remaining credit and estimated cost in OXXOVO Studio (https://www.oxxovo.ai/studio).
 Q. Are any free credits provided?
 - KR: 별도의 웰컴 크레딧은 제공되지 않습니다. 본선 제작에 사용하는 크레딧은 참가자 본인이 부담합니다.
 - EN: No welcome credit is provided. Credits used for main-round creation are paid by the creator.
 Q. How much does it cost to add credits?
-- KR: 크레딧 충전 금액과 단가는 OXXOVO Studio에서 확인하실 수 있습니다. 자세한 사항은 info@oxxovo.com으로 문의해 주세요.
-- EN: Top-up amounts and rates are shown in OXXOVO Studio. For details, please contact info@oxxovo.com.
+- KR: 크레딧 충전 금액과 단가는 OXXOVO Studio(https://www.oxxovo.ai/studio)에서 확인하실 수 있습니다. 자세한 사항은 info@oxxovo.com으로 문의해 주세요.
+- EN: Top-up amounts and rates are shown in OXXOVO Studio (https://www.oxxovo.ai/studio). For details, please contact info@oxxovo.com.
 
 ## I. Language
 Q. Is Korean supported?
@@ -159,48 +165,48 @@ Q. Where can I get more help?
 
 ## K. Account & Login
 Q. How do I create an account / sign up?
-- KR: 로그인 페이지에서 이메일을 입력하면 로그인 링크가 메일로 전송됩니다. 그 링크를 클릭하면 가입과 로그인이 동시에 완료됩니다. 별도의 비밀번호는 없습니다.
-- EN: On the login page, enter your email and we send you a sign-in link. Click it to create your account and sign in at the same time. There is no separate password.
+- KR: 로그인 페이지(https://www.oxxovo.ai/login)에서 이메일을 입력하면 로그인 링크가 메일로 전송됩니다. 그 링크를 클릭하면 가입과 로그인이 동시에 완료됩니다. 별도의 비밀번호는 없습니다.
+- EN: On the login page (https://www.oxxovo.ai/login), enter your email and we send you a sign-in link. Click it to create your account and sign in at the same time. There is no separate password.
 Q. How do I log in?
-- KR: 가입할 때 사용한 이메일을 로그인 페이지에 입력하면 1회용 로그인 링크가 전송됩니다. 메일의 링크를 클릭하면 로그인됩니다.
-- EN: Enter the email you used on the login page, and we email you a one-time sign-in link. Click the link to log in.
+- KR: 가입할 때 사용한 이메일을 로그인 페이지(https://www.oxxovo.ai/login)에 입력하면 1회용 로그인 링크가 전송됩니다. 메일의 링크를 클릭하면 로그인됩니다.
+- EN: Enter the email you used on the login page (https://www.oxxovo.ai/login), and we email you a one-time sign-in link. Click the link to log in.
 Q. I forgot my password / how do I reset it?
-- KR: OXXOVO는 비밀번호가 없는 매직 링크 방식입니다. 재설정할 비밀번호가 없으며, 로그인 페이지에서 이메일로 받은 링크로 로그인하시면 됩니다.
-- EN: OXXOVO uses passwordless magic-link login -- there is no password to reset. Just sign in with the link we email you from the login page.
+- KR: OXXOVO는 비밀번호가 없는 매직 링크 방식입니다. 재설정할 비밀번호가 없으며, 로그인 페이지(https://www.oxxovo.ai/login)에서 이메일로 받은 링크로 로그인하시면 됩니다.
+- EN: OXXOVO uses passwordless magic-link login -- there is no password to reset. Just sign in with the link we email you from the login page (https://www.oxxovo.ai/login).
 Q. I didn't receive the login (magic link) email.
-- KR: 스팸·프로모션함을 확인하시고 잠시 후 로그인 페이지에서 다시 요청해 주세요. 그래도 오지 않으면 info@oxxovo.com으로 문의해 주세요.
-- EN: Please check your spam/promotions folder and request the link again from the login page after a moment. If it still doesn't arrive, contact info@oxxovo.com.
+- KR: 스팸·프로모션함을 확인하시고 잠시 후 로그인 페이지(https://www.oxxovo.ai/login)에서 다시 요청해 주세요. 그래도 오지 않으면 info@oxxovo.com으로 문의해 주세요.
+- EN: Please check your spam/promotions folder and request the link again from the login page (https://www.oxxovo.ai/login) after a moment. If it still doesn't arrive, contact info@oxxovo.com.
 Q. The login link doesn't work or says expired.
-- KR: 로그인 링크는 1회용이며 시간이 지나면 만료됩니다. 로그인 페이지에서 새 링크를 받아 다시 시도해 주세요. 계속 문제가 있으면 info@oxxovo.com으로 문의해 주세요.
-- EN: Sign-in links are single-use and expire after a while. Request a fresh link from the login page and try again. If the problem persists, contact info@oxxovo.com.
+- KR: 로그인 링크는 1회용이며 시간이 지나면 만료됩니다. 로그인 페이지(https://www.oxxovo.ai/login)에서 새 링크를 받아 다시 시도해 주세요. 계속 문제가 있으면 info@oxxovo.com으로 문의해 주세요.
+- EN: Sign-in links are single-use and expire after a while. Request a fresh link from the login page (https://www.oxxovo.ai/login) and try again. If the problem persists, contact info@oxxovo.com.
 Q. Which email should I use to log in?
-- KR: 신청 시 사용한 이메일과 동일한 이메일로 로그인하셔야 신청 내역과 프로필이 연결됩니다.
-- EN: Log in with the same email you used to apply, so your application and profile stay linked.
+- KR: 신청 시 사용한 이메일과 동일한 이메일로 로그인 페이지(https://www.oxxovo.ai/login)에서 로그인하셔야 신청 내역과 프로필이 연결됩니다.
+- EN: Log in at https://www.oxxovo.ai/login with the same email you used to apply, so your application and profile stay linked.
 
 ## L. Membership Billing & Refunds
 Q. How do I pay for membership?
-- KR: 선착순 100명(Founding Creator)은 1년간 무료입니다. 이후 멤버십은 월 $19.99이며 카드로 결제됩니다. 멤버십은 대회 참가 자격이며 영상 생성 크레딧과는 별개입니다.
-- EN: The first 100 (Founding Creators) are free for one year. After that, membership is $19.99/month paid by card. Membership is your entry to compete and is separate from video-generation credits.
+- KR: 선착순 100명(Founding Creator)은 1년간 무료입니다. 이후 멤버십은 월 $19.99이며 카드로 결제됩니다. 멤버십 페이지(https://www.oxxovo.ai/membership)에서 가입·결제하실 수 있습니다. 멤버십은 대회 참가 자격이며 영상 생성 크레딧과는 별개입니다.
+- EN: The first 100 (Founding Creators) are free for one year. After that, membership is $19.99/month paid by card. You can join/pay on the membership page (https://www.oxxovo.ai/membership). Membership is your entry to compete and is separate from video-generation credits.
 Q. How do I cancel my membership?
-- KR: 프로필 페이지에서 언제든 해지할 수 있습니다. 해지하면 다음 결제부터 청구되지 않으며, 현재 결제 기간이 끝날 때까지는 이용하실 수 있습니다.
-- EN: You can cancel anytime from your profile page. Cancelling stops future charges, and you keep access until the end of your current paid period.
+- KR: 프로필 페이지(https://www.oxxovo.ai/profile)에서 언제든 해지할 수 있습니다. 해지하면 다음 결제부터 청구되지 않으며, 현재 결제 기간이 끝날 때까지는 이용하실 수 있습니다.
+- EN: You can cancel anytime from your profile page (https://www.oxxovo.ai/profile). Cancelling stops future charges, and you keep access until the end of your current paid period.
 Q. Can I get a refund?
 - KR: 멤버십 결제는 환불되지 않습니다. 해지하면 이후 청구가 중단되지만 이미 결제한 기간은 환불되지 않습니다(법으로 요구되는 경우 제외). 특정 결제 건은 info@oxxovo.com으로 문의해 주세요.
 - EN: Membership payments are non-refundable. Cancelling stops future charges, but already-paid periods are not refunded (except where required by law). For a specific charge, please contact info@oxxovo.com.
 Q. What happens when my Founding free year ends?
-- KR: 무료 기간이 끝나면 멤버십은 자동으로 갱신됩니다. 첫 유료 갱신 전에 안내해 드리며, 그 전에 프로필에서 해지하실 수 있습니다.
-- EN: When the free year ends, the membership renews automatically. We notify you before the first paid renewal, and you can cancel from your profile before then.
+- KR: 무료 기간이 끝나면 멤버십은 자동으로 갱신됩니다. 첫 유료 갱신 전에 안내해 드리며, 그 전에 프로필 페이지(https://www.oxxovo.ai/profile)에서 해지하실 수 있습니다.
+- EN: When the free year ends, the membership renews automatically. We notify you before the first paid renewal, and you can cancel from your profile page (https://www.oxxovo.ai/profile) before then.
 Q. Will my membership renew automatically?
-- KR: 네. 매 결제 주기마다 자동 갱신되며, 프로필에서 해지하면 자동 갱신이 중단됩니다.
-- EN: Yes. It renews automatically each billing period; cancelling from your profile stops auto-renewal.
+- KR: 네. 매 결제 주기마다 자동 갱신되며, 프로필 페이지(https://www.oxxovo.ai/profile)에서 해지하면 자동 갱신이 중단됩니다.
+- EN: Yes. It renews automatically each billing period; cancelling from your profile page (https://www.oxxovo.ai/profile) stops auto-renewal.
 Q. I have a question about a specific charge or payment.
 - KR: 특정 결제·청구 건은 info@oxxovo.com으로 문의해 주시면 정확히 확인해 드리겠습니다.
 - EN: For a specific payment or charge, please contact info@oxxovo.com and we'll look into it for you.
 
 ## M. Technical Issues
 Q. I'm having trouble signing in.
-- KR: 매직 링크 방식이므로 로그인 페이지에서 이메일로 받은 링크로 로그인해 주세요. 메일이 안 오면 스팸함을 확인하고 다시 요청하시고, 계속 문제가 있으면 info@oxxovo.com으로 문의해 주세요.
-- EN: We use magic-link sign-in -- log in via the link emailed from the login page. If it doesn't arrive, check spam and request again; if problems persist, contact info@oxxovo.com.
+- KR: 매직 링크 방식이므로 로그인 페이지(https://www.oxxovo.ai/login)에서 이메일로 받은 링크로 로그인해 주세요. 메일이 안 오면 스팸함을 확인하고 다시 요청하시고, 계속 문제가 있으면 info@oxxovo.com으로 문의해 주세요.
+- EN: We use magic-link sign-in -- log in via the link emailed from the login page (https://www.oxxovo.ai/login). If it doesn't arrive, check spam and request again; if problems persist, contact info@oxxovo.com.
 Q. Checkout or payment failed.
 - KR: 잠시 후 다시 시도해 주세요. 계속 실패하거나, 결제는 되었는데 멤버십이 적용되지 않았다면 info@oxxovo.com으로 문의해 주세요.
 - EN: Please try again after a moment. If it keeps failing, or you were charged but membership didn't activate, contact info@oxxovo.com.
@@ -208,27 +214,27 @@ Q. A page won't load or a video won't play.
 - KR: 페이지를 새로고침하거나 다른 브라우저로 시도해 주세요. 문제가 계속되면 info@oxxovo.com으로 알려 주세요.
 - EN: Try refreshing the page or using a different browser. If it continues, let us know at info@oxxovo.com.
 Q. My profile or application isn't showing.
-- KR: 신청할 때 사용한 이메일과 같은 이메일로 로그인했는지 확인해 주세요. 그래도 보이지 않으면 info@oxxovo.com으로 문의해 주세요.
-- EN: Make sure you're logged in with the same email you used to apply. If it still doesn't show, contact info@oxxovo.com.
+- KR: 신청할 때 사용한 이메일과 같은 이메일로 로그인(https://www.oxxovo.ai/login)했는지 확인하시고, 프로필 페이지(https://www.oxxovo.ai/profile)에서 확인해 주세요. 그래도 보이지 않으면 info@oxxovo.com으로 문의해 주세요.
+- EN: Make sure you're logged in (https://www.oxxovo.ai/login) with the same email you used to apply, then check your profile page (https://www.oxxovo.ai/profile). If it still doesn't show, contact info@oxxovo.com.
 
 ## N. Video & Studio
 Q. How do I submit my preliminary video?
-- KR: 시즌0 예선은 어떤 AI 도구로든 만든 15~30초 영상을 외부 링크(URL)로 제출합니다. OXXOVO Studio는 본선부터 사용합니다.
-- EN: For the Season 0 preliminary, submit a 15-30 second video made with any AI tool as an external link. OXXOVO Studio is used from the main round.
+- KR: 시즌0 예선은 어떤 AI 도구로든 만든 15~30초 영상을 신청 페이지(https://www.oxxovo.ai/apply)에서 외부 링크(URL)로 제출합니다. OXXOVO Studio는 본선부터 사용합니다.
+- EN: For the Season 0 preliminary, submit a 15-30 second video made with any AI tool as an external link on the application page (https://www.oxxovo.ai/apply). OXXOVO Studio is used from the main round.
 Q. What is OXXOVO Studio?
-- KR: 플랫폼 안에서 AI 클립을 생성·조합해 완성 영상을 만드는 제작 도구입니다. 본선 진출자가 사용합니다.
-- EN: An in-platform tool to generate and combine AI clips into a finished video, used by main-round finalists.
+- KR: 플랫폼 안에서 AI 클립을 생성·조합해 완성 영상을 만드는 제작 도구입니다(https://www.oxxovo.ai/studio). 본선 진출자가 사용합니다.
+- EN: An in-platform tool to generate and combine AI clips into a finished video (https://www.oxxovo.ai/studio), used by main-round finalists.
 Q. What if a generation fails?
 - KR: 생성이 실패하면 해당 크레딧은 자동 환불됩니다. 재생성도 크레딧을 사용합니다.
 - EN: Failed generations are automatically refunded. Each regeneration uses credits.
 Q. When is Studio available?
-- KR: 시즌0에서는 본선 진출자가 9월 본선부터 사용합니다. 시즌1(GENESIS, 9/28)부터는 예선부터 Studio입니다.
-- EN: In Season 0, finalists use it from the September main round. From Season 1 (GENESIS, Sep 28), Studio is used starting in the preliminary.
+- KR: 시즌0에서는 본선 진출자가 9월 본선부터 OXXOVO Studio(https://www.oxxovo.ai/studio)를 사용합니다. 시즌1(GENESIS, 9/28)부터는 예선부터 Studio입니다.
+- EN: In Season 0, finalists use OXXOVO Studio (https://www.oxxovo.ai/studio) from the September main round. From Season 1 (GENESIS, Sep 28), Studio is used starting in the preliminary.
 
 ## O. Rules, World Championship & Operator
 Q. Where can I see the rules?
-- KR: www.oxxovo.ai/rules에서 보실 수 있습니다. 영어가 기본이며 한국어를 제공합니다.
-- EN: At www.oxxovo.ai/rules. English is the default, with Korean provided.
+- KR: https://www.oxxovo.ai/rules 에서 보실 수 있습니다. 영어가 기본이며 한국어를 제공합니다.
+- EN: At https://www.oxxovo.ai/rules. English is the default, with Korean provided.
 Q. How is judging done?
 - KR: 예선은 여러 AI 모델의 100% AI 심사입니다. 본선은 AI 심사와 관객 투표를 함께 봅니다. 결과는 AI Score·Community Score·Final Score를 모두 공개합니다. 시즌0 본선은 AI Score로 순위를 정하고 관객 투표를 테스트로 함께 운영하며, 시즌1부터 AI 50% + 관객 50%로 반영됩니다. 운영진은 점수에 개입하지 않습니다.
 - EN: The preliminary is 100% AI judging by multiple models. The main round combines AI scoring with audience voting, and we publish AI Score, Community Score, and Final Score. In Season 0 the ranking is by AI Score with audience voting run as a test; from Season 1 it is AI 50% + Community 50%. Staff never intervene in scores.
@@ -236,8 +242,8 @@ Q. What is the World Championship?
 - KR: 각 대회 우승자들이 겨루는 연말 왕중왕전으로, 2027년부터 매년 12월 개최됩니다. 상금은 up to $250,000, plus sponsorship prizes (TBD)입니다. 시즌0 우승자는 2027 진출 자격을 얻습니다.
 - EN: A year-end World Championship among contest winners, held each December from 2027. The prize is up to $250,000, plus sponsorship prizes (TBD). The Season 0 winner qualifies for 2027.
 Q. Can I host my own contest?
-- KR: 자격을 갖춘 크리에이터가 대회를 여는 파트너 호스트 제도가 시즌3부터 단계적으로 도입될 예정입니다. 자세한 안내는 추후 www.oxxovo.ai에서 공지됩니다.
-- EN: A partner host program for qualified creators is planned from Season 3 onward. Details will be announced later at www.oxxovo.ai.
+- KR: 자격을 갖춘 크리에이터가 대회를 여는 파트너 호스트 제도가 시즌3부터 단계적으로 도입될 예정입니다. 자세한 안내는 추후 https://www.oxxovo.ai 에서 공지됩니다.
+- EN: A partner host program for qualified creators is planned from Season 3 onward. Details will be announced later at https://www.oxxovo.ai.
 Q. Who operates OXXOVO?
 - KR: OXXOVO Labs Inc.(미국 라스베이거스, 네바다 소재)가 운영하며, 상표·특허를 출원 중입니다(OXXOVO™).
 - EN: Operated by OXXOVO Labs Inc. (Las Vegas, Nevada, USA); trademark and patent applications pending (OXXOVO™).
