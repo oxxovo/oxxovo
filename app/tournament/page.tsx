@@ -132,7 +132,8 @@ export default async function TournamentPage() {
         <div className="max-w-3xl mx-auto text-center">
           <p className="text-lg md:text-xl text-white/80 leading-relaxed">
             OXXOVO is an AI video creation tournament. Make a short AI video, go up against
-            creators worldwide, and let AI judge it — 100%, no connections, no popularity votes.
+            creators worldwide, and let the work win — 100% AI judging in the preliminary, AI
+            plus an audience vote in the main round. No connections, no gatekeepers.
           </p>
         </div>
       </section>
