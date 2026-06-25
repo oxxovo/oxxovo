@@ -54,7 +54,18 @@ function normalizeAddr(raw: string | undefined): string {
 function loopGuard(from: string, subject: string, headers: Record<string, string>): string | null {
   if (!from) return 'no_sender'
   // Never reply to ourselves or the team -> would loop with our own sends.
-  if (from.endsWith('@oxxovo.com') || from.endsWith('@oxxovo.ai')) return 'self'
+  // Match the registrable domain AND any subdomain: our escalation alerts go out
+  // via Resend whose envelope sender is on send.oxxovo.com (a subdomain), so a
+  // plain endsWith('@oxxovo.com') missed them and caused an infinite loop.
+  const domain = from.split('@')[1] ?? ''
+  if (
+    domain === 'oxxovo.com' || domain.endsWith('.oxxovo.com') ||
+    domain === 'oxxovo.ai' || domain.endsWith('.oxxovo.ai')
+  ) {
+    return 'self_send'
+  }
+  // Our own escalation notifications -- never re-process them (loop breaker).
+  if (/\[inbound\]\s*(needs human|auto-reply failed)/i.test(subject)) return 'escalation_loop'
   // Unattended / system senders.
   if (/(^|[._-])(no-?reply|donotreply|mailer-daemon|postmaster|bounce)/.test(from)) {
     return 'no_reply_sender'
@@ -182,16 +193,20 @@ export async function POST(req: NextRequest) {
   try {
     const resend = getResend()
     const replySubject = /^re:/i.test(subject) ? subject : `Re: ${subject || 'Your message'}`
-    const threadHeaders = messageId
-      ? { 'In-Reply-To': messageId, References: messageId }
-      : undefined
+    // Tag every auto-reply as auto-generated (RFC 3834) + suppress vacation
+    // bounce-backs. If it ever loops back to info@, our loopGuard catches it.
+    const replyHeaders: Record<string, string> = {
+      'Auto-Submitted': 'auto-replied',
+      'X-Auto-Response-Suppress': 'All',
+      ...(messageId ? { 'In-Reply-To': messageId, References: messageId } : {}),
+    }
     const { error } = await resend.emails.send({
       from: EMAIL_FROM,
       to: from,
       subject: replySubject,
       text: `${decision.reply}\n\n— OXXOVO Team\ninfo@oxxovo.com`,
       replyTo: 'info@oxxovo.com',
-      ...(threadHeaders ? { headers: threadHeaders } : {}),
+      headers: replyHeaders,
     })
     if (error) {
       console.error('[inbound] resend error:', error.message)

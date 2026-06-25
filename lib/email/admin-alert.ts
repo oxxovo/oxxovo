@@ -24,9 +24,19 @@ export async function sendAdminAlert(subject: string, html: string): Promise<boo
       },
       body: JSON.stringify({
         from: `OXXOVO Ops <${ADMIN_EMAIL}>`,
-        to: [ADMIN_EMAIL],
+        // Send alerts to OPS_ALERT_EMAIL when set so escalations land OUTSIDE the
+        // info@ inbox that routes to the inbound Worker (breaks the loop at the
+        // recipient). Falls back to info@ when unset -- still safe because of the
+        // Auto-Submitted tag below + the inbound self/auto-submitted guards.
+        to: [process.env.OPS_ALERT_EMAIL || ADMIN_EMAIL],
         subject,
         html,
+        // Mark as auto-generated so that if this alert ever lands back in info@,
+        // the inbound loopGuard skips it instead of re-escalating.
+        headers: {
+          'Auto-Submitted': 'auto-replied',
+          'X-Auto-Response-Suppress': 'All',
+        },
       }),
     })
     if (!res.ok) {
