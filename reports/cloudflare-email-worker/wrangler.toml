@@ -10,4 +10,4 @@ compatibility_flags = ["nodejs_compat"]
 INBOUND_WEBHOOK_URL = "https://www.oxxovo.ai/api/email/inbound"
 # Verified Cloudflare Email Routing destination address (ops inbox). The Worker
 # forwards every original message here in addition to the auto-reply pipeline.
-FORWARD_TO = "REPLACE_WITH_OPS_DESTINATION@example.com"
+FORWARD_TO = "tkckusa@gmail.com"
