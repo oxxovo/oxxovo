@@ -77,6 +77,13 @@ export default function RulesPage() {
     },
   ]
 
+  // Main-round audience-vote layer is driven by the live season weights, never
+  // hardcoded: community_vote_weight === 0 means the vote runs as a test (Season
+  // 0), > 0 means it counts toward the Final Score by that season's split.
+  const communityCounts = season.community_vote_weight > 0
+  const aiWeightPct = formatWeightPercent(season.ai_score_weight)
+  const communityWeightPct = formatWeightPercent(season.community_vote_weight)
+
   return (
     <main className="min-h-screen bg-[#030305] text-white">
       <header className="flex h-20 items-center justify-between px-6 md:px-12 border-b border-white/10">
@@ -171,8 +178,33 @@ export default function RulesPage() {
               ))}
             </div>
             <p>
-              Each judge scores four categories. The weighted average across all {modelCount} judges becomes your final OXXOVO Score. Outlier scores are automatically excluded to prevent manipulation.
+              Each judge scores four categories. The weighted average across all {modelCount} judges is your <span className="text-white">AI Score</span>, with outlier scores automatically excluded to prevent manipulation.
             </p>
+
+            <div className="mt-6 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.07] px-4 py-3">
+              <p className="text-[#d9b8ff] font-bold text-sm">
+                Preliminary: 100% AI judging. Main round: AI Score plus an audience vote.
+              </p>
+              <p className="text-[#d9b8ff]/80 font-bold text-sm mt-1" lang="ko">
+                예선: 100% AI 심사. 본선: AI Score + 관객 투표.
+              </p>
+              <p className="text-white/60 text-xs mt-1.5">
+                In the preliminary, entries are ranked by AI Score alone. In the main round we publish three numbers &mdash; <span className="text-white/80">AI Score</span>, <span className="text-white/80">Community Score</span> (the audience vote), and <span className="text-white/80">Final Score</span>.{' '}
+                {communityCounts ? (
+                  <>This season the Final Score combines them by the season&rsquo;s configured weights: AI {aiWeightPct} + Community {communityWeightPct}.</>
+                ) : (
+                  <>This season the ranking is decided by AI Score, with the audience vote run as a test that does not affect the result. From the next season the Final Score combines AI Score and Community Score by the weights configured for that season.</>
+                )}
+              </p>
+              <p className="text-white/50 text-xs mt-1.5" lang="ko">
+                예선은 AI Score만으로 순위를 정합니다. 본선에서는 AI Score, Community Score(관객 투표), Final Score 세 가지를 공개합니다.{' '}
+                {communityCounts ? (
+                  <>이번 시즌 Final Score는 시즌 설정 비중(AI {aiWeightPct} + 관객 {communityWeightPct})으로 합산됩니다.</>
+                ) : (
+                  <>이번 시즌은 AI Score로 순위를 정하며, 관객 투표는 결과에 반영되지 않는 테스트로 운영됩니다. 다음 시즌부터 Final Score가 시즌별 설정 비중에 따라 AI Score와 Community Score를 합산합니다.</>
+                )}
+              </p>
+            </div>
           </RuleSection>
 
           <RuleSection num="④" title="Scoring Categories">
