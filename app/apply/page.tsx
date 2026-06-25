@@ -179,6 +179,7 @@ export default function ApplyPage() {
           statement_length: t.profile.apply_err_statement_length,
           duration_range: t.profile.apply_err_duration_range(minSec, maxSec),
           season_not_found: t.profile.apply_err_season_not_found,
+          season_not_open: t.profile.apply_err_season_not_open,
           season_closed: t.profile.apply_err_season_closed,
           // 23505 on UNIQUE(season_id, user_id) or (season_id, email) — already
           // applied this season. Reuses the existing i18n string for now.

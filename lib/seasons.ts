@@ -317,6 +317,15 @@ export function isApplicationClosed(season: Season): boolean {
   return new Date() > new Date(season.application_close_at)
 }
 
+// True before the application window opens. The CTA on /tournament already hides
+// /apply until open, but a direct visit to /apply must not be able to submit
+// early -- the open date is enforced server-side here too. No open date set ->
+// treat as open (do not block) so seasons without a scheduled open still work.
+export function isBeforeApplicationOpen(season: Season): boolean {
+  if (!season.application_open_at) return false
+  return new Date() < new Date(season.application_open_at)
+}
+
 export function isCapacityFull(season: Season, count: number): boolean {
   return count >= season.max_applicants
 }

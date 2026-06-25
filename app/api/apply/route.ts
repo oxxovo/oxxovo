@@ -4,6 +4,7 @@ import {
   getSeasonById,
   getActiveApplicationCount,
   isApplicationClosed,
+  isBeforeApplicationOpen,
   isCapacityFull,
 } from '@/lib/seasons'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -24,6 +25,7 @@ export type ApplyErrorCode =
   | 'statement_length'
   | 'duration_range'
   | 'season_not_found'
+  | 'season_not_open'
   | 'season_closed'
   | 'already_applied_this_season'
   | 'server_error'
@@ -91,6 +93,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
       return NextResponse.json({ error: 'season_not_found' }, { status: 503 })
     }
 
+    if (isBeforeApplicationOpen(season)) {
+      return NextResponse.json({ error: 'season_not_open' }, { status: 403 })
+    }
     if (isApplicationClosed(season)) {
       return NextResponse.json({ error: 'season_closed' }, { status: 403 })
     }

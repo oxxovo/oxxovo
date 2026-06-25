@@ -61,8 +61,8 @@ Q. Can I apply multiple times in one season?
 
 ## B. Schedule (Season 0: THE LAST HOPE)
 Q. What is the Season 0 schedule?
-- KR: 신청 7/1 ~ 8/30 (마감 8/30 23:59 PT) / 예선 채점 8/31 ~ 9/1 / Finalist 발표 9/2 / 본선 9/3(목) ~ 9/5(토) 48시간 / 시상 9/6.
-- EN: Applications Jul 1 – Aug 30 (closes Aug 30, 11:59 PM PT) / Preliminary scoring Aug 31 – Sep 1 / Finalist announcement Sep 2 / Main round Sep 3 (Thu) – Sep 5 (Sat), 48 hours / Awards Sep 6.
+- KR: 신청 7/25 ~ 8/30 (마감 8/30 23:59 PT) / 예선 채점 8/31 ~ 9/1 / Finalist 발표 9/2 / 본선 9/3(목) ~ 9/5(토) 48시간 / 시상 9/6.
+- EN: Applications Jul 25 – Aug 30 (closes Aug 30, 11:59 PM PT) / Preliminary scoring Aug 31 – Sep 1 / Finalist announcement Sep 2 / Main round Sep 3 (Thu) – Sep 5 (Sat), 48 hours / Awards Sep 6.
 Q. When is the deadline?
 - KR: 8월 30일 23:59 (PT)입니다.
 - EN: August 30, 11:59 PM Pacific Time.

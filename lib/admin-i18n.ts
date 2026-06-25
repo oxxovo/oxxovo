@@ -564,6 +564,7 @@ type Messages = {
     apply_err_statement_length: string
     apply_err_duration_range: (min: number, max: number) => string
     apply_err_season_not_found: string
+    apply_err_season_not_open: string
     apply_err_season_closed: string
     apply_err_duplicate_email: string
     apply_err_membership_required: string
@@ -1160,6 +1161,7 @@ const MESSAGES_EN: Messages = {
     apply_err_duration_range: (min, max) =>
       `Video duration must be between ${min} and ${max} seconds.`,
     apply_err_season_not_found: 'Season configuration not found. Please try again later.',
+    apply_err_season_not_open: 'Applications for this season have not opened yet.',
     apply_err_season_closed: 'Applications for this season are closed.',
     apply_err_duplicate_email: 'This email has already submitted an application.',
     apply_err_membership_required: 'A creator membership is required to apply. Please activate your membership and try again.',
@@ -1765,6 +1767,7 @@ const MESSAGES_KO: Messages = {
     apply_err_duration_range: (min, max) =>
       `영상 길이는 ${min}~${max}초 사이여야 합니다.`,
     apply_err_season_not_found: '시즌 설정을 찾을 수 없습니다. 잠시 후 다시 시도해주세요.',
+    apply_err_season_not_open: '이번 시즌 신청이 아직 시작되지 않았습니다.',
     apply_err_season_closed: '이번 시즌 신청이 마감되었습니다.',
     apply_err_duplicate_email: '이 이메일로 이미 신청서가 제출되었습니다.',
     apply_err_membership_required: '신청하려면 크리에이터 멤버십이 필요합니다. 멤버십을 활성화한 뒤 다시 시도해주세요.',
