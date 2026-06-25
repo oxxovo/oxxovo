@@ -106,11 +106,8 @@ Q. What are the main-round rules? (Genesis Rule)
 
 ## E. Judging
 Q. How is judging done?
-- KR: 100% AI 심사입니다. 여러 AI 모델(Triple-AI)이 함께 평가합니다.
-- EN: Judging is 100% AI-based, using multiple AI models (Triple-AI scoring).
-Q. Do public votes affect the ranking?
-- KR: 시즌0는 100% AI 심사로 순위를 정하며, 일반 투표는 순위에 반영되지 않습니다.
-- EN: In Season 0, rankings are decided 100% by AI judging; public votes do not affect the ranking.
+- KR: 예선은 여러 AI 모델의 100% AI 심사입니다. 본선은 AI 심사와 관객 투표를 함께 봅니다. 결과는 AI Score·Community Score·Final Score를 모두 공개합니다. 시즌0 본선은 AI Score로 순위를 정하고 관객 투표를 테스트로 함께 운영하며, 시즌1부터 AI 50% + 관객 50%로 반영됩니다. 운영진은 점수에 개입하지 않습니다.
+- EN: The preliminary is 100% AI judging by multiple models. The main round combines AI scoring with audience voting, and we publish AI Score, Community Score, and Final Score. In Season 0 the ranking is by AI Score with audience voting run as a test; from Season 1 it is AI 50% + Community 50%. Staff never intervene in scores.
 Q. How do you verify the videos are AI-made?
 - KR: 제출된 영상은 AI 생성 여부를 진위 확인합니다. 부정이 의심되면 별도 검토를 거칩니다.
 - EN: Submitted videos are checked for AI authenticity, and suspected issues go through additional review.
@@ -232,9 +229,9 @@ Q. When is Studio available?
 Q. Where can I see the rules?
 - KR: www.oxxovo.ai/rules에서 보실 수 있습니다. 영어가 기본이며 한국어를 제공합니다.
 - EN: At www.oxxovo.ai/rules. English is the default, with Korean provided.
-Q. How is judging kept fair?
-- KR: 100% AI 심사입니다. 여러 AI 모델이 함께 평가하며, 인맥이나 인기 투표는 순위에 반영되지 않습니다.
-- EN: Judging is 100% AI. Multiple AI models evaluate together; connections or popularity votes do not affect ranking.
+Q. How is judging done?
+- KR: 예선은 여러 AI 모델의 100% AI 심사입니다. 본선은 AI 심사와 관객 투표를 함께 봅니다. 결과는 AI Score·Community Score·Final Score를 모두 공개합니다. 시즌0 본선은 AI Score로 순위를 정하고 관객 투표를 테스트로 함께 운영하며, 시즌1부터 AI 50% + 관객 50%로 반영됩니다. 운영진은 점수에 개입하지 않습니다.
+- EN: The preliminary is 100% AI judging by multiple models. The main round combines AI scoring with audience voting, and we publish AI Score, Community Score, and Final Score. In Season 0 the ranking is by AI Score with audience voting run as a test; from Season 1 it is AI 50% + Community 50%. Staff never intervene in scores.
 Q. What is the World Championship?
 - KR: 각 대회 우승자들이 겨루는 연말 왕중왕전으로, 2027년부터 매년 12월 개최됩니다. 상금은 up to $250,000, plus sponsorship prizes (TBD)입니다. 시즌0 우승자는 2027 진출 자격을 얻습니다.
 - EN: A year-end World Championship among contest winners, held each December from 2027. The prize is up to $250,000, plus sponsorship prizes (TBD). The Season 0 winner qualifies for 2027.
