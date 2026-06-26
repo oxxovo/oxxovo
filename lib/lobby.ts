@@ -51,10 +51,16 @@ function ms(v: string | null): number | null {
 }
 
 // Server-authoritative mode from the schedule. Boundaries:
+//   no open date set                   -> upcoming  (teaser / "COMING SOON")
 //   now < open                         -> upcoming
 //   open <= now < close                -> accepting
 //   close <= now < mainEnd/awards      -> live  (applications closed; scoring + main round)
 //   now >= mainEnd/awards | completed  -> ended
+//
+// A season with NO application_open_at is a teaser ("coming soon", date TBD), NOT
+// an open one — defaulting a dateless season to 'accepting' would falsely show it
+// as OPEN with an Apply CTA. Only a season whose open date has actually passed
+// (and isn't past close) is 'accepting'.
 export function deriveLobbyMode(s: SeasonRow, now: Date): LobbyMode {
   const t = now.getTime()
   const open = ms(s.application_open_at)
@@ -65,9 +71,10 @@ export function deriveLobbyMode(s: SeasonRow, now: Date): LobbyMode {
 
   if (s.status === 'completed') return 'ended'
   if (endish != null && t >= endish) return 'ended'
-  if (open != null && t < open) return 'upcoming'
+  if (open == null) return 'upcoming' // teaser: announced, open date not set yet
+  if (t < open) return 'upcoming'
   if (close != null && t >= close) return 'live'
-  // open<=now<close, or no dates set on an active season
+  // open<=now<close
   return 'accepting'
 }
 

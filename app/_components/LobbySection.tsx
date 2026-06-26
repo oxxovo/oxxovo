@@ -87,12 +87,16 @@ export function LobbyCardView({ card }: { card: LobbyCard }) {
         <h3 className="text-base font-black text-white">{card.displayName}</h3>
         {card.theme && <p className="mt-0.5 text-sm text-white/55 line-clamp-1">{card.theme}</p>}
 
-        <div className="mt-3 flex items-baseline gap-2">
-          <span className="text-[10px] uppercase tracking-wider text-white/40">Prize pool</span>
-          <span className="text-lg font-black text-[#b66cff]">
-            ${card.prizePool.toLocaleString()}
-          </span>
-        </div>
+        {card.prizePool > 0 ? (
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-white/40">Prize pool</span>
+            <span className="text-lg font-black text-[#b66cff]">
+              ${card.prizePool.toLocaleString()}
+            </span>
+          </div>
+        ) : (
+          <div className="mt-3 text-[10px] uppercase tracking-wider text-white/40">Prize pool — TBA</div>
+        )}
 
         {card.countdownTargetIso && !ended && (
           <Countdown targetIso={card.countdownTargetIso} mode={card.mode} />

@@ -35,11 +35,18 @@ import type { Season } from '@/lib/seasons'
 // triggers.
 export const dynamic = 'force-dynamic'
 
+// Forward-only lifecycle order. 'upcoming' sits between draft and active: it is
+// an announced teaser (shown on the lobby as "COMING SOON", no applications) that
+// must NOT be regressed to draft by the tick, and is auto-promoted to 'active'
+// once its application_open_at arrives. A teaser with no open date set stays
+// 'upcoming' forever (desiredStatus returns 'draft' for it, which is <= upcoming,
+// so the forward-only guard leaves it untouched).
 const STATUS_RANK: Record<string, number> = {
   draft: 0,
-  active: 1,
-  closed: 2,
-  completed: 3,
+  upcoming: 1,
+  active: 2,
+  closed: 3,
+  completed: 4,
 }
 
 // The status a season *should* be in given the wall-clock and its own schedule.
@@ -109,8 +116,11 @@ async function handle(request: NextRequest) {
     skippedCreation = 'no seasons exist yet — nothing to clone from'
     errors.push('season-tick: seasons table is empty; cannot bootstrap season_0')
   } else if (!latest.application_open_at) {
-    skippedCreation = `latest season ${latest.id} has no application_open_at`
-    errors.push(`season-tick: ${latest.id} missing application_open_at; cannot schedule next`)
+    // The latest season is a teaser with no open date set yet (e.g. an
+    // announced "COMING SOON" season whose schedule is still TBD). That is a
+    // normal state, not a failure — skip create-ahead quietly instead of
+    // alerting every hourly tick. Create-ahead resumes once it has a date.
+    skippedCreation = `latest season ${latest.id} has no application_open_at (teaser); next not scheduled`
   } else if (new Date(latest.application_open_at).getTime() > nowMs) {
     // Latest season hasn't opened yet — already exactly one draft ahead.
     skippedCreation = `latest season ${latest.id} not open yet; next already pending`
