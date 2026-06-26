@@ -48,8 +48,13 @@ OXXOVO는 AI 영상 창작 토너먼트입니다. 크리에이터가 짧은 AI �
 - 상금 풀 $3,000 — 1등 $1,800 / 2등 $750 / 3등 $450 (60 / 25 / 15)
 ### 시즌 1 이후 (유료)
 - 참가비 $50부터 · $50 단위($50, 100, 150 … $500)
-- 참가비 분배: OXXOVO 운영 30% / 왕중왕전 적립 20% / 상금 풀 50%
+- 참가비 분배 — 공식 대회 (2026~2027 전 시합 단일 분배, 등급 없음):
+  - 상금 풀 60% / 왕중왕전 적립 20% / OXXOVO 운영 20%
+- 참가비 분배 — 파트너(Host) 대회:
+  - 상금 풀 50% / 왕중왕전 적립 20% / Host 15% / OXXOVO 운영 15%
+- 상금 풀 내 순위 분배 (참가비 분배와 별개 층위): 1등 60% / 2등 25% / 3등 15%
 - 1등 상패(실물)는 1등에게만 증정
+- OXXOVO reserves the right to introduce alternative prize distribution models for premium tournaments in the future.
 
 ## 8. Championship Points — 왕중왕전 연결
 - 각 대회 우승자(1위)는 왕중왕전 자동 진출
