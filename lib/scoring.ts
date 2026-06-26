@@ -13,8 +13,10 @@
 //
 // 가중치는 전적으로 seasons 행에서 읽음 — per-시즌 코드 분기 없음
 // ([[feedback-no-hardcode]]). 시즌 4 전환 = 코드 변경 0, DB 값만 변경.
-//   · 시즌 0~3 (Soak): community_vote_weight = 0 → final == ai_score.
-//   · 시즌 4+        : community_vote_weight = 0.7 → AI 30% + 커뮤니티 70%.
+//   · 시즌 0 (Soak): community_vote_weight = 0 → final == ai_score (AI 100%).
+//   · 시즌 1+       : community_vote_weight = 0.5 → AI 50% + 커뮤니티 50%
+//                     (TK 2026-06-24 확정, 옛 0.7 폐기). 단 커뮤니티 투표 집계가
+//                     실제로 존재해야 final_score가 산출됨(없으면 null=랭킹 제외).
 //
 // 불변식: ai_score_weight + community_vote_weight = 1 (DB CHECK +
 // season-schema.ts Zod refine로 이중 보장). 이 함수는 그 불변식을 신뢰.

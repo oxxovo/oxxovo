@@ -9,7 +9,7 @@ import type { Season } from './seasons'
 export const SEASON_ZONE = 'America/Los_Angeles'
 
 // Every auto-created season inherits the SAME community-vote weight, read by the
-// cron from platform_config.default_community_vote_weight (0.7) and passed in
+// cron from platform_config.default_community_vote_weight (0.5) and passed in
 // here — there is deliberately NO per-season branching. Only season_0, the
 // hand-seeded bootstrap row, carries a different weight (0), and that lives
 // purely as a data value on that one row; the cron never creates season_0, so it
