@@ -1,7 +1,7 @@
 -- ===========================================================================
--- Seasons 1-6 "COMING SOON" teaser cards (home lobby)
+-- Seasons 1-4 "COMING SOON" teaser cards (home lobby)
 -- ===========================================================================
--- Goal: show Seasons 1-6 as "COMING SOON" teaser cards in the home TOURNAMENTS
+-- Goal: show Seasons 1-4 as "COMING SOON" teaser cards in the home TOURNAMENTS
 -- lobby WITHOUT accepting any applications, with zero impact on Season 0.
 --
 -- How the lobby decides what to show (server-authoritative, lib/lobby.ts):
@@ -21,9 +21,10 @@
 --   * /apply is date-gated server-side (isBeforeApplicationOpen).
 --   * the lobby CTA for an 'upcoming' card is Pre-register, not Apply.
 --
+-- Scope: 2026 lobby = Season 0 (live) + Seasons 1-4 teasers. Seasons 5/6
+-- (EUPHORIA, ODYSSEY) are 2027 and intentionally NOT inserted here.
 -- Dates (PT cadence, stored UTC): S1 opens 9/28, S2 10/12, S3 10/26, S4 11/9
--- (each a 7-day window). S5/S6 dates are TBD -> NULL (card shows "COMING SOON"
--- with no countdown). Prize pools are TBA -> 0 (card shows "Prize pool - TBA").
+-- (each a 7-day window). Prize pools are TBA -> 0 (card shows "Prize pool - TBA").
 --
 -- Idempotent: the INSERT skips ids that already exist; the UPDATE self-gates on
 -- status='draft'. Safe to re-run. Run in the Supabase SQL editor.
@@ -49,7 +50,7 @@ WHERE id = 'season_1'
   AND status = 'draft';
 
 -- ---------------------------------------------------------------------------
--- 2. Seasons 2-6 -> clone Season 0's full (valid) config, override the
+-- 2. Seasons 2-4 -> clone Season 0's full (valid) config, override the
 --    teaser-specific fields. Cloning guarantees every NOT NULL / config column
 --    (scoring weights, ai_models, studio, advancement policy, etc.) is sane, so
 --    each season is ready to be finalized in /admin/seasons before it opens.
@@ -112,16 +113,12 @@ SELECT
   s.advance_pct, s.advance_min, s.advance_max
 FROM public.seasons s
 CROSS JOIN (VALUES
-  ('season_2', 'EVOLUTION',  2, 'OXXOVO Season 2: Evolution',
+  ('season_2', 'EVOLUTION', 2, 'OXXOVO Season 2: Evolution',
      TIMESTAMPTZ '2026-10-12 07:00:00+00', TIMESTAMPTZ '2026-10-19 06:59:00+00'),
-  ('season_3', 'TEMPTATION', 3, 'OXXOVO Season 3: Temptation',
+  ('season_3', 'SAVOR',     3, 'OXXOVO Season 3: Savor',
      TIMESTAMPTZ '2026-10-26 07:00:00+00', TIMESTAMPTZ '2026-11-02 06:59:00+00'),
-  ('season_4', 'VELOCITY',   4, 'OXXOVO Season 4: Velocity',
-     TIMESTAMPTZ '2026-11-09 07:00:00+00', TIMESTAMPTZ '2026-11-16 06:59:00+00'),
-  ('season_5', 'EUPHORIA',   5, 'OXXOVO Season 5: Euphoria',
-     NULL::timestamptz, NULL::timestamptz),
-  ('season_6', 'ODYSSEY',    6, 'OXXOVO Season 6: Odyssey',
-     NULL::timestamptz, NULL::timestamptz)
+  ('season_4', 'VELOCITY',  4, 'OXXOVO Season 4: Velocity',
+     TIMESTAMPTZ '2026-11-09 07:00:00+00', TIMESTAMPTZ '2026-11-16 06:59:00+00')
 ) AS v(id, name, season_number, display_name, open_at, close_at)
 WHERE s.id = 'season_0'
   AND NOT EXISTS (SELECT 1 FROM public.seasons x WHERE x.id = v.id);
@@ -131,8 +128,8 @@ COMMIT;
 -- ===========================================================================
 -- Verification (run AFTER commit)
 -- ===========================================================================
--- Expect: season_1..6 status='upcoming', host_type='official', S1-4 with dates,
--- S5-6 dates NULL, total_prize_pool 0. season_0 untouched (still 'draft').
+-- Expect: season_1..4 status='upcoming', host_type='official', all with dates,
+-- total_prize_pool 0. season_0 untouched (still 'draft'). No season_5/6 rows.
 SELECT id, season_number, name, display_name, status, host_type,
        total_prize_pool, application_open_at, application_close_at
 FROM public.seasons
