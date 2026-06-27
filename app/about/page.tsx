@@ -14,7 +14,7 @@ import {
 
 export default async function AboutPage() {
   const season = await getCurrentSeason();
-  const seasonName = season?.name ?? 'GENESIS';
+  const seasonName = season?.name ?? 'OXXOVO';
   const panelLabel = season ? formatPanelLabel(season.ai_models) : 'multi-AI';
   const providerList = season ? formatAiProviderList(season.ai_models) : 'multiple AI providers';
 

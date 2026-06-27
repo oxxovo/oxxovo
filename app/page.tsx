@@ -115,7 +115,7 @@ export default function OXXOVOLandingPage() {
                 Hi, {user.email.split('@')[0]}
               </a>
               <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="/apply">
-                Apply to {season?.name ?? 'GENESIS'}
+                {season ? `Apply to ${season.name}` : 'Apply now'}
               </a>
               <button
                 onClick={handleLogout}
@@ -128,7 +128,7 @@ export default function OXXOVOLandingPage() {
             <>
               <a className="text-[14px] text-white/60 max-md:hidden" href="/login">Log in</a>
               <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="/apply">
-                Apply to {season?.name ?? 'GENESIS'}
+                {season ? `Apply to ${season.name}` : 'Apply now'}
               </a>
             </>
           )}
@@ -169,7 +169,7 @@ export default function OXXOVOLandingPage() {
                 href="/apply"
                 className="flex h-[64px] items-center justify-center rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-8 text-[16px] font-extrabold uppercase tracking-wide text-white shadow-[0_0_28px_rgba(139,34,255,.5)] transition hover:brightness-110"
               >
-                Apply to {season?.name ?? 'GENESIS'}
+                {season ? `Apply to ${season.name}` : 'Apply now'}
               </a>
               <a
                 href="/tournament"

@@ -213,7 +213,7 @@ export default function ApplyPage() {
         <div className="text-center max-w-md">
           <div className="text-6xl mb-6 text-[#8b22ff] drop-shadow-[0_0_30px_rgba(139,34,255,.5)]">⏱</div>
           <h1 className="text-3xl font-black mb-3">
-            {season?.name ?? 'GENESIS'} — Applications Closed
+            {season?.name ?? 'OXXOVO'} — Applications Closed
           </h1>
           <p className="text-white/60 mb-8 leading-relaxed">
             The application period has ended. Sign up for notifications about the next season.
@@ -227,7 +227,7 @@ export default function ApplyPage() {
   // Unauthenticated visitor -> intro + sign-in CTA (returns here after login).
   // Studio messaging only when the studio funnel is active (session6 ON).
   if (!user) {
-    return <IntroScreen seasonName={season?.name ?? 'GENESIS'} studio={studioApplication} closeDate={formatDeadlinePT(season?.application_close_at)} />
+    return <IntroScreen seasonName={season?.name ?? 'OXXOVO'} studio={studioApplication} closeDate={formatDeadlinePT(season?.application_close_at)} />
   }
 
   // P3 membership gate. Only when the switch is ON and configured as required
@@ -237,7 +237,7 @@ export default function ApplyPage() {
   if (membership?.gateActive && !membership.isActiveCreator) {
     return (
       <MembershipGateScreen
-        seasonName={season?.name ?? 'GENESIS'}
+        seasonName={season?.name ?? 'OXXOVO'}
         founding={membership.founding}
         onClaimed={() => setReloadKey((k) => k + 1)}
       />
@@ -263,7 +263,7 @@ export default function ApplyPage() {
           <p className="text-white/60 mb-8 leading-relaxed">
             {isWait
               ? `${season?.name ?? 'This season'} reached its capacity. You're on the waitlist — we'll notify you if a spot opens, or when the next season begins.`
-              : `Thank you for applying to ${season?.name ?? 'GENESIS'}. We will review your entry and notify you by email.`}
+              : `Thank you for applying to ${season?.name ?? 'OXXOVO'}. We will review your entry and notify you by email.`}
           </p>
           <div className="flex flex-col gap-3 items-center">
             <a
@@ -306,7 +306,7 @@ export default function ApplyPage() {
             {season?.name ?? 'GENESIS Tournament'}
           </p>
           <h1 className="text-4xl md:text-5xl font-black mb-3">
-            {isWaitlistMode ? 'Join the Waitlist' : `Apply to ${season?.name ?? 'GENESIS'}`}
+            {isWaitlistMode ? 'Join the Waitlist' : `Apply to ${season?.name ?? 'OXXOVO'}`}
           </h1>
           {isWaitlistMode ? (
             <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
@@ -806,7 +806,7 @@ function FunnelScreen({
   count: number
 }) {
   const isWait = mode === 'waitlist'
-  const name = season?.name ?? 'GENESIS'
+  const name = season?.name ?? 'OXXOVO'
   return (
     <main className="min-h-screen bg-[#030305] text-white">
       <ApplyHeader email={email} />

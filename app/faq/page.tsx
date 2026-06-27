@@ -104,7 +104,7 @@ export default async function FAQPage() {
     getCurrentSeason(),
     getMembershipLandingData(),
   ]);
-  const seasonName = season?.name ?? 'GENESIS';
+  const seasonName = season?.name ?? 'OXXOVO';
   const faqs: Faq[] = season ? buildFaqs(season, mem) : [];
 
   return (
