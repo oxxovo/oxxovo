@@ -2,6 +2,11 @@
 
 작성 2026-06-09 · 대상 브랜치 `feat/studio` (PR #7) · 동반 워커 `oxxovo/oxxovo-studio` (Railway)
 
+> **개정 2026-06-26 (지수2):** ① 도메인 전부 canonical **www.oxxovo.ai**로 교정(.com 308 함정 제거)
+> ② 본선 = **compose** 모델 반영(Stage 3 다중 클립 / **Stage 3b compose 렌더** / Stage 4 submitRender)
+> ③ 마이그 8~11(compose 3 + 2단계 제거) 추가 ④ 시즌0 길이 = compose **30s / 10클립**으로 교정.
+> 실행/스위치 조작 없음 — 문서 패치만. 풀런은 일정 승인 + 선행조건(워커 Railway 배포·whsec·CRYPTOBIND 지문) 후.
+
 > 이 문서는 **런칭일에 `session6_enabled`를 켜는 순간**의 절차서다. 헤드리스 결제 E2E
 > (코드 경로)는 이미 통과했고(2026-06-08), 여기서는 **실제 프로드 인프라(fal.ai 실호출 →
 > R2 → 채점 큐 + 실 Stripe 웹훅)**를 카나리 순서로 켜고 각 단계를 검증·롤백하는 법을 다룬다.
@@ -19,7 +24,8 @@
 
 ## 0. 범위
 
-- **In scope:** Studio 생성/제출 + 크레딧 결제의 프로드 ON 시나리오.
+- **In scope:** Studio **compose** 본선 흐름(클립 N개 생성 → createRender → render_jobs 렌더 →
+  submitRender) + 크레딧 결제의 프로드 ON 시나리오. 본선 제출 = 단일클립이 아니라 **완성본(render)**.
 - **Out of scope (지금 보류):** 실카드 결제 흐름(Stripe CLI / 라이브 키 전환) — 라이브 전환 때
   별도 진행. 이 런북은 **test 모드 Stripe 키 + 실 dashboard 웹훅**까지를 다룬다.
 - member-hosted(파트너) ON은 동일 패턴이라 **부록 A**에 요약.
@@ -38,10 +44,17 @@
 | 1 | `studio_phase1_migration_2026-06.sql` | model_catalog / generation_jobs / credit_transactions + studio_* config |
 | 2 | `studio_phase3_migration_2026-06.sql` | genesis_applications studio_* + seasons studio_round/cap, season_0='both' |
 | 3 | `studio_phase4_migration_2026-06.sql` | free_entry_url nullable + Veo 3.1 3티어 행 |
-| 4 | `studio_season0_length_8s_2026-06.sql` | 시즌 0 영상 길이 4~8s |
+| 4 | `studio_season0_length_8s_2026-06.sql` | 시즌 0 **per-clip** 길이 4~8s (단일클립 시대 — compose에서 최종길이는 #8이 덮어씀) |
 | 5 | `studio_session6_switch_2026-06.sql` | session6_enabled=false (마스터 스위치 등록) |
 | 6 | `studio_stripe_2026-06.sql` | credit_transactions.stripe_session_id + unique index + 구매 config |
 | 7 | `studio_content_bind_2026-06.sql` | cryptobind_content_hash/_signature (S-6) |
+| 8 | `studio_compose_phase1_migration_2026-06.sql` | **render_jobs** 테이블 + genesis_applications `studio_application_render_id`/`studio_main_render_id` + seasons compose 파라미터(`studio_compose_enabled`/`_max_seconds`/`_max_clips`). 시즌0 = compose ON, **최종 30s / 10클립** |
+| 9 | `studio_compose_min_seconds_migration_2026-06.sql` | seasons `studio_compose_min_seconds` (compose 하한, createRender/submitRender의 `too_short` 검증) |
+| 10 | `studio_model_catalog_tiers_migration_2026-06.sql` | model_catalog 티어/모델 튜닝 (전모델 평등 사용) |
+| 11 | `two_stage_final_removal_migration_2026-06.sql` | **2단계 전환** — 결승 라운드 제거(seasons/genesis_applications/seasons_public `final_*` DROP). `cryptobind_final_*`(완성본 해시)는 보존 |
+
+> 8~11은 본 런북(6/09 단일클립 시대) 작성 이후 추가·라이브 적용됨. **본선 = compose 모델**이므로
+> 8·9는 본선 E2E의 필수 선행. 11은 라운드를 예선→본선 2단계로 확정(결승 없음).
 
 검증(한 번에):
 ```sql
@@ -57,8 +70,19 @@ FROM public.model_catalog ORDER BY cost_per_second_usd;
 SELECT column_name FROM information_schema.columns
 WHERE table_name='generation_jobs'
   AND column_name IN ('cryptobind_content_hash','cryptobind_content_signature');
+-- compose: render_jobs 존재 + 시즌0 compose 파라미터
+SELECT to_regclass('public.render_jobs') AS render_jobs_table;
+SELECT id, studio_compose_enabled, studio_compose_min_seconds,
+       studio_compose_max_seconds, studio_compose_max_clips
+FROM public.seasons WHERE id='season_0';
+-- 2단계 확정: final_* 컬럼이 DROP 됐는지 (0행이어야 함)
+SELECT column_name FROM information_schema.columns
+WHERE table_name='seasons' AND column_name LIKE 'final_%';
 ```
-기대: session6_enabled=false, studio_purchase_enabled=false, 3티어(budget ltx / standard veo3.1-fast 0.15 / premium veo3.1 0.40, max 8s), S-6 컬럼 2행.
+기대: session6_enabled=false, studio_purchase_enabled=false, S-6 컬럼 2행. **compose**: `render_jobs`
+존재, 시즌0 `studio_compose_enabled=true` · min/max = **15 / 30s** · `max_clips=10`. **2단계**: seasons에
+`final_*` 컬럼 0행(제거됨). model_catalog는 active 티어 행 존재(per-clip 길이는 모델 native enum, 최종
+길이는 시즌 compose cap 30s로 통제 — 둘을 혼동하지 말 것).
 
 ### 1.2 환경변수
 
@@ -67,7 +91,7 @@ WHERE table_name='generation_jobs'
 STRIPE_SECRET_KEY            sk_test_...            (라이브 전환 시 sk_live_로 교체)
 STRIPE_WEBHOOK_SECRET        whsec_...             (1.4에서 dashboard 웹훅 등록 후 획득)
 STUDIO_CRYPTOBIND_SECRET     <64-hex>              (워커와 BYTE 단위 동일해야 함)
-APP_URL                      https://oxxovo.com
+APP_URL                      https://www.oxxovo.ai (canonical .ai -- .com은 308이라 결제 redirect/webhook 깨짐)
 NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY
 ```
 
@@ -100,7 +124,9 @@ node -e "console.log(require('crypto').createHash('sha256').update(process.env.S
 
 1. dashboard.stripe.com → **테스트 모드 ON** 확인
 2. Developers → Webhooks → **+ Add endpoint**
-3. URL: `https://oxxovo.com/api/studio/stripe-webhook`
+3. URL: `https://www.oxxovo.ai/api/studio/stripe-webhook`
+   - ⚠️ **canonical 도메인(www.oxxovo.ai) 필수.** `oxxovo.com`은 308 리다이렉트라 Stripe가
+     웹훅을 보내면 전송 실패 → 적립 silent fail. 멤버십 웹훅과 동일 함정([[reference-canonical-domain]]).
 4. Events: **`checkout.session.completed`** 하나만
 5. **Signing secret → Reveal** → `whsec_...` → Vercel `STRIPE_WEBHOOK_SECRET`에 입력 → **재배포**
    (env 변경은 재배포해야 반영)
@@ -127,7 +153,7 @@ partner-stats는 #3 머지 후 추가 — [[project-pr7-pr3-crossreview]] M-5 �
 
 ### Stage 0 — OFF 재확인 (켜기 직전 베이스라인)
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" https://oxxovo.com/studio      # 기대 404
+curl -s -o /dev/null -w "%{http_code}\n" https://www.oxxovo.ai/studio      # 기대 404
 ```
 - `/apply` 접속 → 기존 외부 URL 신청 폼(스튜디오 퍼널 아님)인지 확인.
 
@@ -137,7 +163,7 @@ UPDATE public.platform_config SET value='true' WHERE key='session6_enabled';
 ```
 검증:
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" https://oxxovo.com/studio      # 기대 200
+curl -s -o /dev/null -w "%{http_code}\n" https://www.oxxovo.ai/studio      # 기대 200
 ```
 - 로그인 후 `/studio` 진입 → 모델 3티어, 잔액 0, 라운드 라벨(시즌 0='both'면 일정 기준 서버가
   application/main 판정) 표시 확인.
@@ -149,37 +175,65 @@ curl -s -o /dev/null -w "%{http_code}\n" https://oxxovo.com/studio      # 기대
 - 검증: `/studio` 잔액에 반영, `credit_transactions`에 type=`admin_adjust` + actor_id + reason
   행 1건.
 
-### Stage 3 — 생성 E2E (실 fal 호출, 최소 비용)
-- `/studio`에서 **budget(ltx) 티어 + 최소 길이**로 1건 생성.
-- 6-state 진행을 관찰:
+### Stage 3 — 클립 생성 E2E (실 fal 호출, 최소 비용) — compose 소스 확보
+- `/studio`에서 **budget(ltx) 티어 + 최소 길이**로 **클립 2~3건** 생성(compose는 다중 소스가
+  필요하므로 1건이 아니라 여러 건). DEV_MODE=false라 고른 티어/길이가 그대로 쓰임.
+- 각 클립의 6-state 진행을 관찰:
 ```sql
 SELECT id, status, tier, duration_seconds, fal_request_id, r2_key,
        actual_cost_usd, worker_started_at, worker_finished_at, error_message
-FROM public.generation_jobs ORDER BY created_at DESC LIMIT 3;
+FROM public.generation_jobs ORDER BY created_at DESC LIMIT 5;
 ```
   기대 전이: queued -> generating -> uploading -> **ready**. `video_url`(R2 public), `r2_key`,
-  `actual_cost_usd` 채워짐. **S-6**: `cryptobind_content_hash` + `_signature`도 ready 시 기록.
+  `actual_cost_usd` 채워짐. **S-6**: `cryptobind_content_hash` + `_signature`도 ready 시 기록(= v1c).
 - Railway 워커 로그에 `[job ...] READY (cost ~$...)` 확인. fal 대시보드 지출 ≈ 예상치.
 - R2 버킷에 객체 생성 확인.
-- 크레딧이 생성 시 차감(음수 ledger 행 type=`generation_charge`)됐는지 확인.
+- 크레딧이 생성마다 차감(음수 ledger 행 type=`generation_charge`)됐는지 확인.
 
-### Stage 4 — 제출 E2E (CryptoBind + 불변성)
-- ready 잡을 제출.
+### Stage 3b — Compose 렌더 E2E (createRender -> render_jobs -> ready, v1sr/v1sc)
+> 본선의 핵심. 여러 ready 클립을 EDL로 엮어 **완성본 1개**를 만든다. 렌더는 워커 ffmpeg(CPU)라
+> **fal 비용 0** (소스 클립은 Stage 3에서 이미 과금됨). `studio_daily_generation_cap`에 안 걸림.
+
+- `/studio/compose`에서 ready 클립을 시퀀스/트림/컷으로 배치(순차+트림+컷만) → 총 길이를
+  시즌 compose 범위(**15~30s**, 최대 10클립) 안으로 → **Make final(렌더)** 클릭.
+- `createRender`가 검증하는 것: compose_enabled, 클립수 <= max_clips, 총길이 [min,max],
+  각 소스 = **본인 소유·동일 시즌·ready·유효 v1 CryptoBind**, 트림 <= 클립 길이. 통과 시 EDL+소스
+  서명 번들로 **v1sr(request-stage)** 스탬프 후 `render_jobs` queued 삽입.
+- 워커 6-state 관찰(생성과 별도 큐):
+```sql
+SELECT id, status, total_duration_seconds, source_job_ids, video_url, r2_key,
+       cryptobind_render_signature, cryptobind_final_hash, cryptobind_final_signature,
+       worker_started_at, worker_finished_at, error_message
+FROM public.render_jobs ORDER BY created_at DESC LIMIT 3;
+```
+  기대 전이: queued -> rendering -> uploading -> **ready**. `video_url`(R2)·`r2_key` 채워짐,
+  `cryptobind_render_signature`(v1sr, 생성시) + 워커가 채운 `cryptobind_final_hash` +
+  `cryptobind_final_signature`(**v1sc**, content-stage) 기록.
+- 워커 로그에 render READY 확인. 크레딧 **추가 차감 없음**(렌더 무료).
+
+### Stage 4 — 제출 E2E (submitRender + 풀 v1s 체인 + 불변성)
+- ready **render**를 제출(`submitRenderAction` → `submitRender`). 잡이 아니라 **완성본** 제출.
+- `submitRender`가 검증하는 것(쓰기 전): render ready+owner+video_url, 시즌 compose cap,
+  **모든 소스 클립 v1 재검증**, render **v1sr** 재계산, 워커 **v1sc**(`verifyComposeBind`) → 통과해야 기록.
 - 검증:
 ```sql
 SELECT id, status, free_entry_url, main_round_video_url,
-       studio_application_job_id, studio_application_signature,
-       studio_application_submitted_at, status AS app_status
+       studio_application_render_id, studio_main_render_id,
+       studio_application_submitted_at, main_round_submitted_at
 FROM public.genesis_applications
 WHERE season_id = '<SEASON_ID>' ORDER BY created_at DESC LIMIT 3;
-SELECT id, status, submitted_at FROM public.generation_jobs WHERE id='<JOB_ID>';
+SELECT id, status, submitted_at FROM public.render_jobs WHERE id='<RENDER_ID>';
 ```
   기대:
-  - 예선(application) 라운드 + 신청행 없음 → **자동 생성**(Creator Statement 150~250 + 약관 필수).
-    status는 정원에 따라 `pending`/`waitlist` (S-1: 하드코딩 아님), 마감 후면 거부(S-2).
-  - 본선(main)이면 기존 신청행 필요, `main_round_start_at + submission_hours`(48h) 경과 후 거부(S-3).
-  - 잡 status `ready -> submitted`(터미널), 재제출 시 `already_submitted`로 거부(불변성).
-  - 채점 status는 **건드리지 않음**(채점 시스템 소유).
+  - 예선(application) 라운드 + 신청행 없음 → **자동 생성**(Creator Statement 150~250 + 약관 필수),
+    `studio_application_render_id`에 render 링크. status는 정원에 따라 `pending`/`waitlist`(S-1,
+    하드코딩 아님), 마감 후면 거부(`application_closed`, S-2).
+  - 본선(main)이면 기존 `selected` 신청행 필요 → `studio_main_render_id` + `main_round_video_url`
+    기록 + status `main_round_submitted`. `main_round_start_at + submission_hours`(48h) 경과 후 거부
+    (`round_closed`, S-3). 미선발이면 `not_selected`.
+  - render status `ready -> submitted`(터미널), 재제출 시 `already_submitted`로 거부(불변성).
+  - **소스 클립은 ready로 유지**(재사용/개별추적 가능 — 의도적). 채점 status는 **건드리지 않음**.
+- 자동화 E2E(스키마+integrity 실측): `scripts/e2e-submit-render.mjs`.
 
 ### Stage 5 — 결제 ON (실 Stripe 웹훅)
 ```sql
@@ -214,8 +268,11 @@ FROM public.credit_transactions WHERE type='purchase' ORDER BY created_at DESC L
 | 마감 후(S-2) | application_close_at 지난 시즌에 예선 제출 | `application_closed` |
 | 본선 48h 초과(S-3) | main_round_start_at+submission_hours 지난 뒤 제출 | `round_closed` |
 | 영상 길이(S-7) | 시즌 라운드 min/max 벗어난 길이로 생성 | `bad_duration` |
-| CryptoBind 변조 | DB에서 video_url/해시만 바꾼 뒤 제출 | `cryptobind_failed`(content_mismatch) |
-| 타 토너먼트 제출 | 다른 season_id로 제출 시도 | `tid_mismatch` |
+| 클립 CryptoBind 변조 | 소스 generation_jobs의 video_url/해시만 바꾼 뒤 createRender/submit | `source_cryptobind_failed` |
+| 완성본 변조 | render_jobs video_url/final_hash만 바꾼 뒤 submitRender | `compose_cryptobind_failed`(v1sc mismatch) |
+| 남의 클립 합성 | 타 user의 jobId를 EDL에 넣어 createRender | `source_not_owned` |
+| 길이 위반 | 15s 미만/30s 초과 EDL로 createRender | `too_short` / `too_long` |
+| 타 토너먼트 제출 | 다른 season_id로 제출 시도 | `tid_mismatch` / season mismatch |
 | 결제 게이트 | session6 OFF에서 /api/studio/checkout | 403 disabled (S-5) |
 
 > 변조 테스트는 테스트 계정 행에만 수행하고 끝나면 원복.
@@ -259,8 +316,9 @@ SELECT status, count(*) FROM public.generation_jobs GROUP BY status ORDER BY 2 D
 - [ ] Stripe dashboard 웹훅 등록 + whsec Vercel 반영 + 재배포
 - [ ] Stage 0 OFF 베이스라인(404) 확인
 - [ ] Stage 1 session6 ON → /studio 200 + /apply 퍼널
-- [ ] Stage 3 실 생성 6-state -> ready (+ S-6 content bind 기록)
-- [ ] Stage 4 제출 -> 신청행 + 불변성 + 채점 status 비파괴
+- [ ] Stage 3 클립 2~3건 실 생성 6-state -> ready (+ S-6 content bind = v1c 기록)
+- [ ] Stage 3b compose 렌더 createRender -> render_jobs 6-state -> ready (v1sr + v1sc 기록, 렌더 무료)
+- [ ] Stage 4 submitRender -> 신청행 render 링크 + 풀 v1s 체인 통과 + 불변성 + 채점 status 비파괴
 - [ ] Stage 5 결제 ON -> 웹훅 적립 + Resend 멱등
 - [ ] 네거티브 가드(3장) 표 1회 통과
 - [ ] 롤백 SQL 검증(켰다 끄면 즉시 404 복귀)
@@ -284,7 +342,7 @@ UPDATE public.platform_config SET value='true' WHERE key='member_hosted_enabled'
 ## 부록 B — 빠른 명령 모음
 ```bash
 # /studio 노출 상태
-curl -s -o /dev/null -w "%{http_code}\n" https://oxxovo.com/studio
+curl -s -o /dev/null -w "%{http_code}\n" https://www.oxxovo.ai/studio
 # CRYPTOBIND 지문(값 비노출)
 node -e "console.log(require('crypto').createHash('sha256').update(process.env.STUDIO_CRYPTOBIND_SECRET).digest('hex'))"
 ```
