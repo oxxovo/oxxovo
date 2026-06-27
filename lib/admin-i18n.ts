@@ -116,6 +116,7 @@ type Messages = {
   status: {
     active: string
     draft: string
+    upcoming: string
     closed: string
     completed: string
   }
@@ -701,6 +702,7 @@ const MESSAGES_EN: Messages = {
   status: {
     active: 'active',
     draft: 'draft',
+    upcoming: 'upcoming',
     closed: 'closed',
     completed: 'completed',
   },
@@ -1309,6 +1311,7 @@ const MESSAGES_KO: Messages = {
   status: {
     active: '진행 중',
     draft: '임시',
+    upcoming: '공개 예정',
     closed: '마감',
     completed: '완료',
   },

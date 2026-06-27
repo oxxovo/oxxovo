@@ -88,6 +88,7 @@ export function SeasonForm({
           defaultValue={initial.status}
           options={[
             { value: 'draft', label: t.status.draft },
+            { value: 'upcoming', label: t.status.upcoming },
             { value: 'active', label: t.status.active },
             { value: 'closed', label: t.status.closed },
             { value: 'completed', label: t.status.completed },

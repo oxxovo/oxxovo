@@ -15,7 +15,7 @@ export const seasonSchema = z
   .object({
     name: z.string().min(1, 'name required').max(50),
     season_number: z.coerce.number().int().nonnegative(),
-    status: z.enum(['draft', 'active', 'closed', 'completed']),
+    status: z.enum(['draft', 'upcoming', 'active', 'closed', 'completed']),
 
     max_applicants: z.coerce.number().int().positive(),
     top_n_advance: z.coerce.number().int().positive(),
