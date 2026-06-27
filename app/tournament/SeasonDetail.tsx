@@ -13,6 +13,7 @@ import { advanceCountLabel, formatDeadlinePT, type Season } from '@/lib/seasons'
 import type { MembershipLandingData } from '@/app/membership/types'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 import { ChatWidget } from '@/app/_components/ChatWidget'
+import { PosterLightbox } from './PosterLightbox'
 
 // CTA target by where we are in the application window: before open -> notify,
 // during -> apply, after close -> waitlist for the next season.
@@ -77,15 +78,12 @@ export function SeasonDetail({ season, mem }: { season: Season; mem: MembershipL
     <main className="min-h-screen bg-[#030305] text-white">
       {/* ---- [1] Hero: poster + title + tagline ---------------------------- */}
       <section className="px-6 pt-24 pb-12 md:pt-32 border-b border-white/5">
-        <div className="max-w-5xl mx-auto grid gap-10 md:grid-cols-[minmax(0,360px)_1fr] md:items-center">
-          <div className="mx-auto w-full max-w-[360px]">
+        <div className="max-w-5xl mx-auto grid gap-10 md:grid-cols-[minmax(0,460px)_1fr] md:items-center">
+          {/* The poster is the hero -- shown large at its natural vertical ratio,
+              click to open full-screen (PosterLightbox). */}
+          <div className="mx-auto w-full max-w-[460px]">
             {season.poster_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={season.poster_url}
-                alt={`${title} poster`}
-                className="w-full rounded-xl border border-white/10 shadow-[0_0_40px_rgba(139,34,255,.25)]"
-              />
+              <PosterLightbox src={season.poster_url} alt={`${title} poster`} />
             ) : (
               <div className="flex aspect-[3/4] w-full items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/[.03] text-center text-xs uppercase tracking-[0.2em] text-white/30">
                 Poster coming soon

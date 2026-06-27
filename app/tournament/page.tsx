@@ -86,10 +86,13 @@ function GalleryCard({ card }: { card: LobbyCard }) {
         ended ? 'opacity-60' : ''
       }`}
     >
-      <div className="relative aspect-video w-full overflow-hidden">
+      {/* Card image is a uniform vertical thumbnail (3:4, top-aligned so the
+          poster's title/key art shows). It is intentionally cropped -- the full
+          poster lives on the detail page + lightbox (/tournament/[id]). */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0c0a14]">
         {card.posterUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={card.posterUrl} alt={card.displayName} className="h-full w-full object-cover" />
+          <img src={card.posterUrl} alt={card.displayName} className="h-full w-full object-cover object-top" />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2a0e52] via-[#3d1580] to-[#1a0633] p-5 text-center">
             <span className="text-lg font-black uppercase tracking-wide text-white/90 drop-shadow-[0_0_18px_rgba(139,34,255,.6)]">
