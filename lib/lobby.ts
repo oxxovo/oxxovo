@@ -97,6 +97,25 @@ function isOfficialPublic(s: SeasonRow): boolean {
   return official && s.status !== 'draft'
 }
 
+// Project a seasons row into a lobby card (server-authoritative mode). Exported
+// so the /tournament gallery can reuse it for the current season, which may be a
+// draft surfaced by getCurrentSeason that getLobbyTournaments filters out. The
+// param is the lobby SeasonRow shape; a full Season satisfies it structurally.
+export function seasonToLobbyCard(s: SeasonRow, now: Date = new Date()): LobbyCard {
+  const mode = deriveLobbyMode(s, now)
+  return {
+    id: s.id,
+    displayName: s.display_name || s.name,
+    theme: s.season_theme,
+    posterUrl: s.poster_url,
+    prizePool: Number(s.total_prize_pool ?? 0),
+    prizeFirst: Number(s.prize_first ?? 0),
+    mode,
+    countdownTargetIso: countdownTarget(s, mode),
+    lobbyFeatured: !!s.lobby_featured,
+  }
+}
+
 export async function getLobbyTournaments(now: Date = new Date()): Promise<LobbyCard[]> {
   const { data, error } = await supabase
     .from('seasons_public')
@@ -111,20 +130,7 @@ export async function getLobbyTournaments(now: Date = new Date()): Promise<Lobby
   const rows = (data ?? []) as SeasonRow[]
   const cards: LobbyCard[] = rows
     .filter(isOfficialPublic)
-    .map((s) => {
-      const mode = deriveLobbyMode(s, now)
-      return {
-        id: s.id,
-        displayName: s.display_name || s.name,
-        theme: s.season_theme,
-        posterUrl: s.poster_url,
-        prizePool: Number(s.total_prize_pool ?? 0),
-        prizeFirst: Number(s.prize_first ?? 0),
-        mode,
-        countdownTargetIso: countdownTarget(s, mode),
-        lobbyFeatured: !!s.lobby_featured,
-      }
-    })
+    .map((s) => seasonToLobbyCard(s, now))
 
   // lobby_featured first, then nearest deadline (cards with a countdown target
   // before those without; ended cards sink to the bottom).

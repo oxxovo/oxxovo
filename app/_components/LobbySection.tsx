@@ -83,19 +83,28 @@ export function LobbyCardView({ card }: { card: LobbyCard }) {
         )}
       </div>
 
+      {/* When a poster is present it already carries the title, prize, and
+          timeline, so the body shows only the live countdown + CTA to avoid
+          duplicating (and visually clashing with) the artwork. The gradient
+          fallback (no poster) keeps the full text block so the card still
+          communicates the season. */}
       <div className="p-5">
-        <h3 className="text-base font-black text-white">{card.displayName}</h3>
-        {card.theme && <p className="mt-0.5 text-sm text-white/55 line-clamp-1">{card.theme}</p>}
+        {!card.posterUrl && (
+          <>
+            <h3 className="text-base font-black text-white">{card.displayName}</h3>
+            {card.theme && <p className="mt-0.5 text-sm text-white/55 line-clamp-1">{card.theme}</p>}
 
-        {card.prizePool > 0 ? (
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-white/40">Prize pool</span>
-            <span className="text-lg font-black text-[#b66cff]">
-              ${card.prizePool.toLocaleString()}
-            </span>
-          </div>
-        ) : (
-          <div className="mt-3 text-[10px] uppercase tracking-wider text-white/40">Prize pool — TBA</div>
+            {card.prizePool > 0 ? (
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-white/40">Prize pool</span>
+                <span className="text-lg font-black text-[#b66cff]">
+                  ${card.prizePool.toLocaleString()}
+                </span>
+              </div>
+            ) : (
+              <div className="mt-3 text-[10px] uppercase tracking-wider text-white/40">Prize pool — TBA</div>
+            )}
+          </>
         )}
 
         {card.countdownTargetIso && !ended && (
