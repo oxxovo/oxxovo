@@ -9,23 +9,11 @@
 // Adding a seasons row (official or Host) yields a detail page automatically.
 
 import Link from 'next/link'
-import { advanceCountLabel, formatDeadlinePT, type Season } from '@/lib/seasons'
+import { advanceCountLabel, formatDeadlinePT, resolveSeasonCta, type Season } from '@/lib/seasons'
 import type { MembershipLandingData } from '@/app/membership/types'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 import { ChatWidget } from '@/app/_components/ChatWidget'
 import { PosterLightbox } from './PosterLightbox'
-
-// CTA target by where we are in the application window: before open -> notify,
-// during -> apply, after close -> waitlist for the next season.
-function resolveCta(season: Season): { href: string; label: string } {
-  const now = Date.now()
-  const openAt = season.application_open_at ? new Date(season.application_open_at).getTime() : null
-  const closeAt = season.application_close_at ? new Date(season.application_close_at).getTime() : null
-  const isOpen = openAt != null && now >= openAt && (closeAt == null || now < closeAt)
-  if (isOpen) return { href: '/apply', label: `Apply to ${season.name}` }
-  if (openAt != null && now < openAt) return { href: '/pre-register', label: 'Get notified when applications open' }
-  return { href: '/pre-register', label: 'Join the waitlist' }
-}
 
 function ScheduleRow({ label, value }: { label: string; value: string | null }) {
   if (!value) return null
@@ -42,7 +30,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 export function SeasonDetail({ season, mem }: { season: Season; mem: MembershipLandingData }) {
-  const cta = resolveCta(season)
+  const cta = resolveSeasonCta(season)
   const m: MembershipLandingData = mem
 
   // Data-driven branches (no per-season code paths -- [[feedback-no-hardcode]]).

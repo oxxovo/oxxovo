@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   getCurrentSeason,
+  resolveSeasonCta,
   advanceCountLabel,
   formatAccessCopy,
   formatDeadlinePT,
@@ -45,6 +46,13 @@ export default function OXXOVOLandingPage() {
   }, [season])
 
   const SHOW_COUNTDOWN = !!targetDate
+
+  // Hero/nav CTA gates on the application window (same logic as /tournament/[id]).
+  // Before the season loads, show a neutral label; once loaded it is date-driven:
+  // before open -> "Get notified" (pre-register), open -> "Apply to <season>".
+  const cta = season
+    ? resolveSeasonCta(season)
+    : { href: '/apply', label: 'Apply now' }
 
   useEffect(() => {
     if (!targetDate) return
@@ -114,8 +122,8 @@ export default function OXXOVOLandingPage() {
               >
                 Hi, {user.email.split('@')[0]}
               </a>
-              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="/apply">
-                {season ? `Apply to ${season.name}` : 'Apply now'}
+              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href={cta.href}>
+                {cta.label}
               </a>
               <button
                 onClick={handleLogout}
@@ -127,8 +135,8 @@ export default function OXXOVOLandingPage() {
           ) : (
             <>
               <a className="text-[14px] text-white/60 max-md:hidden" href="/login">Log in</a>
-              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href="/apply">
-                {season ? `Apply to ${season.name}` : 'Apply now'}
+              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href={cta.href}>
+                {cta.label}
               </a>
             </>
           )}
@@ -166,10 +174,10 @@ export default function OXXOVOLandingPage() {
 
             <div className="mt-7 w-[min(100%,500px)]">
               <a
-                href="/apply"
+                href={cta.href}
                 className="flex h-[64px] items-center justify-center rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-8 text-[16px] font-extrabold uppercase tracking-wide text-white shadow-[0_0_28px_rgba(139,34,255,.5)] transition hover:brightness-110"
               >
-                {season ? `Apply to ${season.name}` : 'Apply now'}
+                {cta.label}
               </a>
               <a
                 href="/tournament"

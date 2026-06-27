@@ -317,6 +317,26 @@ export function isApplicationClosed(season: Season): boolean {
   return new Date() > new Date(season.application_close_at)
 }
 
+// Public CTA for a season by where we are in its application window -- shared by
+// the home hero and /tournament/[id] so they stay consistent. Fully date-driven
+// (application_open_at/close_at), no hardcode ([[feedback-no-hardcode]]):
+//   before open  -> pre-register ("get notified")
+//   open..close  -> apply
+//   after close  -> waitlist (next season)
+export function resolveSeasonCta(
+  season: Pick<Season, 'name' | 'application_open_at' | 'application_close_at'>,
+): { href: string; label: string } {
+  const now = Date.now()
+  const openAt = season.application_open_at ? new Date(season.application_open_at).getTime() : null
+  const closeAt = season.application_close_at ? new Date(season.application_close_at).getTime() : null
+  const isOpen = openAt != null && now >= openAt && (closeAt == null || now < closeAt)
+  if (isOpen) return { href: '/apply', label: `Apply to ${season.name}` }
+  if (openAt != null && now < openAt) {
+    return { href: '/pre-register', label: 'Get notified when applications open' }
+  }
+  return { href: '/pre-register', label: 'Join the waitlist' }
+}
+
 // True before the application window opens. The CTA on /tournament already hides
 // /apply until open, but a direct visit to /apply must not be able to submit
 // early -- the open date is enforced server-side here too. No open date set ->
