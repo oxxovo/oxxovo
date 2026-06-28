@@ -1,20 +1,24 @@
-// /guidelines -- Community Guidelines. PLACEHOLDER structure only; the policy
-// copy (no harassment / hate / politics-religion / impersonation / spam) is
-// supplied by HQ / 제니3. Linked from the comment composer.
+// /guidelines -- Community Guidelines (copy supplied by HQ, 2026-06-28).
+// Linked from the comment composer.
 
 import Link from 'next/link'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 
 export const dynamic = 'force-dynamic'
 
-// Section scaffold -- HQ fills the body copy per item.
-const SECTIONS: { title: string }[] = [
-  { title: 'Be respectful' },
-  { title: 'No harassment or personal attacks' },
-  { title: 'No hate speech' },
-  { title: 'Keep politics and religion out' },
-  { title: 'No impersonation or false ownership claims' },
-  { title: 'No spam' },
+const RULES: { title: string; body: string }[] = [
+  { title: 'Be respectful', body: 'No harassment, personal attacks, or hate speech.' },
+  {
+    title: 'No discrimination',
+    body: 'Content targeting race, gender, religion, or nationality is not allowed.',
+  },
+  { title: 'Keep it on-topic', body: 'No political or religious disputes.' },
+  { title: 'No spam', body: 'No repeated, promotional, or irrelevant comments.' },
+  {
+    title: "Respect creators' work",
+    body: 'If you suspect plagiarism, report it with evidence rather than making public accusations.',
+  },
+  { title: 'No illegal or harmful content', body: '' },
 ]
 
 export default function GuidelinesPage() {
@@ -26,18 +30,26 @@ export default function GuidelinesPage() {
           Community
         </p>
         <h1 className="text-3xl md:text-5xl font-black tracking-tight">Community Guidelines</h1>
-        <p className="mt-4 text-base text-white/60">
-          Comments and votes on OXXOVO follow these rules. {/* Intro copy: HQ / 제니3. */}
+        <p className="mt-4 text-base text-white/60 leading-relaxed">
+          OXXOVO is a space for AI creators to share work and connect. To keep it welcoming for
+          everyone, all comments and interactions must follow these rules:
         </p>
 
-        <div className="mt-10 space-y-6">
-          {SECTIONS.map((s) => (
-            <div key={s.title} className="border-b border-white/5 pb-5">
-              <h2 className="text-lg font-bold">{s.title}</h2>
-              {/* Body copy supplied by HQ / 제니3. */}
-              <p className="mt-2 text-sm text-white/40">—</p>
-            </div>
+        <ol className="mt-10 space-y-6">
+          {RULES.map((r, i) => (
+            <li key={r.title} className="border-b border-white/5 pb-5">
+              <h2 className="text-lg font-bold">
+                <span className="text-[#b66cff]">{i + 1}.</span> {r.title}
+              </h2>
+              {r.body && <p className="mt-2 text-sm text-white/65 leading-relaxed">{r.body}</p>}
+            </li>
           ))}
+        </ol>
+
+        <div className="mt-10 rounded-xl border border-white/10 bg-white/[.02] p-5 text-sm text-white/65 leading-relaxed">
+          <p>Violations may result in comment removal or account restrictions.</p>
+          <p className="mt-2">Use the Report button to flag content that breaks these rules.</p>
+          <p className="mt-2 text-white/45">OXXOVO reserves the right to moderate at its discretion.</p>
         </div>
       </section>
 
