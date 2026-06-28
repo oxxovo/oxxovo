@@ -199,6 +199,20 @@ export async function getWatchVideos(
   return sortVideos(videos, sort)
 }
 
+// Related videos for the detail sidebar: same season, trending, excluding the
+// video being watched. Cheap reuse of getWatchVideos (early-stage volume).
+export async function getRelatedVideos(
+  seasonId: string,
+  excludeApplicationId: string,
+  excludeRound: WatchRound,
+  limit = 8,
+): Promise<WatchVideo[]> {
+  const all = await getWatchVideos({ seasonId, sort: 'trending' })
+  return all
+    .filter((v) => !(v.applicationId === excludeApplicationId && v.round === excludeRound))
+    .slice(0, limit)
+}
+
 // Single video for the detail/player page. Returns null if the application is
 // hidden (flagged/rejected) or has no video for that round. Counts use exact
 // head queries (no row transfer).

@@ -1,11 +1,18 @@
 // /watch/[id] -- video detail + player. round is a query param
-// (?round=application|main) since one application has two videos. Player +
-// metadata land here at launch; likes / views / comments / vote attach in the
-// later phases. 100% data-driven via lib/watch (service-role, server only).
+// (?round=application|main) since one application has two videos. Two-column
+// layout: left = player + meta + social + comments, right = related sidebar
+// (same season, trending). 100% data-driven via lib/watch (service-role, server).
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getWatchVideo, getWatchComments, getVoteContext, type WatchRound } from '@/lib/watch'
+import {
+  getWatchVideo,
+  getWatchComments,
+  getVoteContext,
+  getRelatedVideos,
+  type WatchRound,
+  type WatchVideo,
+} from '@/lib/watch'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -16,6 +23,7 @@ import { LikeButton } from '../LikeButton'
 import { CommentSection } from '../CommentSection'
 import { StaffPickToggle } from '../StaffPickToggle'
 import { VoteButton } from '../VoteButton'
+import { ShareButton } from '../ShareButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,11 +50,14 @@ export default async function WatchDetailPage({
   if (!video) notFound()
 
   // Main-round videos carry a community vote (windowed, up to 3 per person).
-  const voteCtx =
-    round === 'main' ? await getVoteContext(video.applicationId, video.seasonId, user?.id ?? null) : null
+  const [voteCtx, related] = await Promise.all([
+    round === 'main'
+      ? getVoteContext(video.applicationId, video.seasonId, user?.id ?? null)
+      : Promise.resolve(null),
+    getRelatedVideos(video.seasonId, video.applicationId, video.round),
+  ])
 
-  // Whether the signed-in member already liked this video (for the button's
-  // initial state). Anonymous viewers start un-liked.
+  // Whether the signed-in member already liked this video (initial button state).
   let initialLiked = false
   if (user) {
     const admin = createSupabaseAdmin()
@@ -64,68 +75,117 @@ export default async function WatchDetailPage({
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
-      <section className="px-6 pt-24 pb-12 md:pt-28 max-w-4xl mx-auto">
-        <Link href="/watch" className="text-sm text-white/50 hover:text-white transition">
-          ← Watch
-        </Link>
+      <section className="px-6 pt-24 pb-12 md:pt-28 max-w-6xl mx-auto flex flex-col lg:flex-row gap-8">
+        {/* Left: player + meta + social + comments */}
+        <div className="flex-1 min-w-0">
+          <Link href="/watch" className="text-sm text-white/50 hover:text-white transition">
+            ← Watch
+          </Link>
 
-        <div className="mt-5">
-          <WatchPlayer url={video.videoUrl} />
-        </div>
-        <ViewTracker applicationId={video.applicationId} round={video.round} />
+          <div className="mt-5">
+            <WatchPlayer url={video.videoUrl} />
+          </div>
+          <ViewTracker applicationId={video.applicationId} round={video.round} />
 
-        <div className="mt-6 flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded bg-white/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white/75">
-            {roundLabel}
-          </span>
-          {video.staffPick && (
-            <span className="inline-flex items-center rounded bg-[#8b22ff]/85 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">
-              Staff Pick
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded bg-white/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white/75">
+              {roundLabel}
             </span>
-          )}
-          {video.awarded && (
-            <span className="inline-flex items-center rounded bg-amber-500/90 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-black">
-              🏆 Winner
-            </span>
-          )}
-        </div>
+            {video.staffPick && (
+              <span className="inline-flex items-center rounded bg-[#8b22ff]/85 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">
+                Staff Pick
+              </span>
+            )}
+            {video.awarded && (
+              <span className="inline-flex items-center rounded bg-amber-500/90 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-black">
+                🏆 Winner
+              </span>
+            )}
+          </div>
 
-        <h1 className="mt-3 text-2xl font-black">{video.creatorName}</h1>
-        <div className="mt-3 flex flex-wrap items-center gap-4">
-          <LikeButton
+          <h1 className="mt-3 text-2xl font-black">{video.creatorName}</h1>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <LikeButton
+              applicationId={video.applicationId}
+              round={video.round}
+              initialLiked={initialLiked}
+              initialCount={video.likeCount}
+              isLoggedIn={!!user}
+            />
+            <ShareButton />
+            <p className="text-sm text-white/50">
+              {video.viewCount.toLocaleString()} views
+              {video.commentCount > 0 && <> · {video.commentCount.toLocaleString()} comments</>}
+            </p>
+            {adminUser && (
+              <StaffPickToggle applicationId={video.applicationId} initial={video.staffPick} />
+            )}
+          </div>
+          {video.aiService && (
+            <p className="mt-2 text-xs text-white/35">Made with {video.aiService}</p>
+          )}
+
+          {voteCtx && (
+            <div className="mt-6">
+              <VoteButton applicationId={video.applicationId} ctx={voteCtx} isLoggedIn={!!user} />
+            </div>
+          )}
+
+          <CommentSection
             applicationId={video.applicationId}
             round={video.round}
-            initialLiked={initialLiked}
-            initialCount={video.likeCount}
-            isLoggedIn={!!user}
+            comments={comments}
+            currentUserId={user?.id ?? null}
           />
-          <p className="text-sm text-white/50">
-            {video.viewCount.toLocaleString()} views
-            {video.commentCount > 0 && <> · {video.commentCount.toLocaleString()} comments</>}
-          </p>
-          {adminUser && (
-            <StaffPickToggle applicationId={video.applicationId} initial={video.staffPick} />
-          )}
         </div>
-        {video.aiService && (
-          <p className="mt-2 text-xs text-white/35">Made with {video.aiService}</p>
-        )}
 
-        {voteCtx && (
-          <div className="mt-6">
-            <VoteButton applicationId={video.applicationId} ctx={voteCtx} isLoggedIn={!!user} />
-          </div>
-        )}
-
-        <CommentSection
-          applicationId={video.applicationId}
-          round={video.round}
-          comments={comments}
-          currentUserId={user?.id ?? null}
-        />
+        {/* Right: related (same season, trending) */}
+        <aside className="lg:w-80 shrink-0">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/40 mb-4">
+            More from this season
+          </h2>
+          {related.length === 0 ? (
+            <p className="text-sm text-white/35">Nothing else here yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {related.map((v) => (
+                <RelatedCard key={`${v.applicationId}:${v.round}`} v={v} />
+              ))}
+            </div>
+          )}
+        </aside>
       </section>
 
       <ChatWidget />
     </main>
+  )
+}
+
+function RelatedCard({ v }: { v: WatchVideo }) {
+  return (
+    <Link
+      href={`/watch/${v.applicationId}?round=${v.round}`}
+      className="group flex gap-3 rounded-lg p-1.5 transition hover:bg-white/5"
+    >
+      <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded bg-[#0c0a14]">
+        {v.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={v.thumbnailUrl} alt={v.creatorName} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2a0e52] to-[#1a0633] p-1 text-center">
+            <span className="text-[10px] font-bold uppercase text-white/80">{v.creatorName}</span>
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-white">{v.creatorName}</p>
+        <p className="mt-0.5 text-[11px] text-white/45">
+          {v.viewCount.toLocaleString()} views · {v.likeCount.toLocaleString()} likes
+        </p>
+        <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/30">
+          {v.round === 'main' ? 'Main Round' : 'Preliminary'}
+        </p>
+      </div>
+    </Link>
   )
 }
