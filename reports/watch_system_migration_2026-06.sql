@@ -139,13 +139,13 @@ CREATE INDEX IF NOT EXISTS genesis_applications_staff_pick_idx
   WHERE staff_pick = true;
 
 -- ---------------------------------------------------------------------------
--- 6. watch_votes -- community vote on MAIN-ROUND videos. ONE vote per
---    (season, round, user) -- 1 person, 1 vote across the whole main round
---    (TK 2026-06-28); most votes wins. NOT per-video: per-video would let one
---    user vote for every finalist, which kills discrimination. Logged-in only
---    (user_id NOT NULL). voter_ip / voter_ua / created_at are kept for abuse-
---    pattern detection (timing, ballot stuffing). round defaults to 'main' so
---    the table can extend to other rounds later without a schema change.
+-- 6. watch_votes -- community vote on MAIN-ROUND videos. UP TO N votes per
+--    person (default 3, TK 2026-06-28): ONE vote per video (application+user
+--    unique) AND at most community_vote_max_per_user rows per (season, round,
+--    user), enforced by the trigger in section 9. Most TOTAL votes wins.
+--    Logged-in only (user_id NOT NULL). voter_ip / voter_ua / created_at are
+--    kept for abuse-pattern detection (timing, ballot stuffing). round defaults
+--    to 'main' so the table can extend to other rounds without a schema change.
 --
 --    Aggregation -> community score -> computeFinalScore(): the per-video
 --    COUNT is normalized at read time and fed in as communityScore. Season 0
@@ -165,8 +165,10 @@ CREATE TABLE IF NOT EXISTS public.watch_votes (
     CHECK (round IN ('main', 'final'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS watch_votes_season_round_user_uniq
-  ON public.watch_votes(season_id, round, user_id);
+-- One vote per video: a user cannot vote twice for the same video. The
+-- per-person cap (up to 3 videos) is enforced by the trigger in section 9.
+CREATE UNIQUE INDEX IF NOT EXISTS watch_votes_app_user_uniq
+  ON public.watch_votes(application_id, user_id);
 
 CREATE INDEX IF NOT EXISTS watch_votes_application_idx
   ON public.watch_votes(application_id);
@@ -183,6 +185,11 @@ ALTER TABLE public.seasons
 
 ALTER TABLE public.seasons
   ADD COLUMN IF NOT EXISTS community_vote_end_at TIMESTAMPTZ;
+
+-- Max videos one person can vote for in a season's round (1-person-N-votes;
+-- default 3). Read by the watch_votes limit trigger -- no hardcoded cap.
+ALTER TABLE public.seasons
+  ADD COLUMN IF NOT EXISTS community_vote_max_per_user INT NOT NULL DEFAULT 3;
 
 -- ---------------------------------------------------------------------------
 -- 8. RLS + GRANTS -- service_role only, zero policies (membership_events
@@ -207,6 +214,49 @@ GRANT ALL ON public.watch_comment_reports  TO service_role;
 ALTER TABLE public.watch_votes           ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.watch_votes           FROM anon, authenticated, PUBLIC;
 GRANT ALL ON public.watch_votes            TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 9. watch_votes per-person limit -- "up to N votes per person" enforced at the
+--    DB level. An app-level COUNT check races: two concurrent inserts both read
+--    the old count and both pass. The advisory xact lock serializes a given
+--    voter so the COUNT is authoritative. N = seasons.community_vote_max_per_user.
+--    (The app still pre-checks for a friendly message; this is the hard backstop.)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.enforce_watch_vote_limit()
+RETURNS TRIGGER AS $$
+DECLARE
+  cap  INT;
+  used INT;
+BEGIN
+  -- Serialize concurrent votes by the same voter (held to end of txn).
+  PERFORM pg_advisory_xact_lock(
+    hashtext(NEW.season_id || ':' || NEW.round || ':' || NEW.user_id::text)
+  );
+
+  SELECT COALESCE(community_vote_max_per_user, 3) INTO cap
+  FROM public.seasons WHERE id = NEW.season_id;
+  IF cap IS NULL THEN cap := 3; END IF;
+
+  SELECT COUNT(*) INTO used
+  FROM public.watch_votes
+  WHERE season_id = NEW.season_id
+    AND round = NEW.round
+    AND user_id = NEW.user_id;
+
+  IF used >= cap THEN
+    RAISE EXCEPTION 'watch_vote_limit: user % already used %/% votes for %/%',
+      NEW.user_id, used, cap, NEW.season_id, NEW.round
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS watch_votes_limit_trg ON public.watch_votes;
+CREATE TRIGGER watch_votes_limit_trg
+  BEFORE INSERT ON public.watch_votes
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_watch_vote_limit();
 
 COMMIT;
 
