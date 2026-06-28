@@ -24,23 +24,34 @@
 
 BEGIN;
 
+-- A note on "video" identity: one genesis_application can hold TWO videos --
+-- the preliminary entry (free_entry_url) and the main-round entry
+-- (main_round_video_url) -- shown side by side from the main round on. So the
+-- social unit is (application_id, round) where round in ('application','main'),
+-- NOT the application alone. likes / views / comments all carry round so the
+-- two videos never share counts. (watch_votes is main-round only and carries
+-- its own round in ('main','final').)
+
 -- ---------------------------------------------------------------------------
--- 1. watch_likes -- one like per (application, user). Members only (user_id
---    NOT NULL enforced by the unique index + server action). The UNIQUE index
---    makes double-likes impossible at the DB level.
+-- 1. watch_likes -- one like per (application, round, user). Members only
+--    (user_id NOT NULL + server action). The UNIQUE index makes double-likes
+--    impossible at the DB level.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.watch_likes (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   application_id UUID NOT NULL REFERENCES public.genesis_applications(id) ON DELETE CASCADE,
+  round          TEXT NOT NULL DEFAULT 'application',
   user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT watch_likes_round_check
+    CHECK (round IN ('application', 'main'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS watch_likes_app_user_uniq
-  ON public.watch_likes(application_id, user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS watch_likes_app_round_user_uniq
+  ON public.watch_likes(application_id, round, user_id);
 
-CREATE INDEX IF NOT EXISTS watch_likes_application_idx
-  ON public.watch_likes(application_id);
+CREATE INDEX IF NOT EXISTS watch_likes_app_round_idx
+  ON public.watch_likes(application_id, round);
 
 CREATE INDEX IF NOT EXISTS watch_likes_user_idx
   ON public.watch_likes(user_id);
@@ -54,16 +65,19 @@ CREATE INDEX IF NOT EXISTS watch_likes_user_idx
 CREATE TABLE IF NOT EXISTS public.watch_views (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   application_id UUID NOT NULL REFERENCES public.genesis_applications(id) ON DELETE CASCADE,
+  round          TEXT NOT NULL DEFAULT 'application',
   viewer_key     TEXT NOT NULL,
   view_date      DATE NOT NULL,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT watch_views_round_check
+    CHECK (round IN ('application', 'main'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS watch_views_app_viewer_day_uniq
-  ON public.watch_views(application_id, viewer_key, view_date);
+CREATE UNIQUE INDEX IF NOT EXISTS watch_views_app_round_viewer_day_uniq
+  ON public.watch_views(application_id, round, viewer_key, view_date);
 
-CREATE INDEX IF NOT EXISTS watch_views_application_idx
-  ON public.watch_views(application_id);
+CREATE INDEX IF NOT EXISTS watch_views_app_round_idx
+  ON public.watch_views(application_id, round);
 
 -- ---------------------------------------------------------------------------
 -- 3. watch_comments -- members only (user_id NOT NULL). Author can edit/delete
@@ -73,6 +87,7 @@ CREATE INDEX IF NOT EXISTS watch_views_application_idx
 CREATE TABLE IF NOT EXISTS public.watch_comments (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   application_id UUID NOT NULL REFERENCES public.genesis_applications(id) ON DELETE CASCADE,
+  round          TEXT NOT NULL DEFAULT 'application',
   user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   body           TEXT NOT NULL,
   status         TEXT NOT NULL DEFAULT 'visible',
@@ -80,11 +95,13 @@ CREATE TABLE IF NOT EXISTS public.watch_comments (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   edited_at      TIMESTAMPTZ,
   CONSTRAINT watch_comments_status_check
-    CHECK (status IN ('visible', 'hidden'))
+    CHECK (status IN ('visible', 'hidden')),
+  CONSTRAINT watch_comments_round_check
+    CHECK (round IN ('application', 'main'))
 );
 
-CREATE INDEX IF NOT EXISTS watch_comments_application_idx
-  ON public.watch_comments(application_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS watch_comments_app_round_idx
+  ON public.watch_comments(application_id, round, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS watch_comments_user_idx
   ON public.watch_comments(user_id);
