@@ -11,7 +11,7 @@ type Turn = { role: 'user' | 'assistant'; content: string }
 const GREETING: Turn = {
   role: 'assistant',
   content:
-    'Hi! Ask me about OXXOVO — schedule, how to apply, prizes, membership. 무엇이든 물어보세요.',
+    "Hi, I'm OXXOVO AI. Ask me about OXXOVO (schedule, apply, prizes, membership) — or about making AI videos and AI tools. AI·영상 무엇이든 물어보세요.",
 }
 
 export function ChatWidget() {
@@ -72,8 +72,8 @@ export function ChatWidget() {
       {open && (
         <div className="fixed bottom-24 right-5 z-50 flex h-[min(70vh,520px)] w-[min(92vw,380px)] flex-col overflow-hidden rounded-2xl border border-[#8b22ff]/25 bg-[#0a0812]/95 backdrop-blur-xl shadow-2xl">
           <div className="border-b border-white/10 px-4 py-3">
-            <p className="text-sm font-bold text-white">OXXOVO Help</p>
-            <p className="text-[11px] text-white/40">AI assistant · info@oxxovo.com</p>
+            <p className="text-sm font-bold text-white">OXXOVO AI</p>
+            <p className="text-[11px] text-white/40">AI &amp; video assistant · info@oxxovo.com</p>
           </div>
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">

@@ -1,15 +1,23 @@
-// OXXOVO Help Assistant -- server-only Claude endpoint for the /tournament chat
-// widget. The API key lives ONLY here (server); it is never exposed to the
-// client. Knowledge base + guardrails come from lib/chatbot-kb.ts (v4).
+// OXXOVO AI -- server-only Claude endpoint for the floating help/chat widget.
+// The API key lives ONLY here (server); it is never exposed to the client.
+// Knowledge base + guardrails come from lib/chatbot-kb.ts.
 //
-// Model: claude-haiku-4-5 -- chosen for a public, high-volume FAQ bot answering
-// from a small fixed KB under strict guardrails (cost/latency). Swap CHAT_MODEL
-// to claude-opus-4-8 if richer reasoning is ever needed.
+// Persona: a single unified "OXXOVO AI" assistant (NOT three separate models).
+// Two-tier knowledge (enforced by the system prompt):
+//   - OXXOVO facts (schedule/prizes/rules/membership/Studio specifics) -> ONLY
+//     from the KB, never invented.
+//   - General AI & video-creation knowledge -> the model's own expertise PLUS
+//     the web_search server tool for anything current/fast-moving.
 //
-// Abuse guard (C): per-IP sliding-window rate limit (in-memory, best-effort --
-// per serverless instance) + input length caps + a hard max_tokens. Out-of-scope
-// turns are logged to chat_logs for /admin/messages follow-up (best-effort; a
-// missing table never breaks the chat).
+// Model: claude-sonnet-4-6 -- chosen over Haiku because the bot now answers
+// open-domain AI/video questions (needs real reasoning) and uses
+// web_search_20260209, whose dynamic filtering requires Sonnet 4.6+ (Haiku gets
+// only the basic web_search_20250305). One-line swap if cost/latency forces it.
+//
+// Abuse guard: per-IP sliding-window rate limit (in-memory, best-effort -- per
+// serverless instance) + input length caps + a hard max_tokens + web_search
+// max_uses cap. Out-of-scope turns are logged to chat_logs for /admin/messages
+// follow-up (best-effort; a missing table never breaks the chat).
 
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
@@ -19,10 +27,15 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const CHAT_MODEL = 'claude-haiku-4-5'
-const MAX_TOKENS = 700
+const CHAT_MODEL = 'claude-sonnet-4-6'
+const MAX_TOKENS = 1500
 const MAX_MESSAGE_CHARS = 1000
 const MAX_HISTORY_TURNS = 8
+// web_search is a server-side tool; cap searches per request to bound cost.
+const WEB_SEARCH_MAX_USES = 5
+// Server-tool turns can pause_turn when the server loop hits its cap; resume a
+// bounded number of times so a single question can't loop forever.
+const MAX_PAUSE_CONTINUATIONS = 4
 
 // Per-IP sliding window (best-effort; resets per serverless instance).
 const WINDOW_MS = 60_000
@@ -115,18 +128,36 @@ export async function POST(req: NextRequest) {
   const client = new Anthropic({ apiKey })
 
   try {
-    const resp = await client.messages.create({
-      model: CHAT_MODEL,
-      max_tokens: MAX_TOKENS,
-      system: [
-        {
-          type: 'text',
-          text: CHATBOT_SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' }, // stable KB -> cache across requests
-        },
-      ],
-      messages: [...history, { role: 'user', content: message }],
-    })
+    // Build the conversation; we mutate `convo` only to resume server-tool
+    // (web_search) turns that come back as pause_turn -- per the API contract we
+    // re-send the assistant content verbatim, with NO extra user message.
+    const convo: Anthropic.MessageParam[] = [...history, { role: 'user', content: message }]
+
+    const request = () =>
+      client.messages.create({
+        model: CHAT_MODEL,
+        max_tokens: MAX_TOKENS,
+        output_config: { effort: 'medium' }, // balance quality vs latency/cost for a public bot
+        system: [
+          {
+            type: 'text',
+            text: CHATBOT_SYSTEM_PROMPT,
+            cache_control: { type: 'ephemeral' }, // stable KB -> cache across requests
+          },
+        ],
+        // Real-time AI/video info comes from web search. Dynamic filtering
+        // (_20260209) runs code under the hood -- do NOT also add code_execution.
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: WEB_SEARCH_MAX_USES }],
+        messages: convo,
+      })
+
+    let resp = await request()
+    let continuations = 0
+    while (resp.stop_reason === 'pause_turn' && continuations < MAX_PAUSE_CONTINUATIONS) {
+      convo.push({ role: 'assistant', content: resp.content })
+      resp = await request()
+      continuations++
+    }
 
     const reply = resp.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
