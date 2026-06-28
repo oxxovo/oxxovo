@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import type { WatchSort } from '@/lib/watch'
+import { WatchTopBar } from './WatchTopBar'
 
-// YouTube-style left rail: logo -> Watch home, Home / Tournament nav, sort
-// (Trending/Latest/Award), then season split. Fixed on desktop, a slide-in
-// drawer on mobile (hamburger).
+// Shell for the Watch surface: fixed top bar + left sidebar (desktop fixed /
+// mobile drawer, opened from the top-bar hamburger) + main grid (children).
+// Server passes the season list, current sort/season, and the signed-in user.
 export type SidebarSeason = {
   seasonId: string
   label: string
@@ -27,36 +28,29 @@ function buildHref(sort: WatchSort, season?: string): string {
   return qs ? `/watch?${qs}` : '/watch'
 }
 
-export function WatchSidebar({
+export function WatchShell({
   seasons,
   sort,
   activeSeason,
+  user,
+  children,
 }: {
   seasons: SidebarSeason[]
   sort: WatchSort
   activeSeason?: string
+  user: { email: string } | null
+  children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
 
-  const body = (
+  const nav = (
     <nav className="flex flex-col gap-1">
-      <Link href="/watch" className="flex items-center gap-2 px-3 py-2.5 mb-1">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/oxxovo_logo.png" alt="OXXOVO" className="h-8 drop-shadow-[0_0_12px_rgba(139,34,255,.6)]" />
-        <span className="text-lg font-black tracking-wide text-[#8b22ff]">OXXOVO</span>
-      </Link>
-
       <NavLink href="/watch" label="Home" icon="▶" />
       <NavLink href="/welcome" label="Tournament" icon="🏆" />
 
       <Divider label="Sort" />
       {SORTS.map((s) => (
-        <RailLink
-          key={s.key}
-          href={buildHref(s.key, activeSeason)}
-          label={s.label}
-          active={s.key === sort}
-        />
+        <RailLink key={s.key} href={buildHref(s.key, activeSeason)} label={s.label} active={s.key === sort} />
       ))}
 
       <Divider label="Seasons" />
@@ -75,36 +69,33 @@ export function WatchSidebar({
 
   return (
     <>
-      {/* Mobile hamburger */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="md:hidden mb-4 inline-flex items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-sm font-bold text-white/80"
-      >
-        <span aria-hidden>☰</span> Menu
-      </button>
+      <WatchTopBar onMenu={() => setOpen((o) => !o)} user={user} />
 
-      {/* Desktop fixed rail */}
-      <aside className="hidden md:block w-56 shrink-0">
-        <div className="sticky top-24">{body}</div>
-      </aside>
+      <div className="flex pt-14 max-w-[1600px] mx-auto">
+        {/* Desktop fixed rail */}
+        <aside className="hidden md:block w-56 shrink-0 px-2 py-4">
+          <div className="sticky top-[4.5rem]">{nav}</div>
+        </aside>
 
-      {/* Mobile drawer */}
-      {open && (
-        <div className="md:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-0 h-full w-72 max-w-[80%] overflow-y-auto border-r border-white/10 bg-[#0a0810] p-4">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="mb-2 ml-auto block text-white/50 hover:text-white"
-            >
-              ✕
-            </button>
-            <div onClick={() => setOpen(false)}>{body}</div>
+        {/* Mobile drawer */}
+        {open && (
+          <div className="md:hidden fixed inset-0 z-50">
+            <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
+            <div className="absolute left-0 top-0 h-full w-72 max-w-[80%] overflow-y-auto border-r border-white/10 bg-[#0a0810] p-4">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="mb-2 ml-auto block text-white/50 hover:text-white"
+              >
+                ✕
+              </button>
+              <div onClick={() => setOpen(false)}>{nav}</div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        <main className="flex-1 min-w-0 px-6 py-6">{children}</main>
+      </div>
     </>
   )
 }
@@ -147,8 +138,6 @@ function RailLink({
 
 function Divider({ label }: { label: string }) {
   return (
-    <p className="mt-4 mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
-      {label}
-    </p>
+    <p className="mt-4 mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">{label}</p>
   )
 }

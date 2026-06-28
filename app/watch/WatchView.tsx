@@ -3,7 +3,8 @@
 
 import Link from 'next/link'
 import { getWatchSeasonGroups, type WatchRound, type WatchVideo, type WatchSort } from '@/lib/watch'
-import { WatchSidebar, type SidebarSeason } from './WatchSidebar'
+import { getUserOrNull } from '@/lib/user-auth'
+import { WatchShell, type SidebarSeason } from './WatchShell'
 
 function roundLabel(r: WatchRound): string {
   return r === 'main' ? 'Main Round' : 'Preliminary'
@@ -29,7 +30,7 @@ export async function WatchView({
   sort: WatchSort
   activeSeason?: string
 }) {
-  const groups = await getWatchSeasonGroups(sort)
+  const [groups, user] = await Promise.all([getWatchSeasonGroups(sort), getUserOrNull()])
   const visibleGroups = activeSeason ? groups.filter((g) => g.seasonId === activeSeason) : groups
   const totalVideos = visibleGroups.reduce((n, g) => n + g.videos.length, 0)
 
@@ -40,39 +41,40 @@ export async function WatchView({
   }))
 
   return (
-    <div className="px-6 pt-24 pb-12 md:pt-24 max-w-7xl mx-auto flex flex-col md:flex-row gap-8">
-      <WatchSidebar seasons={seasons} sort={sort} activeSeason={activeSeason} />
-
-      <div className="flex-1 min-w-0">
-        {totalVideos === 0 ? (
-          <p className="text-center text-white/40 text-sm py-20">
-            {sort === 'award'
-              ? 'No award winners to show yet.'
-              : 'No videos to show yet. Entries appear here as creators submit.'}
-          </p>
-        ) : (
-          visibleGroups.map((g) => (
-            <div key={g.seasonId} className="mb-12 last:mb-0">
-              {!activeSeason && (
-                <h2 className="text-lg font-black mb-4 flex items-center gap-2">
-                  {g.displayName}
-                  {g.hostType === 'partner' && (
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#b66cff] border border-[#8b22ff]/40 rounded px-1.5 py-0.5">
-                      Host
-                    </span>
-                  )}
-                </h2>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {g.videos.map((v) => (
-                  <VideoCard key={`${v.applicationId}:${v.round}`} v={v} />
-                ))}
-              </div>
+    <WatchShell
+      seasons={seasons}
+      sort={sort}
+      activeSeason={activeSeason}
+      user={user ? { email: user.email } : null}
+    >
+      {totalVideos === 0 ? (
+        <p className="text-center text-white/40 text-sm py-20">
+          {sort === 'award'
+            ? 'No award winners to show yet.'
+            : 'No videos to show yet. Entries appear here as creators submit.'}
+        </p>
+      ) : (
+        visibleGroups.map((g) => (
+          <div key={g.seasonId} className="mb-12 last:mb-0">
+            {!activeSeason && (
+              <h2 className="text-lg font-black mb-4 flex items-center gap-2">
+                {g.displayName}
+                {g.hostType === 'partner' && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#b66cff] border border-[#8b22ff]/40 rounded px-1.5 py-0.5">
+                    Host
+                  </span>
+                )}
+              </h2>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {g.videos.map((v) => (
+                <VideoCard key={`${v.applicationId}:${v.round}`} v={v} />
+              ))}
             </div>
-          ))
-        )}
-      </div>
-    </div>
+          </div>
+        ))
+      )}
+    </WatchShell>
   )
 }
 

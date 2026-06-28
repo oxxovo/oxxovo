@@ -25,6 +25,7 @@ import { CommentSection } from '../CommentSection'
 import { StaffPickToggle } from '../StaffPickToggle'
 import { VoteButton } from '../VoteButton'
 import { ShareButton } from '../ShareButton'
+import { SaveButton, VideoReportButton } from '../SaveReportButtons'
 import { ScorePanel } from '../ScorePanel'
 
 export const dynamic = 'force-dynamic'
@@ -114,26 +115,41 @@ export default async function WatchDetailPage({
           </div>
 
           <h1 className="mt-3 text-2xl font-black">{video.creatorName}</h1>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <LikeButton
-              applicationId={video.applicationId}
-              round={video.round}
-              initialLiked={initialLiked}
-              initialCount={video.likeCount}
-              isLoggedIn={!!user}
-            />
-            <ShareButton />
-            <p className="text-sm text-white/50">
+
+          {/* Action row: creator (left) + like/share/save/report (right). */}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm font-bold text-white/80">{video.creatorName}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <LikeButton
+                applicationId={video.applicationId}
+                round={video.round}
+                initialLiked={initialLiked}
+                initialCount={video.likeCount}
+                isLoggedIn={!!user}
+              />
+              <ShareButton />
+              <SaveButton isLoggedIn={!!user} />
+              <VideoReportButton isLoggedIn={!!user} />
+              {adminUser && (
+                <StaffPickToggle applicationId={video.applicationId} initial={video.staffPick} />
+              )}
+            </div>
+          </div>
+
+          {/* Meta box: competition label + stats + AI tool. */}
+          <div className="mt-4 rounded-xl bg-white/[.04] p-4 text-sm text-white/70">
+            <p className="font-bold text-white/90">
+              {roundLabel}
+              {video.awarded && ' · 🏆 Winner'}
+              {video.staffPick && ' · Staff Pick'}
+            </p>
+            <p className="mt-1 text-white/50">
               {video.viewCount.toLocaleString()} views
               {video.commentCount > 0 && <> · {video.commentCount.toLocaleString()} comments</>}
+              {video.submittedAt && <> · {new Date(video.submittedAt).toLocaleDateString()}</>}
             </p>
-            {adminUser && (
-              <StaffPickToggle applicationId={video.applicationId} initial={video.staffPick} />
-            )}
+            {video.aiService && <p className="mt-1 text-xs text-white/40">Made with {video.aiService}</p>}
           </div>
-          {video.aiService && (
-            <p className="mt-2 text-xs text-white/35">Made with {video.aiService}</p>
-          )}
 
           {voteCtx && (
             <div className="mt-6">
