@@ -10,6 +10,7 @@ import { revalidatePath } from 'next/cache'
 import { createHash } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
+import { getAdminOrNull } from '@/lib/admin-auth'
 import { getDisplayName } from '@/lib/nickname'
 import type { WatchRound } from '@/lib/watch'
 
@@ -216,4 +217,28 @@ export async function reportWatchComment(
   await admin.from('watch_comments').update({ report_count: count ?? 0 }).eq('id', commentId)
 
   return { ok: true, alreadyReported }
+}
+
+// ─── Staff Pick ──────────────────────────────────────────────────────────────
+// Editorial curation, independent of AI score ([[project-scoring-integrity-rules]]
+// -- never touches score columns). Admin only. Per application (round-agnostic).
+
+export type StaffPickResult =
+  | { ok: true; staffPick: boolean }
+  | { ok: false; error: 'forbidden' | 'failed' }
+
+export async function setStaffPick(applicationId: string, on: boolean): Promise<StaffPickResult> {
+  const adminUser = await getAdminOrNull()
+  if (!adminUser) return { ok: false, error: 'forbidden' }
+
+  const admin = createSupabaseAdmin()
+  const { error } = await admin
+    .from('genesis_applications')
+    .update({ staff_pick: on, staff_pick_at: on ? new Date().toISOString() : null })
+    .eq('id', applicationId)
+  if (error) return { ok: false, error: 'failed' }
+
+  revalidatePath(`/watch/${applicationId}`)
+  revalidatePath('/watch')
+  return { ok: true, staffPick: on }
 }

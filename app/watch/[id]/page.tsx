@@ -7,12 +7,14 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getWatchVideo, getWatchComments, type WatchRound } from '@/lib/watch'
 import { getUserOrNull } from '@/lib/user-auth'
+import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ChatWidget } from '@/app/_components/ChatWidget'
 import { WatchPlayer } from '../WatchPlayer'
 import { ViewTracker } from '../ViewTracker'
 import { LikeButton } from '../LikeButton'
 import { CommentSection } from '../CommentSection'
+import { StaffPickToggle } from '../StaffPickToggle'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,10 +31,11 @@ export default async function WatchDetailPage({
 }) {
   const [{ id }, sp] = await Promise.all([params, searchParams])
   const round = parseRound(sp.round)
-  const [video, user, comments] = await Promise.all([
+  const [video, user, comments, adminUser] = await Promise.all([
     getWatchVideo(id, round),
     getUserOrNull(),
     getWatchComments(id, round),
+    getAdminOrNull(),
   ])
 
   if (!video) notFound()
@@ -95,6 +98,9 @@ export default async function WatchDetailPage({
             {video.viewCount.toLocaleString()} views
             {video.commentCount > 0 && <> · {video.commentCount.toLocaleString()} comments</>}
           </p>
+          {adminUser && (
+            <StaffPickToggle applicationId={video.applicationId} initial={video.staffPick} />
+          )}
         </div>
         {video.aiService && (
           <p className="mt-2 text-xs text-white/35">Made with {video.aiService}</p>
