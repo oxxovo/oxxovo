@@ -47,7 +47,7 @@ export function WatchSidebar({
       </Link>
 
       <NavLink href="/watch" label="Home" icon="▶" />
-      <NavLink href="/tournament" label="Tournament" icon="🏆" />
+      <NavLink href="/welcome" label="Tournament" icon="🏆" />
 
       <Divider label="Sort" />
       {SORTS.map((s) => (
