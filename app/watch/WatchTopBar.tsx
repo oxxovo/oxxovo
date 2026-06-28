@@ -39,12 +39,12 @@ export function WatchTopBar({
           platform home). The landing is reachable via the sidebar "Tournament". */}
       <Link href="/watch" aria-label="Watch home" className="flex items-center gap-2 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {/* Colors swapped (TK / 제니3): logo icon = LIGHT purple (brightened),
-            wordmark = DEEP brand purple #8B22FF. */}
+        {/* Logo icon only = LIGHT purple (brightened hard so the deep-purple
+            symbol reads as lavender on black); wordmark stays DEEP #8B22FF. */}
         <img
           src="/oxxovo_logo.png"
           alt="OXXOVO"
-          className="h-16 brightness-[1.85] saturate-110 drop-shadow-[0_0_18px_rgba(199,155,255,.8)]"
+          className="h-16 brightness-200 saturate-150 drop-shadow-[0_0_18px_rgba(199,155,255,.85)]"
         />
         <span className="text-xl font-black tracking-wide text-[#8b22ff] drop-shadow-[0_0_12px_rgba(139,34,255,.6)] max-sm:hidden">
           OXXOVO
