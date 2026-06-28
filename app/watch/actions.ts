@@ -256,6 +256,7 @@ export async function toggleWatchVote(applicationId: string): Promise<VoteResult
     .from('watch_votes')
     .select('id')
     .eq('application_id', applicationId)
+    .eq('round', 'main')
     .eq('user_id', user.id)
     .maybeSingle()
 

@@ -42,10 +42,14 @@ export default async function WatchDetailPage({
 }) {
   const [{ id }, sp] = await Promise.all([params, searchParams])
   const round = parseRound(sp.round)
-  const [video, user, comments, adminUser] = await Promise.all([
+
+  // Visibility gate FIRST: getWatchVideo enforces HIDDEN_STATUSES (flagged/
+  // rejected -> null). Only after it confirms the video is public do we fetch
+  // comments/votes/score/related, so none of those can leak for a hidden app
+  // even though they don't each re-check status.
+  const [video, user, adminUser] = await Promise.all([
     getWatchVideo(id, round),
     getUserOrNull(),
-    getWatchComments(id, round),
     getAdminOrNull(),
   ])
 
@@ -54,7 +58,8 @@ export default async function WatchDetailPage({
   // Main-round videos carry a community vote (windowed) + public Triple-AI score
   // (finalists only; null until judging completes). Prelim scores are owner-only
   // (shown on /profile), never here.
-  const [voteCtx, related, mainScore] = await Promise.all([
+  const [comments, voteCtx, related, mainScore] = await Promise.all([
+    getWatchComments(id, round),
     round === 'main'
       ? getVoteContext(video.applicationId, video.seasonId, user?.id ?? null)
       : Promise.resolve(null),

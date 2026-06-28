@@ -375,6 +375,7 @@ export async function getVoteContext(
         .from('watch_votes')
         .select('id')
         .eq('application_id', applicationId)
+        .eq('round', 'main')
         .eq('user_id', userId)
         .maybeSingle(),
     ])
