@@ -47,15 +47,27 @@ export type WatchSeasonGroup = {
 }
 
 // Applications in these states are never shown on Watch: 'rejected' (not in the
-// competition) and 'flagged' (integrity suspicion, pending review). Everything
-// from 'pending' upward is public the moment a video URL exists -- the
-// submit-immediately policy (TK 2026-06-27).
+// competition) and 'flagged' (integrity suspicion, pending review).
 const HIDDEN_STATUSES = new Set(['rejected', 'flagged'])
+
+// A video is PUBLIC only when: competition status isn't hidden, an admin hasn't
+// hidden it (watch_hidden), AND AI pre-moderation approved it. New submissions
+// start moderation_status='pending' (not public) until the scan passes -- the
+// content-safety gate (TK 2026-06-28, Patent 3). Existing rows default
+// 'approved' so nothing already present disappears.
+function isPublicRow(row: Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'>): boolean {
+  if (HIDDEN_STATUSES.has(row.status)) return false
+  if (row.watch_hidden) return false
+  if (row.moderation_status !== 'approved') return false
+  return true
+}
 
 type AppRow = {
   id: string
   season_id: string
   status: string
+  watch_hidden: boolean | null
+  moderation_status: string
   user_id: string | null
   creator_name: string | null
   ai_service: string | null
@@ -156,7 +168,7 @@ export async function getWatchVideos(
   let q = admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
+      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
     )
   if (opt.seasonId) q = q.eq('season_id', opt.seasonId)
 
@@ -186,7 +198,7 @@ export async function getWatchVideos(
 
   const videos: WatchVideo[] = []
   for (const row of rows) {
-    if (HIDDEN_STATUSES.has(row.status)) continue
+    if (!isPublicRow(row)) continue
     const displayName = row.user_id ? names.get(row.user_id) : undefined
     if (row.free_entry_url?.trim()) {
       videos.push(toWatchVideo(row, 'application', row.free_entry_url.trim(), countsFor(row.id, 'application'), displayName))
@@ -281,14 +293,14 @@ export async function getWatchVideo(
   const { data, error } = await admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
+      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
     )
     .eq('id', applicationId)
     .maybeSingle()
 
   if (error || !data) return null
   const row = data as AppRow
-  if (HIDDEN_STATUSES.has(row.status)) return null
+  if (!isPublicRow(row)) return null
 
   const url = (round === 'application' ? row.free_entry_url : row.main_round_video_url)?.trim()
   if (!url) return null
