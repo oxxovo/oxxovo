@@ -10,13 +10,9 @@ import { useState } from 'react'
 export function WatchTopBar({
   onMenu,
   user,
-  logoHref = '/watch',
 }: {
   onMenu: () => void
   user: { email: string } | null
-  // Where the logo links: '/watch' when Watch is the home surface, else '/'
-  // (the marketing landing) -- resolved server-side from watch_as_home.
-  logoHref?: string
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -29,7 +25,7 @@ export function WatchTopBar({
   }
 
   return (
-    <header className="fixed top-0 inset-x-0 z-40 h-28 flex items-center gap-3 px-4 border-b border-white/10 bg-[#0a0810]/95 backdrop-blur">
+    <header className="fixed top-0 inset-x-0 z-40 h-20 flex items-center gap-3 px-4 border-b border-white/10 bg-[#0a0810]/95 backdrop-blur">
       <button
         type="button"
         onClick={onMenu}
@@ -39,16 +35,18 @@ export function WatchTopBar({
         ☰
       </button>
 
-      <Link href={logoHref} aria-label="OXXOVO home" className="flex items-center gap-2 shrink-0">
+      {/* Logo always goes to the Watch home (YouTube-style: logo = current
+          platform home). The landing is reachable via the sidebar "Tournament". */}
+      <Link href="/watch" aria-label="Watch home" className="flex items-center gap-2 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {/* Match the landing header logo's clarity: large + glow, no dimming
-            filter. The earlier dimness was the small size, not the asset. */}
+        {/* ~1.5x of the original; brightened + lightened so the deep-purple
+            symbol reads brightly on the dark Watch background. */}
         <img
           src="/oxxovo_logo.png"
           alt="OXXOVO"
-          className="h-20 sm:h-24 drop-shadow-[0_0_20px_rgba(139,34,255,.7)]"
+          className="h-16 brightness-150 saturate-125 drop-shadow-[0_0_18px_rgba(180,108,255,.75)]"
         />
-        <span className="text-2xl font-black tracking-wide text-[#8b22ff] drop-shadow-[0_0_14px_rgba(139,34,255,.6)] max-sm:hidden">
+        <span className="text-xl font-black tracking-wide text-[#c79bff] drop-shadow-[0_0_12px_rgba(180,108,255,.7)] max-sm:hidden">
           OXXOVO
         </span>
       </Link>

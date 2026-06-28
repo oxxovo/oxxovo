@@ -3,7 +3,6 @@
 
 import Link from 'next/link'
 import { getWatchSeasonGroups, getFollowedCreators, type WatchRound, type WatchVideo, type WatchSort } from '@/lib/watch'
-import { isWatchHome } from '@/lib/watch-home'
 import { getUserOrNull } from '@/lib/user-auth'
 import { WatchShell, type SidebarSeason, type SidebarSubscription } from './WatchShell'
 
@@ -37,12 +36,7 @@ export async function WatchView({
   round?: WatchRound
   awardRank?: number
 }) {
-  const [groups, user, watchHome] = await Promise.all([
-    getWatchSeasonGroups(sort),
-    getUserOrNull(),
-    isWatchHome(),
-  ])
-  const logoHref = watchHome ? '/watch' : '/'
+  const [groups, user] = await Promise.all([getWatchSeasonGroups(sort), getUserOrNull()])
   const followed = user ? await getFollowedCreators(user.id) : []
   const subscriptions: SidebarSubscription[] = followed.map((f) => ({ creatorUserId: f.userId, name: f.name }))
 
@@ -81,7 +75,6 @@ export async function WatchView({
       activeAwardRank={awardRank}
       user={user ? { email: user.email } : null}
       subscriptions={subscriptions}
-      logoHref={logoHref}
     >
       {!q && (
         <div className="mb-7">

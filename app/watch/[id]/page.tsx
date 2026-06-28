@@ -17,7 +17,6 @@ import {
   type WatchRound,
   type WatchVideo,
 } from '@/lib/watch'
-import { isWatchHome } from '@/lib/watch-home'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -54,16 +53,14 @@ export default async function WatchDetailPage({
   // rejected -> null). Only after it confirms the video is public do we fetch
   // comments/votes/score/related, so none of those can leak for a hidden app
   // even though they don't each re-check status.
-  const [video, user, adminUser, seasonGroups, watchHome] = await Promise.all([
+  const [video, user, adminUser, seasonGroups] = await Promise.all([
     getWatchVideo(id, round),
     getUserOrNull(),
     getAdminOrNull(),
     getWatchSeasonGroups(),
-    isWatchHome(),
   ])
 
   if (!video) notFound()
-  const logoHref = watchHome ? '/watch' : '/'
 
   // Same left rail as the grid: Home/Tournament + sort + seasons. The detail
   // page has no sort context, so the rail shows Latest highlighted and links
@@ -133,7 +130,6 @@ export default async function WatchDetailPage({
         activeSeason={video.seasonId}
         user={user ? { email: user.email } : null}
         subscriptions={subscriptions}
-        logoHref={logoHref}
       >
         <div className="flex flex-col lg:flex-row gap-8">
         {/* Left: player + meta + social + comments */}

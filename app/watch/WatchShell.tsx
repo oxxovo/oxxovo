@@ -58,7 +58,6 @@ export function WatchShell({
   activeAwardRank,
   user,
   subscriptions = [],
-  logoHref = '/watch',
   children,
 }: {
   seasons: SidebarSeason[]
@@ -68,7 +67,6 @@ export function WatchShell({
   activeAwardRank?: number
   user: { email: string } | null
   subscriptions?: SidebarSubscription[]
-  logoHref?: string
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -156,12 +154,12 @@ export function WatchShell({
 
   return (
     <>
-      <WatchTopBar onMenu={() => setOpen((o) => !o)} user={user} logoHref={logoHref} />
+      <WatchTopBar onMenu={() => setOpen((o) => !o)} user={user} />
 
-      <div className="flex pt-28 max-w-[1600px] mx-auto">
+      <div className="flex pt-20 max-w-[1600px] mx-auto">
         {/* Desktop fixed rail */}
         <aside className="hidden md:block w-56 shrink-0 px-2 py-4">
-          <div className="sticky top-32">{nav}</div>
+          <div className="sticky top-24">{nav}</div>
         </aside>
 
         {/* Mobile drawer */}
