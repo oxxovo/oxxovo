@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
+import { reportWatchVideo } from './actions'
 
-// Save / Report on the detail action row. UI placeholders this phase (like the
-// top-bar search/notifications): Save has no watch_saves table yet, and video-
-// level Report has no backend; both are wired to local state so the row matches
-// the spec. Signed-out clicks bounce to login.
+// Save / Report on the detail action row. Save is still a UI placeholder (no
+// watch_saves table yet, like the top-bar search/notifications). Report is wired
+// to the real backend (watch_video_reports -> admin moderation queue).
 function goLogin() {
   window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
 }
@@ -28,13 +28,29 @@ export function SaveButton({ isLoggedIn }: { isLoggedIn: boolean }) {
   )
 }
 
-export function VideoReportButton({ isLoggedIn }: { isLoggedIn: boolean }) {
+export function VideoReportButton({
+  applicationId,
+  round,
+  isLoggedIn,
+}: {
+  applicationId: string
+  round: string
+  isLoggedIn: boolean
+}) {
   const [reported, setReported] = useState(false)
+  const [pending, start] = useTransition()
   return (
     <button
       type="button"
-      onClick={() => (isLoggedIn ? setReported(true) : goLogin())}
-      disabled={reported}
+      onClick={() => {
+        if (!isLoggedIn) return goLogin()
+        start(async () => {
+          const res = await reportWatchVideo(applicationId, round)
+          if (res.ok) setReported(true)
+          else if (res.error === 'auth') goLogin()
+        })
+      }}
+      disabled={reported || pending}
       className={base}
     >
       <span aria-hidden>⚑</span>

@@ -301,6 +301,68 @@ export async function toggleWatchVote(applicationId: string): Promise<VoteResult
   return { ok: true, voted: !existing, usedVotes: count ?? 0, cap }
 }
 
+// ─── Video reports + admin hide (content safety A/B) ─────────────────────────
+
+export type VideoReportResult =
+  | { ok: true; alreadyReported: boolean }
+  | { ok: false; error: 'auth' | 'not_found' | 'failed' }
+
+// Audience reports a video. One report per (application, round, member);
+// idempotent. Feeds the admin moderation queue.
+export async function reportWatchVideo(
+  applicationId: string,
+  round: string,
+  reason?: string,
+): Promise<VideoReportResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'auth' }
+
+  const r = normRound(round)
+  const admin = createSupabaseAdmin()
+  const { error } = await admin
+    .from('watch_video_reports')
+    .insert({ application_id: applicationId, round: r, reporter_user_id: user.id, reason: reason?.trim() || null })
+
+  if (error && error.code !== '23505') {
+    // 23503 = FK violation (no such application)
+    if (error.code === '23503') return { ok: false, error: 'not_found' }
+    console.error('[watch] reportWatchVideo failed:', error.message)
+    return { ok: false, error: 'failed' }
+  }
+  return { ok: true, alreadyReported: error?.code === '23505' }
+}
+
+export type HideResult =
+  | { ok: true; hidden: boolean }
+  | { ok: false; error: 'forbidden' | 'failed' }
+
+// Admin hides/unhides a video from Watch WITHOUT touching competition status
+// (status drives scoring/awards; this is visibility only).
+export async function setWatchHidden(
+  applicationId: string,
+  hidden: boolean,
+  reason?: string,
+): Promise<HideResult> {
+  const adminUser = await getAdminOrNull()
+  if (!adminUser) return { ok: false, error: 'forbidden' }
+
+  const admin = createSupabaseAdmin()
+  const { error } = await admin
+    .from('genesis_applications')
+    .update({
+      watch_hidden: hidden,
+      watch_hidden_at: hidden ? new Date().toISOString() : null,
+      watch_hidden_reason: hidden ? reason?.trim() || 'admin hide' : null,
+    })
+    .eq('id', applicationId)
+  if (error) return { ok: false, error: 'failed' }
+
+  revalidatePath(`/watch/${applicationId}`)
+  revalidatePath('/watch')
+  revalidatePath('/admin/watch-videos')
+  return { ok: true, hidden }
+}
+
 // ─── Staff Pick ──────────────────────────────────────────────────────────────
 // Editorial curation, independent of AI score ([[project-scoring-integrity-rules]]
 // -- never touches score columns). Admin only. Per application (round-agnostic).

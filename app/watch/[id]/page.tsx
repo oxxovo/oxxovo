@@ -129,7 +129,7 @@ export default async function WatchDetailPage({
               />
               <ShareButton />
               <SaveButton isLoggedIn={!!user} />
-              <VideoReportButton isLoggedIn={!!user} />
+              <VideoReportButton applicationId={video.applicationId} round={video.round} isLoggedIn={!!user} />
               {adminUser && (
                 <StaffPickToggle applicationId={video.applicationId} initial={video.staffPick} />
               )}
