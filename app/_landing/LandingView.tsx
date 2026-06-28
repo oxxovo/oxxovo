@@ -391,7 +391,7 @@ export function LandingView() {
           </div>
           <span>OXXOVO Labs Inc. · Las Vegas, Nevada, USA · oxxovo.ai</span>
           <div className="flex items-center gap-4">
-            <a href="/tournament" className="hover:text-white/70">Tournament</a>
+            <a href="/tournament" className="hover:text-white/70">Tournament Info</a>
             <a href="/membership" className="hover:text-white/70">Membership</a>
             <a href="/terms" className="hover:text-white/70">Terms</a>
             <a href="/privacy" className="hover:text-white/70">Privacy</a>
