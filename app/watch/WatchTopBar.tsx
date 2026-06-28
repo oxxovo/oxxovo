@@ -29,7 +29,7 @@ export function WatchTopBar({
   }
 
   return (
-    <header className="fixed top-0 inset-x-0 z-40 h-14 flex items-center gap-3 px-4 border-b border-white/10 bg-[#0a0810]/95 backdrop-blur">
+    <header className="fixed top-0 inset-x-0 z-40 h-28 flex items-center gap-3 px-4 border-b border-white/10 bg-[#0a0810]/95 backdrop-blur">
       <button
         type="button"
         onClick={onMenu}
@@ -41,12 +41,14 @@ export function WatchTopBar({
 
       <Link href={logoHref} aria-label="OXXOVO home" className="flex items-center gap-2 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* Match the landing header logo's clarity: large + glow, no dimming
+            filter. The earlier dimness was the small size, not the asset. */}
         <img
           src="/oxxovo_logo.png"
           alt="OXXOVO"
-          className="h-11 brightness-125 drop-shadow-[0_0_18px_rgba(139,34,255,.8)]"
+          className="h-20 sm:h-24 drop-shadow-[0_0_20px_rgba(139,34,255,.7)]"
         />
-        <span className="text-lg font-black tracking-wide text-[#a45cff] drop-shadow-[0_0_10px_rgba(139,34,255,.7)] max-sm:hidden">
+        <span className="text-2xl font-black tracking-wide text-[#8b22ff] drop-shadow-[0_0_14px_rgba(139,34,255,.6)] max-sm:hidden">
           OXXOVO
         </span>
       </Link>

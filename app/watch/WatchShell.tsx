@@ -158,10 +158,10 @@ export function WatchShell({
     <>
       <WatchTopBar onMenu={() => setOpen((o) => !o)} user={user} logoHref={logoHref} />
 
-      <div className="flex pt-14 max-w-[1600px] mx-auto">
+      <div className="flex pt-28 max-w-[1600px] mx-auto">
         {/* Desktop fixed rail */}
         <aside className="hidden md:block w-56 shrink-0 px-2 py-4">
-          <div className="sticky top-16">{nav}</div>
+          <div className="sticky top-32">{nav}</div>
         </aside>
 
         {/* Mobile drawer */}
