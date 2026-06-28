@@ -9,6 +9,7 @@ import { VideoEmbed } from '@/app/_components/VideoEmbed'
 import { WinnerCelebrationCard } from './WinnerCelebrationCard'
 import { SmsConsentCard } from './SmsConsentCard'
 import { NicknameCard } from './NicknameCard'
+import { ScoringCard } from './ScoringCard'
 import { MainRoundCard, type MockOverrides } from './MainRoundCard'
 import { getSeasonById, type Season } from '@/lib/seasons'
 import { loadSystemMessages, type SystemMessages } from '@/lib/system-messages'
@@ -556,15 +557,6 @@ function VideoCard({ url }: { url: string | null }) {
   return (
     <Card title={t.profile.section_video}>
       <VideoEmbed url={url} />
-    </Card>
-  )
-}
-
-function ScoringCard() {
-  const t = useT()
-  return (
-    <Card title={t.profile.section_scoring}>
-      <p className="text-xs text-white/40">{t.profile.scoring_placeholder}</p>
     </Card>
   )
 }

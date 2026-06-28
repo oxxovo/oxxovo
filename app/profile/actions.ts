@@ -225,6 +225,73 @@ export async function saveWinnerInfo(input: SaveWinnerInfoInput): Promise<SaveRe
 // Account-level display name shown on Watch (submissions/comments/likes). Auto
 // at first use; editable here. Never the email.
 
+// Owner-only scores: a participant sees their OWN scores (prelim + main),
+// including the AI critique, but NOT integrity fields (anti-gaming). Prelim
+// scores are never public -- this is the only place a participant sees them.
+export type MyRoundScore = {
+  round: 'application' | 'main'
+  verifiedScore: number | null
+  grade: string | null
+  intent: number | null
+  execution: number | null
+  originality: number | null
+  ai: { name: string; strengths: string[]; weaknesses: string[]; summary: string }[]
+}
+
+function parseAi(raw: unknown): MyRoundScore['ai'] {
+  if (!raw || typeof raw !== 'object') return []
+  const obj = raw as Record<string, unknown>
+  const labels: [string, string][] = [['claude', 'Claude'], ['gpt', 'GPT'], ['gemini', 'Gemini']]
+  const arr = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+  const out: MyRoundScore['ai'] = []
+  for (const [key, name] of labels) {
+    const o = obj[key] as Record<string, unknown> | undefined
+    if (!o || typeof o !== 'object') continue
+    out.push({
+      name,
+      strengths: arr(o.strengths),
+      weaknesses: arr(o.weaknesses),
+      summary: typeof o.aiSummary === 'string' ? o.aiSummary : '',
+    })
+  }
+  return out
+}
+
+// Loads the caller's completed scores for their most recent application.
+export async function loadMyScores(): Promise<MyRoundScore[]> {
+  const user = await getUserOrNull()
+  if (!user) return []
+  const admin = createSupabaseAdmin()
+
+  // Most recent application owned by this caller (email match until user_id backfill).
+  const { data: app } = await admin
+    .from('genesis_applications')
+    .select('id, created_at')
+    .ilike('email', user.email)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!app) return []
+
+  const { data } = await admin
+    .from('scoring_results')
+    .select(
+      'round, verified_score, grade, consensus_intent, consensus_execution, consensus_originality, ai_outputs, judged_status',
+    )
+    .eq('application_id', app.id)
+    .eq('judged_status', 'completed')
+
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    round: r.round as 'application' | 'main',
+    verifiedScore: (r.verified_score as number | null) ?? null,
+    grade: (r.grade as string | null) ?? null,
+    intent: (r.consensus_intent as number | null) ?? null,
+    execution: (r.consensus_execution as number | null) ?? null,
+    originality: (r.consensus_originality as number | null) ?? null,
+    ai: parseAi(r.ai_outputs),
+  }))
+}
+
 export async function loadDisplayName(): Promise<string | null> {
   const user = await getUserOrNull()
   if (!user) return null

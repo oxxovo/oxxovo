@@ -10,6 +10,7 @@ import {
   getWatchComments,
   getVoteContext,
   getRelatedVideos,
+  getPublicMainScore,
   type WatchRound,
   type WatchVideo,
 } from '@/lib/watch'
@@ -24,6 +25,7 @@ import { CommentSection } from '../CommentSection'
 import { StaffPickToggle } from '../StaffPickToggle'
 import { VoteButton } from '../VoteButton'
 import { ShareButton } from '../ShareButton'
+import { ScorePanel } from '../ScorePanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,12 +51,15 @@ export default async function WatchDetailPage({
 
   if (!video) notFound()
 
-  // Main-round videos carry a community vote (windowed, up to 3 per person).
-  const [voteCtx, related] = await Promise.all([
+  // Main-round videos carry a community vote (windowed) + public Triple-AI score
+  // (finalists only; null until judging completes). Prelim scores are owner-only
+  // (shown on /profile), never here.
+  const [voteCtx, related, mainScore] = await Promise.all([
     round === 'main'
       ? getVoteContext(video.applicationId, video.seasonId, user?.id ?? null)
       : Promise.resolve(null),
     getRelatedVideos(video.seasonId, video.applicationId, video.round),
+    round === 'main' ? getPublicMainScore(video.applicationId) : Promise.resolve(null),
   ])
 
   // Whether the signed-in member already liked this video (initial button state).
@@ -130,6 +135,8 @@ export default async function WatchDetailPage({
               <VoteButton applicationId={video.applicationId} ctx={voteCtx} isLoggedIn={!!user} />
             </div>
           )}
+
+          {mainScore && <ScorePanel score={mainScore} />}
 
           <CommentSection
             applicationId={video.applicationId}

@@ -199,6 +199,63 @@ export async function getWatchVideos(
   return sortVideos(videos, sort)
 }
 
+export type AiCritique = { name: string; strengths: string[]; weaknesses: string[]; summary: string }
+export type PublicScore = {
+  verifiedScore: number | null
+  grade: string | null
+  intent: number | null
+  execution: number | null
+  originality: number | null
+  ai: AiCritique[]
+}
+
+// Parse the ai_outputs JSONB ({claude,gpt,gemini}: {strengths,weaknesses,aiSummary})
+// into a safe, ordered list. Integrity is intentionally NOT surfaced.
+function parseAiOutputs(raw: unknown): AiCritique[] {
+  if (!raw || typeof raw !== 'object') return []
+  const obj = raw as Record<string, unknown>
+  const labels: [string, string][] = [['claude', 'Claude'], ['gpt', 'GPT'], ['gemini', 'Gemini']]
+  const out: AiCritique[] = []
+  for (const [key, name] of labels) {
+    const o = obj[key] as Record<string, unknown> | undefined
+    if (!o || typeof o !== 'object') continue
+    const arr = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+    out.push({
+      name,
+      strengths: arr(o.strengths),
+      weaknesses: arr(o.weaknesses),
+      summary: typeof o.aiSummary === 'string' ? o.aiSummary : '',
+    })
+  }
+  return out
+}
+
+// Public Triple-AI score for a MAIN-ROUND video (finalists only). Returns null
+// unless judging is completed. Integrity fields are never included here
+// ([[project-scoring-integrity-rules]] -- low-score shaming guard: prelim
+// scores are owner-only via /profile, not here).
+export async function getPublicMainScore(applicationId: string): Promise<PublicScore | null> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('scoring_results')
+    .select(
+      'verified_score, grade, consensus_intent, consensus_execution, consensus_originality, ai_outputs, judged_status',
+    )
+    .eq('application_id', applicationId)
+    .eq('round', 'main')
+    .maybeSingle()
+
+  if (!data || data.judged_status !== 'completed') return null
+  return {
+    verifiedScore: data.verified_score as number | null,
+    grade: (data.grade as string | null) ?? null,
+    intent: data.consensus_intent as number | null,
+    execution: data.consensus_execution as number | null,
+    originality: data.consensus_originality as number | null,
+    ai: parseAiOutputs(data.ai_outputs),
+  }
+}
+
 // Related videos for the detail sidebar: same season, trending, excluding the
 // video being watched. Cheap reuse of getWatchVideos (early-stage volume).
 export async function getRelatedVideos(
