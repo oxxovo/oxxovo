@@ -6,9 +6,11 @@
 // back to a salted IP+UA hash for anonymous viewers.
 
 import { headers } from 'next/headers'
+import { revalidatePath } from 'next/cache'
 import { createHash } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
+import { getDisplayName } from '@/lib/nickname'
 import type { WatchRound } from '@/lib/watch'
 
 function normRound(r: string): WatchRound {
@@ -82,4 +84,136 @@ export async function toggleWatchLike(applicationId: string, round: string): Pro
     .eq('round', r)
 
   return { ok: true, liked: !existing, count: count ?? 0 }
+}
+
+// ─── Comments ───────────────────────────────────────────────────────────────
+// Members only; author edits/deletes own; anyone (member) can report; admin
+// hides (status='hidden', never deleted) via the admin queue. Display name is
+// resolved at READ time from the account nickname (no author_name snapshot) so
+// a nickname change reflects everywhere -- YouTube-style.
+
+export const COMMENT_MAX = 1000
+
+export type CommentResult =
+  | { ok: true }
+  | { ok: false; error: 'auth' | 'empty' | 'too_long' | 'not_owner' | 'not_found' | 'failed' }
+
+export async function addWatchComment(
+  applicationId: string,
+  round: string,
+  body: string,
+): Promise<CommentResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'auth' }
+
+  const text = (body ?? '').trim()
+  if (!text) return { ok: false, error: 'empty' }
+  if (text.length > COMMENT_MAX) return { ok: false, error: 'too_long' }
+
+  const r = normRound(round)
+  // Ensure the account has a nickname so the comment renders with a name.
+  await getDisplayName(user.id)
+
+  const admin = createSupabaseAdmin()
+  const { error } = await admin
+    .from('watch_comments')
+    .insert({ application_id: applicationId, round: r, user_id: user.id, body: text })
+  if (error) {
+    console.error('[watch] addWatchComment failed:', error.message)
+    return { ok: false, error: 'failed' }
+  }
+  revalidatePath(`/watch/${applicationId}`)
+  return { ok: true }
+}
+
+export async function editWatchComment(commentId: string, body: string): Promise<CommentResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'auth' }
+
+  const text = (body ?? '').trim()
+  if (!text) return { ok: false, error: 'empty' }
+  if (text.length > COMMENT_MAX) return { ok: false, error: 'too_long' }
+
+  const admin = createSupabaseAdmin()
+  const { data: row } = await admin
+    .from('watch_comments')
+    .select('id, user_id, application_id')
+    .eq('id', commentId)
+    .maybeSingle()
+  if (!row) return { ok: false, error: 'not_found' }
+  if (row.user_id !== user.id) return { ok: false, error: 'not_owner' }
+
+  const { error } = await admin
+    .from('watch_comments')
+    .update({ body: text, edited_at: new Date().toISOString() })
+    .eq('id', commentId)
+    .eq('user_id', user.id)
+  if (error) return { ok: false, error: 'failed' }
+  revalidatePath(`/watch/${row.application_id}`)
+  return { ok: true }
+}
+
+export async function deleteWatchComment(commentId: string): Promise<CommentResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'auth' }
+
+  const admin = createSupabaseAdmin()
+  const { data: row } = await admin
+    .from('watch_comments')
+    .select('id, user_id, application_id')
+    .eq('id', commentId)
+    .maybeSingle()
+  if (!row) return { ok: false, error: 'not_found' }
+  if (row.user_id !== user.id) return { ok: false, error: 'not_owner' }
+
+  // Author delete is a hard delete (admin Hide is the soft path). Reports
+  // cascade via FK.
+  const { error } = await admin
+    .from('watch_comments')
+    .delete()
+    .eq('id', commentId)
+    .eq('user_id', user.id)
+  if (error) return { ok: false, error: 'failed' }
+  revalidatePath(`/watch/${row.application_id}`)
+  return { ok: true }
+}
+
+export type ReportResult =
+  | { ok: true; alreadyReported: boolean }
+  | { ok: false; error: 'auth' | 'not_found' | 'failed' }
+
+export async function reportWatchComment(
+  commentId: string,
+  reason?: string,
+): Promise<ReportResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'auth' }
+
+  const admin = createSupabaseAdmin()
+  const { data: row } = await admin
+    .from('watch_comments')
+    .select('id, application_id')
+    .eq('id', commentId)
+    .maybeSingle()
+  if (!row) return { ok: false, error: 'not_found' }
+
+  const { error: insErr } = await admin
+    .from('watch_comment_reports')
+    .insert({ comment_id: commentId, reporter_user_id: user.id, reason: reason?.trim() || null })
+
+  // 23505 = unique violation = this member already reported -> idempotent OK.
+  if (insErr && insErr.code !== '23505') {
+    console.error('[watch] reportWatchComment failed:', insErr.message)
+    return { ok: false, error: 'failed' }
+  }
+  const alreadyReported = insErr?.code === '23505'
+
+  // Refresh the denormalized report_count for the admin triage queue.
+  const { count } = await admin
+    .from('watch_comment_reports')
+    .select('id', { count: 'exact', head: true })
+    .eq('comment_id', commentId)
+  await admin.from('watch_comments').update({ report_count: count ?? 0 }).eq('id', commentId)
+
+  return { ok: true, alreadyReported }
 }

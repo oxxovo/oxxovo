@@ -256,6 +256,52 @@ export async function getWatchVideo(
   )
 }
 
+export type WatchComment = {
+  id: string
+  body: string
+  authorId: string
+  authorName: string
+  createdAt: string
+  editedAt: string | null
+}
+
+// Visible comments for a video, newest first. Author name is resolved from the
+// current account nickname (no snapshot) so a rename reflects everywhere.
+export async function getWatchComments(
+  applicationId: string,
+  round: WatchRound,
+): Promise<WatchComment[]> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('watch_comments')
+    .select('id, user_id, body, created_at, edited_at')
+    .eq('application_id', applicationId)
+    .eq('round', round)
+    .eq('status', 'visible')
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('[watch] failed to load comments:', error.message)
+    return []
+  }
+  const rows = (data ?? []) as {
+    id: string
+    user_id: string
+    body: string
+    created_at: string
+    edited_at: string | null
+  }[]
+  const names = await getDisplayNames(rows.map((r) => r.user_id))
+  return rows.map((r) => ({
+    id: r.id,
+    body: r.body,
+    authorId: r.user_id,
+    authorName: names.get(r.user_id) ?? 'Creator',
+    createdAt: r.created_at,
+    editedAt: r.edited_at,
+  }))
+}
+
 // Season metadata for the left-rail grouping. Reads base seasons via service
 // role (we already bypass anon here), not seasons_public -- we only need
 // id/name/number/host_type, none of them secret.

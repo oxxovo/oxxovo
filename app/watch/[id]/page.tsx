@@ -5,13 +5,14 @@
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getWatchVideo, type WatchRound } from '@/lib/watch'
+import { getWatchVideo, getWatchComments, type WatchRound } from '@/lib/watch'
 import { getUserOrNull } from '@/lib/user-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ChatWidget } from '@/app/_components/ChatWidget'
 import { WatchPlayer } from '../WatchPlayer'
 import { ViewTracker } from '../ViewTracker'
 import { LikeButton } from '../LikeButton'
+import { CommentSection } from '../CommentSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +29,11 @@ export default async function WatchDetailPage({
 }) {
   const [{ id }, sp] = await Promise.all([params, searchParams])
   const round = parseRound(sp.round)
-  const [video, user] = await Promise.all([getWatchVideo(id, round), getUserOrNull()])
+  const [video, user, comments] = await Promise.all([
+    getWatchVideo(id, round),
+    getUserOrNull(),
+    getWatchComments(id, round),
+  ])
 
   if (!video) notFound()
 
@@ -95,7 +100,14 @@ export default async function WatchDetailPage({
           <p className="mt-2 text-xs text-white/35">Made with {video.aiService}</p>
         )}
 
-        {/* Vote (main round) / comments attach here in later phases. */}
+        {/* Vote (main round) attaches here in phase 7. */}
+
+        <CommentSection
+          applicationId={video.applicationId}
+          round={video.round}
+          comments={comments}
+          currentUserId={user?.id ?? null}
+        />
       </section>
 
       <ChatWidget />
