@@ -8,6 +8,7 @@ import { canSubmitMainRound, getSeasonById } from '@/lib/seasons'
 import { validateVideoUrl } from '@/lib/video-url'
 import { getMembershipState, isMembershipEnabled } from '@/lib/membership'
 import { getStripe } from '@/lib/stripe'
+import { getDisplayName, setDisplayName, validateNickname } from '@/lib/nickname'
 import type {
   MembershipDashboard,
   MembershipActionResult,
@@ -218,6 +219,33 @@ export async function saveWinnerInfo(input: SaveWinnerInfoInput): Promise<SaveRe
   revalidatePath('/admin/applications')
 
   return { ok: true }
+}
+
+// ─── Creator nickname ────────────────────────────────────────────────────
+// Account-level display name shown on Watch (submissions/comments/likes). Auto
+// at first use; editable here. Never the email.
+
+export async function loadDisplayName(): Promise<string | null> {
+  const user = await getUserOrNull()
+  if (!user) return null
+  return getDisplayName(user.id)
+}
+
+export type SaveNicknameResult =
+  | { ok: true; value: string }
+  | { ok: false; error: 'unauthenticated' | 'too_short' | 'too_long' | 'invalid_chars' | 'failed' }
+
+export async function saveDisplayName(value: string): Promise<SaveNicknameResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'unauthenticated' }
+  const v = validateNickname(value)
+  if (!v.ok) return { ok: false, error: v.error }
+  try {
+    await setDisplayName(user.id, v.value)
+    return { ok: true, value: v.value }
+  } catch {
+    return { ok: false, error: 'failed' }
+  }
 }
 
 // ─── SMS opt-in (A2P 10DLC / TCPA) ──────────────────────────────────────

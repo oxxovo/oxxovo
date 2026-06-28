@@ -8,6 +8,7 @@ import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { VideoEmbed } from '@/app/_components/VideoEmbed'
 import { WinnerCelebrationCard } from './WinnerCelebrationCard'
 import { SmsConsentCard } from './SmsConsentCard'
+import { NicknameCard } from './NicknameCard'
 import { MainRoundCard, type MockOverrides } from './MainRoundCard'
 import { getSeasonById, type Season } from '@/lib/seasons'
 import { loadSystemMessages, type SystemMessages } from '@/lib/system-messages'
@@ -182,6 +183,8 @@ function ProfilePageInner() {
         {membership?.show && (
           <MembershipCard dashboard={membership} onReload={reloadMembership} />
         )}
+
+        <NicknameCard />
 
         <SmsConsentCard />
 
