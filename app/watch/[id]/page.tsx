@@ -10,6 +10,7 @@ import {
   getWatchComments,
   getVoteContext,
   getRelatedVideos,
+  getWatchSeasonGroups,
   getPublicMainScore,
   type WatchRound,
   type WatchVideo,
@@ -18,6 +19,7 @@ import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ChatWidget } from '@/app/_components/ChatWidget'
+import { WatchShell, type SidebarSeason } from '../WatchShell'
 import { WatchPlayer } from '../WatchPlayer'
 import { ViewTracker } from '../ViewTracker'
 import { LikeButton } from '../LikeButton'
@@ -48,13 +50,23 @@ export default async function WatchDetailPage({
   // rejected -> null). Only after it confirms the video is public do we fetch
   // comments/votes/score/related, so none of those can leak for a hidden app
   // even though they don't each re-check status.
-  const [video, user, adminUser] = await Promise.all([
+  const [video, user, adminUser, seasonGroups] = await Promise.all([
     getWatchVideo(id, round),
     getUserOrNull(),
     getAdminOrNull(),
+    getWatchSeasonGroups(),
   ])
 
   if (!video) notFound()
+
+  // Same left rail as the grid: Home/Tournament + sort + seasons. The detail
+  // page has no sort context, so the rail shows Latest highlighted and links
+  // back to /watch?sort=… ; the active season is the one this video belongs to.
+  const seasons: SidebarSeason[] = seasonGroups.map((g) => ({
+    seasonId: g.seasonId,
+    label: g.hostType === 'partner' ? `${g.displayName} · Host` : g.displayName,
+    count: g.videos.length,
+  }))
 
   // Main-round videos carry a community vote (windowed) + public Triple-AI score
   // (finalists only; null until judging completes). Prelim scores are owner-only
@@ -86,14 +98,16 @@ export default async function WatchDetailPage({
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
-      <section className="px-6 pt-24 pb-12 md:pt-28 max-w-6xl mx-auto flex flex-col lg:flex-row gap-8">
+      <WatchShell
+        seasons={seasons}
+        sort="latest"
+        activeSeason={video.seasonId}
+        user={user ? { email: user.email } : null}
+      >
+        <div className="flex flex-col lg:flex-row gap-8">
         {/* Left: player + meta + social + comments */}
         <div className="flex-1 min-w-0">
-          <Link href="/watch" className="text-sm text-white/50 hover:text-white transition">
-            ← Watch
-          </Link>
-
-          <div className="mt-5">
+          <div className="mt-1">
             <WatchPlayer url={video.videoUrl} />
           </div>
           <ViewTracker applicationId={video.applicationId} round={video.round} />
@@ -182,7 +196,8 @@ export default async function WatchDetailPage({
             </div>
           )}
         </aside>
-      </section>
+        </div>
+      </WatchShell>
 
       <ChatWidget />
     </main>
