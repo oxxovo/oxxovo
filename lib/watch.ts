@@ -14,6 +14,7 @@
 import 'server-only'
 import { createSupabaseAdmin } from './supabase-admin'
 import { parseVideoUrl } from './video-url'
+import { getDisplayName, getDisplayNames } from './nickname'
 
 export type WatchRound = 'application' | 'main'
 export type WatchSort = 'trending' | 'latest' | 'award'
@@ -55,6 +56,7 @@ type AppRow = {
   id: string
   season_id: string
   status: string
+  user_id: string | null
   creator_name: string | null
   ai_service: string | null
   video_duration_seconds: number | null
@@ -89,6 +91,7 @@ function toWatchVideo(
   round: WatchRound,
   videoUrl: string,
   counts: { likes: number; views: number; comments: number },
+  displayName?: string,
 ): WatchVideo {
   const submittedAt =
     round === 'application'
@@ -99,7 +102,9 @@ function toWatchVideo(
     round,
     seasonId: row.season_id,
     videoUrl,
-    creatorName: row.creator_name?.trim() || 'Anonymous',
+    // Account nickname is the source of truth; fall back to the per-application
+    // creator_name for legacy rows whose user_id has no profile nickname yet.
+    creatorName: displayName?.trim() || row.creator_name?.trim() || 'Anonymous',
     durationSeconds: row.video_duration_seconds,
     aiService: row.ai_service,
     staffPick: !!row.staff_pick,
@@ -151,7 +156,7 @@ export async function getWatchVideos(
   let q = admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
+      'id, season_id, status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
     )
   if (opt.seasonId) q = q.eq('season_id', opt.seasonId)
 
@@ -176,14 +181,18 @@ export async function getWatchVideos(
     comments: comments.get(`${id}:${round}`) ?? 0,
   })
 
+  const rows = (apps ?? []) as AppRow[]
+  const names = await getDisplayNames(rows.map((r) => r.user_id))
+
   const videos: WatchVideo[] = []
-  for (const row of (apps ?? []) as AppRow[]) {
+  for (const row of rows) {
     if (HIDDEN_STATUSES.has(row.status)) continue
+    const displayName = row.user_id ? names.get(row.user_id) : undefined
     if (row.free_entry_url?.trim()) {
-      videos.push(toWatchVideo(row, 'application', row.free_entry_url.trim(), countsFor(row.id, 'application')))
+      videos.push(toWatchVideo(row, 'application', row.free_entry_url.trim(), countsFor(row.id, 'application'), displayName))
     }
     if (row.main_round_video_url?.trim()) {
-      videos.push(toWatchVideo(row, 'main', row.main_round_video_url.trim(), countsFor(row.id, 'main')))
+      videos.push(toWatchVideo(row, 'main', row.main_round_video_url.trim(), countsFor(row.id, 'main'), displayName))
     }
   }
 
@@ -201,7 +210,7 @@ export async function getWatchVideo(
   const { data, error } = await admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
+      'id, season_id, status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
     )
     .eq('id', applicationId)
     .maybeSingle()
@@ -212,6 +221,8 @@ export async function getWatchVideo(
 
   const url = (round === 'application' ? row.free_entry_url : row.main_round_video_url)?.trim()
   if (!url) return null
+
+  const displayName = row.user_id ? await getDisplayName(row.user_id) : undefined
 
   const [likeAgg, viewAgg, commentAgg] = await Promise.all([
     admin
@@ -232,11 +243,17 @@ export async function getWatchVideo(
       .eq('status', 'visible'),
   ])
 
-  return toWatchVideo(row, round, url, {
-    likes: likeAgg.count ?? 0,
-    views: viewAgg.count ?? 0,
-    comments: commentAgg.count ?? 0,
-  })
+  return toWatchVideo(
+    row,
+    round,
+    url,
+    {
+      likes: likeAgg.count ?? 0,
+      views: viewAgg.count ?? 0,
+      comments: commentAgg.count ?? 0,
+    },
+    displayName,
+  )
 }
 
 // Season metadata for the left-rail grouping. Reads base seasons via service
