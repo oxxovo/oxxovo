@@ -13,14 +13,14 @@ export const dynamic = 'force-dynamic'
 export default async function WatchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sort?: string; season?: string }>
+  searchParams: Promise<{ sort?: string; season?: string; q?: string }>
 }) {
   const sp = await searchParams
   const sort: WatchSort = sp.sort === 'trending' || sp.sort === 'award' ? sp.sort : 'latest'
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
-      <WatchView sort={sort} activeSeason={sp.season} />
+      <WatchView sort={sort} activeSeason={sp.season} query={sp.q} />
 
       <footer className="px-6 py-12 border-t border-white/5">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 text-xs tracking-[0.2em] text-white/40">

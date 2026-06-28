@@ -14,6 +14,11 @@ export type SidebarSeason = {
   count: number
 }
 
+export type SidebarSubscription = {
+  creatorUserId: string
+  name: string
+}
+
 const SORTS: { key: WatchSort; label: string }[] = [
   { key: 'trending', label: 'Trending' },
   { key: 'latest', label: 'Latest' },
@@ -33,19 +38,21 @@ export function WatchShell({
   sort,
   activeSeason,
   user,
+  subscriptions = [],
   children,
 }: {
   seasons: SidebarSeason[]
   sort: WatchSort
   activeSeason?: string
   user: { email: string } | null
+  subscriptions?: SidebarSubscription[]
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
 
   const nav = (
     <nav className="flex flex-col gap-1">
-      <NavLink href="/watch" label="Home" icon="▶" />
+      <NavLink href="/watch" label="Home" icon="🎬" />
       <NavLink href="/welcome" label="Tournament" icon="🏆" />
 
       <Divider label="Sort" />
@@ -64,6 +71,26 @@ export function WatchShell({
           count={g.count}
         />
       ))}
+
+      <Divider label="More" />
+      <NavLink href="/membership" label="Membership" icon="💎" />
+      <NavLink href="/welcome#about" label="About" icon="ℹ️" />
+      <NavLink href="/welcome#how" label="How It Works" icon="📖" />
+      <NavLink href="/welcome#faq" label="Q&A" icon="❓" />
+
+      {subscriptions.length > 0 && (
+        <>
+          <Divider label="Subscriptions" />
+          {subscriptions.map((s) => (
+            <RailLink
+              key={s.creatorUserId}
+              href={`/watch?q=${encodeURIComponent(s.name)}`}
+              label={s.name}
+              active={false}
+            />
+          ))}
+        </>
+      )}
     </nav>
   )
 

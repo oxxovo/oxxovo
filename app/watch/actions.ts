@@ -49,6 +49,40 @@ export async function recordWatchView(applicationId: string, round: string): Pro
   if (error) console.error('[watch] recordWatchView failed:', error.message)
 }
 
+export type FollowResult =
+  | { ok: true; following: boolean }
+  | { ok: false; error: 'auth' | 'invalid' }
+
+// Toggles the current member following a creator account. Members only. Only
+// accounts (auth.users) can be followed -- callers pass the creator's user_id,
+// which must exist and differ from the follower (DB CHECK guards too). The
+// unique index makes following idempotent. Revalidates /watch so the sidebar
+// Subscriptions list reflects the change.
+export async function toggleFollow(creatorUserId: string): Promise<FollowResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'auth' }
+  if (!creatorUserId || creatorUserId === user.id) return { ok: false, error: 'invalid' }
+
+  const admin = createSupabaseAdmin()
+  const { data: existing } = await admin
+    .from('watch_follows')
+    .select('id')
+    .eq('follower_user_id', user.id)
+    .eq('creator_user_id', creatorUserId)
+    .maybeSingle()
+
+  if (existing) {
+    await admin.from('watch_follows').delete().eq('id', existing.id)
+  } else {
+    await admin
+      .from('watch_follows')
+      .insert({ follower_user_id: user.id, creator_user_id: creatorUserId })
+  }
+
+  revalidatePath('/watch')
+  return { ok: true, following: !existing }
+}
+
 export type LikeResult =
   | { ok: true; liked: boolean; count: number }
   | { ok: false; error: 'auth' }

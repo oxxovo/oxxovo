@@ -2,9 +2,9 @@
 // /watch and, when watch_as_home is on, by the root (/). 100% data-driven.
 
 import Link from 'next/link'
-import { getWatchSeasonGroups, type WatchRound, type WatchVideo, type WatchSort } from '@/lib/watch'
+import { getWatchSeasonGroups, getFollowedCreators, type WatchRound, type WatchVideo, type WatchSort } from '@/lib/watch'
 import { getUserOrNull } from '@/lib/user-auth'
-import { WatchShell, type SidebarSeason } from './WatchShell'
+import { WatchShell, type SidebarSeason, type SidebarSubscription } from './WatchShell'
 
 function roundLabel(r: WatchRound): string {
   return r === 'main' ? 'Main Round' : 'Preliminary'
@@ -26,12 +26,26 @@ function formatDuration(secs: number | null): string | null {
 export async function WatchView({
   sort,
   activeSeason,
+  query,
 }: {
   sort: WatchSort
   activeSeason?: string
+  query?: string
 }) {
   const [groups, user] = await Promise.all([getWatchSeasonGroups(sort), getUserOrNull()])
-  const visibleGroups = activeSeason ? groups.filter((g) => g.seasonId === activeSeason) : groups
+  const followed = user ? await getFollowedCreators(user.id) : []
+  const subscriptions: SidebarSubscription[] = followed.map((f) => ({ creatorUserId: f.userId, name: f.name }))
+
+  const q = query?.trim().toLowerCase() ?? ''
+  let visibleGroups = activeSeason ? groups.filter((g) => g.seasonId === activeSeason) : groups
+  if (q) {
+    // Search matches the displayed creator name (account nickname or the
+    // per-application creator_name fallback -- both already resolved into
+    // creatorName by lib/watch).
+    visibleGroups = visibleGroups
+      .map((g) => ({ ...g, videos: g.videos.filter((v) => v.creatorName.toLowerCase().includes(q)) }))
+      .filter((g) => g.videos.length > 0)
+  }
   const totalVideos = visibleGroups.reduce((n, g) => n + g.videos.length, 0)
 
   const seasons: SidebarSeason[] = groups.map((g) => ({
@@ -46,12 +60,20 @@ export async function WatchView({
       sort={sort}
       activeSeason={activeSeason}
       user={user ? { email: user.email } : null}
+      subscriptions={subscriptions}
     >
+      {q && (
+        <p className="mb-4 text-sm text-white/50">
+          Results for &ldquo;<span className="text-white/80">{query}</span>&rdquo;
+        </p>
+      )}
       {totalVideos === 0 ? (
         <p className="text-center text-white/40 text-sm py-20">
-          {sort === 'award'
-            ? 'No award winners to show yet.'
-            : 'No videos to show yet. Entries appear here as creators submit.'}
+          {q
+            ? 'No videos match your search.'
+            : sort === 'award'
+              ? 'No award winners to show yet.'
+              : 'No videos to show yet. Entries appear here as creators submit.'}
         </p>
       ) : (
         visibleGroups.map((g) => (

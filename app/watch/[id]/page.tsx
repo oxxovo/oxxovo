@@ -11,6 +11,8 @@ import {
   getVoteContext,
   getRelatedVideos,
   getWatchSeasonGroups,
+  getFollowedCreators,
+  isFollowing,
   getPublicMainScore,
   type WatchRound,
   type WatchVideo,
@@ -19,8 +21,9 @@ import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ChatWidget } from '@/app/_components/ChatWidget'
-import { WatchShell, type SidebarSeason } from '../WatchShell'
+import { WatchShell, type SidebarSeason, type SidebarSubscription } from '../WatchShell'
 import { WatchPlayer } from '../WatchPlayer'
+import { FollowButton } from '../FollowButton'
 import { ViewTracker } from '../ViewTracker'
 import { LikeButton } from '../LikeButton'
 import { CommentSection } from '../CommentSection'
@@ -94,6 +97,15 @@ export default async function WatchDetailPage({
     initialLiked = !!data
   }
 
+  // Sidebar Subscriptions + the follow button for THIS creator. Follow is only
+  // possible for account-owned entries (creatorUserId), and never on your own.
+  const subscriptions: SidebarSubscription[] = user
+    ? (await getFollowedCreators(user.id)).map((f) => ({ creatorUserId: f.userId, name: f.name }))
+    : []
+  const canFollowCreator = !!video.creatorUserId && video.creatorUserId !== (user?.id ?? null)
+  const initialFollowing =
+    user && canFollowCreator ? await isFollowing(user.id, video.creatorUserId!) : false
+
   const roundLabel = round === 'main' ? 'Main Round' : 'Preliminary'
 
   return (
@@ -103,6 +115,7 @@ export default async function WatchDetailPage({
         sort="latest"
         activeSeason={video.seasonId}
         user={user ? { email: user.email } : null}
+        subscriptions={subscriptions}
       >
         <div className="flex flex-col lg:flex-row gap-8">
         {/* Left: player + meta + social + comments */}
@@ -130,9 +143,19 @@ export default async function WatchDetailPage({
 
           <h1 className="mt-3 text-2xl font-black">{video.creatorName}</h1>
 
-          {/* Action row: creator (left) + like/share/save/report (right). */}
+          {/* Action row: creator + follow (left) + like/share/save/report (right). */}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm font-bold text-white/80">{video.creatorName}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-white/80">{video.creatorName}</span>
+              {canFollowCreator && (
+                <FollowButton
+                  creatorUserId={video.creatorUserId!}
+                  creatorName={video.creatorName}
+                  initialFollowing={initialFollowing}
+                  isLoggedIn={!!user}
+                />
+              )}
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <LikeButton
                 applicationId={video.applicationId}

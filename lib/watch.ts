@@ -24,6 +24,9 @@ export type WatchVideo = {
   round: WatchRound
   seasonId: string
   videoUrl: string
+  // Account that owns this entry, or null for test/legacy rows. Needed for the
+  // follow button (only accounts can be followed).
+  creatorUserId: string | null
   creatorName: string
   durationSeconds: number | null
   aiService: string | null
@@ -114,6 +117,7 @@ function toWatchVideo(
     round,
     seasonId: row.season_id,
     videoUrl,
+    creatorUserId: row.user_id ?? null,
     // Account nickname is the source of truth; fall back to the per-application
     // creator_name for legacy rows whose user_id has no profile nickname yet.
     creatorName: displayName?.trim() || row.creator_name?.trim() || 'Anonymous',
@@ -504,4 +508,39 @@ export async function getWatchSeasonGroups(sort: WatchSort = 'latest'): Promise<
     return b.seasonNumber - a.seasonNumber
   })
   return groups
+}
+
+// ── Follows (creator subscriptions) ───────────────────────────────────────
+// All best-effort: a missing watch_follows table (migration not yet run) must
+// never break /watch -- these return empty/false instead of throwing.
+
+export type FollowedCreator = { userId: string; name: string }
+
+// Creators the given user follows, with display names resolved, newest first.
+// Used for the sidebar "Subscriptions" list.
+export async function getFollowedCreators(followerUserId: string): Promise<FollowedCreator[]> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('watch_follows')
+    .select('creator_user_id, created_at')
+    .eq('follower_user_id', followerUserId)
+    .order('created_at', { ascending: false })
+
+  if (error || !data) return []
+  const ids = data.map((r) => r.creator_user_id as string)
+  if (ids.length === 0) return []
+  const names = await getDisplayNames(ids)
+  return ids.map((id) => ({ userId: id, name: names.get(id) ?? 'Creator' }))
+}
+
+// Whether `followerUserId` currently follows `creatorUserId`.
+export async function isFollowing(followerUserId: string, creatorUserId: string): Promise<boolean> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('watch_follows')
+    .select('id')
+    .eq('follower_user_id', followerUserId)
+    .eq('creator_user_id', creatorUserId)
+    .maybeSingle()
+  return !!data
 }
