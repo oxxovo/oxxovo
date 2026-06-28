@@ -139,11 +139,13 @@ CREATE INDEX IF NOT EXISTS genesis_applications_staff_pick_idx
   WHERE staff_pick = true;
 
 -- ---------------------------------------------------------------------------
--- 6. watch_votes -- community vote on MAIN-ROUND videos. One vote per
---    (application, user). Logged-in only (user_id NOT NULL). voter_ip /
---    voter_ua / created_at are kept for abuse-pattern detection (timing,
---    ballot stuffing). round defaults to 'main' so the table can extend to
---    other rounds later without a schema change.
+-- 6. watch_votes -- community vote on MAIN-ROUND videos. ONE vote per
+--    (season, round, user) -- 1 person, 1 vote across the whole main round
+--    (TK 2026-06-28); most votes wins. NOT per-video: per-video would let one
+--    user vote for every finalist, which kills discrimination. Logged-in only
+--    (user_id NOT NULL). voter_ip / voter_ua / created_at are kept for abuse-
+--    pattern detection (timing, ballot stuffing). round defaults to 'main' so
+--    the table can extend to other rounds later without a schema change.
 --
 --    Aggregation -> community score -> computeFinalScore(): the per-video
 --    COUNT is normalized at read time and fed in as communityScore. Season 0
@@ -163,8 +165,8 @@ CREATE TABLE IF NOT EXISTS public.watch_votes (
     CHECK (round IN ('main', 'final'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS watch_votes_app_user_uniq
-  ON public.watch_votes(application_id, user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS watch_votes_season_round_user_uniq
+  ON public.watch_votes(season_id, round, user_id);
 
 CREATE INDEX IF NOT EXISTS watch_votes_application_idx
   ON public.watch_votes(application_id);

@@ -6,8 +6,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getWatchVideo, type WatchRound } from '@/lib/watch'
+import { getUserOrNull } from '@/lib/user-auth'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ChatWidget } from '@/app/_components/ChatWidget'
 import { WatchPlayer } from '../WatchPlayer'
+import { ViewTracker } from '../ViewTracker'
+import { LikeButton } from '../LikeButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,9 +28,24 @@ export default async function WatchDetailPage({
 }) {
   const [{ id }, sp] = await Promise.all([params, searchParams])
   const round = parseRound(sp.round)
-  const video = await getWatchVideo(id, round)
+  const [video, user] = await Promise.all([getWatchVideo(id, round), getUserOrNull()])
 
   if (!video) notFound()
+
+  // Whether the signed-in member already liked this video (for the button's
+  // initial state). Anonymous viewers start un-liked.
+  let initialLiked = false
+  if (user) {
+    const admin = createSupabaseAdmin()
+    const { data } = await admin
+      .from('watch_likes')
+      .select('id')
+      .eq('application_id', id)
+      .eq('round', round)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    initialLiked = !!data
+  }
 
   const roundLabel = round === 'main' ? 'Main Round' : 'Preliminary'
 
@@ -40,6 +59,7 @@ export default async function WatchDetailPage({
         <div className="mt-5">
           <WatchPlayer url={video.videoUrl} />
         </div>
+        <ViewTracker applicationId={video.applicationId} round={video.round} />
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center rounded bg-white/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white/75">
@@ -58,15 +78,24 @@ export default async function WatchDetailPage({
         </div>
 
         <h1 className="mt-3 text-2xl font-black">{video.creatorName}</h1>
-        <p className="mt-2 text-sm text-white/50">
-          {video.viewCount.toLocaleString()} views · {video.likeCount.toLocaleString()} likes
-          {video.commentCount > 0 && <> · {video.commentCount.toLocaleString()} comments</>}
-        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <LikeButton
+            applicationId={video.applicationId}
+            round={video.round}
+            initialLiked={initialLiked}
+            initialCount={video.likeCount}
+            isLoggedIn={!!user}
+          />
+          <p className="text-sm text-white/50">
+            {video.viewCount.toLocaleString()} views
+            {video.commentCount > 0 && <> · {video.commentCount.toLocaleString()} comments</>}
+          </p>
+        </div>
         {video.aiService && (
-          <p className="mt-1 text-xs text-white/35">Made with {video.aiService}</p>
+          <p className="mt-2 text-xs text-white/35">Made with {video.aiService}</p>
         )}
 
-        {/* Likes / vote / comments attach here in later phases. */}
+        {/* Vote (main round) / comments attach here in later phases. */}
       </section>
 
       <ChatWidget />
