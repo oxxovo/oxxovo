@@ -70,6 +70,8 @@ export default async function WatchDetailPage({
     label: g.hostType === 'partner' ? `${g.displayName} · Host` : g.displayName,
     count: g.videos.length,
   }))
+  // Season name for the detail meta (kept off the card per the card/detail split).
+  const seasonName = seasonGroups.find((g) => g.seasonId === video.seasonId)?.displayName ?? video.seasonId
 
   // Main-round videos carry a community vote (windowed) + public Triple-AI score
   // (finalists only; null until judging completes). Prelim scores are owner-only
@@ -173,9 +175,10 @@ export default async function WatchDetailPage({
             </div>
           </div>
 
-          {/* Meta box: competition label + stats + AI tool. */}
+          {/* Meta box (detail = full info): season, round/ranking, stats, AI tool. */}
           <div className="mt-4 rounded-xl bg-white/[.04] p-4 text-sm text-white/70">
-            <p className="font-bold text-white/90">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#b66cff]">{seasonName}</p>
+            <p className="mt-1 font-bold text-white/90">
               {roundLabel}
               {video.awarded && ' · 🏆 Winner'}
               {video.staffPick && ' · Staff Pick'}
