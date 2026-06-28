@@ -2,7 +2,7 @@
 
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { setWatchHidden } from '@/app/watch/actions'
+import { setWatchHidden, approveModeration } from '@/app/watch/actions'
 
 export type ModVideo = {
   id: string
@@ -24,6 +24,13 @@ export function WatchVideoModRow({ v }: { v: ModVideo }) {
   function toggleHide() {
     start(async () => {
       const res = await setWatchHidden(v.id, !v.watchHidden)
+      if (res.ok) router.refresh()
+    })
+  }
+
+  function approve() {
+    start(async () => {
+      const res = await approveModeration(v.id)
       if (res.ok) router.refresh()
     })
   }
@@ -75,18 +82,30 @@ export function WatchVideoModRow({ v }: { v: ModVideo }) {
         )}
       </td>
       <td className="py-3 whitespace-nowrap">
-        <button
-          type="button"
-          onClick={toggleHide}
-          disabled={pending}
-          className={`rounded px-3 py-1 text-xs font-bold transition disabled:opacity-50 ${
-            v.watchHidden
-              ? 'border border-white/20 text-white/70 hover:border-white/40'
-              : 'bg-amber-500/90 text-black hover:bg-amber-400'
-          }`}
-        >
-          {v.watchHidden ? 'Unhide' : 'Hide'}
-        </button>
+        <div className="flex gap-2">
+          {v.moderationStatus !== 'approved' && (
+            <button
+              type="button"
+              onClick={approve}
+              disabled={pending}
+              className="rounded bg-emerald-500/90 px-3 py-1 text-xs font-bold text-black transition hover:bg-emerald-400 disabled:opacity-50"
+            >
+              Approve
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={toggleHide}
+            disabled={pending}
+            className={`rounded px-3 py-1 text-xs font-bold transition disabled:opacity-50 ${
+              v.watchHidden
+                ? 'border border-white/20 text-white/70 hover:border-white/40'
+                : 'bg-amber-500/90 text-black hover:bg-amber-400'
+            }`}
+          >
+            {v.watchHidden ? 'Unhide' : 'Hide'}
+          </button>
+        </div>
       </td>
     </tr>
   )

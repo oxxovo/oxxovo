@@ -363,6 +363,25 @@ export async function setWatchHidden(
   return { ok: true, hidden }
 }
 
+// Admin manually approves moderation (clears a stuck 'pending' from before the
+// API key was set, or releases a false-positive 'flagged'). Admin only.
+export async function approveModeration(applicationId: string): Promise<HideResult> {
+  const adminUser = await getAdminOrNull()
+  if (!adminUser) return { ok: false, error: 'forbidden' }
+
+  const admin = createSupabaseAdmin()
+  const { error } = await admin
+    .from('genesis_applications')
+    .update({ moderation_status: 'approved', moderation_checked_at: new Date().toISOString() })
+    .eq('id', applicationId)
+  if (error) return { ok: false, error: 'failed' }
+
+  revalidatePath(`/watch/${applicationId}`)
+  revalidatePath('/watch')
+  revalidatePath('/admin/watch-videos')
+  return { ok: true, hidden: false }
+}
+
 // ─── Staff Pick ──────────────────────────────────────────────────────────────
 // Editorial curation, independent of AI score ([[project-scoring-integrity-rules]]
 // -- never touches score columns). Admin only. Per application (round-agnostic).
