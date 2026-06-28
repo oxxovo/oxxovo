@@ -107,6 +107,7 @@ export default function OXXOVOLandingPage() {
 
         <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
           <a className="transition hover:text-[#b66cff]" href="/tournament">Tournament</a>
+          <a className="transition hover:text-[#b66cff]" href="/watch">Watch</a>
           <a className="transition hover:text-[#b66cff]" href="#how">How It Works</a>
           <a className="transition hover:text-[#b66cff]" href="#about">About</a>
           <a className="transition hover:text-[#b66cff]" href="/membership">Membership</a>
