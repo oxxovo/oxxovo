@@ -33,6 +33,10 @@ const ABSTRACT_WORDS = [
 ]
 const STATEMENT_MIN = 150
 const STATEMENT_MAX = 250
+// Public, creator-authored video title + description (shown on Watch; separate
+// from the graded creator_statement).
+const TITLE_MAX = 100
+const DESCRIPTION_MAX = 600
 
 // Application stage accepts youtube/vimeo only — main round policy lives in
 // seasons.allowed_video_platforms and is a separate decision.
@@ -52,6 +56,8 @@ export default function ApplyPage() {
   const [reloadKey, setReloadKey] = useState(0)
 
   const [videoUrl, setVideoUrl] = useState('')
+  const [videoTitle, setVideoTitle] = useState('')
+  const [videoDescription, setVideoDescription] = useState('')
   const [videoDuration, setVideoDuration] = useState<number | ''>('')
   const [aiService, setAiService] = useState('')
   const [statement, setStatement] = useState('')
@@ -132,6 +138,10 @@ export default function ApplyPage() {
     durationValid &&
     !!aiService &&
     statementValid &&
+    videoTitle.trim().length > 0 &&
+    videoTitle.length <= TITLE_MAX &&
+    videoDescription.trim().length > 0 &&
+    videoDescription.length <= DESCRIPTION_MAX &&
     name.trim().length > 0 &&
     allAgreed &&
     !loading
@@ -151,6 +161,8 @@ export default function ApplyPage() {
           country: country.trim() || null,
           channel_url: channelUrl.trim() || null,
           free_entry_url: videoUrl.trim(),
+          video_title: videoTitle.trim(),
+          video_description: videoDescription.trim(),
           video_duration_seconds: videoDuration,
           ai_service: aiService,
           creator_statement: statement.trim(),
@@ -177,6 +189,10 @@ export default function ApplyPage() {
           missing_field: t.profile.apply_err_missing_field,
           agreements_required: t.profile.apply_err_agreements_required,
           statement_length: t.profile.apply_err_statement_length,
+          // Near-unreachable: the inputs enforce maxLength client-side. Brief
+          // literals avoid adding i18n keys for a defense-in-depth check.
+          title_length: 'Title is too long.',
+          description_length: 'Description is too long.',
           duration_range: t.profile.apply_err_duration_range(minSec, maxSec),
           season_not_found: t.profile.apply_err_season_not_found,
           season_not_open: t.profile.apply_err_season_not_open,
@@ -363,6 +379,46 @@ export default function ApplyPage() {
                     ✓ {formatVideoPlatforms([platform])} URL detected
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label className="flex justify-between items-baseline text-sm text-white/60 mb-1.5">
+                  <span>Video Title</span>
+                  <span className={videoTitle.length > TITLE_MAX ? 'text-red-400 text-xs' : 'text-white/40 text-xs'}>
+                    {videoTitle.length} / {TITLE_MAX}
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={videoTitle}
+                  onChange={(e) => setVideoTitle(e.target.value)}
+                  maxLength={TITLE_MAX}
+                  required
+                  placeholder="Give your video a title"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition"
+                />
+                <p className="text-xs text-white/40 mt-1.5">Shown on Watch as the video&apos;s title.</p>
+              </div>
+
+              <div>
+                <label className="flex justify-between items-baseline text-sm text-white/60 mb-1.5">
+                  <span>Video Description</span>
+                  <span className={videoDescription.length > DESCRIPTION_MAX ? 'text-red-400 text-xs' : 'text-white/40 text-xs'}>
+                    {videoDescription.length} / {DESCRIPTION_MAX}
+                  </span>
+                </label>
+                <textarea
+                  value={videoDescription}
+                  onChange={(e) => setVideoDescription(e.target.value)}
+                  maxLength={DESCRIPTION_MAX}
+                  required
+                  rows={4}
+                  placeholder="Tell viewers about your video — the idea, the story, how you made it."
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition resize-none"
+                />
+                <p className="text-xs text-white/40 mt-1.5">
+                  Your public intro on Watch. Separate from the Creator Statement below (used for scoring).
+                </p>
               </div>
 
               <div>

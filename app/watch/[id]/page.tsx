@@ -17,6 +17,7 @@ import {
   type WatchRound,
   type WatchVideo,
 } from '@/lib/watch'
+import { isWatchHome } from '@/lib/watch-home'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -53,14 +54,16 @@ export default async function WatchDetailPage({
   // rejected -> null). Only after it confirms the video is public do we fetch
   // comments/votes/score/related, so none of those can leak for a hidden app
   // even though they don't each re-check status.
-  const [video, user, adminUser, seasonGroups] = await Promise.all([
+  const [video, user, adminUser, seasonGroups, watchHome] = await Promise.all([
     getWatchVideo(id, round),
     getUserOrNull(),
     getAdminOrNull(),
     getWatchSeasonGroups(),
+    isWatchHome(),
   ])
 
   if (!video) notFound()
+  const logoHref = watchHome ? '/watch' : '/'
 
   // Same left rail as the grid: Home/Tournament + sort + seasons. The detail
   // page has no sort context, so the rail shows Latest highlighted and links
@@ -109,6 +112,18 @@ export default async function WatchDetailPage({
     user && canFollowCreator ? await isFollowing(user.id, video.creatorUserId!) : false
 
   const roundLabel = round === 'main' ? 'Main Round' : 'Preliminary'
+  // Ranking: medal for a placed winner, generic trophy for an awarded entry
+  // without a numeric rank.
+  const rankLabel =
+    video.awardRank === 1
+      ? '🥇 1st Place'
+      : video.awardRank === 2
+        ? '🥈 2nd Place'
+        : video.awardRank === 3
+          ? '🥉 3rd Place'
+          : video.awarded
+            ? '🏆 Winner'
+            : ''
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
@@ -118,6 +133,7 @@ export default async function WatchDetailPage({
         activeSeason={video.seasonId}
         user={user ? { email: user.email } : null}
         subscriptions={subscriptions}
+        logoHref={logoHref}
       >
         <div className="flex flex-col lg:flex-row gap-8">
         {/* Left: player + meta + social + comments */}
@@ -143,7 +159,7 @@ export default async function WatchDetailPage({
             )}
           </div>
 
-          <h1 className="mt-3 text-2xl font-black">{video.creatorName}</h1>
+          <h1 className="mt-3 text-2xl font-black">{video.videoTitle || video.creatorName}</h1>
 
           {/* Action row: creator + follow (left) + like/share/save/report (right). */}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -180,7 +196,7 @@ export default async function WatchDetailPage({
             <p className="text-xs font-bold uppercase tracking-wider text-[#b66cff]">{seasonName}</p>
             <p className="mt-1 font-bold text-white/90">
               {roundLabel}
-              {video.awarded && ' · 🏆 Winner'}
+              {rankLabel && ` · ${rankLabel}`}
               {video.staffPick && ' · Staff Pick'}
             </p>
             <p className="mt-1 text-white/50">
@@ -190,6 +206,12 @@ export default async function WatchDetailPage({
             </p>
             {video.aiService && <p className="mt-1 text-xs text-white/40">Made with {video.aiService}</p>}
           </div>
+
+          {video.videoDescription && (
+            <div className="mt-4 whitespace-pre-wrap rounded-xl bg-white/[.03] p-4 text-sm leading-relaxed text-white/75">
+              {video.videoDescription}
+            </div>
+          )}
 
           {voteCtx && (
             <div className="mt-6">

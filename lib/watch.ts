@@ -28,6 +28,12 @@ export type WatchVideo = {
   // follow button (only accounts can be followed).
   creatorUserId: string | null
   creatorName: string
+  // Creator-authored public title/description (null on legacy rows -> card
+  // falls back to creatorName for the title).
+  videoTitle: string | null
+  videoDescription: string | null
+  // Award placement (1/2/3) for winners, else null. Drives the Winners filter.
+  awardRank: number | null
   durationSeconds: number | null
   aiService: string | null
   staffPick: boolean
@@ -81,6 +87,9 @@ type AppRow = {
   created_at: string | null
   studio_application_submitted_at: string | null
   main_round_submitted_at: string | null
+  video_title: string | null
+  video_description: string | null
+  award_rank: number | null
 }
 
 type SeasonMeta = {
@@ -121,6 +130,9 @@ function toWatchVideo(
     // Account nickname is the source of truth; fall back to the per-application
     // creator_name for legacy rows whose user_id has no profile nickname yet.
     creatorName: displayName?.trim() || row.creator_name?.trim() || 'Anonymous',
+    videoTitle: row.video_title?.trim() || null,
+    videoDescription: row.video_description?.trim() || null,
+    awardRank: row.award_rank ?? null,
     durationSeconds: row.video_duration_seconds,
     aiService: row.ai_service,
     staffPick: !!row.staff_pick,
@@ -172,7 +184,7 @@ export async function getWatchVideos(
   let q = admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
+      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
   if (opt.seasonId) q = q.eq('season_id', opt.seasonId)
 
@@ -297,7 +309,7 @@ export async function getWatchVideo(
   const { data, error } = await admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at',
+      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
     .eq('id', applicationId)
     .maybeSingle()

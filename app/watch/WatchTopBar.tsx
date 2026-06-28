@@ -10,9 +10,13 @@ import { useState } from 'react'
 export function WatchTopBar({
   onMenu,
   user,
+  logoHref = '/watch',
 }: {
   onMenu: () => void
   user: { email: string } | null
+  // Where the logo links: '/watch' when Watch is the home surface, else '/'
+  // (the marketing landing) -- resolved server-side from watch_as_home.
+  logoHref?: string
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -35,10 +39,16 @@ export function WatchTopBar({
         ☰
       </button>
 
-      <Link href="/watch" className="flex items-center gap-2 shrink-0">
+      <Link href={logoHref} aria-label="OXXOVO home" className="flex items-center gap-2 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/oxxovo_logo.png" alt="OXXOVO" className="h-7 drop-shadow-[0_0_12px_rgba(139,34,255,.6)]" />
-        <span className="text-base font-black tracking-wide text-[#8b22ff] max-sm:hidden">OXXOVO</span>
+        <img
+          src="/oxxovo_logo.png"
+          alt="OXXOVO"
+          className="h-11 brightness-125 drop-shadow-[0_0_18px_rgba(139,34,255,.8)]"
+        />
+        <span className="text-lg font-black tracking-wide text-[#a45cff] drop-shadow-[0_0_10px_rgba(139,34,255,.7)] max-sm:hidden">
+          OXXOVO
+        </span>
       </Link>
 
       <form onSubmit={submitSearch} className="flex-1 max-w-xl mx-auto">

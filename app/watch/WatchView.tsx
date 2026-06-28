@@ -3,6 +3,7 @@
 
 import Link from 'next/link'
 import { getWatchSeasonGroups, getFollowedCreators, type WatchRound, type WatchVideo, type WatchSort } from '@/lib/watch'
+import { isWatchHome } from '@/lib/watch-home'
 import { getUserOrNull } from '@/lib/user-auth'
 import { WatchShell, type SidebarSeason, type SidebarSubscription } from './WatchShell'
 
@@ -27,24 +28,41 @@ export async function WatchView({
   sort,
   activeSeason,
   query,
+  round,
+  awardRank,
 }: {
   sort: WatchSort
   activeSeason?: string
   query?: string
+  round?: WatchRound
+  awardRank?: number
 }) {
-  const [groups, user] = await Promise.all([getWatchSeasonGroups(sort), getUserOrNull()])
+  const [groups, user, watchHome] = await Promise.all([
+    getWatchSeasonGroups(sort),
+    getUserOrNull(),
+    isWatchHome(),
+  ])
+  const logoHref = watchHome ? '/watch' : '/'
   const followed = user ? await getFollowedCreators(user.id) : []
   const subscriptions: SidebarSubscription[] = followed.map((f) => ({ creatorUserId: f.userId, name: f.name }))
 
   const q = query?.trim().toLowerCase() ?? ''
   let visibleGroups = activeSeason ? groups.filter((g) => g.seasonId === activeSeason) : groups
-  if (q) {
-    // Search matches the displayed creator name (account nickname or the
-    // per-application creator_name fallback -- both already resolved into
-    // creatorName by lib/watch).
+
+  // Apply the round / winner / search filters, then drop emptied groups.
+  const filterVideos = (pred: (v: WatchVideo) => boolean) => {
     visibleGroups = visibleGroups
-      .map((g) => ({ ...g, videos: g.videos.filter((v) => v.creatorName.toLowerCase().includes(q)) }))
+      .map((g) => ({ ...g, videos: g.videos.filter(pred) }))
       .filter((g) => g.videos.length > 0)
+  }
+  if (round) filterVideos((v) => v.round === round)
+  if (awardRank) filterVideos((v) => v.awardRank === awardRank)
+  if (q) {
+    // Match the video title or the displayed creator name (nickname or the
+    // per-application creator_name fallback, both resolved by lib/watch).
+    filterVideos(
+      (v) => (v.videoTitle ?? '').toLowerCase().includes(q) || v.creatorName.toLowerCase().includes(q),
+    )
   }
   const totalVideos = visibleGroups.reduce((n, g) => n + g.videos.length, 0)
 
@@ -59,8 +77,11 @@ export async function WatchView({
       seasons={seasons}
       sort={sort}
       activeSeason={activeSeason}
+      activeRound={round}
+      activeAwardRank={awardRank}
       user={user ? { email: user.email } : null}
       subscriptions={subscriptions}
+      logoHref={logoHref}
     >
       {!q && (
         <div className="mb-7">
@@ -146,11 +167,12 @@ function VideoCard({ v }: { v: WatchVideo }) {
         )}
       </div>
       {/* Card = at-a-glance only: title + creator + views/likes. Everything else
-          (Triple-AI score, season, ranking, comments, voting) lives on detail. */}
+          (description, Triple-AI score, season, ranking, comments, voting) lives
+          on detail. Title falls back to the creator name for legacy rows. */}
       <div className="p-3.5">
-        <h3 className="text-sm font-bold text-white truncate">{v.creatorName}</h3>
-        <p className="mt-1 text-xs text-white/45">
-          Creator · {formatCount(v.viewCount)} views · {formatCount(v.likeCount)} likes
+        <h3 className="text-sm font-bold text-white truncate">{v.videoTitle || v.creatorName}</h3>
+        <p className="mt-1 text-xs text-white/45 truncate">
+          {v.creatorName} · {formatCount(v.viewCount)} views · {formatCount(v.likeCount)} likes
         </p>
       </div>
     </Link>

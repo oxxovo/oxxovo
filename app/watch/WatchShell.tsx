@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { WatchSort } from '@/lib/watch'
+import type { WatchSort, WatchRound } from '@/lib/watch'
 import { WatchTopBar } from './WatchTopBar'
 
 // Shell for the Watch surface: fixed top bar + left sidebar (desktop fixed /
@@ -25,30 +25,56 @@ const SORTS: { key: WatchSort; label: string }[] = [
   { key: 'award', label: 'Award Winners' },
 ]
 
-function buildHref(sort: WatchSort, season?: string): string {
+// Build a /watch URL preserving the other active filters; pass only the fields
+// you want for this link (omit one to clear it).
+function buildHref(
+  sort: WatchSort,
+  opts: { season?: string; round?: WatchRound; awardRank?: number } = {},
+): string {
   const p = new URLSearchParams()
   if (sort !== 'latest') p.set('sort', sort)
-  if (season) p.set('season', season)
+  if (opts.season) p.set('season', opts.season)
+  if (opts.round) p.set('round', opts.round)
+  if (opts.awardRank) p.set('award_rank', String(opts.awardRank))
   const qs = p.toString()
   return qs ? `/watch?${qs}` : '/watch'
 }
+
+const ROUNDS: { key: WatchRound; label: string }[] = [
+  { key: 'application', label: 'Preliminary' },
+  { key: 'main', label: 'Main Round' },
+]
+const WINNERS: { rank: number; label: string }[] = [
+  { rank: 1, label: '🥇 1st Place' },
+  { rank: 2, label: '🥈 2nd Place' },
+  { rank: 3, label: '🥉 3rd Place' },
+]
 
 export function WatchShell({
   seasons,
   sort,
   activeSeason,
+  activeRound,
+  activeAwardRank,
   user,
   subscriptions = [],
+  logoHref = '/watch',
   children,
 }: {
   seasons: SidebarSeason[]
   sort: WatchSort
   activeSeason?: string
+  activeRound?: WatchRound
+  activeAwardRank?: number
   user: { email: string } | null
   subscriptions?: SidebarSubscription[]
+  logoHref?: string
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
+
+  // Every filter link preserves the other active filters (season/round/winner).
+  const keep = { season: activeSeason, round: activeRound, awardRank: activeAwardRank }
 
   const nav = (
     <nav className="flex flex-col gap-1">
@@ -57,18 +83,52 @@ export function WatchShell({
 
       <Divider label="Sort" />
       {SORTS.map((s) => (
-        <RailLink key={s.key} href={buildHref(s.key, activeSeason)} label={s.label} active={s.key === sort} />
+        <RailLink key={s.key} href={buildHref(s.key, keep)} label={s.label} active={s.key === sort} />
       ))}
 
       <Divider label="Seasons" />
-      <RailLink href={buildHref(sort)} label="All" active={!activeSeason} />
+      <RailLink
+        href={buildHref(sort, { round: activeRound, awardRank: activeAwardRank })}
+        label="All"
+        active={!activeSeason}
+      />
       {seasons.map((g) => (
         <RailLink
           key={g.seasonId}
-          href={buildHref(sort, g.seasonId)}
+          href={buildHref(sort, { season: g.seasonId, round: activeRound, awardRank: activeAwardRank })}
           label={g.label}
           active={activeSeason === g.seasonId}
           count={g.count}
+        />
+      ))}
+
+      <Divider label="Round" />
+      <RailLink
+        href={buildHref(sort, { season: activeSeason, awardRank: activeAwardRank })}
+        label="All rounds"
+        active={!activeRound}
+      />
+      {ROUNDS.map((r) => (
+        <RailLink
+          key={r.key}
+          href={buildHref(sort, { season: activeSeason, round: r.key, awardRank: activeAwardRank })}
+          label={r.label}
+          active={activeRound === r.key}
+        />
+      ))}
+
+      <Divider label="Winners" />
+      <RailLink
+        href={buildHref(sort, { season: activeSeason, round: activeRound })}
+        label="All"
+        active={!activeAwardRank}
+      />
+      {WINNERS.map((w) => (
+        <RailLink
+          key={w.rank}
+          href={buildHref(sort, { season: activeSeason, round: activeRound, awardRank: w.rank })}
+          label={w.label}
+          active={activeAwardRank === w.rank}
         />
       ))}
 
@@ -96,7 +156,7 @@ export function WatchShell({
 
   return (
     <>
-      <WatchTopBar onMenu={() => setOpen((o) => !o)} user={user} />
+      <WatchTopBar onMenu={() => setOpen((o) => !o)} user={user} logoHref={logoHref} />
 
       <div className="flex pt-14 max-w-[1600px] mx-auto">
         {/* Desktop fixed rail */}

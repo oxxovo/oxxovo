@@ -16,6 +16,10 @@ import { moderateSubmission } from '@/lib/moderation'
 
 const STATEMENT_MIN = 150
 const STATEMENT_MAX = 250
+// Public, creator-authored video title + description (separate from the graded
+// creator_statement). Shown on Watch.
+const TITLE_MAX = 100
+const DESCRIPTION_MAX = 600
 
 // Error codes — client maps via t.profile.apply_err_* (옥소보 saveWinnerInfo 패턴).
 // Server holds state/decision, client holds wording (단일 i18n 진실원천).
@@ -25,6 +29,8 @@ export type ApplyErrorCode =
   | 'missing_field'
   | 'agreements_required'
   | 'statement_length'
+  | 'title_length'
+  | 'description_length'
   | 'duration_range'
   | 'season_not_found'
   | 'season_not_open'
@@ -64,6 +70,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
       'video_duration_seconds',
       'ai_service',
       'creator_statement',
+      'video_title',
+      'video_description',
     ] as const
     for (const k of required) {
       const v = body[k]
@@ -82,6 +90,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
     const stmtLen = String(body.creator_statement).length
     if (stmtLen < STATEMENT_MIN || stmtLen > STATEMENT_MAX) {
       return NextResponse.json({ error: 'statement_length' }, { status: 400 })
+    }
+    if (String(body.video_title).length > TITLE_MAX) {
+      return NextResponse.json({ error: 'title_length' }, { status: 400 })
+    }
+    if (String(body.video_description).length > DESCRIPTION_MAX) {
+      return NextResponse.json({ error: 'description_length' }, { status: 400 })
     }
 
     // An explicit season_id in the body wins (lets an applicant act on a
@@ -127,6 +141,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
         video_duration_seconds: dur,
         ai_service: body.ai_service,
         creator_statement: body.creator_statement,
+        video_title: String(body.video_title).trim(),
+        video_description: String(body.video_description).trim(),
         agreed_to_rules: body.agreed_to_rules,
         agreed_to_privacy: body.agreed_to_privacy,
         agreed_to_integrity_notice: body.agreed_to_integrity_notice,
@@ -153,17 +169,21 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
 
     const insertedId = inserted?.id ?? null
 
-    // AI pre-moderation (Patent 3): scan the statement + the YouTube thumbnail
-    // (the external video itself can't be fetched). Sets moderation_status so
-    // the video is public only when approved. Failure -> stays 'pending' (not
-    // public), reviewable in the admin queue. Non-fatal to the apply request.
+    // AI pre-moderation (Patent 3): scan the public text (title + description +
+    // statement) + the YouTube thumbnail (the external video itself can't be
+    // fetched). Sets moderation_status so the video is public only when
+    // approved. Failure -> stays 'pending' (not public), reviewable in the admin
+    // queue. Non-fatal to the apply request.
     if (insertedId) {
       try {
         const parsed = parseVideoUrl(body.free_entry_url)
         const thumb = parsed.kind === 'youtube'
           ? `https://img.youtube.com/vi/${parsed.videoId}/hqdefault.jpg`
           : null
-        const mod = await moderateSubmission({ text: body.creator_statement, imageUrl: thumb })
+        const scanText = [body.video_title, body.video_description, body.creator_statement]
+          .filter(Boolean)
+          .join('\n')
+        const mod = await moderateSubmission({ text: scanText, imageUrl: thumb })
         await admin
           .from('genesis_applications')
           .update({
