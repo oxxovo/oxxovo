@@ -11,6 +11,8 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
 import { checkApplyGate } from '@/lib/membership'
 import { sendApplicationReceived, sendWaitlisted } from '@/lib/email/send'
+import { parseVideoUrl } from '@/lib/video-url'
+import { moderateSubmission } from '@/lib/moderation'
 
 const STATEMENT_MIN = 150
 const STATEMENT_MAX = 250
@@ -130,6 +132,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
         agreed_to_integrity_notice: body.agreed_to_integrity_notice,
         season_id: season.id,
         status: resolvedStatus,
+        // Content safety: not public until the AI scan approves (below).
+        moderation_status: 'pending',
       })
       .select('id')
       .single()
@@ -148,6 +152,30 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
     }
 
     const insertedId = inserted?.id ?? null
+
+    // AI pre-moderation (Patent 3): scan the statement + the YouTube thumbnail
+    // (the external video itself can't be fetched). Sets moderation_status so
+    // the video is public only when approved. Failure -> stays 'pending' (not
+    // public), reviewable in the admin queue. Non-fatal to the apply request.
+    if (insertedId) {
+      try {
+        const parsed = parseVideoUrl(body.free_entry_url)
+        const thumb = parsed.kind === 'youtube'
+          ? `https://img.youtube.com/vi/${parsed.videoId}/hqdefault.jpg`
+          : null
+        const mod = await moderateSubmission({ text: body.creator_statement, imageUrl: thumb })
+        await admin
+          .from('genesis_applications')
+          .update({
+            moderation_status: mod.status,
+            moderation_flags: mod.categories.length ? mod.categories : null,
+            moderation_checked_at: new Date().toISOString(),
+          })
+          .eq('id', insertedId)
+      } catch (e) {
+        console.error('[apply] moderation error (stays pending):', e)
+      }
+    }
 
     // Fire the appropriate notification. Errors here are logged into
     // email_logs by the helper itself; we don't fail the apply request even
