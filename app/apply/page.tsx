@@ -7,6 +7,7 @@ import {
   getCurrentSeason,
   getActiveApplicationCount,
   isApplicationClosed,
+  isBeforeApplicationOpen,
   isCapacityFull,
   formatAiModelList,
   formatPanelLabel,
@@ -88,6 +89,14 @@ export default function ApplyPage() {
         setMode('closed')
         return
       }
+      // Pre-launch guard: before the application window opens, never show the
+      // form. The server route already 403s an early submit; this keeps the UI
+      // consistent with the home CTA (which points to /pre-register before open).
+      if (isBeforeApplicationOpen(s)) {
+        router.push('/pre-register')
+        return
+      }
+
       setSeason(s)
       getStudioApplicationFlag(s.id).then(setStudioApplication)
 
