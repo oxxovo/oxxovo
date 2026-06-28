@@ -256,6 +256,64 @@ export async function getWatchVideo(
   )
 }
 
+export type VoteContext = {
+  open: boolean // vote window currently active
+  cap: number // max videos a person may vote for this season/round
+  usedVotes: number // how many this user has used this season/round
+  voted: boolean // has this user voted for THIS video
+  totalVotes: number // this video's public vote count
+}
+
+// Vote state for a main-round video. Public count is always returned; the
+// per-user fields require a userId. Window/cap come from seasons (admin-set).
+export async function getVoteContext(
+  applicationId: string,
+  seasonId: string,
+  userId: string | null,
+): Promise<VoteContext> {
+  const admin = createSupabaseAdmin()
+  const { data: season } = await admin
+    .from('seasons')
+    .select('community_vote_start_at, community_vote_end_at, community_vote_max_per_user')
+    .eq('id', seasonId)
+    .maybeSingle()
+
+  const now = Date.now()
+  const start = season?.community_vote_start_at ? Date.parse(season.community_vote_start_at as string) : null
+  const end = season?.community_vote_end_at ? Date.parse(season.community_vote_end_at as string) : null
+  const open = start != null && end != null && now >= start && now <= end
+  const cap = (season?.community_vote_max_per_user as number | null) ?? 3
+
+  const { count: totalVotes } = await admin
+    .from('watch_votes')
+    .select('id', { count: 'exact', head: true })
+    .eq('application_id', applicationId)
+    .eq('round', 'main')
+
+  let usedVotes = 0
+  let voted = false
+  if (userId) {
+    const [usedRes, mineRes] = await Promise.all([
+      admin
+        .from('watch_votes')
+        .select('id', { count: 'exact', head: true })
+        .eq('season_id', seasonId)
+        .eq('round', 'main')
+        .eq('user_id', userId),
+      admin
+        .from('watch_votes')
+        .select('id')
+        .eq('application_id', applicationId)
+        .eq('user_id', userId)
+        .maybeSingle(),
+    ])
+    usedVotes = usedRes.count ?? 0
+    voted = !!mineRes.data
+  }
+
+  return { open, cap, usedVotes, voted, totalVotes: totalVotes ?? 0 }
+}
+
 export type WatchComment = {
   id: string
   body: string

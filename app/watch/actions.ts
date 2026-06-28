@@ -219,6 +219,88 @@ export async function reportWatchComment(
   return { ok: true, alreadyReported }
 }
 
+// ─── Community vote (main round, up to 3 per person) ─────────────────────────
+// Members vote for up to N (=seasons.community_vote_max_per_user, default 3)
+// DIFFERENT main-round videos during the vote window; one vote per video; toggle
+// to un-vote. The DB trigger is the hard cap (race-safe); this pre-checks for a
+// friendly message. ip/ua/timing logged for abuse detection.
+
+export type VoteResult =
+  | { ok: true; voted: boolean; usedVotes: number; cap: number }
+  | { ok: false; error: 'auth' | 'closed' | 'limit' | 'not_main' | 'failed' }
+
+export async function toggleWatchVote(applicationId: string): Promise<VoteResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'auth' }
+
+  const admin = createSupabaseAdmin()
+  const { data: app } = await admin
+    .from('genesis_applications')
+    .select('id, season_id, main_round_video_url')
+    .eq('id', applicationId)
+    .maybeSingle()
+  if (!app || !app.main_round_video_url) return { ok: false, error: 'not_main' }
+
+  const { data: season } = await admin
+    .from('seasons')
+    .select('community_vote_start_at, community_vote_end_at, community_vote_max_per_user')
+    .eq('id', app.season_id)
+    .maybeSingle()
+
+  const cap = (season?.community_vote_max_per_user as number | null) ?? 3
+  const now = Date.now()
+  const start = season?.community_vote_start_at ? Date.parse(season.community_vote_start_at as string) : null
+  const end = season?.community_vote_end_at ? Date.parse(season.community_vote_end_at as string) : null
+  const open = start != null && end != null && now >= start && now <= end
+
+  const { data: existing } = await admin
+    .from('watch_votes')
+    .select('id')
+    .eq('application_id', applicationId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  // Voting (and un-voting) only inside the window.
+  if (!open) return { ok: false, error: 'closed' }
+
+  if (existing) {
+    await admin.from('watch_votes').delete().eq('id', existing.id)
+  } else {
+    const h = await headers()
+    const ip = (h.get('x-forwarded-for') ?? '').split(',')[0]?.trim() || null
+    const ua = h.get('user-agent') || null
+    const { error } = await admin.from('watch_votes').insert({
+      application_id: applicationId,
+      season_id: app.season_id,
+      round: 'main',
+      user_id: user.id,
+      voter_ip: ip,
+      voter_ua: ua,
+    })
+    if (error) {
+      // 23514 = check_violation raised by enforce_watch_vote_limit (cap reached).
+      if (error.code === '23514' || /watch_vote_limit/.test(error.message)) {
+        return { ok: false, error: 'limit' }
+      }
+      // 23505 = unique (already voted this video) -> treat as success/no-op.
+      if (error.code !== '23505') {
+        console.error('[watch] toggleWatchVote insert failed:', error.message)
+        return { ok: false, error: 'failed' }
+      }
+    }
+  }
+
+  const { count } = await admin
+    .from('watch_votes')
+    .select('id', { count: 'exact', head: true })
+    .eq('season_id', app.season_id)
+    .eq('round', 'main')
+    .eq('user_id', user.id)
+
+  revalidatePath(`/watch/${applicationId}`)
+  return { ok: true, voted: !existing, usedVotes: count ?? 0, cap }
+}
+
 // ─── Staff Pick ──────────────────────────────────────────────────────────────
 // Editorial curation, independent of AI score ([[project-scoring-integrity-rules]]
 // -- never touches score columns). Admin only. Per application (round-agnostic).

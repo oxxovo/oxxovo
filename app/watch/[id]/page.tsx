@@ -5,7 +5,7 @@
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getWatchVideo, getWatchComments, type WatchRound } from '@/lib/watch'
+import { getWatchVideo, getWatchComments, getVoteContext, type WatchRound } from '@/lib/watch'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -15,6 +15,7 @@ import { ViewTracker } from '../ViewTracker'
 import { LikeButton } from '../LikeButton'
 import { CommentSection } from '../CommentSection'
 import { StaffPickToggle } from '../StaffPickToggle'
+import { VoteButton } from '../VoteButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +40,10 @@ export default async function WatchDetailPage({
   ])
 
   if (!video) notFound()
+
+  // Main-round videos carry a community vote (windowed, up to 3 per person).
+  const voteCtx =
+    round === 'main' ? await getVoteContext(video.applicationId, video.seasonId, user?.id ?? null) : null
 
   // Whether the signed-in member already liked this video (for the button's
   // initial state). Anonymous viewers start un-liked.
@@ -106,7 +111,11 @@ export default async function WatchDetailPage({
           <p className="mt-2 text-xs text-white/35">Made with {video.aiService}</p>
         )}
 
-        {/* Vote (main round) attaches here in phase 7. */}
+        {voteCtx && (
+          <div className="mt-6">
+            <VoteButton applicationId={video.applicationId} ctx={voteCtx} isLoggedIn={!!user} />
+          </div>
+        )}
 
         <CommentSection
           applicationId={video.applicationId}
