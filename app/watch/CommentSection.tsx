@@ -8,8 +8,8 @@ import {
   editWatchComment,
   deleteWatchComment,
   reportWatchComment,
-  COMMENT_MAX,
 } from './actions'
+import { COMMENT_MAX } from './constants'
 import type { WatchComment } from '@/lib/watch'
 
 // Comments: members write; author edits/deletes own; others report; admin hides

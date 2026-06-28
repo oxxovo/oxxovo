@@ -12,6 +12,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { getDisplayName } from '@/lib/nickname'
+import { COMMENT_MAX } from './constants'
 import type { WatchRound } from '@/lib/watch'
 
 function normRound(r: string): WatchRound {
@@ -92,8 +93,6 @@ export async function toggleWatchLike(applicationId: string, round: string): Pro
 // hides (status='hidden', never deleted) via the admin queue. Display name is
 // resolved at READ time from the account nickname (no author_name snapshot) so
 // a nickname change reflects everywhere -- YouTube-style.
-
-export const COMMENT_MAX = 1000
 
 export type CommentResult =
   | { ok: true }
