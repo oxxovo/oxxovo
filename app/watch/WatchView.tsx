@@ -129,6 +129,8 @@ function VideoCard({ v }: { v: WatchVideo }) {
   return (
     <Link
       href={`/watch/${v.applicationId}?round=${v.round}`}
+      target="_blank"
+      rel="noopener noreferrer"
       className="group block overflow-hidden rounded-xl border border-white/10 bg-[#0c0a14] transition hover:border-[#8b22ff]/50"
     >
       <div className="relative aspect-video w-full overflow-hidden bg-[#0c0a14]">
