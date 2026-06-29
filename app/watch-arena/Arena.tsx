@@ -83,7 +83,9 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
 
   return (
     <section className="relative -mx-6 -mt-6 mb-10 overflow-hidden">
-      <div className="relative h-[clamp(420px,58vh,600px)] w-full">
+      {/* Mobile keeps the base height/padding (balanced as-is); desktop (md+) is
+          taller so the bottom-anchored text drops well below the image's logo. */}
+      <div className="relative h-[clamp(420px,58vh,600px)] md:h-[680px] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/arena_image.png"
@@ -96,8 +98,9 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,4,16,.2)_0%,rgba(6,4,16,.28)_38%,rgba(6,4,16,.78)_78%,#070512_100%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(120%_70%_at_50%_120%,rgba(139,34,255,.16),transparent_60%)]" />
 
-        {/* Text block sits in the lower portion, below the image's logo. */}
-        <div className="absolute inset-0 flex flex-col items-center justify-end px-6 pb-9 text-center">
+        {/* Text block sits in the lower portion, below the image's logo. Mobile
+            keeps pb-9; desktop adds more bottom space so the block sits lower. */}
+        <div className="absolute inset-0 flex flex-col items-center justify-end px-6 pb-9 md:pb-14 text-center">
           <p className="text-[18px] font-bold tracking-wide text-[#c9a9ff]">{line1}</p>
           <h1 className="mt-1 text-[40px] md:text-[44px] font-black uppercase leading-[1.02] tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)]">
             {line2}
