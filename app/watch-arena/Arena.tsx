@@ -98,18 +98,19 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,4,16,.2)_0%,rgba(6,4,16,.28)_38%,rgba(6,4,16,.78)_78%,#070512_100%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(120%_70%_at_50%_120%,rgba(139,34,255,.16),transparent_60%)]" />
 
-        {/* Text block sits in the lower portion, below the image's logo. Mobile
-            keeps pb-9; desktop adds more bottom space so the block sits lower. */}
-        <div className="absolute inset-0 flex flex-col items-center justify-end px-6 pb-9 md:pb-14 text-center">
-          <p className="text-[18px] font-bold tracking-wide text-[#c9a9ff]">{line1}</p>
-          <h1 className="mt-1 text-[40px] md:text-[44px] font-black uppercase leading-[1.02] tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)]">
+        {/* Mobile: text anchored at the bottom (balanced for the mobile crop).
+            Desktop: vertically centered so "THE LAST HOPE" lines up with the
+            image's "REAL COMPETITION / REAL RECOGNITION" mid-band. */}
+        <div className="absolute inset-0 flex flex-col items-center justify-end md:justify-center px-6 pb-9 md:pb-0 text-center">
+          <p className="text-[18px] md:text-[22px] font-bold tracking-wide text-[#c9a9ff]">{line1}</p>
+          <h1 className="mt-1 text-[40px] md:text-[58px] font-black uppercase leading-[1.02] tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,.55)]">
             {line2}
           </h1>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             {chips.map((c, i) => (
               <span
                 key={i}
-                className="rounded-md border border-white/10 bg-black/35 px-3 py-1 text-[13px] font-semibold text-[#e3dcff] backdrop-blur"
+                className="rounded-md border border-white/10 bg-black/35 px-3 py-1 text-[13px] md:text-[14px] font-semibold text-[#e3dcff] backdrop-blur"
               >
                 {c}
               </span>
@@ -119,7 +120,7 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
             <div className="mt-6">
               <Link
                 href="#entries"
-                className="inline-flex items-center gap-2 rounded-lg bg-[#8b22ff] px-7 py-3.5 text-[16px] font-extrabold text-white shadow-[0_0_28px_rgba(139,34,255,.55)] transition hover:brightness-110"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#8b22ff] px-7 md:px-8 py-3.5 text-[16px] md:text-[17px] font-extrabold text-white shadow-[0_0_28px_rgba(139,34,255,.55)] transition hover:brightness-110"
               >
                 Watch the Competition
               </Link>
