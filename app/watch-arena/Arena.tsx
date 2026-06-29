@@ -101,7 +101,7 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
         {/* Mobile: text anchored at the bottom (balanced for the mobile crop).
             Desktop: vertically centered so "THE LAST HOPE" lines up with the
             image's "REAL COMPETITION / REAL RECOGNITION" mid-band. */}
-        <div className="absolute inset-0 flex flex-col items-center justify-end md:justify-center px-6 pb-9 md:pb-0 text-center md:translate-y-44">
+        <div className="absolute inset-0 flex flex-col items-center justify-end md:justify-center px-6 pb-9 md:pb-0 text-center md:translate-y-36">
           <p className="text-[18px] md:text-[22px] font-bold tracking-wide text-[#c9a9ff]">{line1}</p>
           <h1 className="mt-1 text-[40px] md:text-[58px] font-black uppercase leading-[1.02] tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,.55)]">
             {line2}
