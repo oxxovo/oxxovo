@@ -82,7 +82,7 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
   const line2 = colon > -1 ? title.slice(colon + 1).trim() : title
 
   return (
-    <section className="relative -mx-6 -mt-6 mb-10 overflow-hidden">
+    <section className="relative -mx-6 -mt-6 mb-5 overflow-hidden">
       {/* Mobile keeps the base height/padding (balanced as-is); desktop (md+) is
           taller so the bottom-anchored text drops well below the image's logo. */}
       <div className="relative h-[clamp(420px,58vh,600px)] md:h-[680px] w-full">
@@ -249,11 +249,11 @@ export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seaso
 export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; seasonNames: Record<string, string> }) {
   return (
     <section id="entries" className="scroll-mt-24">
-      <div className="mb-4">
+      <div className="mb-5 text-center">
         <h2 className="text-xl font-black leading-tight text-[#f4f0ff]">
           These aren&apos;t just videos. They&apos;re competitors.
         </h2>
-        <p className="mt-1 max-w-2xl text-sm text-[#7a7299]">
+        <p className="mt-1 mx-auto max-w-2xl text-sm text-[#7a7299]">
           Every video is part of an official OXXOVO tournament and verified through Triple-AI evaluation.
         </p>
       </div>
