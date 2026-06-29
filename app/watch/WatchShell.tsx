@@ -232,8 +232,12 @@ function RailLink({
   count?: number
 }) {
   return (
+    // Filter links open in a new tab (like the video cards) so the current Watch
+    // view is preserved while the chosen filter opens alongside it.
     <Link
       href={href}
+      target="_blank"
+      rel="noopener noreferrer"
       className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition ${
         active ? 'bg-white/10 text-white font-bold' : 'text-white/65 hover:bg-white/5'
       }`}
