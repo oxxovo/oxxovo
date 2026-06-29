@@ -46,7 +46,7 @@ export function WatchTopBar({
           alt="OXXOVO"
           className="h-16 brightness-200 saturate-150 drop-shadow-[0_0_18px_rgba(199,155,255,.85)]"
         />
-        <span className="text-xl font-black tracking-wide text-[#8b22ff] drop-shadow-[0_0_12px_rgba(139,34,255,.6)] max-sm:hidden">
+        <span className="text-xl font-black tracking-wide text-white drop-shadow-[0_0_12px_rgba(139,34,255,.5)] max-sm:hidden">
           OXXOVO
         </span>
       </Link>
