@@ -74,36 +74,39 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
     lines = ['Season in progress', prizeLine ?? '', 'Triple-AI Verified']
   }
   const chips = lines.filter(Boolean)
-
   const cta = season ? resolveSeasonCta(season) : null
+
+  // Split "OXXOVO Season 0: The Last Hope" -> line 1 (prefix) + line 2 (title).
+  const colon = title.indexOf(':')
+  const line1 = colon > -1 ? title.slice(0, colon + 1) : 'OXXOVO'
+  const line2 = colon > -1 ? title.slice(colon + 1).trim() : title
 
   return (
     <section className="relative -mx-6 -mt-6 mb-10 overflow-hidden">
-      <div className="relative h-[clamp(360px,52vh,560px)] w-full">
+      <div className="relative h-[clamp(340px,48vh,520px)] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/arena_image.png"
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: '50% 28%', filter: 'brightness(.9) saturate(1.3)' }}
+          style={{ objectPosition: '50% 30%' }}
         />
-        {/* readability gradient: darken bottom + sides toward the arena black */}
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,5,18,.35)_0%,rgba(7,5,18,.1)_30%,rgba(7,5,18,.85)_78%,#070512_100%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_120%,rgba(139,34,255,.18),transparent_60%)]" />
+        {/* Dark overlay masks the logo/"REAL RECOGNITION" baked into the image so
+            the new centered text reads cleanly. */}
+        <div className="absolute inset-0 bg-[rgba(6,4,16,0.55)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_120%,rgba(139,34,255,.16),transparent_60%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_58%,#070512_100%)]" />
 
-        <div className="absolute inset-0 flex flex-col justify-end p-7 md:p-10">
-          <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full border border-[#8b22ff]/40 bg-[#8b22ff]/[.12] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#c9a9ff]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#b794ff] shadow-[0_0_8px_#8b22ff]" />
-            OXXOVO Arena
-          </span>
-          <h1 className="max-w-3xl text-[clamp(28px,4vw,52px)] font-black uppercase leading-[.98] tracking-[-.03em] text-[#f4f0ff]">
-            {title}
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+          <p className="text-[15px] font-bold tracking-wide text-[#c9a9ff]">{line1}</p>
+          <h1 className="mt-1 text-[30px] md:text-[34px] font-black uppercase leading-[1.02] tracking-tight text-white">
+            {line2}
           </h1>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             {chips.map((c, i) => (
               <span
                 key={i}
-                className="rounded-md border border-white/10 bg-white/[.05] px-2.5 py-1 text-[12px] font-semibold text-[#d8d0f0] backdrop-blur"
+                className="rounded-md border border-white/10 bg-black/30 px-2.5 py-1 text-[12px] font-semibold text-[#e3dcff] backdrop-blur"
               >
                 {c}
               </span>
