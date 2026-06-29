@@ -85,7 +85,7 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
     <section className="relative -mx-6 -mt-6 mb-5 overflow-hidden">
       {/* Mobile keeps the base height/padding (balanced as-is); desktop (md+) is
           taller so the bottom-anchored text drops well below the image's logo. */}
-      <div className="relative h-[clamp(420px,58vh,600px)] md:h-[680px] w-full">
+      <div className="relative h-[clamp(420px,58vh,600px)] md:h-[560px] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/arena_image.png"
@@ -248,7 +248,7 @@ export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seaso
 // ── Latest Entries (preliminary grid; NO score/rank per policy) ─────────────
 export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; seasonNames: Record<string, string> }) {
   return (
-    <section id="entries" className="scroll-mt-24 md:-mt-16">
+    <section id="entries" className="scroll-mt-24">
       <div className="mb-7 text-center">
         <h2 className="text-xl font-black leading-tight text-[#f4f0ff]">
           These aren&apos;t just videos. They&apos;re competitors.
