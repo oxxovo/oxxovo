@@ -248,8 +248,8 @@ export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seaso
 // ── Latest Entries (preliminary grid; NO score/rank per policy) ─────────────
 export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; seasonNames: Record<string, string> }) {
   return (
-    <section id="entries" className="scroll-mt-24">
-      <div className="mb-5 text-center">
+    <section id="entries" className="scroll-mt-24 md:-mt-16">
+      <div className="mb-7 text-center">
         <h2 className="text-xl font-black leading-tight text-[#f4f0ff]">
           These aren&apos;t just videos. They&apos;re competitors.
         </h2>
