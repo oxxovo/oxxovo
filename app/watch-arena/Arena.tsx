@@ -83,30 +83,30 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
 
   return (
     <section className="relative -mx-6 -mt-6 mb-10 overflow-hidden">
-      <div className="relative h-[clamp(340px,48vh,520px)] w-full">
+      <div className="relative h-[clamp(420px,58vh,600px)] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/arena_image.png"
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: '50% 30%' }}
+          style={{ objectPosition: '50% 22%' }}
         />
-        {/* Dark overlay masks the logo/"REAL RECOGNITION" baked into the image so
-            the new centered text reads cleanly. */}
-        <div className="absolute inset-0 bg-[rgba(6,4,16,0.55)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_120%,rgba(139,34,255,.16),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_58%,#070512_100%)]" />
+        {/* Light at top so the image's OXXOVO logo stays visible; darken toward
+            the bottom where the season text sits (readability). */}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,4,16,.2)_0%,rgba(6,4,16,.28)_38%,rgba(6,4,16,.78)_78%,#070512_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(120%_70%_at_50%_120%,rgba(139,34,255,.16),transparent_60%)]" />
 
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-          <p className="text-[15px] font-bold tracking-wide text-[#c9a9ff]">{line1}</p>
-          <h1 className="mt-1 text-[30px] md:text-[34px] font-black uppercase leading-[1.02] tracking-tight text-white">
+        {/* Text block sits in the lower portion, below the image's logo. */}
+        <div className="absolute inset-0 flex flex-col items-center justify-end px-6 pb-9 text-center">
+          <p className="text-[18px] font-bold tracking-wide text-[#c9a9ff]">{line1}</p>
+          <h1 className="mt-1 text-[40px] md:text-[44px] font-black uppercase leading-[1.02] tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)]">
             {line2}
           </h1>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             {chips.map((c, i) => (
               <span
                 key={i}
-                className="rounded-md border border-white/10 bg-black/30 px-2.5 py-1 text-[12px] font-semibold text-[#e3dcff] backdrop-blur"
+                className="rounded-md border border-white/10 bg-black/35 px-3 py-1 text-[13px] font-semibold text-[#e3dcff] backdrop-blur"
               >
                 {c}
               </span>
@@ -116,7 +116,7 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
             <div className="mt-6">
               <Link
                 href="#entries"
-                className="inline-flex items-center gap-2 rounded-lg bg-[#8b22ff] px-6 py-3 text-[15px] font-extrabold text-white shadow-[0_0_28px_rgba(139,34,255,.55)] transition hover:brightness-110"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#8b22ff] px-7 py-3.5 text-[16px] font-extrabold text-white shadow-[0_0_28px_rgba(139,34,255,.55)] transition hover:brightness-110"
               >
                 Watch the Competition
               </Link>
