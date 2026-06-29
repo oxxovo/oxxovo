@@ -210,8 +210,12 @@ export function WatchShell({
 
 function NavLink({ href, label, icon }: { href: string; label: string; icon: string }) {
   return (
+    // Sidebar nav items also open in a new tab (logo is the only same-tab
+    // exception -- it lives in WatchTopBar, not here).
     <Link
       href={href}
+      target="_blank"
+      rel="noopener noreferrer"
       className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold text-white/80 transition hover:bg-white/5"
     >
       <span aria-hidden className="text-base">{icon}</span>
