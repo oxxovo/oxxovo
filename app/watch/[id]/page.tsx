@@ -72,6 +72,10 @@ export default async function WatchDetailPage({
   }))
   // Season name for the detail meta (kept off the card per the card/detail split).
   const seasonName = seasonGroups.find((g) => g.seasonId === video.seasonId)?.displayName ?? video.seasonId
+  // Same data-driven sidebar declutter as the grid.
+  const allVids = seasonGroups.flatMap((g) => g.videos)
+  const showRound = allVids.some((v) => v.round === 'main')
+  const showWinners = allVids.some((v) => v.awardRank != null)
 
   // Main-round videos carry a community vote (windowed) + public Triple-AI score
   // (finalists only; null until judging completes). Prelim scores are owner-only
@@ -130,6 +134,8 @@ export default async function WatchDetailPage({
         activeSeason={video.seasonId}
         user={user ? { email: user.email } : null}
         subscriptions={subscriptions}
+        showRound={showRound}
+        showWinners={showWinners}
       >
         <div className="flex flex-col lg:flex-row gap-8">
         {/* Left: player + meta + social + comments */}

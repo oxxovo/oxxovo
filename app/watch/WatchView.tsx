@@ -66,6 +66,13 @@ export async function WatchView({
     count: g.videos.length,
   }))
 
+  // Data-driven sidebar declutter: only surface the Round filter once main-round
+  // videos exist, and Winners (+ the Award sort) once there are placed winners.
+  // Early launch (prelim-only, no winners) shows just Sort + Seasons.
+  const allVideos = groups.flatMap((g) => g.videos)
+  const showRound = allVideos.some((v) => v.round === 'main')
+  const showWinners = allVideos.some((v) => v.awardRank != null)
+
   return (
     <WatchShell
       seasons={seasons}
@@ -75,6 +82,8 @@ export async function WatchView({
       activeAwardRank={awardRank}
       user={user ? { email: user.email } : null}
       subscriptions={subscriptions}
+      showRound={showRound}
+      showWinners={showWinners}
     >
       {!q && (
         <div className="mb-7">

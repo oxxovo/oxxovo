@@ -58,6 +58,8 @@ export function WatchShell({
   activeAwardRank,
   user,
   subscriptions = [],
+  showRound = false,
+  showWinners = false,
   children,
 }: {
   seasons: SidebarSeason[]
@@ -67,12 +69,25 @@ export function WatchShell({
   activeAwardRank?: number
   user: { email: string } | null
   subscriptions?: SidebarSubscription[]
+  // Data-driven declutter: only show the Round filter once main-round videos
+  // exist, and Winners (+ the Award sort) once placed winners exist.
+  showRound?: boolean
+  showWinners?: boolean
   children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(false)
+  // One hamburger drives both viewports: on mobile it opens the drawer; on
+  // desktop it collapses the always-on rail. Toggling both lets each breakpoint
+  // react to only its own (the other is hidden by responsive classes).
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [railCollapsed, setRailCollapsed] = useState(false)
+  const toggleMenu = () => {
+    setDrawerOpen((o) => !o)
+    setRailCollapsed((c) => !c)
+  }
 
   // Every filter link preserves the other active filters (season/round/winner).
   const keep = { season: activeSeason, round: activeRound, awardRank: activeAwardRank }
+  const sorts = showWinners ? SORTS : SORTS.filter((s) => s.key !== 'award')
 
   const nav = (
     <nav className="flex flex-col gap-1">
@@ -80,7 +95,7 @@ export function WatchShell({
       <NavLink href="/welcome" label="Tournament" icon="🏆" />
 
       <Divider label="Sort" />
-      {SORTS.map((s) => (
+      {sorts.map((s) => (
         <RailLink key={s.key} href={buildHref(s.key, keep)} label={s.label} active={s.key === sort} />
       ))}
 
@@ -100,35 +115,43 @@ export function WatchShell({
         />
       ))}
 
-      <Divider label="Round" />
-      <RailLink
-        href={buildHref(sort, { season: activeSeason, awardRank: activeAwardRank })}
-        label="All rounds"
-        active={!activeRound}
-      />
-      {ROUNDS.map((r) => (
-        <RailLink
-          key={r.key}
-          href={buildHref(sort, { season: activeSeason, round: r.key, awardRank: activeAwardRank })}
-          label={r.label}
-          active={activeRound === r.key}
-        />
-      ))}
+      {showRound && (
+        <>
+          <Divider label="Round" />
+          <RailLink
+            href={buildHref(sort, { season: activeSeason, awardRank: activeAwardRank })}
+            label="All rounds"
+            active={!activeRound}
+          />
+          {ROUNDS.map((r) => (
+            <RailLink
+              key={r.key}
+              href={buildHref(sort, { season: activeSeason, round: r.key, awardRank: activeAwardRank })}
+              label={r.label}
+              active={activeRound === r.key}
+            />
+          ))}
+        </>
+      )}
 
-      <Divider label="Winners" />
-      <RailLink
-        href={buildHref(sort, { season: activeSeason, round: activeRound })}
-        label="All"
-        active={!activeAwardRank}
-      />
-      {WINNERS.map((w) => (
-        <RailLink
-          key={w.rank}
-          href={buildHref(sort, { season: activeSeason, round: activeRound, awardRank: w.rank })}
-          label={w.label}
-          active={activeAwardRank === w.rank}
-        />
-      ))}
+      {showWinners && (
+        <>
+          <Divider label="Winners" />
+          <RailLink
+            href={buildHref(sort, { season: activeSeason, round: activeRound })}
+            label="All"
+            active={!activeAwardRank}
+          />
+          {WINNERS.map((w) => (
+            <RailLink
+              key={w.rank}
+              href={buildHref(sort, { season: activeSeason, round: activeRound, awardRank: w.rank })}
+              label={w.label}
+              active={activeAwardRank === w.rank}
+            />
+          ))}
+        </>
+      )}
 
       <Divider label="More" />
       <NavLink href="/membership" label="Membership" icon="💎" />
@@ -154,27 +177,27 @@ export function WatchShell({
 
   return (
     <>
-      <WatchTopBar onMenu={() => setOpen((o) => !o)} user={user} />
+      <WatchTopBar onMenu={toggleMenu} user={user} />
 
       <div className="flex pt-20 max-w-[1600px] mx-auto">
-        {/* Desktop fixed rail */}
-        <aside className="hidden md:block w-56 shrink-0 px-2 py-4">
+        {/* Desktop rail -- always present on desktop; hamburger collapses it. */}
+        <aside className={`${railCollapsed ? 'md:hidden' : 'md:block'} hidden w-56 shrink-0 px-2 py-4`}>
           <div className="sticky top-24">{nav}</div>
         </aside>
 
         {/* Mobile drawer */}
-        {open && (
+        {drawerOpen && (
           <div className="md:hidden fixed inset-0 z-50">
-            <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
+            <div className="absolute inset-0 bg-black/60" onClick={() => setDrawerOpen(false)} />
             <div className="absolute left-0 top-0 h-full w-72 max-w-[80%] overflow-y-auto border-r border-white/10 bg-[#0a0810] p-4">
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => setDrawerOpen(false)}
                 className="mb-2 ml-auto block text-white/50 hover:text-white"
               >
                 ✕
               </button>
-              <div onClick={() => setOpen(false)}>{nav}</div>
+              <div onClick={() => setDrawerOpen(false)}>{nav}</div>
             </div>
           </div>
         )}
