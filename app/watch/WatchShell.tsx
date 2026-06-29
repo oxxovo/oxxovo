@@ -25,21 +25,6 @@ const SORTS: { key: WatchSort; label: string }[] = [
   { key: 'award', label: 'Award Winners' },
 ]
 
-// Build a /watch URL preserving the other active filters; pass only the fields
-// you want for this link (omit one to clear it).
-function buildHref(
-  sort: WatchSort,
-  opts: { season?: string; round?: WatchRound; awardRank?: number } = {},
-): string {
-  const p = new URLSearchParams()
-  if (sort !== 'latest') p.set('sort', sort)
-  if (opts.season) p.set('season', opts.season)
-  if (opts.round) p.set('round', opts.round)
-  if (opts.awardRank) p.set('award_rank', String(opts.awardRank))
-  const qs = p.toString()
-  return qs ? `/watch?${qs}` : '/watch'
-}
-
 const ROUNDS: { key: WatchRound; label: string }[] = [
   { key: 'application', label: 'Preliminary' },
   { key: 'main', label: 'Main Round' },
@@ -60,6 +45,7 @@ export function WatchShell({
   subscriptions = [],
   showRound = false,
   showWinners = false,
+  basePath = '/watch',
   children,
 }: {
   seasons: SidebarSeason[]
@@ -73,8 +59,24 @@ export function WatchShell({
   // exist, and Winners (+ the Award sort) once placed winners exist.
   showRound?: boolean
   showWinners?: boolean
+  // Route the filter links target. Defaults to '/watch' (live); the arena
+  // preview passes '/watch-arena' so the sidebar stays on the preview.
+  basePath?: string
   children: React.ReactNode
 }) {
+  // Build a filter URL on basePath, preserving the other active filters.
+  const buildHref = (
+    sortKey: WatchSort,
+    opts: { season?: string; round?: WatchRound; awardRank?: number } = {},
+  ): string => {
+    const p = new URLSearchParams()
+    if (sortKey !== 'latest') p.set('sort', sortKey)
+    if (opts.season) p.set('season', opts.season)
+    if (opts.round) p.set('round', opts.round)
+    if (opts.awardRank) p.set('award_rank', String(opts.awardRank))
+    const qs = p.toString()
+    return qs ? `${basePath}?${qs}` : basePath
+  }
   // One hamburger drives both viewports: on mobile it opens the drawer; on
   // desktop it collapses the always-on rail. Toggling both lets each breakpoint
   // react to only its own (the other is hidden by responsive classes).
@@ -165,7 +167,7 @@ export function WatchShell({
           {subscriptions.map((s) => (
             <RailLink
               key={s.creatorUserId}
-              href={`/watch?q=${encodeURIComponent(s.name)}`}
+              href={`${basePath}?q=${encodeURIComponent(s.name)}`}
               label={s.name}
               active={false}
             />
