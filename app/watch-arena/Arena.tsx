@@ -6,7 +6,6 @@
 // rank. Featured/Leaderboard auto-hide when there are no scored main-round videos.
 
 import Link from 'next/link'
-import { type Season, resolveSeasonCta } from '@/lib/seasons'
 import type { WatchVideo, PublicScore } from '@/lib/watch'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
@@ -25,16 +24,14 @@ function entryTag(i: number): string {
 }
 
 // ── Hero ───────────────────────────────────────────────────────────────────
-// Background image (with its baked-in OXXOVO logo) + the "Watch the Competition"
-// CTA. The season prefix/title text and the status chips were removed per TK's
-// 시안 review request; everything else (image, logo, button, layout) is kept.
-export function ArenaHero({ season }: { season: Season | null }) {
-  const cta = season ? resolveSeasonCta(season) : null
-
+// Background image (with its baked-in OXXOVO logo) + the tagline. The
+// "Watch the Competition" CTA button (and its season prop / resolveSeasonCta)
+// was removed per TK's 시안 review; the layout is now image/logo → tagline.
+export function ArenaHero() {
   return (
     <section className="relative -mx-6 -mt-6 mb-5 overflow-hidden">
       {/* Mobile keeps the base height/padding (balanced as-is); desktop (md+) is
-          taller so the bottom-anchored CTA drops well below the image's logo. */}
+          taller so the bottom-anchored tagline drops well below the image's logo. */}
       <div className="relative h-[clamp(420px,58vh,600px)] md:h-[560px] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -44,27 +41,17 @@ export function ArenaHero({ season }: { season: Season | null }) {
           style={{ objectPosition: '50% 22%' }}
         />
         {/* Light at top so the image's OXXOVO logo stays visible; darken toward
-            the bottom where the season text sits (readability). */}
+            the bottom where the tagline sits (readability). */}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,4,16,.2)_0%,rgba(6,4,16,.28)_38%,rgba(6,4,16,.78)_78%,#070512_100%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(120%_70%_at_50%_120%,rgba(139,34,255,.16),transparent_60%)]" />
 
-        {/* Mobile: CTA anchored at the bottom (balanced for the mobile crop).
+        {/* Mobile: tagline anchored at the bottom (balanced for the mobile crop).
             Desktop: vertically centered, kept at its previous offset so the
-            button sits where the season text block used to. */}
+            tagline sits where the season text block used to. */}
         <div className="absolute inset-0 flex flex-col items-center justify-end md:justify-center px-6 pb-9 md:pb-0 text-center md:translate-y-36">
-          {cta && (
-            <div className="mt-6">
-              <Link
-                href="#entries"
-                className="inline-flex items-center gap-2 rounded-lg bg-[#8b22ff] px-7 md:px-8 py-3.5 text-[16px] md:text-[17px] font-extrabold text-white shadow-[0_0_28px_rgba(139,34,255,.55)] transition hover:brightness-110"
-              >
-                Watch the Competition
-              </Link>
-            </div>
-          )}
-          {/* Tagline glued just under the CTA, inside the Hero (sits over the
-              image's dark lower band -- white text stays legible). */}
-          <div className="mt-6 max-w-2xl">
+          {/* Tagline inside the Hero (sits over the image's dark lower band --
+              white text stays legible). */}
+          <div className="max-w-2xl">
             <h2 className="text-lg md:text-xl font-black leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.7)]">
               These aren&apos;t just videos. They&apos;re competitors.
             </h2>

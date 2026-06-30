@@ -7,7 +7,6 @@
 // lib/watch data layer. Score policy enforced in the cards (Arena.tsx).
 
 import Link from 'next/link'
-import { getCurrentSeason } from '@/lib/seasons'
 import {
   getWatchVideos,
   getWatchSeasonGroups,
@@ -37,8 +36,7 @@ export default async function WatchArenaPage({
   const q = sp.q?.trim().toLowerCase() ?? ''
   const activeSeason = sp.season
 
-  const [season, allVideos, groups, user] = await Promise.all([
-    getCurrentSeason(),
+  const [allVideos, groups, user] = await Promise.all([
     getWatchVideos({ sort }),
     getWatchSeasonGroups(sort),
     getUserOrNull(),
@@ -97,7 +95,7 @@ export default async function WatchArenaPage({
           </Link>
         </div>
 
-        <ArenaHero season={season} />
+        <ArenaHero />
         <FeaturedCompetitors items={featured} seasonNames={seasonNames} />
         <Leaderboard items={leaderboard} seasonNames={seasonNames} />
         <LatestEntries videos={latest} seasonNames={seasonNames} />
