@@ -97,7 +97,7 @@ export default async function WatchArenaPage({
           </Link>
         </div>
 
-        <ArenaHero season={season} finalistCount={mainVids.length} />
+        <ArenaHero season={season} />
         <FeaturedCompetitors items={featured} seasonNames={seasonNames} />
         <Leaderboard items={leaderboard} seasonNames={seasonNames} />
         <LatestEntries videos={latest} seasonNames={seasonNames} />

@@ -6,11 +6,7 @@
 // rank. Featured/Leaderboard auto-hide when there are no scored main-round videos.
 
 import Link from 'next/link'
-import {
-  type Season,
-  advanceCountLabel,
-} from '@/lib/seasons'
-import { resolveSeasonCta } from '@/lib/seasons'
+import { type Season, resolveSeasonCta } from '@/lib/seasons'
 import type { WatchVideo, PublicScore } from '@/lib/watch'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
@@ -24,67 +20,21 @@ function fmtCount(n: number): string {
   return String(n)
 }
 
-function fmtDate(iso: string | null): string | null {
-  if (!iso) return null
-  try {
-    return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'America/Los_Angeles',
-    })
-  } catch {
-    return null
-  }
-}
-
 function entryTag(i: number): string {
   return '#' + String(i + 1).padStart(2, '0')
 }
 
 // ── Hero ───────────────────────────────────────────────────────────────────
-// Fully season-stage driven (no hardcode): reads the season's window dates,
-// prize, and display name. finalistCount is the number of submitted main-round
-// videos (used in the main-round phase).
-export function ArenaHero({ season, finalistCount }: { season: Season | null; finalistCount: number }) {
-  const now = Date.now()
-  const ts = (v: string | null) => (v ? new Date(v).getTime() : null)
-  const open = ts(season?.application_open_at ?? null)
-  const close = ts(season?.application_close_at ?? null)
-  const mrStart = ts(season?.main_round_start_at ?? null)
-  const mrEnd = ts(season?.main_round_end_at ?? null)
-  const prize = Number(season?.total_prize_pool ?? 0)
-  const prizeLine = prize > 0 ? `Prize $${prize.toLocaleString()}` : null
-  const title = season?.display_name || season?.name || 'OXXOVO'
-
-  let lines: string[]
-  if (mrStart && now >= mrStart && (mrEnd == null || now <= mrEnd)) {
-    const daysLeft = mrEnd != null ? Math.max(0, Math.ceil((mrEnd - now) / 86_400_000)) : null
-    lines = [
-      'Main Round',
-      finalistCount > 0 ? `${finalistCount} Finalists` : (season ? `${advanceCountLabel(season)} advance` : ''),
-      prizeLine ?? '',
-      daysLeft != null ? `Voting ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}` : '',
-      'Triple-AI Verified',
-    ]
-  } else if (open && now >= open && (close == null || now < close)) {
-    lines = ['Applications Open', close ? `Closes ${fmtDate(season!.application_close_at)}` : '', prizeLine ?? '', 'Triple-AI Verified']
-  } else if (open && now < open) {
-    lines = ['Applications open soon', open ? `Opens ${fmtDate(season!.application_open_at)}` : '', prizeLine ?? '', 'Triple-AI Verified']
-  } else {
-    lines = ['Season in progress', prizeLine ?? '', 'Triple-AI Verified']
-  }
-  const chips = lines.filter(Boolean)
+// Background image (with its baked-in OXXOVO logo) + the "Watch the Competition"
+// CTA. The season prefix/title text and the status chips were removed per TK's
+// 시안 review request; everything else (image, logo, button, layout) is kept.
+export function ArenaHero({ season }: { season: Season | null }) {
   const cta = season ? resolveSeasonCta(season) : null
-
-  // Split "OXXOVO Season 0: The Last Hope" -> line 1 (prefix) + line 2 (title).
-  const colon = title.indexOf(':')
-  const line1 = colon > -1 ? title.slice(0, colon + 1) : 'OXXOVO'
-  const line2 = colon > -1 ? title.slice(colon + 1).trim() : title
 
   return (
     <section className="relative -mx-6 -mt-6 mb-5 overflow-hidden">
       {/* Mobile keeps the base height/padding (balanced as-is); desktop (md+) is
-          taller so the bottom-anchored text drops well below the image's logo. */}
+          taller so the bottom-anchored CTA drops well below the image's logo. */}
       <div className="relative h-[clamp(420px,58vh,600px)] md:h-[560px] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -98,24 +48,10 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,4,16,.2)_0%,rgba(6,4,16,.28)_38%,rgba(6,4,16,.78)_78%,#070512_100%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(120%_70%_at_50%_120%,rgba(139,34,255,.16),transparent_60%)]" />
 
-        {/* Mobile: text anchored at the bottom (balanced for the mobile crop).
-            Desktop: vertically centered so "THE LAST HOPE" lines up with the
-            image's "REAL COMPETITION / REAL RECOGNITION" mid-band. */}
+        {/* Mobile: CTA anchored at the bottom (balanced for the mobile crop).
+            Desktop: vertically centered, kept at its previous offset so the
+            button sits where the season text block used to. */}
         <div className="absolute inset-0 flex flex-col items-center justify-end md:justify-center px-6 pb-9 md:pb-0 text-center md:translate-y-36">
-          <p className="text-[18px] md:text-[22px] font-bold tracking-wide text-[#c9a9ff]">{line1}</p>
-          <h1 className="mt-1 text-[40px] md:text-[58px] font-black uppercase leading-[1.02] tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,.55)]">
-            {line2}
-          </h1>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            {chips.map((c, i) => (
-              <span
-                key={i}
-                className="rounded-md border border-white/10 bg-black/35 px-3 py-1 text-[13px] md:text-[14px] font-semibold text-[#e3dcff] backdrop-blur"
-              >
-                {c}
-              </span>
-            ))}
-          </div>
           {cta && (
             <div className="mt-6">
               <Link
@@ -126,6 +62,16 @@ export function ArenaHero({ season, finalistCount }: { season: Season | null; fi
               </Link>
             </div>
           )}
+          {/* Tagline glued just under the CTA, inside the Hero (sits over the
+              image's dark lower band -- white text stays legible). */}
+          <div className="mt-6 max-w-2xl">
+            <h2 className="text-lg md:text-xl font-black leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.7)]">
+              These aren&apos;t just videos. They&apos;re competitors.
+            </h2>
+            <p className="mt-1 text-[13px] md:text-sm text-[#dcd4f5] drop-shadow-[0_1px_10px_rgba(0,0,0,.7)]">
+              Every video is part of an official OXXOVO tournament and verified through Triple-AI evaluation.
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -249,18 +195,12 @@ export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seaso
 export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; seasonNames: Record<string, string> }) {
   return (
     <section id="entries" className="scroll-mt-24">
-      <div className="mb-7 text-center">
-        <h2 className="text-xl font-black leading-tight text-[#f4f0ff]">
-          These aren&apos;t just videos. They&apos;re competitors.
-        </h2>
-        <p className="mt-1 mx-auto max-w-2xl text-sm text-[#7a7299]">
-          Every video is part of an official OXXOVO tournament and verified through Triple-AI evaluation.
-        </p>
-      </div>
       {videos.length === 0 ? (
         <p className="py-16 text-center text-sm text-[#7a7299]">No entries yet. They appear here as creators submit.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        // Mobile shows 2 columns (was 1) so more entries fit per screen; tablet
+        // and desktop unchanged (sm:2 implicit from base, lg:3).
+        <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
           {videos.map((v, i) => (
             <Link
               key={`${v.applicationId}:${v.round}`}
