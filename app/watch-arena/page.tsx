@@ -20,7 +20,7 @@ import { getCurrentSeason, getCurrentSeasonId } from '@/lib/seasons'
 import { getUserOrNull } from '@/lib/user-auth'
 import { WatchShell, type SidebarSeason, type SidebarSubscription } from '../watch/WatchShell'
 import { ChatWidget } from '@/app/_components/ChatWidget'
-import { ArenaHero, FeaturedCompetitors, Leaderboard, LatestEntries, type ScoredMain } from './Arena'
+import { ArenaBanner, ArenaHero, FeaturedCompetitors, Leaderboard, LatestEntries, type ScoredMain } from './Arena'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,6 +111,7 @@ export default async function WatchArenaPage({
           </Link>
         </div>
 
+        <ArenaBanner />
         <ArenaHero seasonNumber={seasonNumber} roundName={roundName} stats={heroStats} />
         <FeaturedCompetitors items={featured} seasonNames={seasonNames} />
         <Leaderboard items={leaderboard} seasonNames={seasonNames} />
