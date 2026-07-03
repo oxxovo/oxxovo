@@ -24,44 +24,102 @@ function entryTag(i: number): string {
 }
 
 // ── Hero ───────────────────────────────────────────────────────────────────
-// Background image (with its baked-in OXXOVO logo) + the tagline. The
-// "Watch the Competition" CTA button (and its season prop / resolveSeasonCta)
-// was removed per TK's 시안 review; the layout is now image/logo → tagline.
+// Frameless arena background (arena_hero_bg_frameless.png -- panels removed) +
+// two CSS-built scoreboard panels tilted onto the side walls + the tagline. The
+// panels are fully code-owned: each panel and its copy share one coordinate
+// system, so they never drift apart regardless of viewport (there is no baked-in
+// frame to align to). The center OXXOVO logo + silhouette come from the image.
+// The framed hero variant (arena_hero_bg.png) is kept in /public for rollback.
+// (arena_image.png is a separate, live asset -- the landing/OG card image.)
 export function ArenaHero() {
   return (
     <section className="relative -mx-6 -mt-6 mb-5 overflow-hidden">
-      {/* Mobile keeps the base height/padding (balanced as-is); desktop (md+) is
-          taller so the bottom-anchored tagline drops well below the image's logo. */}
       <div className="relative h-[clamp(420px,58vh,600px)] md:h-[560px] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* A hair of scale so object-cover crops the image's thin outer frame. */}
         <img
-          src="/arena_image.png"
+          src="/arena_hero_bg_frameless.png"
           alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: '50% 22%' }}
+          className="absolute inset-0 h-full w-full scale-[1.04] object-cover"
+          style={{ objectPosition: '50% 40%' }}
         />
-        {/* Light at top so the image's OXXOVO logo stays visible; darken toward
-            the bottom where the tagline sits (readability). */}
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,4,16,.2)_0%,rgba(6,4,16,.28)_38%,rgba(6,4,16,.78)_78%,#070512_100%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(120%_70%_at_50%_120%,rgba(139,34,255,.16),transparent_60%)]" />
 
-        {/* Mobile: tagline anchored at the bottom (balanced for the mobile crop).
-            Desktop: vertically centered, kept at its previous offset so the
-            tagline sits where the season text block used to. */}
-        <div className="absolute inset-0 flex flex-col items-center justify-end md:justify-center px-6 pb-9 md:pb-0 text-center md:translate-y-36">
-          {/* Tagline inside the Hero (sits over the image's dark lower band --
-              white text stays legible). */}
+        {/* Desktop: CSS scoreboard panels tilted onto the arena side walls. Kept
+            modest so the center logo/silhouette stay the focus. Hidden below md
+            (object-cover crops the sides on narrow viewports) -> mobile chips. */}
+        <ScoreboardPanel side="left" lines={['REAL', 'COMPETITION']} className="left-[3.5%] top-[13%]" />
+        <ScoreboardPanel side="right" lines={['TRIPLE-AI', 'VERIFIED']} className="right-[3.5%] top-[13%]" />
+
+        {/* Keep the top clear (center logo/silhouette + panels read fully);
+            darken only toward the bottom where the tagline sits. */}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,4,16,0)_0%,rgba(6,4,16,0)_46%,rgba(6,4,16,.5)_76%,#070512_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(120%_70%_at_50%_120%,rgba(139,34,255,.14),transparent_60%)]" />
+
+        {/* Mobile: flat compact chips (no perspective -> no broken glyphs when
+            object-cover crops the sides). Stacked, centered, near the top. */}
+        <div className="pointer-events-none absolute inset-x-0 top-3 flex flex-col items-center gap-1.5 md:hidden">
+          <MobileChip text="REAL COMPETITION" />
+          <MobileChip text="TRIPLE-AI VERIFIED" />
+        </div>
+
+        {/* Tagline anchored at the bottom over the dark band (both viewports). */}
+        <div className="absolute inset-x-0 bottom-0 flex flex-col items-center px-6 pb-8 text-center">
           <div className="max-w-2xl">
-            <h2 className="text-lg md:text-xl font-black leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.7)]">
+            <h2 className="text-lg md:text-xl font-black leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.8)]">
               These aren&apos;t just videos. They&apos;re competitors.
             </h2>
-            <p className="mt-1 text-[13px] md:text-sm text-[#dcd4f5] drop-shadow-[0_1px_10px_rgba(0,0,0,.7)]">
+            <p className="mt-1 text-[13px] md:text-sm text-[#dcd4f5] drop-shadow-[0_1px_10px_rgba(0,0,0,.8)]">
               Every video is part of an official OXXOVO tournament and verified through Triple-AI evaluation.
             </p>
           </div>
         </div>
       </div>
     </section>
+  )
+}
+
+// One CSS scoreboard panel tilted onto a side wall. The whole panel (dark glass
+// box + purple glow border + copy) is rotated as a unit, so the text sits "in"
+// the panel plane. Left panel hinges on its outer (left) edge and angles inward
+// (rotateY+); right panel mirrors (rotateY-).
+function ScoreboardPanel({
+  side,
+  lines,
+  className,
+}: {
+  side: 'left' | 'right'
+  lines: string[]
+  className?: string
+}) {
+  const rot = side === 'left' ? 26 : -26
+  const origin = side === 'left' ? 'left center' : 'right center'
+  return (
+    <div className={`pointer-events-none absolute hidden md:block ${className ?? ''}`}>
+      <div
+        className="rounded-lg border border-[#a855ff]/55 bg-[#0a0716]/45 px-[clamp(16px,1.8vw,30px)] py-[clamp(10px,1.4vw,20px)] shadow-[0_0_28px_rgba(139,34,255,.32),inset_0_0_18px_rgba(139,34,255,.16)] backdrop-blur-[2px]"
+        style={{ transform: `perspective(1100px) rotateY(${rot}deg)`, transformOrigin: origin }}
+      >
+        <div className="text-center font-black uppercase leading-[1.06] tracking-[0.14em] text-white [text-shadow:0_0_10px_rgba(168,85,255,.85),0_0_22px_rgba(139,34,255,.5)]">
+          {lines.map((l) => (
+            <div key={l} className="text-[clamp(14px,1.5vw,26px)]">
+              {l}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Mobile scoreboard fallback: a flat (no-perspective) chip so the copy never
+// breaks when object-cover crops the arena walls off a narrow screen.
+function MobileChip({ text }: { text: string }) {
+  return (
+    <div className="rounded border border-[#a855ff]/50 bg-[#0a0716]/55 px-3 py-1 backdrop-blur-[2px]">
+      <span className="text-[11px] font-black uppercase tracking-[0.14em] text-white [text-shadow:0_0_8px_rgba(168,85,255,.7)]">
+        {text}
+      </span>
+    </div>
   )
 }
 
