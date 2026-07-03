@@ -41,7 +41,7 @@ export function ArenaFilterBar({
 
       <Separator />
 
-      <Dropdown label="🏆 Champions">
+      <Dropdown label="🏆 Champions" white>
         <p className="px-3 py-2 text-[12px] leading-relaxed text-white/55">Season 0 Champions revealed Sep 8</p>
         <div aria-disabled className="cursor-not-allowed px-3 py-2 text-[12px] text-white/30">
           All Champions
@@ -62,7 +62,17 @@ function Separator() {
   return <span className="select-none text-[#a855ff]/30">|</span>
 }
 
-function Dropdown({ label, active, children }: { label: string; active?: boolean; children: React.ReactNode }) {
+function Dropdown({
+  label,
+  active,
+  white,
+  children,
+}: {
+  label: string
+  active?: boolean
+  white?: boolean
+  children: React.ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -83,7 +93,9 @@ function Dropdown({ label, active, children }: { label: string; active?: boolean
         className={`flex items-center gap-1.5 border-b-2 pb-1 text-[13px] font-bold transition ${
           active
             ? 'border-[#8b22ff] text-[#a855ff]'
-            : 'border-transparent text-[#a855ff]/80 hover:text-[#a855ff]'
+            : white
+              ? 'border-transparent text-white hover:text-white/80'
+              : 'border-transparent text-[#a855ff]/80 hover:text-[#a855ff]'
         }`}
       >
         {label}

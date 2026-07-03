@@ -89,18 +89,12 @@ export function ArenaHero({
         </div>
       </div>
 
-      {/* Mobile: the ultra-wide image would be a sliver at full width, so it is
-          cover-cropped to a set height focused on the arena core (logo +
-          silhouette); the info block renders below. */}
-      <div className="relative h-[200px] w-full md:hidden">
+      {/* Mobile: a portrait-friendly variant (~2.57:1) that keeps the silhouette
+          and BOTH scoreboards intact, shown at its natural aspect (no crop). The
+          info block renders below. */}
+      <div className="w-full md:hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/hero_bg_8final.png"
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: '72% 50%' }}
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_60%,rgba(5,2,8,.6)_100%)]" />
+        <img src="/hero_bg_8final_mobile.png" alt="" className="block w-full" />
       </div>
     </section>
 
