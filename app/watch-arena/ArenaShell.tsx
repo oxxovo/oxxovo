@@ -6,21 +6,29 @@ import { WatchTopBar } from '../watch/WatchTopBar'
 
 // Arena-only chrome (top bar + left sidebar + main). Deliberately SEPARATE from
 // the shared WatchShell so the redesigned sidebar never touches the live /watch.
-// The sort/season/round filters live in the filter bar above the grid now, so
-// the sidebar is a static nav: platform links + a (pre-launch, disabled) Library.
-// Reuses WatchTopBar (unchanged, shared).
+// The sort/season/champion filters live in the filter bar above the grid, so the
+// sidebar is a static nav: a WATCH badge, icon+title+subtitle platform links, a
+// (pre-launch, disabled) Library, and a helper footer. Reuses WatchTopBar.
 
-const NAV: { href: string; label: string }[] = [
-  { href: '/', label: 'Home' },
-  { href: '/welcome', label: 'Tournament Info' },
-  { href: '/welcome#how', label: 'How It Works' },
-  { href: '/welcome#about', label: 'About' },
-  { href: '/membership', label: 'Membership' },
-  { href: '/welcome#faq', label: 'FAQ' },
+type Item = { href: string; icon: string; title: string; subtitle: string }
+
+// Menu items open in a new tab (the footer tells the user so) -- keeps WATCH open.
+const NAV: Item[] = [
+  { href: '/', icon: '🏠', title: 'Home', subtitle: 'Go to Landing Page' },
+  { href: '/welcome', icon: '🏆', title: 'Tournament Info', subtitle: 'Rules, Schedule, Prizes' },
+  { href: '/welcome#how', icon: '📖', title: 'How It Works', subtitle: 'Learn the process' },
+  { href: '/membership', icon: '💎', title: 'Membership', subtitle: 'Join & Benefits' },
+  { href: '/welcome#faq', icon: '❓', title: 'FAQ', subtitle: 'Frequently Asked Questions' },
+  { href: '/welcome#about', icon: 'ℹ️', title: 'About', subtitle: 'About OXXOVO' },
 ]
 
 // Personal library -- disabled placeholders until launch (no data yet).
-const LIBRARY = ['My Videos', 'My Likes', 'Watch Later', 'History']
+const LIBRARY: { icon: string; label: string }[] = [
+  { icon: '🎬', label: 'My Videos' },
+  { icon: '❤️', label: 'My Likes' },
+  { icon: '🕒', label: 'Watch Later' },
+  { icon: '📜', label: 'History' },
+]
 
 export function ArenaShell({
   user,
@@ -38,19 +46,31 @@ export function ArenaShell({
 
   const nav = (
     <nav className="flex flex-col gap-1">
-      <div className="mb-3 px-3">
-        <div className="text-lg font-black tracking-wide text-white">WATCH</div>
-        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#b794ff]">AI Creator League</div>
+      {/* WATCH badge */}
+      <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.08] px-3 py-2.5">
+        <span aria-hidden className="text-sm text-[#c9a9ff]">▶</span>
+        <div className="leading-tight">
+          <div className="text-base font-black tracking-wide text-white">WATCH</div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/45">AI Creator League</div>
+        </div>
       </div>
 
       {NAV.map((n) => (
-        <SideLink key={n.href} href={n.href} label={n.label} />
+        <NavItem key={n.href} item={n} />
       ))}
 
-      <Divider label="Library" />
+      <SectionLabel label="Library" />
       {LIBRARY.map((l) => (
-        <SidePlaceholder key={l} label={l} />
+        <LibraryItem key={l.label} icon={l.icon} label={l.label} />
       ))}
+
+      {/* Helper footer */}
+      <div className="mt-6 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.06] px-3 py-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#b794ff]">All Information in One Place</p>
+        <p className="mt-1 text-[11px] leading-relaxed text-white/45">
+          You are in WATCH. Click menu items to open in a new tab.
+        </p>
+      </div>
     </nav>
   )
 
@@ -60,7 +80,7 @@ export function ArenaShell({
 
       <div className="mx-auto flex max-w-[1600px] pt-20">
         {/* Desktop rail -- always present on desktop; hamburger collapses it. */}
-        <aside className={`${railCollapsed ? 'md:hidden' : 'md:block'} hidden w-56 shrink-0 px-2 py-4`}>
+        <aside className={`${railCollapsed ? 'md:hidden' : 'md:block'} hidden w-60 shrink-0 px-2 py-4`}>
           <div className="sticky top-24">{nav}</div>
         </aside>
 
@@ -87,32 +107,41 @@ export function ArenaShell({
   )
 }
 
-function SideLink({ href, label }: { href: string; label: string }) {
+// icon + title (white bold) + subtitle (gray). Opens in a new tab.
+function NavItem({ item }: { item: Item }) {
   return (
     <Link
-      href={href}
-      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold text-white/80 transition hover:bg-white/5"
+      href={item.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-start gap-3 rounded-lg px-3 py-2 transition hover:bg-white/5"
     >
-      {label}
+      <span aria-hidden className="mt-0.5 text-base">{item.icon}</span>
+      <span className="min-w-0">
+        <span className="block text-sm font-bold text-white">{item.title}</span>
+        <span className="block text-[11px] leading-tight text-white/45">{item.subtitle}</span>
+      </span>
     </Link>
   )
 }
 
-// Library entries are inert until launch: greyed, non-interactive, with a hint.
-function SidePlaceholder({ label }: { label: string }) {
+// Library entries are inert until launch: icon + title only, greyed and
+// non-interactive (no "Soon" label -- clicking simply does nothing yet).
+function LibraryItem({ icon, label }: { icon: string; label: string }) {
   return (
     <div
       aria-disabled
-      className="flex cursor-not-allowed items-center justify-between rounded-lg px-3 py-2 text-sm text-white/35"
+      className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-white/40"
     >
-      <span>{label}</span>
-      <span className="text-[9px] font-bold uppercase tracking-wider text-white/25">Soon</span>
+      <span aria-hidden className="text-base">{icon}</span>
+      <span className="text-sm">{label}</span>
     </div>
   )
 }
 
-function Divider({ label }: { label: string }) {
+// Purple section label (LIBRARY etc.).
+function SectionLabel({ label }: { label: string }) {
   return (
-    <p className="mb-1 mt-4 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">{label}</p>
+    <p className="mb-1 mt-4 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#b794ff]">{label}</p>
   )
 }
