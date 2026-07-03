@@ -2,25 +2,24 @@
 // redesign of Watch. The live /watch is deliberately left untouched; this is an
 // unlisted route for TK to review before any live promotion.
 //
-// Reuses the existing Watch chrome (WatchShell: sidebar/filters/search/
-// subscriptions/logo/header) via basePath='/watch-arena', and the existing
-// lib/watch data layer. Score policy enforced in the cards (Arena.tsx).
+// Chrome is arena-only now (ArenaShell): the shared WatchShell is NOT used so the
+// redesigned sidebar can never affect live /watch. Sort/season/champion controls
+// live in ArenaFilterBar above the grid. Data comes from the shared lib/watch.
 
 import Link from 'next/link'
 import {
   getWatchVideos,
   getWatchSeasonGroups,
-  getFollowedCreators,
-  getPublicMainScore,
   getCurrentCompetitionStats,
   type WatchSort,
   type WatchRound,
 } from '@/lib/watch'
 import { getCurrentSeason, getCurrentSeasonId } from '@/lib/seasons'
 import { getUserOrNull } from '@/lib/user-auth'
-import { WatchShell, type SidebarSeason, type SidebarSubscription } from '../watch/WatchShell'
 import { ChatWidget } from '@/app/_components/ChatWidget'
-import { ArenaBanner, ArenaHero, FeaturedCompetitors, Leaderboard, LatestEntries, type ScoredMain } from './Arena'
+import { ArenaShell } from './ArenaShell'
+import { ArenaFilterBar, type FilterSeason } from './ArenaFilterBar'
+import { ArenaBanner, ArenaHero, LatestEntries } from './Arena'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,37 +42,20 @@ export default async function WatchArenaPage({
     getWatchSeasonGroups(sort),
     getUserOrNull(),
   ])
-  const followed = user ? await getFollowedCreators(user.id) : []
-  const subscriptions: SidebarSubscription[] = followed.map((f) => ({ creatorUserId: f.userId, name: f.name }))
 
   const seasonNames: Record<string, string> = Object.fromEntries(groups.map((g) => [g.seasonId, g.displayName]))
-  const seasons: SidebarSeason[] = groups.map((g) => ({
-    seasonId: g.seasonId,
+  const filterSeasons: FilterSeason[] = groups.map((g) => ({
+    id: g.seasonId,
     label: g.hostType === 'partner' ? `${g.displayName} · Host` : g.displayName,
-    count: g.videos.length,
   }))
 
-  // Main-round videos + their public Triple-AI scores (null until judged). Only
-  // scored ones feed Featured/Leaderboard, which auto-hide when empty (pre-launch).
-  const mainVids = allVideos.filter((v) => v.round === 'main')
-  const scoredPairs = (
-    await Promise.all(mainVids.map(async (v) => ({ video: v, score: await getPublicMainScore(v.applicationId) })))
-  ).filter((x): x is ScoredMain => x.score != null)
-  const featured = scoredPairs.slice(0, 8)
-  const leaderboard = [...scoredPairs]
-    .sort((a, b) => (b.score.verifiedScore ?? 0) - (a.score.verifiedScore ?? 0))
-    .slice(0, 3)
-
-  // Latest Entries = the current Watch grid role: all entries, filtered by the
-  // sidebar (season/round/winner/search). Newest first via the 'latest' sort.
+  // Grid = all entries in submission order (newest first), filtered by the
+  // season/round/winner/search query params (driven by the filter bar).
   let latest = allVideos
   if (activeSeason) latest = latest.filter((v) => v.seasonId === activeSeason)
   if (round) latest = latest.filter((v) => v.round === round)
   if (awardRank) latest = latest.filter((v) => v.awardRank === awardRank)
   if (q) latest = latest.filter((v) => (v.videoTitle ?? '').toLowerCase().includes(q) || v.creatorName.toLowerCase().includes(q))
-
-  const showRound = allVideos.some((v) => v.round === 'main')
-  const showWinners = allVideos.some((v) => v.awardRank != null)
 
   // Current Competition panel: resolve the current season (dynamic, DB-driven)
   // and its live stats. Round label follows the season TIMELINE (not any single
@@ -91,18 +73,7 @@ export default async function WatchArenaPage({
 
   return (
     <main className="min-h-screen bg-[#070512] text-[#f4f0ff]">
-      <WatchShell
-        seasons={seasons}
-        sort={sort}
-        activeSeason={activeSeason}
-        activeRound={round}
-        activeAwardRank={awardRank}
-        user={user ? { email: user.email } : null}
-        subscriptions={subscriptions}
-        showRound={showRound}
-        showWinners={showWinners}
-        basePath="/watch-arena"
-      >
+      <ArenaShell user={user ? { email: user.email } : null}>
         {/* Preview marker so it's unmistakably a 시안, not live. */}
         <div className="mb-4 flex items-center justify-between rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.08] px-3 py-2 text-[11px] text-[#c9a9ff]">
           <span className="font-bold uppercase tracking-wider">Arena Preview · 시안</span>
@@ -113,10 +84,9 @@ export default async function WatchArenaPage({
 
         <ArenaBanner />
         <ArenaHero seasonNumber={seasonNumber} roundName={roundName} stats={heroStats} />
-        <FeaturedCompetitors items={featured} seasonNames={seasonNames} />
-        <Leaderboard items={leaderboard} seasonNames={seasonNames} />
+        <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
         <LatestEntries videos={latest} seasonNames={seasonNames} />
-      </WatchShell>
+      </ArenaShell>
 
       <ChatWidget />
     </main>

@@ -127,14 +127,16 @@ function InfoBlock({
 }) {
   return (
     <div className="[&_*]:drop-shadow-[0_1px_8px_rgba(0,0,0,.85)]">
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/80">Current Competition</span>
-        <span className="rounded bg-[#8b22ff]/90 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
+      {/* Hierarchy (8_final): Current Competition (big white) is the title, with
+          the SEASON pill beside it; the round is a smaller purple subtitle. */}
+      <div className="flex items-center gap-2.5">
+        <h2 className="text-2xl font-black leading-none text-white">Current Competition</h2>
+        <span className="rounded-md border border-[#8b22ff]/80 bg-[#8b22ff]/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#c9a9ff]">
           Season {seasonNumber}
         </span>
       </div>
-      <h3 className="mt-1 text-2xl font-black text-[#c9a9ff]">{roundName}</h3>
-      <p className="mt-1.5 max-w-[300px] text-[12px] leading-relaxed text-white/70">
+      <h3 className="mt-1.5 text-lg font-bold text-[#b06bff]">{roundName}</h3>
+      <p className="mt-2 max-w-[300px] text-[12px] leading-relaxed text-white/60">
         {roundName} is in progress. Videos are shown in the order they were entered.
       </p>
 
@@ -144,8 +146,8 @@ function InfoBlock({
         <InlineStat icon="🌍" n={stats.countries} label="Countries" />
       </div>
 
-      <div className="mt-4 max-w-[330px] rounded-lg border border-[#8b22ff]/30 bg-[#0a0716]/55 p-3 backdrop-blur-sm">
-        <p className="text-[12px] leading-relaxed text-white/75">
+      <div className="mt-4 max-w-[330px] rounded-lg border border-white/10 bg-black/45 p-3 backdrop-blur-sm">
+        <p className="text-[12px] leading-relaxed text-white/70">
           Voting opens in the Main Round. Join OXXOVO for free to vote and support your favorite creators.
         </p>
         <Link
@@ -159,17 +161,17 @@ function InfoBlock({
   )
 }
 
-// Small inline stat: icon + number + label, arranged horizontally (8_final: no
-// large boxed tiles).
+// Small inline stat: icon + big number + small label, arranged horizontally
+// (8_final: prominent numbers, no boxed tiles).
 function InlineStat({ icon, n, label }: { icon: string; n: number; label: string }) {
   return (
     <div className="flex items-center gap-2">
-      <span aria-hidden className="text-base opacity-80">
+      <span aria-hidden className="text-lg opacity-80">
         {icon}
       </span>
       <div className="leading-none">
-        <div className="text-lg font-black text-white">{n.toLocaleString()}</div>
-        <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.1em] text-white/55">{label}</div>
+        <div className="text-2xl font-black text-white">{n.toLocaleString()}</div>
+        <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.12em] text-white/55">{label}</div>
       </div>
     </div>
   )
@@ -295,9 +297,9 @@ export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; s
       {videos.length === 0 ? (
         <p className="py-16 text-center text-sm text-[#7a7299]">No entries yet. They appear here as creators submit.</p>
       ) : (
-        // Mobile shows 2 columns (was 1) so more entries fit per screen; tablet
-        // and desktop unchanged (sm:2 implicit from base, lg:3).
-        <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
+        // Mobile 2 columns; tablet 3 (sm implicit from base + md:3); desktop 4
+        // per row (8_final).
+        <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
           {videos.map((v, i) => (
             <Link
               key={`${v.applicationId}:${v.round}`}
@@ -309,11 +311,8 @@ export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; s
               <div className="relative aspect-video w-full overflow-hidden">
                 <Thumb v={v} />
                 <RoundBadge round={v.round} />
-                {v.staffPick && (
-                  <span className="absolute right-2 top-2 inline-flex items-center rounded bg-[#8b22ff]/85 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-                    Staff Pick
-                  </span>
-                )}
+                {/* No Staff Pick / Featured badges: the platform never promotes
+                    individual entries (fairness policy). */}
                 <span className="absolute bottom-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-black text-[#c9a9ff]">
                   {entryTag(i)}
                 </span>
