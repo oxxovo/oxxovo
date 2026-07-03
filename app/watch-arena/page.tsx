@@ -75,7 +75,7 @@ export default async function WatchArenaPage({
     <main className="min-h-screen bg-[#070512] text-[#f4f0ff]">
       <ArenaShell user={user ? { email: user.email } : null}>
         {/* Preview marker so it's unmistakably a 시안, not live. */}
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.08] px-3 py-2 text-[11px] text-[#c9a9ff]">
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.08] px-3 py-2 text-[11px] text-[#a855ff]">
           <span className="font-bold uppercase tracking-wider">Arena Preview · 시안</span>
           <Link href="/watch" className="underline hover:text-white">
             current live Watch →

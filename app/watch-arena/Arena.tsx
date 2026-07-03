@@ -31,11 +31,11 @@ export function ArenaBanner() {
   return (
     <div className="-mx-6 border-b border-white/10 bg-[#05040c] px-6 py-2.5">
       <div className="flex items-center gap-3">
-        <span aria-hidden className="text-sm text-[#b794ff] drop-shadow-[0_0_6px_rgba(139,34,255,.7)]">
+        <span aria-hidden className="text-sm text-[#a855ff] drop-shadow-[0_0_6px_rgba(139,34,255,.7)]">
           ★
         </span>
         <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate text-[12px] font-bold text-[#c9a9ff] sm:text-[13px]">
+          <p className="truncate text-[12px] font-bold text-[#a855ff] sm:text-[13px]">
             OXXOVO is the global arena for AI creators.
           </p>
           <p className="truncate text-[11px] text-white/55 sm:text-[12px]">
@@ -131,11 +131,11 @@ function InfoBlock({
           the SEASON pill beside it; the round is a smaller purple subtitle. */}
       <div className="flex items-center gap-2.5">
         <h2 className="text-2xl font-black leading-none text-white">Current Competition</h2>
-        <span className="rounded-md border border-[#8b22ff]/80 bg-[#8b22ff]/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#c9a9ff]">
+        <span className="rounded-md border border-[#8b22ff]/80 bg-[#8b22ff]/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#a855ff]">
           Season {seasonNumber}
         </span>
       </div>
-      <h3 className="mt-1.5 text-lg font-bold text-[#b06bff]">{roundName}</h3>
+      <h3 className="mt-1.5 text-lg font-bold text-[#a855ff]">{roundName}</h3>
       <p className="mt-2 max-w-[300px] text-[12px] leading-relaxed text-white/60">
         {roundName} is in progress. Videos are shown in the order they were entered.
       </p>
@@ -152,7 +152,7 @@ function InfoBlock({
         </p>
         <Link
           href="/signup"
-          className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-bold text-[#c9a9ff] transition hover:text-white"
+          className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-bold text-[#a855ff] transition hover:text-white"
         >
           Join free to vote →
         </Link>
@@ -181,7 +181,7 @@ function InlineStat({ icon, n, label }: { icon: string; n: number; label: string
 function Heading({ kicker, title }: { kicker: string; title: string }) {
   return (
     <div className="mb-4">
-      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#b794ff]">{kicker}</p>
+      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#a855ff]">{kicker}</p>
       <h2 className="mt-0.5 text-xl font-black text-[#f4f0ff]">{title}</h2>
     </div>
   )
@@ -276,7 +276,7 @@ export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seaso
               <p className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</p>
               <p className="truncate text-[11px] text-[#7a7299]">{v.creatorName}</p>
               {score.verifiedScore != null && (
-                <p className="mt-0.5 text-[12px] font-black text-[#c9a9ff]">
+                <p className="mt-0.5 text-[12px] font-black text-[#a855ff]">
                   {Math.round(score.verifiedScore)}
                   {score.grade ? <span className="text-[#7a7299]"> · {score.grade}</span> : null}
                   <span className="text-[#7a7299]"> · Triple-AI</span>
@@ -313,7 +313,7 @@ export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; s
                 <RoundBadge round={v.round} />
                 {/* No Staff Pick / Featured badges: the platform never promotes
                     individual entries (fairness policy). */}
-                <span className="absolute bottom-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-black text-[#c9a9ff]">
+                <span className="absolute bottom-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-black text-[#a855ff]">
                   {entryTag(i)}
                 </span>
               </div>

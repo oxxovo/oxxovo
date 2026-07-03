@@ -50,7 +50,7 @@ export function ArenaFilterBar({
 
       <Link
         href={basePath}
-        className="ml-auto text-[13px] font-bold text-[#b06bff] transition hover:text-white"
+        className="ml-auto text-[13px] font-bold text-[#a855ff] transition hover:text-white"
       >
         View All →
       </Link>
@@ -59,7 +59,7 @@ export function ArenaFilterBar({
 }
 
 function Separator() {
-  return <span className="select-none text-white/20">|</span>
+  return <span className="select-none text-[#a855ff]/30">|</span>
 }
 
 function Dropdown({ label, active, children }: { label: string; active?: boolean; children: React.ReactNode }) {
@@ -82,8 +82,8 @@ function Dropdown({ label, active, children }: { label: string; active?: boolean
         onClick={() => setOpen((o) => !o)}
         className={`flex items-center gap-1.5 border-b-2 pb-1 text-[13px] font-bold transition ${
           active
-            ? 'border-[#8b22ff] text-[#b06bff]'
-            : 'border-transparent text-white/55 hover:text-white/85'
+            ? 'border-[#8b22ff] text-[#a855ff]'
+            : 'border-transparent text-[#a855ff]/80 hover:text-[#a855ff]'
         }`}
       >
         {label}

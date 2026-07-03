@@ -48,7 +48,7 @@ export function ArenaShell({
     <nav className="flex flex-col gap-1">
       {/* WATCH badge */}
       <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.18] px-3 py-2.5">
-        <span aria-hidden className="text-sm text-[#c9a9ff]">▶</span>
+        <span aria-hidden className="text-sm text-[#a855ff]">▶</span>
         <div className="leading-tight">
           <div className="text-base font-black tracking-wide text-white">WATCH</div>
           <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/45">AI Creator League</div>
@@ -66,7 +66,7 @@ export function ArenaShell({
 
       {/* Helper footer */}
       <div className="mt-6 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.06] px-3 py-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#b794ff]">All Information in One Place</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a855ff]">All Information in One Place</p>
         <p className="mt-1 text-[11px] leading-relaxed text-white/45">
           You are in WATCH. Click menu items to open in a new tab.
         </p>
@@ -142,6 +142,6 @@ function LibraryItem({ icon, label }: { icon: string; label: string }) {
 // Purple section label (LIBRARY etc.).
 function SectionLabel({ label }: { label: string }) {
   return (
-    <p className="mb-1 mt-4 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#b794ff]">{label}</p>
+    <p className="mb-1 mt-4 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#a855ff]">{label}</p>
   )
 }
