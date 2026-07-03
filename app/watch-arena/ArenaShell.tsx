@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { WatchTopBar } from '../watch/WatchTopBar'
+import { ArenaTopBar } from './ArenaTopBar'
 
 // Arena-only chrome (top bar + left sidebar + main). Deliberately SEPARATE from
 // the shared WatchShell so the redesigned sidebar never touches the live /watch.
@@ -47,7 +47,7 @@ export function ArenaShell({
   const nav = (
     <nav className="flex flex-col gap-1">
       {/* WATCH badge */}
-      <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.08] px-3 py-2.5">
+      <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.18] px-3 py-2.5">
         <span aria-hidden className="text-sm text-[#c9a9ff]">▶</span>
         <div className="leading-tight">
           <div className="text-base font-black tracking-wide text-white">WATCH</div>
@@ -76,7 +76,7 @@ export function ArenaShell({
 
   return (
     <>
-      <WatchTopBar onMenu={toggleMenu} user={user} />
+      <ArenaTopBar onMenu={toggleMenu} user={user} />
 
       <div className="mx-auto flex max-w-[1600px] pt-20">
         {/* Desktop rail -- always present on desktop; hamburger collapses it. */}
