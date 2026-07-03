@@ -6,7 +6,7 @@
 // rank. Featured/Leaderboard auto-hide when there are no scored main-round videos.
 
 import Link from 'next/link'
-import type { WatchVideo, PublicScore } from '@/lib/watch'
+import type { WatchVideo, PublicScore, CompetitionStats } from '@/lib/watch'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
 const ACCENT = '#8b22ff'
@@ -31,8 +31,20 @@ function entryTag(i: number): string {
 // frame to align to). The center OXXOVO logo + silhouette come from the image.
 // The framed hero variant (arena_hero_bg.png) is kept in /public for rollback.
 // (arena_image.png is a separate, live asset -- the landing/OG card image.)
-export function ArenaHero() {
+//
+// seasonNumber / roundName / stats drive the left "Current Competition" info
+// panel. stats are live DB values (getCurrentCompetitionStats), never hardcoded.
+export function ArenaHero({
+  seasonNumber,
+  roundName,
+  stats,
+}: {
+  seasonNumber: number
+  roundName: string
+  stats: CompetitionStats
+}) {
   return (
+    <>
     <section className="relative -mx-6 -mt-6 mb-5 overflow-hidden">
       <div className="relative h-[clamp(420px,58vh,600px)] md:h-[560px] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -44,11 +56,21 @@ export function ArenaHero() {
           style={{ objectPosition: '50% 40%' }}
         />
 
+        {/* Extra darkening on the LEFT so the Current Competition panel stays
+            readable over the arena crowd (desktop only). */}
+        <div className="absolute inset-y-0 left-0 hidden w-[46%] bg-[linear-gradient(90deg,rgba(4,3,10,.82)_0%,rgba(4,3,10,.5)_55%,transparent_100%)] md:block" />
+
         {/* Desktop: CSS scoreboard panels tilted onto the arena side walls. Kept
             modest so the center logo/silhouette stay the focus. Hidden below md
             (object-cover crops the sides on narrow viewports) -> mobile chips. */}
-        <ScoreboardPanel side="left" lines={['REAL', 'COMPETITION']} className="left-[3.5%] top-[13%]" />
-        <ScoreboardPanel side="right" lines={['TRIPLE-AI', 'VERIFIED']} className="right-[3.5%] top-[13%]" />
+        <ScoreboardPanel side="left" lines={['REAL', 'COMPETITION']} className="left-[3.5%] top-[8%]" />
+        <ScoreboardPanel side="right" lines={['TRIPLE-AI', 'VERIFIED']} className="right-[3.5%] top-[8%]" />
+
+        {/* Desktop: Current Competition info panel, below-left of the scoreboard
+            (8_final layout: scoreboard on top, info block beneath it). */}
+        <div className="absolute left-[3.5%] top-[30%] hidden w-[310px] md:block">
+          <CurrentCompetitionPanel seasonNumber={seasonNumber} roundName={roundName} stats={stats} />
+        </div>
 
         {/* Keep the top clear (center logo/silhouette + panels read fully);
             darken only toward the bottom where the tagline sits. */}
@@ -75,6 +97,70 @@ export function ArenaHero() {
         </div>
       </div>
     </section>
+
+    {/* Mobile: the info panel can't overlay (the crowd crop leaves no room), so
+        it renders as a full-width card below the Hero. Kept OUTSIDE the -mx-6
+        bleed section so it sits at the normal content width (no right-edge
+        clipping). */}
+    <div className="mb-5 -mt-1 md:hidden">
+      <CurrentCompetitionPanel seasonNumber={seasonNumber} roundName={roundName} stats={stats} />
+    </div>
+    </>
+  )
+}
+
+// Left "Current Competition" info block: season badge, current round, the
+// fairness note, live DB stats, and the (free) voting invite. Used as a desktop
+// overlay and, on mobile, as a card below the Hero.
+function CurrentCompetitionPanel({
+  seasonNumber,
+  roundName,
+  stats,
+}: {
+  seasonNumber: number
+  roundName: string
+  stats: CompetitionStats
+}) {
+  return (
+    <div className="rounded-xl border border-[#8b22ff]/30 bg-[#0a0716]/75 p-4 shadow-[0_0_30px_rgba(139,34,255,.18)] backdrop-blur-md">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/70">Current Competition</span>
+        <span className="rounded bg-[#8b22ff]/90 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
+          Season {seasonNumber}
+        </span>
+      </div>
+      <h3 className="mt-1.5 text-lg font-black text-[#c9a9ff]">{roundName}</h3>
+      <p className="mt-1.5 text-[12px] leading-relaxed text-white/55">
+        {roundName} is in progress. Videos are shown in the order they were entered.
+      </p>
+
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <Stat n={stats.entries} label="Entries" />
+        <Stat n={stats.creators} label="Creators" />
+        <Stat n={stats.countries} label="Countries" />
+      </div>
+
+      <div className="mt-4 rounded-lg border border-[#8b22ff]/25 bg-[#8b22ff]/[.08] p-3">
+        <p className="text-[12px] leading-relaxed text-white/70">
+          Voting opens in the Main Round. Join OXXOVO for free to vote and support your favorite creators.
+        </p>
+        <Link
+          href="/signup"
+          className="mt-2 inline-flex items-center gap-1 text-[12px] font-bold text-[#c9a9ff] transition hover:text-white"
+        >
+          Join free to vote →
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+function Stat({ n, label }: { n: number; label: string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[.03] px-2 py-2 text-center">
+      <div className="text-xl font-black text-white">{n.toLocaleString()}</div>
+      <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-white/45">{label}</div>
+    </div>
   )
 }
 

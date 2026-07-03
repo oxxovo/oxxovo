@@ -12,9 +12,11 @@ import {
   getWatchSeasonGroups,
   getFollowedCreators,
   getPublicMainScore,
+  getCurrentCompetitionStats,
   type WatchSort,
   type WatchRound,
 } from '@/lib/watch'
+import { getCurrentSeason, getCurrentSeasonId } from '@/lib/seasons'
 import { getUserOrNull } from '@/lib/user-auth'
 import { WatchShell, type SidebarSeason, type SidebarSubscription } from '../watch/WatchShell'
 import { ChatWidget } from '@/app/_components/ChatWidget'
@@ -73,6 +75,20 @@ export default async function WatchArenaPage({
   const showRound = allVideos.some((v) => v.round === 'main')
   const showWinners = allVideos.some((v) => v.awardRank != null)
 
+  // Current Competition panel: resolve the current season (dynamic, DB-driven)
+  // and its live stats. Round label follows the season TIMELINE (not any single
+  // submission): once main_round_start_at has passed it's the Main Round, before
+  // that the Preliminary Round. Pre-launch (season_0 main round = Sep) -> Prelim.
+  const currentSeason = await getCurrentSeason()
+  const currentSeasonId = currentSeason?.id ?? getCurrentSeasonId()
+  const heroStats = await getCurrentCompetitionStats(currentSeasonId)
+  const seasonNumber = currentSeason?.season_number ?? 0
+  const mainStart = currentSeason?.main_round_start_at
+    ? Date.parse(currentSeason.main_round_start_at)
+    : null
+  const inMainRound = mainStart != null && Date.now() >= mainStart
+  const roundName = inMainRound ? 'Main Round' : 'Preliminary Round'
+
   return (
     <main className="min-h-screen bg-[#070512] text-[#f4f0ff]">
       <WatchShell
@@ -95,7 +111,7 @@ export default async function WatchArenaPage({
           </Link>
         </div>
 
-        <ArenaHero />
+        <ArenaHero seasonNumber={seasonNumber} roundName={roundName} stats={heroStats} />
         <FeaturedCompetitors items={featured} seasonNames={seasonNames} />
         <Leaderboard items={leaderboard} seasonNames={seasonNames} />
         <LatestEntries videos={latest} seasonNames={seasonNames} />

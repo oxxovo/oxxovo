@@ -227,6 +227,45 @@ export async function getWatchVideos(
   return sortVideos(videos, sort)
 }
 
+// Live stats for the "Current Competition" Hero panel. All derived from the DB
+// (never hardcoded): ENTRIES = public applications in the season that have a
+// video, CREATORS = distinct owners of those, COUNTRIES = distinct declared
+// countries. Pre-launch these are simply small/zero -- that's correct, not a
+// placeholder.
+export type CompetitionStats = { entries: number; creators: number; countries: number }
+
+export async function getCurrentCompetitionStats(seasonId: string): Promise<CompetitionStats> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('genesis_applications')
+    .select('status, watch_hidden, moderation_status, user_id, creator_name, country, free_entry_url, main_round_video_url')
+    .eq('season_id', seasonId)
+
+  if (error || !data) {
+    if (error) console.error('[watch] competition stats failed:', error.message)
+    return { entries: 0, creators: 0, countries: 0 }
+  }
+
+  const creators = new Set<string>()
+  const countries = new Set<string>()
+  let entries = 0
+  for (const row of data as (Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'> & {
+    user_id: string | null
+    creator_name: string | null
+    country: string | null
+    free_entry_url: string | null
+    main_round_video_url: string | null
+  })[]) {
+    if (!isPublicRow(row)) continue
+    if (!row.free_entry_url?.trim() && !row.main_round_video_url?.trim()) continue
+    entries++
+    creators.add(row.user_id ?? row.creator_name?.trim().toLowerCase() ?? 'anonymous')
+    const c = row.country?.trim()
+    if (c) countries.add(c.toUpperCase())
+  }
+  return { entries, creators: creators.size, countries: countries.size }
+}
+
 export type AiCritique = { name: string; strengths: string[]; weaknesses: string[]; summary: string }
 export type PublicScore = {
   verifiedScore: number | null
