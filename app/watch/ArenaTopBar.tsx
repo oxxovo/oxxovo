@@ -4,9 +4,8 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState } from 'react'
 
-// Arena-only top bar -- a copy of WatchTopBar so the redesign (purple OXXOVO
-// wordmark, arena-internal search/logo) never touches the shared, live one.
-// Logo + search stay inside /watch-arena (the preview surface).
+// Watch top bar (arena design): purple OXXOVO wordmark, hamburger, in-page
+// search, notifications + profile. Logo + search stay inside /watch.
 export function ArenaTopBar({
   onMenu,
   user,
@@ -21,7 +20,7 @@ export function ArenaTopBar({
   function submitSearch(e: React.FormEvent) {
     e.preventDefault()
     const term = q.trim()
-    router.push(term ? `/watch-arena?q=${encodeURIComponent(term)}` : '/watch-arena')
+    router.push(term ? `/watch?q=${encodeURIComponent(term)}` : '/watch')
   }
 
   return (
@@ -35,7 +34,7 @@ export function ArenaTopBar({
         ☰
       </button>
 
-      <Link href="/watch-arena" aria-label="Watch home" className="flex shrink-0 items-center gap-2">
+      <Link href="/watch" aria-label="Watch home" className="flex shrink-0 items-center gap-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/oxxovo_logo.png"

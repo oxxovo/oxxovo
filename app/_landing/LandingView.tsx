@@ -24,6 +24,11 @@ import { formatFooterStatusLine } from '@/lib/ip-info'
 type TimeLeft = { days: string; hours: string; minutes: string; seconds: string }
 const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '00' }
 
+// Landing "Watch" nav entry point. OFF until Season 0 preliminary videos start
+// arriving (after the 7/25 launch). Flip to `true` to re-expose the /watch link
+// in the header nav once there are entries to show.
+const WATCH_NAV_ENABLED = false
+
 export function LandingView() {
   const [user, setUser] = useState<{ email: string } | null>(null)
   const [season, setSeason] = useState<Season | null>(null)
@@ -107,7 +112,9 @@ export function LandingView() {
 
         <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
           <a className="transition hover:text-[#b66cff]" href="/tournament">Tournament Info</a>
-          <a className="transition hover:text-[#b66cff]" href="/watch">Watch</a>
+          {WATCH_NAV_ENABLED && (
+            <a className="transition hover:text-[#b66cff]" href="/watch">Watch</a>
+          )}
           <a className="transition hover:text-[#b66cff]" href="#how">How It Works</a>
           <a className="transition hover:text-[#b66cff]" href="#about">About</a>
           <a className="transition hover:text-[#b66cff]" href="/membership">Membership</a>
