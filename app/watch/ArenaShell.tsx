@@ -4,11 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ArenaTopBar } from './ArenaTopBar'
 
-// Arena-only chrome (top bar + left sidebar + main). Deliberately SEPARATE from
-// the shared WatchShell so the redesigned sidebar never touches the live /watch.
-// The sort/season/champion filters live in the filter bar above the grid, so the
+// Watch chrome (top bar + left sidebar + main), arena design. The
+// sort/season/champion filters live in the filter bar above the grid, so the
 // sidebar is a static nav: a WATCH badge, icon+title+subtitle platform links, a
-// (pre-launch, disabled) Library, and a helper footer. Reuses WatchTopBar.
+// (pre-launch, disabled) Library, and a helper footer. Uses ArenaTopBar.
 
 type Item = { href: string; icon: string; title: string; subtitle: string }
 

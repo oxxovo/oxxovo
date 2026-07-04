@@ -15,7 +15,7 @@ export type FilterSeason = { id: string; label: string }
 export function ArenaFilterBar({
   seasons,
   activeSeason,
-  basePath = '/watch-arena',
+  basePath = '/watch',
 }: {
   seasons: FilterSeason[]
   activeSeason?: string
