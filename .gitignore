@@ -47,3 +47,4 @@ next-env.d.ts
 # One-shot admin/ops scripts (service-role, manual use only — never ship)
 /scripts/set-admin-password.mjs
 /scripts/inspect-admin-access.mjs
+scripts/.rehearsal-stash.json
