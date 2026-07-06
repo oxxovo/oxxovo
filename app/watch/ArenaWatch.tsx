@@ -68,10 +68,26 @@ export async function ArenaWatch({
   const inMainRound = mainStart != null && Date.now() >= mainStart
   const roundName = inMainRound ? 'Main Round' : 'Preliminary Round'
 
+  // LIVE status: the application window is genuinely open (open <= now < close).
+  // Drives the blinking LIVE dot, the deadline countdown, and the stats polling.
+  // All from the DB dates (never hardcoded) -- when closed these are simply off.
+  const openMs = currentSeason?.application_open_at ? Date.parse(currentSeason.application_open_at) : null
+  const closeMs = currentSeason?.application_close_at ? Date.parse(currentSeason.application_close_at) : null
+  const now = Date.now()
+  const isAccepting = openMs != null && closeMs != null && now >= openMs && now < closeMs
+  const closeAtISO = currentSeason?.application_close_at ?? null
+
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
       <ArenaBanner />
-      <ArenaHero seasonNumber={seasonNumber} roundName={roundName} stats={heroStats} />
+      <ArenaHero
+        seasonNumber={seasonNumber}
+        roundName={roundName}
+        stats={heroStats}
+        seasonId={currentSeasonId}
+        closeAtISO={closeAtISO}
+        isAccepting={isAccepting}
+      />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
       <LatestEntries videos={latest} seasonNames={seasonNames} />
     </ArenaShell>

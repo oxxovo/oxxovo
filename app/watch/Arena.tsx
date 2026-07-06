@@ -7,6 +7,7 @@
 
 import Link from 'next/link'
 import type { WatchVideo, PublicScore, CompetitionStats } from '@/lib/watch'
+import { LiveStatus } from './LiveStatus'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
 const ACCENT = '#8b22ff'
@@ -68,10 +69,16 @@ export function ArenaHero({
   seasonNumber,
   roundName,
   stats,
+  seasonId,
+  closeAtISO,
+  isAccepting,
 }: {
   seasonNumber: number
   roundName: string
   stats: CompetitionStats
+  seasonId: string
+  closeAtISO: string | null
+  isAccepting: boolean
 }) {
   return (
     <>
@@ -85,7 +92,7 @@ export function ArenaHero({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/hero_bg_8final.png" alt="" className="block w-full" />
         <div className="absolute left-[3%] top-1/2 w-[33%] max-w-[430px] -translate-y-1/2">
-          <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} />
+          <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} seasonId={seasonId} closeAtISO={closeAtISO} isAccepting={isAccepting} />
         </div>
       </div>
 
@@ -100,7 +107,7 @@ export function ArenaHero({
 
     {/* Mobile: info block below the Hero (outside the -mx-6 bleed -> normal width). */}
     <div className="mb-5 md:hidden">
-      <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} />
+      <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} seasonId={seasonId} closeAtISO={closeAtISO} isAccepting={isAccepting} />
     </div>
     </>
   )
@@ -114,10 +121,16 @@ function InfoBlock({
   seasonNumber,
   roundName,
   stats,
+  seasonId,
+  closeAtISO,
+  isAccepting,
 }: {
   seasonNumber: number
   roundName: string
   stats: CompetitionStats
+  seasonId: string
+  closeAtISO: string | null
+  isAccepting: boolean
 }) {
   return (
     <div className="[&_*]:drop-shadow-[0_1px_8px_rgba(0,0,0,.85)]">
@@ -129,16 +142,16 @@ function InfoBlock({
           Season {seasonNumber}
         </span>
       </div>
-      <h3 className="mt-1.5 text-lg font-bold text-[#a855ff]">{roundName}</h3>
+      <LiveStatus
+        seasonId={seasonId}
+        roundName={roundName}
+        initialStats={stats}
+        closeAtISO={closeAtISO}
+        isAccepting={isAccepting}
+      />
       <p className="mt-2 max-w-[300px] text-[12px] leading-relaxed text-white/60">
         {roundName} is in progress. Videos are shown in the order they were entered.
       </p>
-
-      <div className="mt-4 flex gap-6">
-        <InlineStat icon="🎬" n={stats.entries} label="Entries" />
-        <InlineStat icon="👥" n={stats.creators} label="Creators" />
-        <InlineStat icon="🌍" n={stats.countries} label="Countries" />
-      </div>
 
       <div className="mt-4 max-w-[330px] rounded-lg border border-white/10 bg-black/45 p-3 backdrop-blur-sm">
         <p className="text-[12px] leading-relaxed text-white/70">
@@ -150,22 +163,6 @@ function InfoBlock({
         >
           Join free to vote →
         </Link>
-      </div>
-    </div>
-  )
-}
-
-// Small inline stat: icon + big number + small label, arranged horizontally
-// (8_final: prominent numbers, no boxed tiles).
-function InlineStat({ icon, n, label }: { icon: string; n: number; label: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span aria-hidden className="text-lg opacity-80">
-        {icon}
-      </span>
-      <div className="leading-none">
-        <div className="text-2xl font-black text-white">{n.toLocaleString()}</div>
-        <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.12em] text-white/55">{label}</div>
       </div>
     </div>
   )
