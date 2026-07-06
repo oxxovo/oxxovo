@@ -148,7 +148,7 @@ export type CreateGenResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'cap_reached' | 'insufficient_credits' | 'disabled' | 'failed'
+      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'cap_reached' | 'insufficient_credits' | 'moderation_blocked' | 'disabled' | 'failed'
       detail?: string
     }
 

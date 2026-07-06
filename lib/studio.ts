@@ -8,6 +8,7 @@ import 'server-only'
 import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
+import { moderateSubmission } from '@/lib/moderation'
 import {
   buildCryptoBind,
   verifyCryptoBind,
@@ -189,7 +190,13 @@ export type CreateGenerationResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      reason: 'unknown_model' | 'bad_duration' | 'cap_reached' | 'insufficient_credits' | 'failed'
+      reason:
+        | 'unknown_model'
+        | 'bad_duration'
+        | 'cap_reached'
+        | 'insufficient_credits'
+        | 'moderation_blocked'
+        | 'failed'
       detail?: string
     }
 
@@ -242,6 +249,17 @@ export async function createGeneration(args: {
   const credits = creditsForCost(estCost, pricing)
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'insufficient_credits' }
+
+  // 4b. Pre-generation moderation gate. Scan the PROMPT before we enqueue or
+  //     charge, so a disallowed prompt never reaches fal (no wasted spend).
+  //     Block only on an actual 'flagged' verdict; 'approved' and 'pending'
+  //     (scan could not run -- no key / API blip) proceed, so generation is not
+  //     coupled to the moderation provider's uptime. The composed video's frame
+  //     scan (phase C2, worker) remains the real publish-time gate.
+  const modResult = await moderateSubmission({ text: prompt })
+  if (modResult.status === 'flagged') {
+    return { ok: false, reason: 'moderation_blocked', detail: modResult.categories.join(', ') }
+  }
 
   // 5. Insert the job WITH its CryptoBind (generation-time binding).
   const jobId = randomUUID()

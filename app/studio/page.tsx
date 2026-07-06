@@ -59,6 +59,7 @@ const DICT = {
     generating: '생성 요청 중…',
     cap_reached: '이번 라운드 생성 횟수를 모두 사용했습니다.',
     insufficient: '크레딧이 부족합니다.',
+    moderation_blocked: '프롬프트가 콘텐츠 정책에 맞지 않아 생성할 수 없습니다. 표현을 수정해 주세요.',
     err_bad_duration: '선택한 모델의 허용 길이를 벗어났습니다.',
     err_generic: '생성 실패',
     my_gens: '내 생성물',
@@ -126,6 +127,7 @@ const DICT = {
     generating: 'Requesting…',
     cap_reached: 'You have used all generations for this round.',
     insufficient: 'Not enough credits.',
+    moderation_blocked: 'This prompt does not meet the content policy. Please revise it.',
     err_bad_duration: 'Duration is outside the selected model range.',
     err_generic: 'Generation failed',
     my_gens: 'My generations',
@@ -454,6 +456,7 @@ function Generator({
     switch (e) {
       case 'cap_reached': return t.cap_reached
       case 'insufficient_credits': return t.insufficient
+      case 'moderation_blocked': return t.moderation_blocked
       case 'bad_duration': return t.err_bad_duration
       default: return t.err_generic
     }
