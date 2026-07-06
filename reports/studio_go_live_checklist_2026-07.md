@@ -100,19 +100,36 @@ runs only AFTER the studio code is deployed to prod. Skip for now.)
 
 ## Phase D -- E2E (order matters; no prod exposure)
 
-**D1. Full-flow on Vercel Preview, Stripe TEST mode**
-- WHAT: register -> buy credits (test card) -> generate (real fal, small) ->
-  compose render -> submit. Uses STUDIO_DEV_UNLOCK on Preview (never Production).
-- VERIFY: credits granted by webhook, job -> ready, render -> ready, submission
-  writes studio_application_render_id. No prod exposure.
+Decision (TK, 2026-07-05): D1 = PRODUCT flow only (no payment), D2 = the single
+live money test. Rationale: STRIPE_SECRET_KEY is shared + already live (membership
+proved the identical live payment code), so running Stripe test-mode on Preview
+would need divergent test keys = extra mistake surface. So we do not test-charge;
+we fund D1 with promo credits and validate the money path once, live, in D2.
 
-**D2. Controlled Stripe LIVE money-path (one real purchase)**
+**D1. Product flow on Vercel Preview, funded by promo credits (NO Stripe)**
+- WHAT: on Preview (STUDIO_DEV_UNLOCK set on Preview, never Production), a test
+  user is granted credits via admin adjust, then: generate (real fal, small
+  budget model) -> compose render -> submit.
+- FUND: `node --env-file=.env scripts/credits-admin.mjs <test-email> grant 200 e2e_d1`
+- VERIFY: `verify-credits.mjs` shows the grant; job -> ready; render -> ready;
+  submission writes studio_application_render_id (application round). No Stripe,
+  no prod exposure.
+- CLEANUP: `scripts/credits-admin.mjs <test-email> zero e2e_d1_cleanup` + remove
+  the test job/render/application rows.
+
+**D2. Controlled Stripe LIVE money-path (one real purchase, then refund)**
 - WHAT: mirror the membership go-live check -- ONE real $10 live purchase ->
-  webhook -> credits granted -> then refund the unused credits (Phase policy).
-- VERIFY: credit_transactions has the purchase row (idempotent), balance +100,
-  Stripe webhook 200, refund returns the $10.
-- CAUTION: real money. Do exactly one, refund after. Confirms whsec + live keys
-  end to end without opening Studio to the public.
+  webhook -> credits granted -> refund + zero the unused balance.
+- STEPS:
+  1. Real $10 purchase through the live checkout (smallest pack).
+  2. `verify-credits.mjs <email>` -> balance +100, a `purchase` row with a
+     stripe_session_id; Stripe webhook log shows 200.
+  3. Refund the $10 in the Stripe dashboard.
+  4. `credits-admin.mjs <email> zero refund_unused` -> balance back to 0.
+  5. `verify-credits.mjs <email>` -> balance 0.
+- CAUTION: real money. Exactly one. Refund AND zero (step 3 + 4) -- refunding
+  cash without zeroing leaves the user spendable credits. Confirms whsec + live
+  keys end to end without opening Studio to the public.
 
 ---
 
