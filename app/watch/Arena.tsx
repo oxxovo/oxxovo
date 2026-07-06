@@ -6,7 +6,7 @@
 // rank. Featured/Leaderboard auto-hide when there are no scored main-round videos.
 
 import Link from 'next/link'
-import type { WatchVideo, PublicScore, CompetitionStats } from '@/lib/watch'
+import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress } from '@/lib/watch'
 import { LiveStatus } from './LiveStatus'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
@@ -72,6 +72,8 @@ export function ArenaHero({
   seasonId,
   closeAtISO,
   isAccepting,
+  showJudging,
+  judging,
 }: {
   seasonNumber: number
   roundName: string
@@ -79,6 +81,8 @@ export function ArenaHero({
   seasonId: string
   closeAtISO: string | null
   isAccepting: boolean
+  showJudging: boolean
+  judging: JudgingProgress
 }) {
   return (
     <>
@@ -92,7 +96,7 @@ export function ArenaHero({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/hero_bg_8final.png" alt="" className="block w-full" />
         <div className="absolute left-[3%] top-1/2 w-[33%] max-w-[430px] -translate-y-1/2">
-          <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} seasonId={seasonId} closeAtISO={closeAtISO} isAccepting={isAccepting} />
+          <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} seasonId={seasonId} closeAtISO={closeAtISO} isAccepting={isAccepting} showJudging={showJudging} judging={judging} />
         </div>
       </div>
 
@@ -107,7 +111,7 @@ export function ArenaHero({
 
     {/* Mobile: info block below the Hero (outside the -mx-6 bleed -> normal width). */}
     <div className="mb-5 md:hidden">
-      <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} seasonId={seasonId} closeAtISO={closeAtISO} isAccepting={isAccepting} />
+      <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} seasonId={seasonId} closeAtISO={closeAtISO} isAccepting={isAccepting} showJudging={showJudging} judging={judging} />
     </div>
     </>
   )
@@ -124,6 +128,8 @@ function InfoBlock({
   seasonId,
   closeAtISO,
   isAccepting,
+  showJudging,
+  judging,
 }: {
   seasonNumber: number
   roundName: string
@@ -131,6 +137,8 @@ function InfoBlock({
   seasonId: string
   closeAtISO: string | null
   isAccepting: boolean
+  showJudging: boolean
+  judging: JudgingProgress
 }) {
   return (
     <div className="[&_*]:drop-shadow-[0_1px_8px_rgba(0,0,0,.85)]">
@@ -148,6 +156,8 @@ function InfoBlock({
         initialStats={stats}
         closeAtISO={closeAtISO}
         isAccepting={isAccepting}
+        showJudging={showJudging}
+        initialJudging={judging}
       />
       <p className="mt-2 max-w-[300px] text-[12px] leading-relaxed text-white/60">
         {roundName} is in progress. Videos are shown in the order they were entered.
@@ -281,8 +291,22 @@ export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seaso
   )
 }
 
-// ── Latest Entries (preliminary grid; NO score/rank per policy) ─────────────
-export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; seasonNames: Record<string, string> }) {
+// ── Latest Entries grid ─────────────────────────────────────────────────────
+// Cards carry a live STATUS badge driven by the season stage (showJudging /
+// voteOpen) + real per-entry data: "⚡ AI 심사 중" while awaiting Triple-AI,
+// "✓ {score}" once a MAIN-round video is verified (prelim scores stay private),
+// "🔥 {votes}" while the community vote window is open. All real DB values.
+export function LatestEntries({
+  videos,
+  seasonNames,
+  showJudging = false,
+  voteOpen = false,
+}: {
+  videos: WatchVideo[]
+  seasonNames: Record<string, string>
+  showJudging?: boolean
+  voteOpen?: boolean
+}) {
   return (
     <section id="entries" className="scroll-mt-24">
       {videos.length === 0 ? (
@@ -302,6 +326,7 @@ export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; s
               <div className="relative aspect-video w-full overflow-hidden">
                 <Thumb v={v} />
                 <RoundBadge round={v.round} />
+                <StatusBadge v={v} showJudging={showJudging} voteOpen={voteOpen} />
                 {/* No Staff Pick / Featured badges: the platform never promotes
                     individual entries (fairness policy). */}
                 <span className="absolute bottom-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-black text-[#a855ff]">
@@ -324,4 +349,39 @@ export function LatestEntries({ videos, seasonNames }: { videos: WatchVideo[]; s
       )}
     </section>
   )
+}
+
+// Per-card live status badge (top-right of the thumbnail). Stage-driven, real
+// data, policy-safe. Precedence:
+//   1. main-round + vote window open -> 🔥 {votes} (red)
+//   2. main-round + verified score   -> ✓ {score} (green; MAIN only -- prelim
+//      scores are owner-only, never shown here)
+//   3. awaiting Triple-AI judgment   -> ⚡ AI 심사 중 (purple)
+//   4. otherwise                     -> nothing (accepting / private prelim)
+function StatusBadge({
+  v,
+  showJudging,
+  voteOpen,
+}: {
+  v: WatchVideo
+  showJudging: boolean
+  voteOpen: boolean
+}) {
+  const base =
+    'absolute right-2 top-2 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-black backdrop-blur'
+
+  if (v.round === 'main' && voteOpen) {
+    return <span className={`${base} bg-red-500/90 text-white`}>🔥 {fmtCount(v.voteCount)}</span>
+  }
+  if (v.round === 'main' && v.publicScore != null) {
+    return (
+      <span className={`${base} bg-emerald-500/90 text-black`}>
+        ✓ <span className="text-[13px] font-black">{Math.round(v.publicScore)}</span>
+      </span>
+    )
+  }
+  if (showJudging && !v.scored) {
+    return <span className={`${base} bg-[#8b22ff]/90 text-white`}>⚡ AI 심사 중</span>
+  }
+  return null
 }

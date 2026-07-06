@@ -45,6 +45,16 @@ export type WatchVideo = {
   likeCount: number
   viewCount: number
   commentCount: number
+  // Public Triple-AI verified score for the card badge. MAIN round ONLY -- prelim
+  // scores are owner-only and never surfaced ([[project-scoring-integrity-rules]],
+  // low-score-shaming guard). null until the main round is judged.
+  publicScore: number | null
+  // Whether THIS round's Triple-AI scoring completed. Flips the card badge from
+  // "⚡ AI 심사 중" to Verified. For prelim it only CLEARS the 심사중 badge -- the
+  // prelim score itself stays private.
+  scored: boolean
+  // Community votes for this main-round video (0 for prelim).
+  voteCount: number
 }
 
 export type WatchSeasonGroup = {
@@ -116,6 +126,7 @@ function toWatchVideo(
   videoUrl: string,
   counts: { likes: number; views: number; comments: number },
   displayName?: string,
+  extra: { publicScore?: number | null; scored?: boolean; voteCount?: number } = {},
 ): WatchVideo {
   const submittedAt =
     round === 'application'
@@ -142,6 +153,9 @@ function toWatchVideo(
     likeCount: counts.likes,
     viewCount: counts.views,
     commentCount: counts.comments,
+    publicScore: extra.publicScore ?? null,
+    scored: extra.scored ?? false,
+    voteCount: extra.voteCount ?? 0,
   }
 }
 
@@ -188,11 +202,13 @@ export async function getWatchVideos(
     )
   if (opt.seasonId) q = q.eq('season_id', opt.seasonId)
 
-  const [{ data: apps, error }, likeAgg, viewAgg, commentAgg] = await Promise.all([
+  const [{ data: apps, error }, likeAgg, viewAgg, commentAgg, scoreAgg, voteAgg] = await Promise.all([
     q,
     admin.from('watch_likes').select('application_id, round'),
     admin.from('watch_views').select('application_id, round'),
     admin.from('watch_comments').select('application_id, round').eq('status', 'visible'),
+    admin.from('scoring_results').select('application_id, round, judged_status, verified_score'),
+    admin.from('watch_votes').select('application_id, round'),
   ])
 
   if (error) {
@@ -203,11 +219,24 @@ export async function getWatchVideos(
   const likes = tallyCounts((likeAgg.data ?? []) as { application_id: string; round: string }[])
   const views = tallyCounts((viewAgg.data ?? []) as { application_id: string; round: string }[])
   const comments = tallyCounts((commentAgg.data ?? []) as { application_id: string; round: string }[])
+  const votes = tallyCounts((voteAgg.data ?? []) as { application_id: string; round: string }[])
   const countsFor = (id: string, round: WatchRound) => ({
     likes: likes.get(`${id}:${round}`) ?? 0,
     views: views.get(`${id}:${round}`) ?? 0,
     comments: comments.get(`${id}:${round}`) ?? 0,
   })
+
+  // Per-(app,round) Triple-AI state for the card badges. scored = judging done;
+  // mainScore is exposed ONLY for the main round (prelim scores stay private).
+  const scoredKeys = new Set<string>()
+  const mainScore = new Map<string, number>()
+  for (const s of (scoreAgg.data ?? []) as {
+    application_id: string; round: string; judged_status: string; verified_score: number | null
+  }[]) {
+    if (s.judged_status !== 'completed') continue
+    scoredKeys.add(`${s.application_id}:${s.round}`)
+    if (s.round === 'main' && s.verified_score != null) mainScore.set(s.application_id, s.verified_score)
+  }
 
   const rows = (apps ?? []) as AppRow[]
   const names = await getDisplayNames(rows.map((r) => r.user_id))
@@ -217,10 +246,17 @@ export async function getWatchVideos(
     if (!isPublicRow(row)) continue
     const displayName = row.user_id ? names.get(row.user_id) : undefined
     if (row.free_entry_url?.trim()) {
-      videos.push(toWatchVideo(row, 'application', row.free_entry_url.trim(), countsFor(row.id, 'application'), displayName))
+      // Prelim: scored flips the 심사중 badge off, but the score itself is private.
+      videos.push(toWatchVideo(row, 'application', row.free_entry_url.trim(), countsFor(row.id, 'application'), displayName, {
+        scored: scoredKeys.has(`${row.id}:application`),
+      }))
     }
     if (row.main_round_video_url?.trim()) {
-      videos.push(toWatchVideo(row, 'main', row.main_round_video_url.trim(), countsFor(row.id, 'main'), displayName))
+      videos.push(toWatchVideo(row, 'main', row.main_round_video_url.trim(), countsFor(row.id, 'main'), displayName, {
+        scored: scoredKeys.has(`${row.id}:main`),
+        publicScore: mainScore.get(row.id) ?? null,
+        voteCount: votes.get(`${row.id}:main`) ?? 0,
+      }))
     }
   }
 
@@ -264,6 +300,58 @@ export async function getCurrentCompetitionStats(seasonId: string): Promise<Comp
     if (c) countries.add(c.toUpperCase())
   }
   return { entries, creators: creators.size, countries: countries.size }
+}
+
+// Triple-AI preliminary-judging progress for the Hero "⚡ 심사 중 {scored}/{total}"
+// bar. total = public prelim entries (the pool being judged); scored = those whose
+// preliminary scoring_results is completed. Real DB values -- the bar fills as the
+// scoring worker actually finishes each video. No score numbers are exposed here.
+export type JudgingProgress = { scored: number; total: number }
+
+export async function getJudgingProgress(seasonId: string): Promise<JudgingProgress> {
+  const admin = createSupabaseAdmin()
+  const [{ data: apps }, { data: scores }] = await Promise.all([
+    admin
+      .from('genesis_applications')
+      .select('id, status, watch_hidden, moderation_status, free_entry_url')
+      .eq('season_id', seasonId),
+    admin
+      .from('scoring_results')
+      .select('application_id, judged_status')
+      .eq('season_id', seasonId)
+      .eq('round', 'application')
+      .eq('judged_status', 'completed'),
+  ])
+
+  const pool = new Set<string>()
+  for (const row of (apps ?? []) as (Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'> & {
+    id: string; free_entry_url: string | null
+  })[]) {
+    if (!isPublicRow(row)) continue
+    if (!row.free_entry_url?.trim()) continue
+    pool.add(row.id)
+  }
+  let scored = 0
+  for (const s of (scores ?? []) as { application_id: string }[]) {
+    if (pool.has(s.application_id)) scored++
+  }
+  return { scored, total: pool.size }
+}
+
+// Whether the community vote window is currently open for a season. Read from the
+// BASE seasons table via service role (the community_vote_* columns are not on the
+// public seasons_public view). Drives the "🔥 투표중" card badge.
+export async function isVoteWindowOpen(seasonId: string): Promise<boolean> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('seasons')
+    .select('community_vote_start_at, community_vote_end_at')
+    .eq('id', seasonId)
+    .maybeSingle()
+  const now = Date.now()
+  const start = data?.community_vote_start_at ? Date.parse(data.community_vote_start_at as string) : null
+  const end = data?.community_vote_end_at ? Date.parse(data.community_vote_end_at as string) : null
+  return start != null && end != null && now >= start && now < end
 }
 
 export type AiCritique = { name: string; strengths: string[]; weaknesses: string[]; summary: string }

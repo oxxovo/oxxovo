@@ -10,6 +10,8 @@ import {
   getWatchVideos,
   getWatchSeasonGroups,
   getCurrentCompetitionStats,
+  getJudgingProgress,
+  isVoteWindowOpen,
   type WatchSort,
   type WatchRound,
 } from '@/lib/watch'
@@ -77,6 +79,17 @@ export async function ArenaWatch({
   const isAccepting = openMs != null && closeMs != null && now >= openMs && now < closeMs
   const closeAtISO = currentSeason?.application_close_at ?? null
 
+  // Stage flags for the ⚡ judging bar (Hero) and the card status badges:
+  //   showJudgingBar = prelim judging window (applications closed, results not out)
+  //                    -> Hero shows the Triple-AI progress bar for the PRELIM pool.
+  //   cardsJudging   = any post-close scoring phase -> cards may show "⚡ 심사 중".
+  //   voteOpen       = community vote window -> main cards show "🔥 {votes}".
+  const applicationsClosed = closeMs != null && now >= closeMs
+  const showJudgingBar = applicationsClosed && !inMainRound
+  const cardsJudging = applicationsClosed
+  const voteOpen = await isVoteWindowOpen(currentSeasonId)
+  const judging = showJudgingBar ? await getJudgingProgress(currentSeasonId) : { scored: 0, total: 0 }
+
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
       <ArenaBanner />
@@ -87,9 +100,11 @@ export async function ArenaWatch({
         seasonId={currentSeasonId}
         closeAtISO={closeAtISO}
         isAccepting={isAccepting}
+        showJudging={showJudgingBar}
+        judging={judging}
       />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
-      <LatestEntries videos={latest} seasonNames={seasonNames} />
+      <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />
     </ArenaShell>
   )
 }

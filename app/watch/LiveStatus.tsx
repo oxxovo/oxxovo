@@ -1,20 +1,23 @@
 'use client'
 
-// The "living" part of the Current Competition Hero block. Renders the round
-// line (with a blinking LIVE status dot while applications are open), a live
-// application-deadline countdown, and the three headline stats that tick up as
-// real submissions arrive.
+// The "living" part of the Current Competition Hero block. It reflects the real
+// season stage (from DB dates), never fake motion (TK):
+//   - Accepting (application window open): 🔴 blinking LIVE status dot + a live
+//     countdown to application_close_at.
+//   - Judging (window closed, Triple-AI scoring in progress): ⚡ a real progress
+//     bar {scored}/{total} that fills as the scoring worker finishes each video.
+//   - Always: the three headline stats (Entries / Creators / Countries), polled
+//     so they tick up as real submissions land.
 //
-// Honesty (TK): NOTHING here is fake motion. The LIVE dot is a status light --
-// lit ONLY while the application window is genuinely open (isAccepting). The
-// stats change only when a real entry lands (polled from /api/watch/stats). The
-// countdown counts to the real application_close_at. When not accepting, we stop
-// polling and drop the dot/countdown -- the numbers simply sit still (correct).
+// The LIVE dot is a status light (lit only while genuinely accepting). The stats,
+// the judging count, and the countdown target are all real DB values. When
+// neither accepting nor judging, polling stops and the numbers simply sit still.
 
 import { useEffect, useState } from 'react'
 import { CountdownTimer } from '@/app/_components/CountdownTimer'
 
 type Stats = { entries: number; creators: number; countries: number }
+type Judging = { scored: number; total: number }
 
 const POLL_MS = 20_000
 
@@ -24,19 +27,25 @@ export function LiveStatus({
   initialStats,
   closeAtISO,
   isAccepting,
+  showJudging,
+  initialJudging,
 }: {
   seasonId: string
   roundName: string
   initialStats: Stats
   closeAtISO: string | null
   isAccepting: boolean
+  showJudging: boolean
+  initialJudging: Judging
 }) {
   const [stats, setStats] = useState<Stats>(initialStats)
+  const [judging, setJudging] = useState<Judging>(initialJudging)
 
-  // Poll only while the competition is live-accepting. Server render already
-  // supplied initialStats, so there is no empty flash before the first tick.
+  // Poll while the competition is live-accepting OR mid-judging, so both the
+  // stats and the judging bar update in place. Server render supplied the
+  // initial values, so there is no empty flash before the first tick.
   useEffect(() => {
-    if (!isAccepting) return
+    if (!isAccepting && !showJudging) return
     let alive = true
     const load = async () => {
       try {
@@ -44,9 +53,13 @@ export function LiveStatus({
           cache: 'no-store',
         })
         if (!res.ok) return
-        const data = await res.json()
-        if (alive && data && typeof data.entries === 'number') {
-          setStats({ entries: data.entries, creators: data.creators, countries: data.countries })
+        const d = await res.json()
+        if (!alive) return
+        if (typeof d.entries === 'number') {
+          setStats({ entries: d.entries, creators: d.creators, countries: d.countries })
+        }
+        if (typeof d.judgingTotal === 'number') {
+          setJudging({ scored: d.judgingScored, total: d.judgingTotal })
         }
       } catch {
         /* transient network error -- keep the last good numbers */
@@ -57,10 +70,11 @@ export function LiveStatus({
       alive = false
       clearInterval(id)
     }
-  }, [seasonId, isAccepting])
+  }, [seasonId, isAccepting, showJudging])
 
   const closeAt = closeAtISO ? new Date(closeAtISO) : null
   const showCountdown = isAccepting && closeAt != null && closeAt.getTime() > Date.now()
+  const pct = judging.total > 0 ? Math.round((judging.scored / judging.total) * 100) : 0
 
   return (
     <>
@@ -74,6 +88,23 @@ export function LiveStatus({
           ⏱ Applications close in{' '}
           <CountdownTimer targetAt={closeAt!} className="font-bold text-white" />
         </p>
+      )}
+
+      {showJudging && (
+        <div className="mt-2 max-w-[300px]">
+          <p className="text-[12px] font-semibold text-white/80">
+            ⚡ Triple-AI judging{' '}
+            <span className="font-black text-white">
+              {judging.scored}/{judging.total}
+            </span>
+          </p>
+          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-white/15">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-[#8b22ff] to-[#a855ff] transition-[width] duration-700 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
       )}
 
       <div className="mt-4 flex gap-6">
@@ -98,8 +129,8 @@ function LiveDot() {
   )
 }
 
-// Small inline stat: icon + big number + small label (matches 8_final: prominent
-// numbers, no boxed tiles). Moved here from Arena so the numbers can live-update.
+// Small inline stat: icon + big number + small label (8_final: prominent numbers,
+// no boxed tiles).
 function InlineStat({ icon, n, label }: { icon: string; n: number; label: string }) {
   return (
     <div className="flex items-center gap-2">

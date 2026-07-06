@@ -6,7 +6,7 @@
 // genesis_applications -- see [[feedback-server-side-anon-rls-trap]]).
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentCompetitionStats } from '@/lib/watch'
+import { getCurrentCompetitionStats, getJudgingProgress } from '@/lib/watch'
 import { getCurrentSeason, getCurrentSeasonId } from '@/lib/seasons'
 
 // Run at request time -- these are live counts, never prerendered/cached.
@@ -21,9 +21,12 @@ export async function GET(request: NextRequest) {
     seasonId = season?.id ?? getCurrentSeasonId()
   }
 
-  const stats = await getCurrentCompetitionStats(seasonId)
+  const [stats, judging] = await Promise.all([
+    getCurrentCompetitionStats(seasonId),
+    getJudgingProgress(seasonId),
+  ])
   return NextResponse.json(
-    { seasonId, ...stats },
+    { seasonId, ...stats, judgingScored: judging.scored, judgingTotal: judging.total },
     { headers: { 'Cache-Control': 'no-store' } },
   )
 }
