@@ -1,0 +1,16 @@
+# Design mockups must NEVER be deployed to production (2026-07-02 mockup leak; TK).
+# `vercel deploy` uploads local files regardless of git tracking, so reference
+# mockups dropped into public/ would otherwise ship live. Block the mockup CLASS
+# by pattern -- narrowly, so REAL assets are never excluded.
+#
+# KEEP (do NOT match these -- they are live, referenced or rollback assets):
+#   public/hero_bg_8final.png, public/hero_bg_8final_mobile.png  (live Hero bg)
+#   public/arena_image.png                                       (landing/OG)
+#   public/arena_hero_bg.png, public/arena_hero_bg_frameless.png (kept for rollback)
+#   public/oxxovo_logo.png
+#
+# BLOCK (mockups only):
+public/ChatGPT Image*
+public/*_reference.*
+public/*_mockup.*
+public/*_mock.*
