@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
@@ -63,6 +63,9 @@ const DICT = {
     err_generic: '생성 실패',
     my_gens: '내 생성물',
     empty_gens: '아직 생성한 영상이 없습니다.',
+    compose_title: '클립을 하나로 조합해 제출하세요',
+    compose_hint: '이번 시즌은 조합 방식입니다. 만든 클립들을 15~30초 완성본으로 이어 붙여 제출하세요.',
+    compose_cta: '조합 편집기 열기 →',
     status_queued: '대기 중',
     status_generating: '생성 중',
     status_uploading: '업로드 중',
@@ -130,6 +133,9 @@ const DICT = {
     err_generic: 'Generation failed',
     my_gens: 'My generations',
     empty_gens: 'No generations yet.',
+    compose_title: 'Stitch your clips into one final and submit',
+    compose_hint: 'This season is compose-based. Combine your clips into a 15–30s final and submit.',
+    compose_cta: 'Open compose editor →',
     status_queued: 'Queued',
     status_generating: 'Generating',
     status_uploading: 'Uploading',
@@ -557,6 +563,20 @@ function Generations({
   return (
     <section className="mt-8">
       <h2 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold mb-3">{t.my_gens}</h2>
+      {state.composeEnabled && (
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/[.05] p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-white">{t.compose_title}</p>
+            <p className="mt-1 text-[11px] text-white/50">{t.compose_hint}</p>
+          </div>
+          <Link
+            href="/studio/compose"
+            className="shrink-0 self-start rounded-lg bg-gradient-to-br from-[#7d23ff] to-[#6220dc] px-5 py-2.5 text-sm font-bold text-white transition hover:brightness-110 sm:self-auto"
+          >
+            {t.compose_cta}
+          </Link>
+        </div>
+      )}
       {state.jobs.length === 0 ? (
         <p className="text-xs text-white/40 py-6 text-center">{t.empty_gens}</p>
       ) : (

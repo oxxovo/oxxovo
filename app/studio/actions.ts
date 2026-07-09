@@ -69,6 +69,9 @@ export type StudioState = {
   hasApplication: boolean
   alreadySubmitted: boolean
   pricing: { marginRate: number; creditUsdValue: number }
+  // When the season runs in compose mode, clips are building blocks that get
+  // stitched into one final in /studio/compose. Drives the compose entry CTA.
+  composeEnabled: boolean
 }
 
 export type LoadStudioResult =
@@ -137,6 +140,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
         hasApplication: !!appRow,
         alreadySubmitted,
         pricing: { marginRate: pricing.marginRate, creditUsdValue: pricing.creditUsdValue },
+        composeEnabled: cfg.studioComposeEnabled,
       },
     }
   } catch (e) {
