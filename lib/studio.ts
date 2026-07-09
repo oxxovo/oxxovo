@@ -8,6 +8,7 @@ import 'server-only'
 import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
+import { moderateSubmission } from '@/lib/moderation'
 import {
   buildCryptoBind,
   verifyCryptoBind,
@@ -407,6 +408,13 @@ export async function submitGeneration(args: {
       ? 'waitlist'
       : 'pending'
 
+    // Content safety (Patent 3): scan the creator statement before the row can
+    // go public on /watch. Mirrors POST /api/apply policy. Studio has no external
+    // thumbnail; the composed video's frame scan is phase C2 (worker). No key or
+    // an API error -> moderateSubmission returns 'pending' (fail-safe: not
+    // public, lands in the admin moderation queue).
+    const mod = await moderateSubmission({ text: statement })
+
     const { error: insErr } = await admin.from('genesis_applications').insert({
       season_id: args.seasonId,
       user_id: args.userId,
@@ -422,6 +430,9 @@ export async function submitGeneration(args: {
       agreed_to_privacy: true,
       agreed_to_integrity_notice: true,
       status: resolvedStatus,
+      moderation_status: mod.status,
+      moderation_flags: mod.categories.length ? mod.categories : null,
+      moderation_checked_at: now,
       studio_application_job_id: job.id,
       studio_application_signature: job.cryptobind_signature,
       studio_application_submitted_at: now,
@@ -817,6 +828,12 @@ export async function submitRender(args: {
       ? 'waitlist'
       : 'pending'
 
+    // Content safety (Patent 3): scan the creator statement before the composed
+    // final can go public on /watch. Mirrors POST /api/apply policy. The composed
+    // video's frame scan is phase C2 (worker). No key or an API error ->
+    // moderateSubmission returns 'pending' (fail-safe: not public, admin queue).
+    const mod = await moderateSubmission({ text: statement })
+
     const { error: insErr } = await admin.from('genesis_applications').insert({
       season_id: args.seasonId,
       user_id: args.userId,
@@ -832,6 +849,9 @@ export async function submitRender(args: {
       agreed_to_privacy: true,
       agreed_to_integrity_notice: true,
       status: resolvedStatus,
+      moderation_status: mod.status,
+      moderation_flags: mod.categories.length ? mod.categories : null,
+      moderation_checked_at: now,
       studio_application_render_id: render.id,
       studio_application_submitted_at: now,
     })

@@ -614,31 +614,27 @@ function ApplicantForm({
   return (
     <section className="mt-8 rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/[.05] p-5">
       <h2 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold mb-1">{t.applicant_title}</h2>
-      <p className="text-[11px] text-white/40 mb-4">{t.applicant_hint}</p>
+      <p className="text-[11px] text-white/60 mb-4">{t.applicant_hint}</p>
       <div className="space-y-3">
         <label className="block">
-          <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.f_name}</div>
+          <div className="text-[10px] uppercase tracking-wider text-white/70 mb-1">{t.f_name}</div>
           <input value={applicant.name} onChange={(e) => set({ name: e.target.value })} className={inputCls} />
         </label>
         <label className="block">
           <div className="flex items-baseline justify-between mb-1">
-            <span className="text-[10px] uppercase tracking-wider text-white/40">{t.f_statement}</span>
-            <span className={`text-[10px] ${stmtOk ? 'text-[#b66cff]' : len > STATEMENT_MAX ? 'text-[#ff8888]' : 'text-white/40'}`}>
+            <span className="text-[10px] uppercase tracking-wider text-white/70">{t.f_statement}</span>
+            <span className={`text-[10px] ${stmtOk ? 'text-[#b66cff]' : len > STATEMENT_MAX ? 'text-[#ff8888]' : 'text-white/50'}`}>
               {len} / {STATEMENT_MIN}–{STATEMENT_MAX}
             </span>
           </div>
           <textarea value={applicant.statement} onChange={(e) => set({ statement: e.target.value })} rows={4} placeholder={t.statement_ph} className={`${inputCls} resize-y`} />
         </label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block">
-            <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.f_country}</div>
-            <input value={applicant.country} onChange={(e) => set({ country: e.target.value })} className={inputCls} />
-          </label>
-          <label className="block">
-            <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.f_channel}</div>
-            <input value={applicant.channelUrl} onChange={(e) => set({ channelUrl: e.target.value })} className={inputCls} />
-          </label>
-        </div>
+        {/* Studio is an in-platform submission -- no external channel URL (that
+            field belongs to the /apply YouTube path). Country stays (optional). */}
+        <label className="block">
+          <div className="text-[10px] uppercase tracking-wider text-white/70 mb-1">{t.f_country}</div>
+          <input value={applicant.country} onChange={(e) => set({ country: e.target.value })} className={inputCls} />
+        </label>
         <div className="space-y-2 pt-1 text-sm text-white/70">
           <Agree checked={applicant.rules} onChange={(v) => set({ rules: v })} label={t.agree_rules} />
           <Agree checked={applicant.privacy} onChange={(v) => set({ privacy: v })} label={t.agree_privacy} />
@@ -786,7 +782,7 @@ function JobCard({
 }
 
 const inputCls =
-  'w-full px-3 py-2 bg-[#0c0a14] border border-white/10 rounded text-sm text-white focus:border-[#8b22ff] focus:outline-none'
+  'w-full px-3 py-2 bg-[#0c0a14] border border-white/20 rounded text-sm text-[#ededed] placeholder-white/45 focus:border-[#8b22ff] focus:outline-none'
 
 function Shell({
   t,
