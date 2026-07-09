@@ -22,11 +22,12 @@ Full-studio 시즌(시즌0)에서는 이 불일치가 (a) UX 혼란과 (b) 무�
 - studio 참가자는 in-platform 생성이라 외부 URL이 없음 → `/apply` 폼을 **채울 수 없음**.
 - 그런데 studio 페이지는 `!hasApplication`이면 항상 amber "must apply → /apply" 배너를 노출 (page.tsx:279-286). 바로 아래 인라인 ApplicantForm(정답 경로, page.tsx:295)이 있는데도.
 
-## 정리 3건
+## 정리 4건
 
 1. **오해 유발 /apply 배너 숨김** — 최소 application 라운드에선 인라인 폼이 신청을 처리하므로 배너 제거. 지금은 참가자를 못 채우는 외부 폼으로 유도.
 2. **studio 제출 경로에 moderation 스캔 추가** — 최소 statement 텍스트 스캔(studio는 썸네일 없음; 영상 프레임 스캔 = 코드 주석상 "phase C2 (worker)" 미구현). `/apply`와 정책 일치 → 무검열 공개 갭 제거.
 3. **단일 경로 통일** — 생성 → compose → statement 제출 하나로. 확정된 "시즌0 = compose-only" 전략과 일치. 단일생성 제출 + /apply 넛지는 pre-compose 레거시.
+4. **Studio 네비게이션 발견성 (2026-07-08 추가)** — **참가자가 /studio로 갈 경로가 없음.** 실코드: 로그인 기본 착지 = `/profile`(login/page.tsx:14 하드코딩). 랜딩 nav(LandingView.tsx) = Tournament/Watch/HowItWorks/About/Membership/FAQ — **Studio 링크 0**. 히어로 CTA = `resolveSeasonCta()` → `/apply`. profile 페이지도 `/apply`만. → 지금은 주소창 직접 입력만 가능. **발사 시 CTA/nav를 /studio로 배선** (item 1·3과 같은 뿌리: 정문이 레거시 /apply를 가리킴). 시즌0=compose-only 전략이면 정문 = Studio여야 함.
 
 ## 관련 launch 체크리스트
 
