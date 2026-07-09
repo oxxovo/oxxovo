@@ -614,15 +614,15 @@ export default function ComposeEditor(props: ComposeEditorProps) {
                       <div className="space-y-2.5">
                         <p className="text-[11px] text-[#d9b8ff]">{t.need_info}</p>
                         <label className="block">
-                          <span className="text-[10px] uppercase tracking-wider text-white/40">{t.f_name}</span>
+                          <span className="text-[10px] uppercase tracking-wider text-white/70">{t.f_name}</span>
                           <input
                             value={ap.creatorName}
                             onChange={(e) => setAp((a) => ({ ...a, creatorName: e.target.value }))}
-                            className="mt-1 w-full rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white focus:border-[#8b22ff] focus:outline-none"
+                            className="mt-1 w-full rounded border border-white/20 bg-[#070610] px-3 py-2 text-sm text-[#ededed] focus:border-[#8b22ff] focus:outline-none"
                           />
                         </label>
                         <label className="block">
-                          <span className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/40">
+                          <span className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/70">
                             <span>{t.f_statement(sMin, sMax)}</span>
                             <span className={stmtLen < sMin || stmtLen > sMax ? 'text-[#ff8888]' : 'text-[#b66cff]'}>
                               {stmtLen}{t.chars}
@@ -632,29 +632,25 @@ export default function ComposeEditor(props: ComposeEditorProps) {
                             value={ap.creatorStatement}
                             onChange={(e) => setAp((a) => ({ ...a, creatorStatement: e.target.value }))}
                             rows={3}
-                            className="mt-1 w-full rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white focus:border-[#8b22ff] focus:outline-none"
+                            className="mt-1 w-full rounded border border-white/20 bg-[#070610] px-3 py-2 text-sm text-[#ededed] focus:border-[#8b22ff] focus:outline-none"
                           />
                         </label>
-                        <div className="grid grid-cols-2 gap-2">
+                        {/* Studio compose is an in-platform submission -- no external
+                            channel URL (that field belongs to the /apply YouTube path). */}
+                        <label className="block">
+                          <span className="text-[10px] uppercase tracking-wider text-white/70">{t.f_country}</span>
                           <input
                             value={ap.country}
                             onChange={(e) => setAp((a) => ({ ...a, country: e.target.value }))}
-                            placeholder={t.f_country}
-                            className="rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white placeholder-white/30 focus:border-[#8b22ff] focus:outline-none"
+                            className="mt-1 w-full rounded border border-white/20 bg-[#070610] px-3 py-2 text-sm text-[#ededed] placeholder-white/45 focus:border-[#8b22ff] focus:outline-none"
                           />
-                          <input
-                            value={ap.channelUrl}
-                            onChange={(e) => setAp((a) => ({ ...a, channelUrl: e.target.value }))}
-                            placeholder={t.f_channel}
-                            className="rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white placeholder-white/30 focus:border-[#8b22ff] focus:outline-none"
-                          />
-                        </div>
+                        </label>
                         {([
                           ['agreedRules', t.agree_rules],
                           ['agreedPrivacy', t.agree_privacy],
                           ['agreedIntegrity', t.agree_integrity],
                         ] as const).map(([key, label]) => (
-                          <label key={key} className="flex items-center gap-2 text-[12px] text-white/70">
+                          <label key={key} className="flex items-center gap-2 text-[12px] text-white/80">
                             <input
                               type="checkbox"
                               checked={ap[key]}
