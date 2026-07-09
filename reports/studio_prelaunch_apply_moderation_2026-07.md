@@ -29,7 +29,7 @@ Full-studio 시즌(시즌0)에서는 이 불일치가 (a) UX 혼란과 (b) 무�
 3. **단일 경로 통일** — 생성 → compose → statement 제출 하나로. 확정된 "시즌0 = compose-only" 전략과 일치. 단일생성 제출 + /apply 넛지는 pre-compose 레거시.
 4. **Studio 네비게이션 발견성 (2026-07-08 추가)** — **참가자가 /studio로 갈 경로가 없음.** 실코드: 로그인 기본 착지 = `/profile`(login/page.tsx:14 하드코딩). 랜딩 nav(LandingView.tsx) = Tournament/Watch/HowItWorks/About/Membership/FAQ — **Studio 링크 0**. 히어로 CTA = `resolveSeasonCta()` → `/apply`. profile 페이지도 `/apply`만. → 지금은 주소창 직접 입력만 가능. **발사 시 CTA/nav를 /studio로 배선** (item 1·3과 같은 뿌리: 정문이 레거시 /apply를 가리킴). 시즌0=compose-only 전략이면 정문 = Studio여야 함.
 
-5. **Compose 진입 배선 누락 (2026-07-08 추가)** — compose 에디터(`/studio/compose/page.tsx` + `ComposeEditor.tsx`)는 이 브랜치에 **완전히 존재·서버액션 배선 완료·게이트 정상**. 그런데 `/studio` 메인 페이지에 `/studio/compose`로 가는 링크가 **0개**(page.tsx에 "compose" 문자열 없음). compose 페이지→/studio 백링크만 있고 역방향 없음 = 비대칭. season_test처럼 studio_compose_enabled여도 참가자는 조합 버튼을 못 봄, 영상별 "Submit this video" 단일 제출만 노출. → 주소창 `/studio/compose` 직접 입력만 가능(nav item4와 동일 고아 패턴). **발사 시: studio_compose_enabled면 /studio에 Compose 진입 CTA 배선.** compose-only 전략이면 단일 제출 노출 자체를 재검토(item3 단일 경로 통일).
+5. **Compose 진입 배선 누락 → ✅ 코드 완료 (2026-07-08, f614034)** — compose 에디터(`/studio/compose/page.tsx` + `ComposeEditor.tsx`)는 이 브랜치에 **완전히 존재·서버액션 배선 완료·게이트 정상**. 그런데 `/studio` 메인 페이지에 `/studio/compose`로 가는 링크가 **0개**였음(비대칭 — compose→/studio 백링크만). season_test처럼 studio_compose_enabled여도 참가자가 조합 버튼을 못 봄 = 실제 이탈 지점. **수정**: `StudioState.composeEnabled`(=cfg.studioComposeEnabled) 노출 + Generations 섹션에 게이트된 Compose CTA 배너("조합 편집기 열기 →" → /studio/compose), compose ON일 때만 노출. tsc0. **잔여(발사 시 검토)**: compose-only 전략이면 영상별 "Submit this video" 단일 제출 노출 자체 재검토(item3 단일 경로 통일).
 
 ## 관련 launch 체크리스트
 
