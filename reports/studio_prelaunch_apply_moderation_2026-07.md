@@ -25,7 +25,7 @@ Full-studio 시즌(시즌0)에서는 이 불일치가 (a) UX 혼란과 (b) 무�
 ## 정리 4건
 
 1. **오해 유발 /apply 배너 숨김** — 최소 application 라운드에선 인라인 폼이 신청을 처리하므로 배너 제거. 지금은 참가자를 못 채우는 외부 폼으로 유도.
-2. **studio 제출 경로에 moderation 스캔 추가** — 최소 statement 텍스트 스캔(studio는 썸네일 없음; 영상 프레임 스캔 = 코드 주석상 "phase C2 (worker)" 미구현). `/apply`와 정책 일치 → 무검열 공개 갭 제거.
+2. **studio 제출 경로에 moderation 스캔 추가 → ✅ 코드 완료 (2026-07-08, a5d2864)** — **실증됨(경우 B)**: TK 실제 제출행 `moderation_checked_at=null`·`flags=null`·`status=approved`(컬럼 기본값) = 스캔 안 돌고 즉시 공개. **수정**: submitGeneration(5a)+submitRender(7a) 신청행 insert 직전 `moderateSubmission({text: statement})` 호출 → `moderation_status`+`moderation_flags`+`moderation_checked_at` 반영. `/api/apply` 정책 미러. 키없음/에러 시 fail-safe `pending`(비공개, admin 큐). tsc0. **범위=statement 텍스트 게이트**(영상 프레임 스캔=phase C2 워커, 별도 트래킹). **비소급**(신규 제출부터). 프로덕션 OPENAI_API_KEY 설정은 발사 체크(키 없으면 전건 pending→admin 큐, fail-safe라 안전하나 운영 인지).
 3. **단일 경로 통일** — 생성 → compose → statement 제출 하나로. 확정된 "시즌0 = compose-only" 전략과 일치. 단일생성 제출 + /apply 넛지는 pre-compose 레거시.
 4. **Studio 네비게이션 발견성 (2026-07-08 추가)** — **참가자가 /studio로 갈 경로가 없음.** 실코드: 로그인 기본 착지 = `/profile`(login/page.tsx:14 하드코딩). 랜딩 nav(LandingView.tsx) = Tournament/Watch/HowItWorks/About/Membership/FAQ — **Studio 링크 0**. 히어로 CTA = `resolveSeasonCta()` → `/apply`. profile 페이지도 `/apply`만. → 지금은 주소창 직접 입력만 가능. **발사 시 CTA/nav를 /studio로 배선** (item 1·3과 같은 뿌리: 정문이 레거시 /apply를 가리킴). 시즌0=compose-only 전략이면 정문 = Studio여야 함.
 
