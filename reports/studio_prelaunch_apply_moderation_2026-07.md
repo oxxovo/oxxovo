@@ -31,6 +31,8 @@ Full-studio 시즌(시즌0)에서는 이 불일치가 (a) UX 혼란과 (b) 무�
 
 5. **Compose 진입 배선 누락 → ✅ 코드 완료 (2026-07-08, f614034)** — compose 에디터(`/studio/compose/page.tsx` + `ComposeEditor.tsx`)는 이 브랜치에 **완전히 존재·서버액션 배선 완료·게이트 정상**. 그런데 `/studio` 메인 페이지에 `/studio/compose`로 가는 링크가 **0개**였음(비대칭 — compose→/studio 백링크만). season_test처럼 studio_compose_enabled여도 참가자가 조합 버튼을 못 봄 = 실제 이탈 지점. **수정**: `StudioState.composeEnabled`(=cfg.studioComposeEnabled) 노출 + Generations 섹션에 게이트된 Compose CTA 배너("조합 편집기 열기 →" → /studio/compose), compose ON일 때만 노출. tsc0. **잔여(발사 시 검토)**: compose-only 전략이면 영상별 "Submit this video" 단일 제출 노출 자체 재검토(item3 단일 경로 통일).
 
+7. **Compose 작업 손실 (재진입 시 초기화) → ✅ 코드 완료 (2026-07-08, ae39596)** — ComposeEditor 상태(배치·statement·render 링크)가 client useState뿐이라 이동/새로고침 시 전부 소실(render+R2영상은 서버 영구저장인데 에디터가 재연결 안 함). **수정(A+B, web단일·마이그無)**: A=localStorage에 EDL배치+statement/이름/국적 초안(동의 제외, 매 제출 재확인) 저장→재진입 복원, 제출 성공 시 삭제, 빈 상태 미저장. B=loadComposeState가 최신 non-terminal render 반환→초안 없을 때 그 EDL 복원 + EDL 일치하는 ready render는 재렌더 없이 제출 바인딩(편집 후엔 재렌더 강제=제출물 일치). 초안 우선(최신 편집), 서버 render는 기기변경/스토리지 삭제 폴백. tsc0.
+
 6. **Watch 카드 썸네일 없음 (studio R2 영상) — 2026-07-08 발견** — **시즌0 전면 studio = 모든 Watch 카드가 그라디언트 타일**(영상 미리보기 없음). 실측: `thumbnailUrl`은 DB 컬럼 아니라 `deriveThumbnail(videoUrl)` 런타임 파생(watch.ts:152) → **YouTube/Vimeo만 추출, R2 mp4는 null → 그라디언트+이름 카드 폴백**(Arena.tsx:192, 의도된 폴백). 워커가 compose 최종본에 포스터 프레임을 안 만듦("no thumbnail frame yet"). 관객 투표 화면 시각품질 직결 = 발사 전 필수. **수정(크로스레포)**: (a) 마이그 `render_jobs`+`genesis_applications`에 `thumbnail_url text` (b) 워커(oxxovo-studio) ffmpeg `-frames:v 1` 포스터 추출→R2 업로드→컬럼 기록 (c) `getWatchVideos` 저장 thumbnail 우선(없으면 파생 폴백) (d) 카드 `<img>`는 이미 배선됨. 영상 자체 R2 저장·재생은 정상(썸네일만 문제).
 
 ## 관련 launch 체크리스트
