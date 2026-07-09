@@ -44,13 +44,27 @@ export type ComposeSubmitCtx = {
   statementMax: number
 }
 
+// The participant's latest resumable render (server-persisted), so re-entry can
+// restore the composition instead of starting over. Shape mirrors the server
+// ResumeRender without importing the server module into this client file.
+export type ComposeResumeRender = {
+  id: string
+  status: EditorRenderStatus['status']
+  videoUrl: string | null
+  totalSeconds: number
+  edl: { jobId: string; startMs: number; endMs: number }[]
+}
+
 export type ComposeEditorProps = {
   lang: 'ko' | 'en'
+  // Scopes the localStorage draft (omitted in the demo -> no persistence).
+  seasonId?: string
   clips: SourceClip[]
   minSeconds: number
   maxSeconds: number
   maxClips: number
   demo?: boolean
+  resumeRender?: ComposeResumeRender | null
   onRender: (
     edl: { jobId: string; startMs: number; endMs: number }[],
   ) => Promise<{ ok: true; renderId: string } | { ok: false; error: string }>
@@ -216,6 +230,103 @@ export default function ComposeEditor(props: ComposeEditorProps) {
     agreedPrivacy: false,
     agreedIntegrity: false,
   })
+
+  // --- draft persistence (item 7) --------------------------------------------
+  // The render + its R2 video are server-persisted, but the arrangement +
+  // statement live only in React state. Restore them on re-entry so navigating
+  // away doesn't lose work.
+  const draftKey = props.seasonId ? `oxxovo_compose_draft_${props.seasonId}` : null
+  const restored = useRef(false)
+
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    type Edl = { jobId: string; startMs: number; endMs: number }
+    const edlEq = (a: Edl[], b: Edl[]) =>
+      a.length === b.length &&
+      a.every((s, i) => s.jobId === b[i].jobId && s.startMs === b[i].startMs && s.endMs === b[i].endMs)
+
+    // Read the local draft (same-browser latest edits).
+    let draftSegs: Edl[] | null = null
+    let draftAp: Partial<ComposeApplicant> | null = null
+    if (draftKey && typeof window !== 'undefined') {
+      try {
+        const raw = window.localStorage.getItem(draftKey)
+        if (raw) {
+          const d = JSON.parse(raw) as { segments?: Edl[]; ap?: Partial<ComposeApplicant> }
+          draftSegs = Array.isArray(d.segments) ? d.segments : null
+          draftAp = d.ap ?? null
+        }
+      } catch {
+        /* malformed draft -- ignore */
+      }
+    }
+
+    // Arrangement: the local draft wins (it reflects the newest same-browser
+    // edits); the server render's EDL is the fallback (cleared storage / other
+    // device). Drop segments whose source clip no longer exists.
+    const rr = props.resumeRender
+    const sourceEdl: Edl[] = draftSegs && draftSegs.length ? draftSegs : rr?.edl ?? []
+    const rebuilt = sourceEdl
+      .filter((e) => clipById.has(e.jobId))
+      .map((e) => ({ uid: nextUid(), jobId: e.jobId, startMs: e.startMs, endMs: e.endMs }))
+    if (rebuilt.length) setSegments(rebuilt)
+
+    // Bind a ready server render as directly submittable ONLY when it matches the
+    // restored arrangement -- otherwise the user edited after rendering and must
+    // re-render so the submitted composition matches what they see.
+    if (rr && rr.status === 'ready' && rr.videoUrl) {
+      const chosen = rebuilt.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
+      if (edlEq(chosen, rr.edl)) {
+        setRenderId(rr.id)
+        setRenderState({ status: 'ready', videoUrl: rr.videoUrl, totalSeconds: rr.totalSeconds })
+      }
+    }
+
+    // Statement/name/country from the draft (never stored server-side).
+    // Agreements are NOT restored -- re-affirmed every submission.
+    if (draftAp) {
+      setAp((a) => ({
+        ...a,
+        creatorName: draftAp?.creatorName ?? a.creatorName,
+        creatorStatement: draftAp?.creatorStatement ?? a.creatorStatement,
+        country: draftAp?.country ?? a.country,
+      }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Persist arrangement + statement draft (not agreements) on change. Skip the
+  // empty state so the initial mount does not clobber an existing draft before
+  // the restore effect above has hydrated it.
+  useEffect(() => {
+    if (!draftKey || typeof window === 'undefined' || submitDone) return
+    const empty =
+      segments.length === 0 && !ap.creatorName.trim() && !ap.creatorStatement.trim() && !(ap.country ?? '').trim()
+    if (empty) return
+    try {
+      window.localStorage.setItem(
+        draftKey,
+        JSON.stringify({
+          segments: segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs })),
+          ap: { creatorName: ap.creatorName, creatorStatement: ap.creatorStatement, country: ap.country },
+        }),
+      )
+    } catch {
+      /* quota / disabled storage -- non-fatal */
+    }
+  }, [segments, ap, submitDone, draftKey])
+
+  // A successful submission is permanent -> drop the draft.
+  useEffect(() => {
+    if (submitDone && draftKey && typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(draftKey)
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [submitDone, draftKey])
 
   const totalMs = segments.reduce((a, s) => a + (s.endMs - s.startMs), 0)
   const minMs = props.minSeconds * 1000

@@ -270,8 +270,30 @@ export type ComposeSubmitCtx = {
   statementMax: number
 }
 
+// The participant's latest non-terminal render for this season, so the editor
+// can restore it on re-entry (the render + its R2 video are server-persisted;
+// the editor's client state is not). 'ready' means it is directly submittable.
+export type ResumeRender = {
+  id: string
+  status: 'queued' | 'rendering' | 'uploading' | 'ready'
+  videoUrl: string | null
+  totalSeconds: number
+  edl: EdlSegment[]
+}
+
 export type LoadComposeResult =
-  | { ok: true; data: { clips: ComposeClip[]; minSeconds: number; maxSeconds: number; maxClips: number; submit: ComposeSubmitCtx } }
+  | {
+      ok: true
+      data: {
+        seasonId: string
+        clips: ComposeClip[]
+        minSeconds: number
+        maxSeconds: number
+        maxClips: number
+        submit: ComposeSubmitCtx
+        resumeRender: ResumeRender | null
+      }
+    }
   | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
 
 export async function loadComposeState(token: string): Promise<LoadComposeResult> {
@@ -317,9 +339,25 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         : appRow.studio_application_submitted_at)
     )
 
+    // Resume support: the latest render that is neither submitted nor failed, so
+    // a participant who navigated away can pick up where they left off instead of
+    // re-arranging + re-rendering. listUserRenders is ordered newest-first.
+    const renders = await listUserRenders(auth.userId, season.id)
+    const resumable = renders.find((r) => r.status !== 'submitted' && r.status !== 'failed')
+    const resumeRender = resumable
+      ? {
+          id: resumable.id,
+          status: resumable.status as ResumeRender['status'],
+          videoUrl: resumable.video_url,
+          totalSeconds: Number(resumable.total_duration_seconds ?? 0),
+          edl: (resumable.edl ?? []) as EdlSegment[],
+        }
+      : null
+
     return {
       ok: true,
       data: {
+        seasonId: season.id,
         clips,
         minSeconds: Number(s?.studio_compose_min_seconds ?? 15),
         maxSeconds: Number(s?.studio_compose_max_seconds ?? 30),
@@ -333,6 +371,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
           statementMin: STATEMENT_MIN,
           statementMax: STATEMENT_MAX,
         },
+        resumeRender,
       },
     }
   } catch (e) {

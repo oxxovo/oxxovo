@@ -15,6 +15,7 @@ import {
   pollRenderAction,
   submitRenderAction,
   type ComposeClip,
+  type ResumeRender,
 } from '../actions'
 import type { EdlSegment } from '@/lib/studio'
 
@@ -28,11 +29,13 @@ export default function ComposePage() {
   const lang = useAdminLang()
   const t = T[lang]
   const [data, setData] = useState<{
+    seasonId: string
     clips: ComposeClip[]
     minSeconds: number
     maxSeconds: number
     maxClips: number
     submit: ComposeSubmitCtx
+    resumeRender: ResumeRender | null
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -86,11 +89,13 @@ export default function ComposePage() {
         ) : (
           <ComposeEditor
             lang={lang}
+            seasonId={data.seasonId}
             clips={data.clips}
             minSeconds={data.minSeconds}
             maxSeconds={data.maxSeconds}
             maxClips={data.maxClips}
             submitCtx={data.submit}
+            resumeRender={data.resumeRender}
             onRender={(edl: EdlSegment[]) => createRenderAction(token, edl)}
             pollRender={(renderId: string) => pollRenderAction(token, renderId)}
             onSubmit={(renderId: string, applicant?: ComposeApplicant) =>
