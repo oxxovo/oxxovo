@@ -17,6 +17,7 @@ import {
 } from '@/lib/seasons'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { getSessionUser } from '@/app/_actions/auth'
+import { getStudioApplicationFlag } from '@/app/apply/actions'
 import { getMembershipLandingData } from '@/app/membership/actions'
 import type { MembershipLandingData } from '@/app/membership/types'
 import { formatFooterStatusLine } from '@/lib/ip-info'
@@ -34,9 +35,15 @@ export function LandingView() {
   const [season, setSeason] = useState<Season | null>(null)
   const [membership, setMembership] = useState<MembershipLandingData | null>(null)
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(ZERO_TIME)
+  // When the studio funnel is active (session6 on + studio application round),
+  // a direct "Studio" link lets returning participants skip the /apply intro.
+  const [studioFunnel, setStudioFunnel] = useState(false)
 
   useEffect(() => {
-    getCurrentSeason().then(setSeason)
+    getCurrentSeason().then((s) => {
+      setSeason(s)
+      if (s) getStudioApplicationFlag(s.id).then(setStudioFunnel).catch(() => setStudioFunnel(false))
+    })
     getMembershipLandingData().then(setMembership).catch(() => setMembership(null))
   }, [])
 
@@ -112,6 +119,9 @@ export function LandingView() {
 
         <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
           <a className="transition hover:text-[#b66cff]" href="/tournament">Tournament Info</a>
+          {studioFunnel && (
+            <a className="transition hover:text-[#b66cff]" href="/studio">Studio</a>
+          )}
           {WATCH_NAV_ENABLED && (
             <a className="transition hover:text-[#b66cff]" href="/watch">Watch</a>
           )}
@@ -130,6 +140,14 @@ export function LandingView() {
               >
                 Hi, {user.email.split('@')[0]}
               </a>
+              {studioFunnel && (
+                <a
+                  href="/studio"
+                  className="rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.08] px-5 py-2.5 text-[14px] font-bold text-white/90 transition hover:bg-[#8b22ff]/[.16] max-md:hidden"
+                >
+                  Studio
+                </a>
+              )}
               <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href={cta.href}>
                 {cta.label}
               </a>

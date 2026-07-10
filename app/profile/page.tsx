@@ -12,6 +12,7 @@ import { NicknameCard } from './NicknameCard'
 import { ScoringCard } from './ScoringCard'
 import { MainRoundCard, type MockOverrides } from './MainRoundCard'
 import { getSeasonById, type Season } from '@/lib/seasons'
+import { getStudioApplicationFlag } from '@/app/apply/actions'
 import { loadSystemMessages, type SystemMessages } from '@/lib/system-messages'
 import {
   loadProfileData,
@@ -66,6 +67,7 @@ function ProfilePageInner() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [messages, setMessages] = useState<SystemMessages | null>(null)
   const [season, setSeason] = useState<Season | null>(null)
+  const [studioFunnel, setStudioFunnel] = useState(false)
   const [membership, setMembership] = useState<MembershipDashboard | null>(null)
   const mockOverrides = useMockOverrides()
 
@@ -127,6 +129,11 @@ function ProfilePageInner() {
     getSeasonById(currentSeasonId).then((s) => {
       if (!cancelled) setSeason(s)
     })
+    // Studio funnel flag -> show a direct "Enter Studio" link for returning
+    // participants (session6 on + studio application round).
+    getStudioApplicationFlag(currentSeasonId)
+      .then((f) => { if (!cancelled) setStudioFunnel(f) })
+      .catch(() => { if (!cancelled) setStudioFunnel(false) })
     return () => {
       cancelled = true
     }
@@ -180,6 +187,16 @@ function ProfilePageInner() {
 
       <section className="max-w-3xl mx-auto px-6 py-12">
         <ProfileHero email={data.email} />
+
+        {studioFunnel && (
+          <a
+            href="/studio"
+            className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.08] px-5 py-4 transition hover:bg-[#8b22ff]/[.16]"
+          >
+            <span className="text-sm font-semibold text-white/90">{lang === 'ko' ? 'OXXOVO Studio에서 제작·제출하기' : 'Create & submit in OXXOVO Studio'}</span>
+            <span className="shrink-0 text-sm font-extrabold text-[#b66cff]">Studio →</span>
+          </a>
+        )}
 
         {membership?.show && (
           <MembershipCard dashboard={membership} onReload={reloadMembership} />
