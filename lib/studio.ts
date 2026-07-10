@@ -9,7 +9,8 @@ import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
 import { moderateSubmission } from '@/lib/moderation'
-import { upsertCreatorProfile } from '@/lib/profile'
+import { getCreatorProfile, upsertCreatorProfile } from '@/lib/profile'
+import { getDisplayName } from '@/lib/nickname'
 import {
   buildCryptoBind,
   verifyCryptoBind,
@@ -813,15 +814,25 @@ export async function submitRender(args: {
     if (effectiveRound !== 'application') return { ok: false, reason: 'no_application' }
     const info = args.applicant
     if (!info) return { ok: false, reason: 'application_info_required' }
-    const name = (info.creatorName ?? '').trim()
     const statement = (info.creatorStatement ?? '').trim()
-    if (!name) return { ok: false, reason: 'name_required' }
     if (statement.length < STATEMENT_MIN || statement.length > STATEMENT_MAX) {
       return { ok: false, reason: 'bad_statement' }
     }
     if (!info.agreedRules || !info.agreedPrivacy || !info.agreedIntegrity) {
       return { ok: false, reason: 'agreements_required' }
     }
+
+    // Identity is account-level, resolved server-side (the compose form no longer
+    // asks for name/country -- profile/work split, option A). A "real" name is a
+    // form value (legacy/other callers) or the saved profile name; the account
+    // nickname is the fallback for the entry snapshot so creator_name is never
+    // empty and matches what Watch displays. We deliberately do NOT persist the
+    // nickname fallback back into profiles.creator_name (that column stays a real
+    // name or null, never an auto-generated nickname).
+    const profile = await getCreatorProfile(args.userId)
+    const providedName = (info.creatorName ?? '').trim() || profile.creatorName
+    const name = providedName || (await getDisplayName(args.userId))
+    const country = info.country?.trim() || profile.country || null
 
     // S-1/S-2: same gates as POST /api/apply -- window + capacity/waitlist split.
     const season = await getSeasonById(args.seasonId)
@@ -844,7 +855,7 @@ export async function submitRender(args: {
       email,
       creator_name: name,
       creator_statement: statement,
-      country: info.country?.trim() || null,
+      country,
       channel_url: info.channelUrl?.trim() || null,
       ai_service: 'OXXOVO Studio',
       free_entry_url: render.video_url,
@@ -863,7 +874,7 @@ export async function submitRender(args: {
     if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
     // Mirror account-level identity to profiles for next-submission prefill
     // (profile/work split). Non-fatal: genesis already has the snapshot.
-    await upsertCreatorProfile(args.userId, { creatorName: name, country: info.country }).catch(() => {})
+    await upsertCreatorProfile(args.userId, { creatorName: providedName ?? undefined, country }).catch(() => {})
   } else if (effectiveRound === 'main') {
     // 7b-main. Mirror saveMainRoundSubmission EXACTLY: 'selected' gate via
     // canSubmitMainRound, then a selected -> main_round_submitted CAS transition.

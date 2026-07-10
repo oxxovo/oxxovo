@@ -65,9 +65,9 @@ export type ComposeEditorProps = {
   maxClips: number
   demo?: boolean
   resumeRender?: ComposeResumeRender | null
-  // Account-level identity prefill (profile/work split) -- used for name/country
-  // when there is no local draft; consents are never prefilled.
-  profile?: { creatorName: string | null; country: string | null }
+  // Account nickname the entry publishes as (option A: no name/country fields;
+  // identity is the account, shown as a notice and editable in /profile).
+  nickname?: string
   onRender: (
     edl: { jobId: string; startMs: number; endMs: number }[],
   ) => Promise<{ ok: true; renderId: string } | { ok: false; error: string }>
@@ -131,7 +131,8 @@ const DICT = {
     submitted_ok: '제출 완료 — 채점 대기 중입니다. 제출 후에는 수정할 수 없습니다.',
     already_submitted: '이번 라운드에 이미 제출했습니다.',
     submit_warn: '제출하면 이 완성본이 채점에 들어가며 되돌릴 수 없습니다.',
-    need_info: '예선은 이 제출이 곧 참가 신청입니다 — 아래 정보를 입력하세요.',
+    need_info: '예선은 이 제출이 곧 참가 신청입니다 — 작품 설명과 동의만 입력하세요.',
+    publish_as: (n: string) => `이 작품은 '${n}'(으)로 공개됩니다 — 이름은 프로필에서 변경할 수 있어요.`,
     f_name: '창작자 이름',
     f_statement: (n: number, m: number) => `작품 설명 (${n}~${m}자)`,
     f_country: '국가 (선택)',
@@ -190,7 +191,8 @@ const DICT = {
     submitted_ok: 'Submitted — awaiting scoring. Submissions cannot be edited.',
     already_submitted: 'Already submitted for this round.',
     submit_warn: 'Submitting enters this final into scoring and cannot be undone.',
-    need_info: 'In the application round this submission is your entry — fill in your info below.',
+    need_info: 'In the application round this submission is your entry — just add your statement and agree below.',
+    publish_as: (n: string) => `This entry will be published as '${n}' — you can change your name in your profile.`,
     f_name: 'Creator name',
     f_statement: (n: number, m: number) => `Creator statement (${n}–${m} chars)`,
     f_country: 'Country (optional)',
@@ -286,15 +288,12 @@ export default function ComposeEditor(props: ComposeEditorProps) {
       }
     }
 
-    // Statement/name/country: the local draft wins, then the account profile
-    // prefills name/country (profile/work split) when the draft has none.
+    // Statement is restored from the local draft (name/country are no longer
+    // collected here -- option A resolves identity server-side from the account).
     // Agreements are NOT restored -- re-affirmed every submission.
-    setAp((a) => ({
-      ...a,
-      creatorName: draftAp?.creatorName ?? props.profile?.creatorName ?? a.creatorName,
-      creatorStatement: draftAp?.creatorStatement ?? a.creatorStatement,
-      country: draftAp?.country ?? props.profile?.country ?? a.country,
-    }))
+    if (draftAp?.creatorStatement) {
+      setAp((a) => ({ ...a, creatorStatement: draftAp.creatorStatement ?? a.creatorStatement }))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -459,10 +458,11 @@ export default function ComposeEditor(props: ComposeEditorProps) {
   const sMin = props.submitCtx?.statementMin ?? 150
   const sMax = props.submitCtx?.statementMax ?? 250
   const stmtLen = ap.creatorStatement.trim().length
+  // Name/country are resolved server-side from the account (option A); the form
+  // only requires the statement + the three consents.
   const infoValid =
     !needInfo ||
-    (ap.creatorName.trim().length > 0 &&
-      stmtLen >= sMin &&
+    (stmtLen >= sMin &&
       stmtLen <= sMax &&
       ap.agreedRules &&
       ap.agreedPrivacy &&
@@ -474,12 +474,12 @@ export default function ComposeEditor(props: ComposeEditorProps) {
     if (!props.onSubmit || !renderId) return
     setSubmitErr(null)
     setSubmitting(true)
+    // Option A: name/country are omitted -- the server resolves them from the
+    // account (profile -> nickname). Only statement + consents come from here.
     const applicant: ComposeApplicant | undefined = needInfo
       ? {
-          creatorName: ap.creatorName.trim(),
+          creatorName: '',
           creatorStatement: ap.creatorStatement.trim(),
-          country: ap.country?.trim() || undefined,
-          channelUrl: ap.channelUrl?.trim() || undefined,
           agreedRules: ap.agreedRules,
           agreedPrivacy: ap.agreedPrivacy,
           agreedIntegrity: ap.agreedIntegrity,
@@ -726,14 +726,14 @@ export default function ComposeEditor(props: ComposeEditorProps) {
                     {needInfo && (
                       <div className="space-y-2.5">
                         <p className="text-[11px] text-[#d9b8ff]">{t.need_info}</p>
-                        <label className="block">
-                          <span className="text-[10px] uppercase tracking-wider text-white/70">{t.f_name}</span>
-                          <input
-                            value={ap.creatorName}
-                            onChange={(e) => setAp((a) => ({ ...a, creatorName: e.target.value }))}
-                            className="mt-1 w-full rounded border border-white/20 bg-[#070610] px-3 py-2 text-sm text-[#ededed] focus:border-[#8b22ff] focus:outline-none"
-                          />
-                        </label>
+                        {/* Option A: identity is the account -- no name/country
+                            fields here. The entry publishes as the account
+                            nickname (resolved server-side), editable in /profile. */}
+                        {props.nickname && (
+                          <p className="rounded border border-white/10 bg-white/[.03] px-3 py-2 text-[11px] text-white/65">
+                            {t.publish_as(props.nickname)}
+                          </p>
+                        )}
                         <label className="block">
                           <span className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/70">
                             <span>{t.f_statement(sMin, sMax)}</span>
@@ -746,16 +746,6 @@ export default function ComposeEditor(props: ComposeEditorProps) {
                             onChange={(e) => setAp((a) => ({ ...a, creatorStatement: e.target.value }))}
                             rows={3}
                             className="mt-1 w-full rounded border border-white/20 bg-[#070610] px-3 py-2 text-sm text-[#ededed] focus:border-[#8b22ff] focus:outline-none"
-                          />
-                        </label>
-                        {/* Studio compose is an in-platform submission -- no external
-                            channel URL (that field belongs to the /apply YouTube path). */}
-                        <label className="block">
-                          <span className="text-[10px] uppercase tracking-wider text-white/70">{t.f_country}</span>
-                          <input
-                            value={ap.country}
-                            onChange={(e) => setAp((a) => ({ ...a, country: e.target.value }))}
-                            className="mt-1 w-full rounded border border-white/20 bg-[#070610] px-3 py-2 text-sm text-[#ededed] placeholder-white/45 focus:border-[#8b22ff] focus:outline-none"
                           />
                         </label>
                         {([

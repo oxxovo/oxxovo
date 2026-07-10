@@ -30,6 +30,7 @@ import {
 import { getBalance, getStudioPricing, getStudioPurchaseConfig } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
 import { getCreatorProfile } from '@/lib/profile'
+import { getDisplayName } from '@/lib/nickname'
 
 export type PurchaseOptions = { enabled: boolean; packUsd: number[]; creditUsdValue: number }
 
@@ -306,9 +307,9 @@ export type LoadComposeResult =
         maxClips: number
         submit: ComposeSubmitCtx
         resumeRender: ResumeRender | null
-        // Account-level identity prefilled into the compose applicant form
-        // (profile/work split). Consents are not prefilled.
-        profile: { creatorName: string | null; country: string | null }
+        // Account nickname the entry will publish as (option A: the compose form
+        // no longer asks for a name; identity is the account, editable in /profile).
+        nickname: string
       }
     }
   | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
@@ -340,16 +341,18 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     // Submission context (round, application presence, already-submitted).
     const cfg = await getSeasonStudioConfig(season.id)
     const effectiveRound = resolveEffectiveRound(cfg)
-    const [{ data: appRow }, creatorProfile] = await Promise.all([
+    const [{ data: appRow }, nickname] = await Promise.all([
       admin
         .from('genesis_applications')
-        .select('id, studio_application_submitted_at, main_round_submitted_at, creator_name, country')
+        .select('id, studio_application_submitted_at, main_round_submitted_at')
         .eq('season_id', season.id)
         .ilike('email', auth.email)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      getCreatorProfile(auth.userId),
+      // The compose form no longer collects name/country (option A); the account
+      // nickname is what the entry publishes as, shown in a notice.
+      getDisplayName(auth.userId),
     ])
     const hasApplication = !!appRow
     const alreadySubmitted = !!(
@@ -391,11 +394,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
           statementMin: STATEMENT_MIN,
           statementMax: STATEMENT_MAX,
         },
-        profile: {
-          creatorName:
-            creatorProfile.creatorName ?? (appRow?.creator_name as string | null)?.trim() ?? null,
-          country: creatorProfile.country ?? (appRow?.country as string | null)?.trim() ?? null,
-        },
+        nickname,
         resumeRender,
       },
     }

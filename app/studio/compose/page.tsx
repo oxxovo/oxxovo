@@ -36,7 +36,7 @@ export default function ComposePage() {
     maxClips: number
     submit: ComposeSubmitCtx
     resumeRender: ResumeRender | null
-    profile: { creatorName: string | null; country: string | null }
+    nickname: string
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -97,7 +97,7 @@ export default function ComposePage() {
             maxClips={data.maxClips}
             submitCtx={data.submit}
             resumeRender={data.resumeRender}
-            profile={data.profile}
+            nickname={data.nickname}
             onRender={(edl: EdlSegment[]) => createRenderAction(token, edl)}
             pollRender={(renderId: string) => pollRenderAction(token, renderId)}
             onSubmit={(renderId: string, applicant?: ComposeApplicant) =>
