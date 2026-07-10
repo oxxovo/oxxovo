@@ -282,7 +282,11 @@ export default function StudioPage() {
         <BuyCredits token={token} />
 
 
-        {!state.hasApplication && (
+        {/* In the application round the inline ApplicantForm below IS the entry
+            (studio is in-platform, no external URL), so the "apply via /apply"
+            banner would misdirect. Show it only outside that round, where the
+            inline form does not apply. */}
+        {!state.hasApplication && !needsApplicantInfo && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
             <span className="text-sm text-amber-200">{t.need_apply}</span>
             <a href="/apply" className="shrink-0 text-xs font-bold text-amber-200 underline hover:text-amber-100">
