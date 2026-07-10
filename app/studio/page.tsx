@@ -197,8 +197,17 @@ export default function StudioPage() {
     let cancelled = false
     loadStudioState(token).then((res) => {
       if (cancelled) return
-      if (res.ok) setState(res.data)
-      else if (res.error === 'invalid_token') clearLocalUser()
+      if (res.ok) {
+        setState(res.data)
+        // Prefill account-level identity (name/country) from the profile; fill
+        // only blanks so in-progress edits are never clobbered. Consents stay
+        // per-submission and are not prefilled.
+        setApplicant((a) => ({
+          ...a,
+          name: a.name || res.data.profile.creatorName || '',
+          country: a.country || res.data.profile.country || '',
+        }))
+      } else if (res.error === 'invalid_token') clearLocalUser()
       else setLoadError(res.error)
     })
     return () => {

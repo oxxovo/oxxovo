@@ -13,6 +13,7 @@ import { checkApplyGate } from '@/lib/membership'
 import { sendApplicationReceived, sendWaitlisted } from '@/lib/email/send'
 import { parseVideoUrl } from '@/lib/video-url'
 import { moderateSubmission } from '@/lib/moderation'
+import { upsertCreatorProfile } from '@/lib/profile'
 
 const STATEMENT_MIN = 150
 const STATEMENT_MAX = 250
@@ -168,6 +169,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
     }
 
     const insertedId = inserted?.id ?? null
+
+    // Mirror account-level identity to profiles so future submissions prefill it
+    // (profile/work split). Non-fatal: genesis already holds the snapshot.
+    await upsertCreatorProfile(user.id, { creatorName: body.creator_name, country: body.country }).catch(() => {})
 
     // AI pre-moderation (Patent 3): scan the public text (title + description +
     // statement) + the YouTube thumbnail (the external video itself can't be

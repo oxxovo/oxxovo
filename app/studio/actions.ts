@@ -29,6 +29,7 @@ import {
 } from '@/lib/studio'
 import { getBalance, getStudioPricing, getStudioPurchaseConfig } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
+import { getCreatorProfile } from '@/lib/profile'
 
 export type PurchaseOptions = { enabled: boolean; packUsd: number[]; creditUsdValue: number }
 
@@ -72,6 +73,10 @@ export type StudioState = {
   // When the season runs in compose mode, clips are building blocks that get
   // stitched into one final in /studio/compose. Drives the compose entry CTA.
   composeEnabled: boolean
+  // Account-level identity prefilled into the applicant form (profile/work
+  // split) so name/country are not re-typed each submission. Consents are not
+  // prefilled -- they stay per-submission.
+  profile: { creatorName: string | null; country: string | null }
 }
 
 export type LoadStudioResult =
@@ -87,13 +92,14 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
     const season = await getCurrentSeason()
     if (!season) return { ok: false, error: 'no_season' }
 
-    const [cfg, models, balance, jobs, theme, pricing] = await Promise.all([
+    const [cfg, models, balance, jobs, theme, pricing, creatorProfile] = await Promise.all([
       getSeasonStudioConfig(season.id),
       getActiveModels(),
       getBalance(auth.userId),
       listUserJobs(auth.userId, season.id),
       getRevealedTheme(season.id),
       getStudioPricing(),
+      getCreatorProfile(auth.userId),
     ])
 
     // The round is decided server-side from the schedule (client never chooses).
@@ -105,7 +111,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
     const admin = createSupabaseAdmin()
     const { data: appRow } = await admin
       .from('genesis_applications')
-      .select('id, studio_application_submitted_at, main_round_submitted_at')
+      .select('id, studio_application_submitted_at, main_round_submitted_at, creator_name, country')
       .eq('season_id', season.id)
       .ilike('email', auth.email)
       .order('created_at', { ascending: false })
@@ -118,6 +124,13 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
         ? appRow.main_round_submitted_at
         : appRow.studio_application_submitted_at)
     )
+
+    // Prefill priority: account profile first, then the latest application row
+    // (lazy source for creators who applied before the profile split).
+    const prefillName =
+      creatorProfile.creatorName ?? (appRow?.creator_name as string | null)?.trim() ?? null
+    const prefillCountry =
+      creatorProfile.country ?? (appRow?.country as string | null)?.trim() ?? null
 
     return {
       ok: true,
@@ -141,6 +154,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
         alreadySubmitted,
         pricing: { marginRate: pricing.marginRate, creditUsdValue: pricing.creditUsdValue },
         composeEnabled: cfg.studioComposeEnabled,
+        profile: { creatorName: prefillName, country: prefillCountry },
       },
     }
   } catch (e) {
@@ -292,6 +306,9 @@ export type LoadComposeResult =
         maxClips: number
         submit: ComposeSubmitCtx
         resumeRender: ResumeRender | null
+        // Account-level identity prefilled into the compose applicant form
+        // (profile/work split). Consents are not prefilled.
+        profile: { creatorName: string | null; country: string | null }
       }
     }
   | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
@@ -323,14 +340,17 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     // Submission context (round, application presence, already-submitted).
     const cfg = await getSeasonStudioConfig(season.id)
     const effectiveRound = resolveEffectiveRound(cfg)
-    const { data: appRow } = await admin
-      .from('genesis_applications')
-      .select('id, studio_application_submitted_at, main_round_submitted_at')
-      .eq('season_id', season.id)
-      .ilike('email', auth.email)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const [{ data: appRow }, creatorProfile] = await Promise.all([
+      admin
+        .from('genesis_applications')
+        .select('id, studio_application_submitted_at, main_round_submitted_at, creator_name, country')
+        .eq('season_id', season.id)
+        .ilike('email', auth.email)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      getCreatorProfile(auth.userId),
+    ])
     const hasApplication = !!appRow
     const alreadySubmitted = !!(
       appRow &&
@@ -370,6 +390,11 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
           needsApplicantInfo: effectiveRound === 'application' && !hasApplication,
           statementMin: STATEMENT_MIN,
           statementMax: STATEMENT_MAX,
+        },
+        profile: {
+          creatorName:
+            creatorProfile.creatorName ?? (appRow?.creator_name as string | null)?.trim() ?? null,
+          country: creatorProfile.country ?? (appRow?.country as string | null)?.trim() ?? null,
         },
         resumeRender,
       },

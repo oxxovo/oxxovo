@@ -65,6 +65,9 @@ export type ComposeEditorProps = {
   maxClips: number
   demo?: boolean
   resumeRender?: ComposeResumeRender | null
+  // Account-level identity prefill (profile/work split) -- used for name/country
+  // when there is no local draft; consents are never prefilled.
+  profile?: { creatorName: string | null; country: string | null }
   onRender: (
     edl: { jobId: string; startMs: number; endMs: number }[],
   ) => Promise<{ ok: true; renderId: string } | { ok: false; error: string }>
@@ -283,16 +286,15 @@ export default function ComposeEditor(props: ComposeEditorProps) {
       }
     }
 
-    // Statement/name/country from the draft (never stored server-side).
+    // Statement/name/country: the local draft wins, then the account profile
+    // prefills name/country (profile/work split) when the draft has none.
     // Agreements are NOT restored -- re-affirmed every submission.
-    if (draftAp) {
-      setAp((a) => ({
-        ...a,
-        creatorName: draftAp?.creatorName ?? a.creatorName,
-        creatorStatement: draftAp?.creatorStatement ?? a.creatorStatement,
-        country: draftAp?.country ?? a.country,
-      }))
-    }
+    setAp((a) => ({
+      ...a,
+      creatorName: draftAp?.creatorName ?? props.profile?.creatorName ?? a.creatorName,
+      creatorStatement: draftAp?.creatorStatement ?? a.creatorStatement,
+      country: draftAp?.country ?? props.profile?.country ?? a.country,
+    }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

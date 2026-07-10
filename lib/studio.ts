@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
 import { moderateSubmission } from '@/lib/moderation'
+import { upsertCreatorProfile } from '@/lib/profile'
 import {
   buildCryptoBind,
   verifyCryptoBind,
@@ -438,6 +439,9 @@ export async function submitGeneration(args: {
       studio_application_submitted_at: now,
     })
     if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
+    // Mirror account-level identity to profiles so the next submission prefills
+    // it (profile/work split). Non-fatal: genesis already has the snapshot.
+    await upsertCreatorProfile(args.userId, { creatorName: name, country: info.country }).catch(() => {})
     // Lock the job below (step 7).
   } else if (effectiveRound === 'main') {
     // 5b-main. Mirror saveMainRoundSubmission EXACTLY: 'selected' gate via
@@ -857,6 +861,9 @@ export async function submitRender(args: {
       studio_application_submitted_at: now,
     })
     if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
+    // Mirror account-level identity to profiles for next-submission prefill
+    // (profile/work split). Non-fatal: genesis already has the snapshot.
+    await upsertCreatorProfile(args.userId, { creatorName: name, country: info.country }).catch(() => {})
   } else if (effectiveRound === 'main') {
     // 7b-main. Mirror saveMainRoundSubmission EXACTLY: 'selected' gate via
     // canSubmitMainRound, then a selected -> main_round_submitted CAS transition.
