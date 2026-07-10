@@ -712,7 +712,7 @@ export async function submitRender(args: {
   const { data: render, error: rErr } = await admin
     .from('render_jobs')
     .select(
-      'id, user_id, season_id, status, video_url, total_duration_seconds, edl, source_job_ids, cryptobind_pid, cryptobind_tid, cryptobind_algo, cryptobind_render_signature, cryptobind_final_hash, cryptobind_final_signature',
+      'id, user_id, season_id, status, video_url, thumbnail_url, total_duration_seconds, edl, source_job_ids, cryptobind_pid, cryptobind_tid, cryptobind_algo, cryptobind_render_signature, cryptobind_final_hash, cryptobind_final_signature',
     )
     .eq('id', args.renderId)
     .single()
@@ -844,6 +844,7 @@ export async function submitRender(args: {
       channel_url: info.channelUrl?.trim() || null,
       ai_service: 'OXXOVO Studio',
       free_entry_url: render.video_url,
+      thumbnail_url: render.thumbnail_url,
       video_duration_seconds: durationInt,
       agreed_to_rules: true,
       agreed_to_privacy: true,
@@ -873,6 +874,7 @@ export async function submitRender(args: {
       .update({
         status: 'main_round_submitted',
         main_round_video_url: render.video_url,
+        thumbnail_url: render.thumbnail_url,
         main_round_submitted_at: now,
         studio_main_render_id: render.id,
       })
@@ -891,6 +893,7 @@ export async function submitRender(args: {
       .from('genesis_applications')
       .update({
         free_entry_url: render.video_url,
+        thumbnail_url: render.thumbnail_url,
         video_duration_seconds: durationInt,
         ai_service: 'OXXOVO Studio',
         studio_application_render_id: render.id,

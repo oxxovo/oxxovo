@@ -94,6 +94,7 @@ type AppRow = {
   staff_pick: boolean | null
   free_entry_url: string | null
   main_round_video_url: string | null
+  thumbnail_url: string | null
   created_at: string | null
   studio_application_submitted_at: string | null
   main_round_submitted_at: string | null
@@ -149,7 +150,9 @@ function toWatchVideo(
     staffPick: !!row.staff_pick,
     awarded: row.status === 'awarded',
     submittedAt,
-    thumbnailUrl: deriveThumbnail(videoUrl),
+    // Stored poster (studio R2 renders) wins; fall back to a derived thumbnail
+    // for external videos (YouTube), else null -> gradient tile in the UI.
+    thumbnailUrl: row.thumbnail_url ?? deriveThumbnail(videoUrl),
     likeCount: counts.likes,
     viewCount: counts.views,
     commentCount: counts.comments,
@@ -198,7 +201,7 @@ export async function getWatchVideos(
   let q = admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
+      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
   if (opt.seasonId) q = q.eq('season_id', opt.seasonId)
 
@@ -436,7 +439,7 @@ export async function getWatchVideo(
   const { data, error } = await admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
+      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
     .eq('id', applicationId)
     .maybeSingle()
