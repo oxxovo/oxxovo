@@ -95,6 +95,8 @@ type AppRow = {
   free_entry_url: string | null
   main_round_video_url: string | null
   thumbnail_url: string | null
+  studio_application_render_id: string | null
+  studio_main_render_id: string | null
   created_at: string | null
   studio_application_submitted_at: string | null
   main_round_submitted_at: string | null
@@ -121,13 +123,44 @@ function deriveThumbnail(url: string): string | null {
   return null
 }
 
+// Batch-load each round's render poster so the application card and the main
+// card show their OWN frame -- the single genesis_applications.thumbnail_url
+// column is last-write-wins across the two rounds. Returns renderId ->
+// thumbnail_url (value may be null when the render has no poster yet). A render
+// id absent from the map (deleted row) lets the caller fall back to genesis.
+async function loadRenderThumbnails(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  renderIds: (string | null)[],
+): Promise<Map<string, string | null>> {
+  const ids = [...new Set(renderIds.filter((x): x is string => !!x))]
+  if (!ids.length) return new Map()
+  const { data, error } = await admin.from('render_jobs').select('id, thumbnail_url').in('id', ids)
+  if (error) {
+    console.error('[watch] render thumbnail load failed:', error.message)
+    return new Map()
+  }
+  return new Map((data ?? []).map((r) => [r.id as string, (r.thumbnail_url as string | null) ?? null]))
+}
+
+// Resolve THIS round's render poster: undefined when no render applies (external
+// entry or the render row is gone) so toWatchVideo uses its fallback chain; the
+// render's thumbnail_url (possibly null) when the render is known, so the round
+// is authoritative and never shows the other round's poster.
+function roundThumb(
+  renderThumbs: Map<string, string | null>,
+  renderId: string | null,
+): string | null | undefined {
+  if (!renderId || !renderThumbs.has(renderId)) return undefined
+  return renderThumbs.get(renderId) ?? null
+}
+
 function toWatchVideo(
   row: AppRow,
   round: WatchRound,
   videoUrl: string,
   counts: { likes: number; views: number; comments: number },
   displayName?: string,
-  extra: { publicScore?: number | null; scored?: boolean; voteCount?: number } = {},
+  extra: { publicScore?: number | null; scored?: boolean; voteCount?: number; thumbnailUrl?: string | null } = {},
 ): WatchVideo {
   const submittedAt =
     round === 'application'
@@ -150,9 +183,16 @@ function toWatchVideo(
     staffPick: !!row.staff_pick,
     awarded: row.status === 'awarded',
     submittedAt,
-    // Stored poster (studio R2 renders) wins; fall back to a derived thumbnail
-    // for external videos (YouTube), else null -> gradient tile in the UI.
-    thumbnailUrl: row.thumbnail_url ?? deriveThumbnail(videoUrl),
+    // Per-round render poster: when THIS round's render is known (extra.
+    // thumbnailUrl is defined, even if null) it is authoritative so the
+    // application and main cards each show their own frame and never bleed the
+    // other round's poster. When it is not applicable (undefined -- external
+    // YouTube entry, or the render row is gone) fall back to the single genesis
+    // column, then a derived thumbnail, else null -> gradient tile.
+    thumbnailUrl:
+      extra.thumbnailUrl !== undefined
+        ? extra.thumbnailUrl
+        : row.thumbnail_url ?? deriveThumbnail(videoUrl),
     likeCount: counts.likes,
     viewCount: counts.views,
     commentCount: counts.comments,
@@ -201,7 +241,7 @@ export async function getWatchVideos(
   let q = admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
+      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, studio_application_render_id, studio_main_render_id, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
   if (opt.seasonId) q = q.eq('season_id', opt.seasonId)
 
@@ -243,6 +283,10 @@ export async function getWatchVideos(
 
   const rows = (apps ?? []) as AppRow[]
   const names = await getDisplayNames(rows.map((r) => r.user_id))
+  const renderThumbs = await loadRenderThumbnails(
+    admin,
+    rows.flatMap((r) => [r.studio_application_render_id, r.studio_main_render_id]),
+  )
 
   const videos: WatchVideo[] = []
   for (const row of rows) {
@@ -252,6 +296,7 @@ export async function getWatchVideos(
       // Prelim: scored flips the 심사중 badge off, but the score itself is private.
       videos.push(toWatchVideo(row, 'application', row.free_entry_url.trim(), countsFor(row.id, 'application'), displayName, {
         scored: scoredKeys.has(`${row.id}:application`),
+        thumbnailUrl: roundThumb(renderThumbs, row.studio_application_render_id),
       }))
     }
     if (row.main_round_video_url?.trim()) {
@@ -259,6 +304,7 @@ export async function getWatchVideos(
         scored: scoredKeys.has(`${row.id}:main`),
         publicScore: mainScore.get(row.id) ?? null,
         voteCount: votes.get(`${row.id}:main`) ?? 0,
+        thumbnailUrl: roundThumb(renderThumbs, row.studio_main_render_id),
       }))
     }
   }
@@ -439,7 +485,7 @@ export async function getWatchVideo(
   const { data, error } = await admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
+      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, studio_application_render_id, studio_main_render_id, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
     .eq('id', applicationId)
     .maybeSingle()
@@ -472,6 +518,9 @@ export async function getWatchVideo(
       .eq('status', 'visible'),
   ])
 
+  const renderId = round === 'application' ? row.studio_application_render_id : row.studio_main_render_id
+  const renderThumbs = await loadRenderThumbnails(admin, [renderId])
+
   return toWatchVideo(
     row,
     round,
@@ -482,6 +531,7 @@ export async function getWatchVideo(
       comments: commentAgg.count ?? 0,
     },
     displayName,
+    { thumbnailUrl: roundThumb(renderThumbs, renderId) },
   )
 }
 
