@@ -52,11 +52,12 @@ export function ArenaBanner() {
 }
 
 // ── Hero ───────────────────────────────────────────────────────────────────
-// One contained box: on the left the live LIVE panel (LiveStatusBar, real DB
-// values), on the right the arena image kept at its own size (not shrunk into a
-// thumbnail), and a single context line beneath -- "Current Competition — Season
-// N", the round note, and the free "Join to vote" CTA (TK hero layout,
-// 2026-07-10). All live state lives in the panel, so nothing is duplicated.
+// The arena image runs FULL-WIDTH and uncropped (its baked-in scoreboards --
+// REAL COMPETITION / TRIPLE-AI VERIFIED -- logo, and silhouette all stay
+// visible), with the live LIVE panel (LiveStatusBar) overlaid on its darker
+// left third. A single context line sits beneath -- "Current Competition —
+// Season N", the round note, and the free "Join to vote" CTA (TK hero layout,
+// 2026-07-11). All live state lives in the panel; the image is pure art.
 export function ArenaHero({
   seasonNumber,
   roundName,
@@ -74,33 +75,40 @@ export function ArenaHero({
   isAccepting: boolean
   judging: JudgingProgress
 }) {
+  const panel = (
+    <LiveStatusBar
+      seasonNumber={seasonNumber}
+      roundName={roundName}
+      seasonId={seasonId}
+      initialStats={stats}
+      closeAtISO={closeAtISO}
+      isAccepting={isAccepting}
+      initialJudging={judging}
+    />
+  )
   return (
-    <section className="mb-6 rounded-2xl border border-white/10 bg-[#0d0716] p-5">
-      <div className="flex flex-col gap-[18px] md:flex-row md:items-stretch">
-        {/* Left: live LIVE panel */}
-        <div className="md:flex-1">
-          <LiveStatusBar
-            seasonNumber={seasonNumber}
-            roundName={roundName}
-            seasonId={seasonId}
-            initialStats={stats}
-            closeAtISO={closeAtISO}
-            isAccepting={isAccepting}
-            initialJudging={judging}
-          />
-        </div>
-
-        {/* Right: the arena image IS the right area -- no frame, no padding, no
-            backdrop. It fills the column (object-cover) and its height matches the
-            left LIVE panel (md:items-stretch on the row). Rounded corners only.
-            Mobile: a fixed banner height; desktop: stretches to the panel. */}
-        <div className="relative h-56 overflow-hidden rounded-xl md:h-auto md:flex-[1.7]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/hero_bg_8final.png" alt="OXXOVO arena" className="absolute inset-0 h-full w-full object-cover" />
+    <section className="mb-6">
+      {/* Desktop: full-width arena image (natural aspect, never cropped) with the
+          LIVE panel overlaid on its darker left third. */}
+      <div className="relative hidden overflow-hidden rounded-2xl md:block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/hero_bg_8final.png" alt="OXXOVO arena" className="block w-full" />
+        <div className="absolute left-[3.5%] top-1/2 w-[34%] max-w-[380px] -translate-y-1/2">
+          {panel}
         </div>
       </div>
 
-      {/* Bottom: one context line + the free voting CTA */}
+      {/* Mobile: the portrait-friendly image on top (uncropped), LIVE panel below
+          (overlaying a small phone image would be too cramped). */}
+      <div className="md:hidden">
+        <div className="overflow-hidden rounded-2xl">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/hero_bg_8final_mobile.png" alt="OXXOVO arena" className="block w-full" />
+        </div>
+        <div className="mt-4">{panel}</div>
+      </div>
+
+      {/* One context line + the free voting CTA, beneath the image. */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-4">
         <div className="min-w-0">
           <p className="text-[14px] font-semibold text-[#e7e0f5]">Current Competition — Season {seasonNumber}</p>
