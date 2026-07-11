@@ -276,10 +276,10 @@ export function LatestEntries({
             >
               <div className="relative aspect-video w-full overflow-hidden">
                 <Thumb v={v} />
-                {/* Status badge (top-left) + the matching centerpiece: a big
-                    verified score, the MAIN ROUND label while voting, or a pending
-                    ring while awaiting Triple-AI. All real, stage-driven. No Staff
-                    Pick / Featured badges (the platform never promotes entries). */}
+                {/* Status badge (top-left) + centerpiece: the MAIN ROUND label
+                    while voting, or a pending ring while awaiting Triple-AI.
+                    Verified cards keep the poster clean (score in badge + footer).
+                    No Staff Pick / Featured badges (never promotes entries). */}
                 <CardBadge v={v} showJudging={showJudging} voteOpen={voteOpen} />
                 <CardCenter v={v} showJudging={showJudging} voteOpen={voteOpen} />
               </div>
@@ -327,9 +327,11 @@ function CardBadge({
   return null
 }
 
-// The thumbnail centerpiece that matches the badge: the big verified score, the
-// MAIN ROUND label while voting, or a static pending ring while awaiting
-// judgment (a ring, not a spinner -- no fake motion).
+// The thumbnail centerpiece that matches the badge: the MAIN ROUND label while
+// voting, or a static pending ring while awaiting judgment (a ring, not a
+// spinner -- no fake motion). Verified cards show NO centerpiece -- the poster
+// stays clean; the score lives in the top-left ✓ badge + the footer line
+// ("Triple-AI {score}점"). (TK 2026-07-11: big center score covered the art.)
 function CardCenter({
   v,
   showJudging,
@@ -345,15 +347,6 @@ function CardCenter({
       <div className={wrap}>
         <span className="text-lg font-black tracking-wide text-[#f3b6b6] drop-shadow-[0_2px_10px_rgba(0,0,0,.7)]">
           MAIN ROUND
-        </span>
-      </div>
-    )
-  }
-  if (v.publicScore != null) {
-    return (
-      <div className={wrap}>
-        <span className="text-4xl font-black text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.65)]">
-          {Math.round(v.publicScore)}
         </span>
       </div>
     )
