@@ -2,7 +2,9 @@
 // (ArenaShell + Current Competition Hero + entry grid). The same ArenaWatch
 // surface renders at the root when watch_as_home is on. 100% data-driven.
 
+import { notFound } from 'next/navigation'
 import { type WatchSort, type WatchRound } from '@/lib/watch'
+import { isWatchPublic } from '@/lib/watch-gate'
 import { ArenaWatch } from './ArenaWatch'
 import { ChatWidget } from '@/app/_components/ChatWidget'
 
@@ -13,6 +15,8 @@ export default async function WatchPage({
 }: {
   searchParams: Promise<{ sort?: string; season?: string; q?: string; round?: string; award_rank?: string }>
 }) {
+  // Pre-launch: Watch is not publicly reachable in production (patent novelty).
+  if (!isWatchPublic()) notFound()
   const sp = await searchParams
   const sort: WatchSort = sp.sort === 'trending' || sp.sort === 'award' ? sp.sort : 'latest'
   const round: WatchRound | undefined =
