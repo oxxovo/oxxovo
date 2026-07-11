@@ -15,7 +15,10 @@
 //     rolling (the worker scores entries as they land), so this can run WHILE the
 //     window is still open -- prelim can be "LIVE" and "13/21 판정" at once.
 //   - country count         -> always (aggregate, no per-entry data).
-// The bar width is the real scored/total ratio, not an animation.
+// The bar width is the real scored/total ratio. A shimmer sweeps L->R OVER the
+// fill for "판정 중" life, but it lives INSIDE the fill (overflow-hidden), so it
+// is clipped to the real progress -- never implying more than is judged -- and
+// it stops once judging completes.
 
 import { useEffect, useState } from 'react'
 import { CountdownTimer } from '@/app/_components/CountdownTimer'
@@ -76,6 +79,8 @@ export function LiveStatusBar({
   const showCountdown = isAccepting && closeAt != null && closeAt.getTime() > Date.now()
   const showJudging = judging.total > 0
   const pct = judging.total > 0 ? Math.round((judging.scored / judging.total) * 100) : 0
+  // Shimmer runs only while judging is genuinely in progress; it stops at 완료.
+  const judgingComplete = judging.total > 0 && judging.scored >= judging.total
   const isMain = roundName.toLowerCase().includes('main')
   const closeLabel = isMain ? '본선 마감까지' : '예선 마감까지'
 
@@ -109,9 +114,13 @@ export function LiveStatusBar({
             </div>
             <div className="h-[7px] overflow-hidden rounded-full bg-[#2a1a47]">
               <div
-                className="h-full rounded-full bg-[#8b22ff] transition-[width] duration-700 ease-out"
+                className="relative h-full overflow-hidden rounded-full bg-[#8b22ff] transition-[width] duration-700 ease-out"
                 style={{ width: `${pct}%` }}
-              />
+              >
+                {!judgingComplete && (
+                  <span aria-hidden className="watch-shimmer absolute inset-y-0 left-0 w-1/2" />
+                )}
+              </div>
             </div>
           </div>
         </>
