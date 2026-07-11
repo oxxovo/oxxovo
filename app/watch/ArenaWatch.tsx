@@ -20,6 +20,7 @@ import { getUserOrNull } from '@/lib/user-auth'
 import { ArenaShell } from './ArenaShell'
 import { ArenaFilterBar, type FilterSeason } from './ArenaFilterBar'
 import { ArenaBanner, ArenaHero, LatestEntries } from './Arena'
+import { LiveStatusBar } from './LiveStatusBar'
 
 export async function ArenaWatch({
   sort,
@@ -79,30 +80,30 @@ export async function ArenaWatch({
   const isAccepting = openMs != null && closeMs != null && now >= openMs && now < closeMs
   const closeAtISO = currentSeason?.application_close_at ?? null
 
-  // Stage flags for the ⚡ judging bar (Hero) and the card status badges:
-  //   showJudgingBar = prelim judging window (applications closed, results not out)
-  //                    -> Hero shows the Triple-AI progress bar for the PRELIM pool.
-  //   cardsJudging   = any post-close scoring phase -> cards may show "⚡ 심사 중".
-  //   voteOpen       = community vote window -> main cards show "🔥 {votes}".
-  const applicationsClosed = closeMs != null && now >= closeMs
-  const showJudgingBar = applicationsClosed && !inMainRound
-  const cardsJudging = applicationsClosed
+  // Live judging: the Triple-AI worker scores entries as they arrive (rolling),
+  // so the progress bar + card badges can run WHILE the application window is
+  // still open (prelim can be "LIVE" and "20/21 판정" at once). The boxed
+  // LiveStatusBar shows the bar whenever the pool is non-zero; cards show
+  // "⚡ AI 심사 중" for entries in that pool that are not scored yet.
+  const judging = await getJudgingProgress(currentSeasonId)
+  const cardsJudging = judging.total > 0
   const voteOpen = await isVoteWindowOpen(currentSeasonId)
-  const judging = showJudgingBar ? await getJudgingProgress(currentSeasonId) : { scored: 0, total: 0 }
 
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
       <ArenaBanner />
-      <ArenaHero
-        seasonNumber={seasonNumber}
-        roundName={roundName}
-        stats={heroStats}
-        seasonId={currentSeasonId}
-        closeAtISO={closeAtISO}
-        isAccepting={isAccepting}
-        showJudging={showJudgingBar}
-        judging={judging}
-      />
+      <ArenaHero seasonNumber={seasonNumber} roundName={roundName} />
+      <div className="mb-6">
+        <LiveStatusBar
+          seasonNumber={seasonNumber}
+          roundName={roundName}
+          seasonId={currentSeasonId}
+          initialStats={heroStats}
+          closeAtISO={closeAtISO}
+          isAccepting={isAccepting}
+          initialJudging={judging}
+        />
+      </div>
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />
     </ArenaShell>

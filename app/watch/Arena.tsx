@@ -7,8 +7,7 @@
 // no scored main-round videos.
 
 import Link from 'next/link'
-import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress } from '@/lib/watch'
-import { LiveStatus } from './LiveStatus'
+import type { WatchVideo, PublicScore } from '@/lib/watch'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
 const ACCENT = '#8b22ff'
@@ -19,10 +18,6 @@ function fmtCount(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K'
   return String(n)
-}
-
-function entryTag(i: number): string {
-  return '#' + String(i + 1).padStart(2, '0')
 }
 
 // ── Announcement banner (above the Hero) ────────────────────────────────────
@@ -69,21 +64,9 @@ export function ArenaBanner() {
 export function ArenaHero({
   seasonNumber,
   roundName,
-  stats,
-  seasonId,
-  closeAtISO,
-  isAccepting,
-  showJudging,
-  judging,
 }: {
   seasonNumber: number
   roundName: string
-  stats: CompetitionStats
-  seasonId: string
-  closeAtISO: string | null
-  isAccepting: boolean
-  showJudging: boolean
-  judging: JudgingProgress
 }) {
   return (
     <>
@@ -97,7 +80,7 @@ export function ArenaHero({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/hero_bg_8final.png" alt="" className="block w-full" />
         <div className="absolute left-[3%] top-1/2 w-[33%] max-w-[430px] -translate-y-1/2">
-          <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} seasonId={seasonId} closeAtISO={closeAtISO} isAccepting={isAccepting} showJudging={showJudging} judging={judging} />
+          <InfoBlock seasonNumber={seasonNumber} roundName={roundName} />
         </div>
       </div>
 
@@ -112,7 +95,7 @@ export function ArenaHero({
 
     {/* Mobile: info block below the Hero (outside the -mx-6 bleed -> normal width). */}
     <div className="mb-5 md:hidden">
-      <InfoBlock seasonNumber={seasonNumber} roundName={roundName} stats={stats} seasonId={seasonId} closeAtISO={closeAtISO} isAccepting={isAccepting} showJudging={showJudging} judging={judging} />
+      <InfoBlock seasonNumber={seasonNumber} roundName={roundName} />
     </div>
     </>
   )
@@ -125,41 +108,22 @@ export function ArenaHero({
 function InfoBlock({
   seasonNumber,
   roundName,
-  stats,
-  seasonId,
-  closeAtISO,
-  isAccepting,
-  showJudging,
-  judging,
 }: {
   seasonNumber: number
   roundName: string
-  stats: CompetitionStats
-  seasonId: string
-  closeAtISO: string | null
-  isAccepting: boolean
-  showJudging: boolean
-  judging: JudgingProgress
 }) {
   return (
     <div className="[&_*]:drop-shadow-[0_1px_8px_rgba(0,0,0,.85)]">
       {/* Hierarchy (8_final): Current Competition (big white) is the title, with
-          the SEASON pill beside it; the round is a smaller purple subtitle. */}
+          the SEASON pill beside it. The live state (LIVE dot, judging bar,
+          countdown, countries) lives in the boxed LiveStatusBar below the Hero,
+          so it is not duplicated here -- this overlay is title + context only. */}
       <div className="flex items-center gap-2.5">
         <h2 className="text-2xl font-black leading-none text-white">Current Competition</h2>
         <span className="rounded-md border border-[#8b22ff]/80 bg-[#8b22ff]/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#a855ff]">
           Season {seasonNumber}
         </span>
       </div>
-      <LiveStatus
-        seasonId={seasonId}
-        roundName={roundName}
-        initialStats={stats}
-        closeAtISO={closeAtISO}
-        isAccepting={isAccepting}
-        showJudging={showJudging}
-        initialJudging={judging}
-      />
       <p className="mt-2 max-w-[300px] text-[12px] leading-relaxed text-white/60">
         {roundName} is in progress. Videos are shown in the order they were entered.
       </p>
@@ -317,7 +281,7 @@ export function LatestEntries({
         // Mobile 2 columns; tablet 3 (sm implicit from base + md:3); desktop 4
         // per row (8_final).
         <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
-          {videos.map((v, i) => (
+          {videos.map((v) => (
             <Link
               key={`${v.applicationId}:${v.round}`}
               href={`/watch/${v.applicationId}?round=${v.round}`}
@@ -327,23 +291,17 @@ export function LatestEntries({
             >
               <div className="relative aspect-video w-full overflow-hidden">
                 <Thumb v={v} />
-                <RoundBadge round={v.round} />
-                <StatusBadge v={v} showJudging={showJudging} voteOpen={voteOpen} />
-                {/* No Staff Pick / Featured badges: the platform never promotes
-                    individual entries (fairness policy). */}
-                <span className="absolute bottom-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-black text-[#a855ff]">
-                  {entryTag(i)}
-                </span>
+                {/* Status badge (top-left) + the matching centerpiece: a big
+                    verified score, the MAIN ROUND label while voting, or a pending
+                    ring while awaiting Triple-AI. All real, stage-driven. No Staff
+                    Pick / Featured badges (the platform never promotes entries). */}
+                <CardBadge v={v} showJudging={showJudging} voteOpen={voteOpen} />
+                <CardCenter v={v} showJudging={showJudging} voteOpen={voteOpen} />
               </div>
               <div className="p-3.5">
-                {/* Score badge (StatusBadge) shows the public verified score for
-                    both rounds; no rank on the grid (rank lives in Leaderboard). */}
                 <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</h3>
                 <p className="mt-1 truncate text-xs text-[#7a7299]">
-                  {v.creatorName} · {seasonNames[v.seasonId] ?? ''}
-                </p>
-                <p className="mt-1 text-[11px] text-[#7a7299]">
-                  {fmtCount(v.viewCount)} views · {fmtCount(v.likeCount)} votes
+                  by {v.creatorName} · {cardStatusText(v, voteOpen, showJudging, seasonNames)}
                 </p>
               </div>
             </Link>
@@ -354,13 +312,13 @@ export function LatestEntries({
   )
 }
 
-// Per-card live status badge (top-right of the thumbnail). Stage-driven, real
-// data. Precedence:
-//   1. main-round + vote window open -> 🔥 {votes} (red)
-//   2. verified score (either round) -> ✓ {score} (green; scores are public)
+// Per-card status badge (top-left of the thumbnail). Stage-driven, real data.
+// Precedence:
+//   1. main-round + vote window open -> 🔥 투표중 (red)
+//   2. verified score (either round) -> ✓ Verified (green; scores are public)
 //   3. awaiting Triple-AI judgment   -> ⚡ AI 심사 중 (purple)
 //   4. otherwise                     -> nothing (still accepting / not yet judged)
-function StatusBadge({
+function CardBadge({
   v,
   showJudging,
   voteOpen,
@@ -370,20 +328,71 @@ function StatusBadge({
   voteOpen: boolean
 }) {
   const base =
-    'absolute right-2 top-2 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-black backdrop-blur'
+    'absolute left-2 top-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-black backdrop-blur'
 
   if (v.round === 'main' && voteOpen) {
-    return <span className={`${base} bg-red-500/90 text-white`}>🔥 {fmtCount(v.voteCount)}</span>
+    return <span className={`${base} bg-red-500/90 text-white`}>🔥 투표중</span>
   }
   if (v.publicScore != null) {
-    return (
-      <span className={`${base} bg-emerald-500/90 text-black`}>
-        ✓ <span className="text-[13px] font-black">{Math.round(v.publicScore)}</span>
-      </span>
-    )
+    return <span className={`${base} bg-emerald-500/90 text-black`}>✓ Verified</span>
   }
   if (showJudging && !v.scored) {
     return <span className={`${base} bg-[#8b22ff]/90 text-white`}>⚡ AI 심사 중</span>
   }
   return null
+}
+
+// The thumbnail centerpiece that matches the badge: the big verified score, the
+// MAIN ROUND label while voting, or a static pending ring while awaiting
+// judgment (a ring, not a spinner -- no fake motion).
+function CardCenter({
+  v,
+  showJudging,
+  voteOpen,
+}: {
+  v: WatchVideo
+  showJudging: boolean
+  voteOpen: boolean
+}) {
+  const wrap = 'pointer-events-none absolute inset-0 flex items-center justify-center'
+  if (v.round === 'main' && voteOpen) {
+    return (
+      <div className={wrap}>
+        <span className="text-lg font-black tracking-wide text-[#f3b6b6] drop-shadow-[0_2px_10px_rgba(0,0,0,.7)]">
+          MAIN ROUND
+        </span>
+      </div>
+    )
+  }
+  if (v.publicScore != null) {
+    return (
+      <div className={wrap}>
+        <span className="text-4xl font-black text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.65)]">
+          {Math.round(v.publicScore)}
+        </span>
+      </div>
+    )
+  }
+  if (showJudging && !v.scored) {
+    return (
+      <div className={wrap}>
+        <span className="h-9 w-9 rounded-full border-2 border-white/20 border-t-[#a855ff]" />
+      </div>
+    )
+  }
+  return null
+}
+
+// Footer status line, matching the badge: votes / verified score / awaiting /
+// season name (when there is no live state yet).
+function cardStatusText(
+  v: WatchVideo,
+  voteOpen: boolean,
+  showJudging: boolean,
+  seasonNames: Record<string, string>,
+): string {
+  if (v.round === 'main' && voteOpen) return `${fmtCount(v.voteCount)} votes`
+  if (v.publicScore != null) return `Triple-AI ${Math.round(v.publicScore)}점`
+  if (showJudging && !v.scored) return '심사 대기'
+  return seasonNames[v.seasonId] ?? ''
 }

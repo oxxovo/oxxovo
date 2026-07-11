@@ -1,7 +1,8 @@
-// Public live-stats endpoint for the Watch Hero "Current Competition" block.
-// The client (LiveStatus) polls this every ~20s so ENTRIES/CREATORS/COUNTRIES
-// tick up as real submissions land. Aggregate counts only -- no per-entry data,
-// no scores -- so it is safe to expose unauthenticated. All reads go through the
+// Public live-stats endpoint for the Watch "Current Competition" status bar.
+// The client (LiveStatusBar) polls this every ~20s so the country count + the
+// Triple-AI judging progress tick in place as real submissions land and get
+// scored. Aggregate counts only -- no per-entry data, no scores -- so it is safe
+// to expose unauthenticated. All reads go through the
 // service-role path in getCurrentCompetitionStats (anon has no grant on
 // genesis_applications -- see [[feedback-server-side-anon-rls-trap]]).
 
