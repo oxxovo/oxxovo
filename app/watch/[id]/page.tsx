@@ -13,7 +13,7 @@ import {
   getWatchSeasonGroups,
   getFollowedCreators,
   isFollowing,
-  getPublicMainScore,
+  getPublicScore,
   type WatchRound,
   type WatchVideo,
 } from '@/lib/watch'
@@ -77,16 +77,16 @@ export default async function WatchDetailPage({
   const showRound = allVids.some((v) => v.round === 'main')
   const showWinners = allVids.some((v) => v.awardRank != null)
 
-  // Main-round videos carry a community vote (windowed) + public Triple-AI score
-  // (finalists only; null until judging completes). Prelim scores are owner-only
-  // (shown on /profile), never here.
-  const [comments, voteCtx, related, mainScore] = await Promise.all([
+  // Public Triple-AI score is shown for BOTH rounds (scores are public -- TK
+  // 2026-07-10); null until THIS round is judged. The community vote is still
+  // main-round only (windowed).
+  const [comments, voteCtx, related, publicScore] = await Promise.all([
     getWatchComments(id, round),
     round === 'main'
       ? getVoteContext(video.applicationId, video.seasonId, user?.id ?? null)
       : Promise.resolve(null),
     getRelatedVideos(video.seasonId, video.applicationId, video.round),
-    round === 'main' ? getPublicMainScore(video.applicationId) : Promise.resolve(null),
+    getPublicScore(video.applicationId, round),
   ])
 
   // Whether the signed-in member already liked this video (initial button state).
@@ -221,7 +221,7 @@ export default async function WatchDetailPage({
             </div>
           )}
 
-          {mainScore && <ScorePanel score={mainScore} />}
+          {publicScore && <ScorePanel score={publicScore} />}
 
           <CommentSection
             applicationId={video.applicationId}

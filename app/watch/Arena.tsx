@@ -1,9 +1,10 @@
 // Arena preview surface (server components). Dark-purple "arena spectator"
 // redesign of Watch. Lives ONLY at /watch-arena -- the live /watch is untouched.
 //
-// Score policy (strict): preliminary cards never show a score or rank (prelim
-// scores are owner-only); main-round cards may show the public Triple-AI score +
-// rank. Featured/Leaderboard auto-hide when there are no scored main-round videos.
+// Score policy: verified Triple-AI scores are PUBLIC on both prelim and main
+// cards (TK 2026-07-10 -- transparency; reversed the old prelim-owner-only rule).
+// Featured/Leaderboard remain main-round standings and auto-hide when there are
+// no scored main-round videos.
 
 import Link from 'next/link'
 import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress } from '@/lib/watch'
@@ -294,7 +295,8 @@ export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seaso
 // ── Latest Entries grid ─────────────────────────────────────────────────────
 // Cards carry a live STATUS badge driven by the season stage (showJudging /
 // voteOpen) + real per-entry data: "⚡ AI 심사 중" while awaiting Triple-AI,
-// "✓ {score}" once a MAIN-round video is verified (prelim scores stay private),
+// "✓ {score}" once a video is verified -- scores are PUBLIC for BOTH rounds
+// (TK 2026-07-10: a competition shows scores, like golf/bowling; prelim included),
 // "🔥 {votes}" while the community vote window is open. All real DB values.
 export function LatestEntries({
   videos,
@@ -334,7 +336,8 @@ export function LatestEntries({
                 </span>
               </div>
               <div className="p-3.5">
-                {/* Prelim: NO score / NO rank (owner-only policy). */}
+                {/* Score badge (StatusBadge) shows the public verified score for
+                    both rounds; no rank on the grid (rank lives in Leaderboard). */}
                 <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</h3>
                 <p className="mt-1 truncate text-xs text-[#7a7299]">
                   {v.creatorName} · {seasonNames[v.seasonId] ?? ''}
@@ -352,12 +355,11 @@ export function LatestEntries({
 }
 
 // Per-card live status badge (top-right of the thumbnail). Stage-driven, real
-// data, policy-safe. Precedence:
+// data. Precedence:
 //   1. main-round + vote window open -> 🔥 {votes} (red)
-//   2. main-round + verified score   -> ✓ {score} (green; MAIN only -- prelim
-//      scores are owner-only, never shown here)
+//   2. verified score (either round) -> ✓ {score} (green; scores are public)
 //   3. awaiting Triple-AI judgment   -> ⚡ AI 심사 중 (purple)
-//   4. otherwise                     -> nothing (accepting / private prelim)
+//   4. otherwise                     -> nothing (still accepting / not yet judged)
 function StatusBadge({
   v,
   showJudging,
@@ -373,7 +375,7 @@ function StatusBadge({
   if (v.round === 'main' && voteOpen) {
     return <span className={`${base} bg-red-500/90 text-white`}>🔥 {fmtCount(v.voteCount)}</span>
   }
-  if (v.round === 'main' && v.publicScore != null) {
+  if (v.publicScore != null) {
     return (
       <span className={`${base} bg-emerald-500/90 text-black`}>
         ✓ <span className="text-[13px] font-black">{Math.round(v.publicScore)}</span>

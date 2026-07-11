@@ -45,13 +45,12 @@ export type WatchVideo = {
   likeCount: number
   viewCount: number
   commentCount: number
-  // Public Triple-AI verified score for the card badge. MAIN round ONLY -- prelim
-  // scores are owner-only and never surfaced ([[project-scoring-integrity-rules]],
-  // low-score-shaming guard). null until the main round is judged.
+  // Public Triple-AI verified score for the card badge. Shown for BOTH rounds --
+  // scores are public everywhere (transparency; TK 2026-07-10 reversed the old
+  // prelim-owner-only policy). null until THIS round is judged.
   publicScore: number | null
   // Whether THIS round's Triple-AI scoring completed. Flips the card badge from
-  // "⚡ AI 심사 중" to Verified. For prelim it only CLEARS the 심사중 badge -- the
-  // prelim score itself stays private.
+  // "⚡ AI 심사 중" to the Verified score.
   scored: boolean
   // Community votes for this main-round video (0 for prelim).
   voteCount: number
@@ -270,15 +269,15 @@ export async function getWatchVideos(
   })
 
   // Per-(app,round) Triple-AI state for the card badges. scored = judging done;
-  // mainScore is exposed ONLY for the main round (prelim scores stay private).
+  // verified score is exposed for BOTH rounds (scores are public -- TK 2026-07-10).
   const scoredKeys = new Set<string>()
-  const mainScore = new Map<string, number>()
+  const scoreByKey = new Map<string, number>()
   for (const s of (scoreAgg.data ?? []) as {
     application_id: string; round: string; judged_status: string; verified_score: number | null
   }[]) {
     if (s.judged_status !== 'completed') continue
     scoredKeys.add(`${s.application_id}:${s.round}`)
-    if (s.round === 'main' && s.verified_score != null) mainScore.set(s.application_id, s.verified_score)
+    if (s.verified_score != null) scoreByKey.set(`${s.application_id}:${s.round}`, s.verified_score)
   }
 
   const rows = (apps ?? []) as AppRow[]
@@ -293,16 +292,17 @@ export async function getWatchVideos(
     if (!isPublicRow(row)) continue
     const displayName = row.user_id ? names.get(row.user_id) : undefined
     if (row.free_entry_url?.trim()) {
-      // Prelim: scored flips the 심사중 badge off, but the score itself is private.
+      // Prelim: scored flips the 심사중 badge to the public verified score.
       videos.push(toWatchVideo(row, 'application', row.free_entry_url.trim(), countsFor(row.id, 'application'), displayName, {
         scored: scoredKeys.has(`${row.id}:application`),
+        publicScore: scoreByKey.get(`${row.id}:application`) ?? null,
         thumbnailUrl: roundThumb(renderThumbs, row.studio_application_render_id),
       }))
     }
     if (row.main_round_video_url?.trim()) {
       videos.push(toWatchVideo(row, 'main', row.main_round_video_url.trim(), countsFor(row.id, 'main'), displayName, {
         scored: scoredKeys.has(`${row.id}:main`),
-        publicScore: mainScore.get(row.id) ?? null,
+        publicScore: scoreByKey.get(`${row.id}:main`) ?? null,
         voteCount: votes.get(`${row.id}:main`) ?? 0,
         thumbnailUrl: roundThumb(renderThumbs, row.studio_main_render_id),
       }))
@@ -434,11 +434,14 @@ function parseAiOutputs(raw: unknown): AiCritique[] {
   return out
 }
 
-// Public Triple-AI score for a MAIN-ROUND video (finalists only). Returns null
-// unless judging is completed. Integrity fields are never included here
-// ([[project-scoring-integrity-rules]] -- low-score shaming guard: prelim
-// scores are owner-only via /profile, not here).
-export async function getPublicMainScore(applicationId: string): Promise<PublicScore | null> {
+// Public Triple-AI score for a video, for EITHER round (scores are public --
+// TK 2026-07-10). Returns null unless judging is completed. Integrity fields are
+// never included here ([[project-scoring-integrity-rules]] -- integrity stays
+// internal; the verified score/critique are public).
+export async function getPublicScore(
+  applicationId: string,
+  round: WatchRound = 'main',
+): Promise<PublicScore | null> {
   const admin = createSupabaseAdmin()
   const { data } = await admin
     .from('scoring_results')
@@ -446,7 +449,7 @@ export async function getPublicMainScore(applicationId: string): Promise<PublicS
       'verified_score, grade, consensus_intent, consensus_execution, consensus_originality, ai_outputs, judged_status',
     )
     .eq('application_id', applicationId)
-    .eq('round', 'main')
+    .eq('round', round)
     .maybeSingle()
 
   if (!data || data.judged_status !== 'completed') return null
