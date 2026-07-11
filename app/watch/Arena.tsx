@@ -90,12 +90,13 @@ export function ArenaHero({
           />
         </div>
 
-        {/* Right: arena image at its own size (never shrunk to a thumbnail). The
-            8_final art is ~4.39:1 and designed to show uncropped, so it keeps its
-            natural aspect and simply fills the wider right column. */}
-        <div className="flex items-center justify-center overflow-hidden rounded-xl border border-[#33235a] bg-[#1c1030] md:flex-[1.55]">
+        {/* Right: the arena image IS the right area -- no frame, no padding, no
+            backdrop. It fills the column (object-cover) and its height matches the
+            left LIVE panel (md:items-stretch on the row). Rounded corners only.
+            Mobile: a fixed banner height; desktop: stretches to the panel. */}
+        <div className="relative h-56 overflow-hidden rounded-xl md:h-auto md:flex-[1.7]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/hero_bg_8final.png" alt="OXXOVO arena" className="h-auto w-full" />
+          <img src="/hero_bg_8final.png" alt="OXXOVO arena" className="absolute inset-0 h-full w-full object-cover" />
         </div>
       </div>
 
