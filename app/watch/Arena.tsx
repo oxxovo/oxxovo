@@ -7,7 +7,8 @@
 // no scored main-round videos.
 
 import Link from 'next/link'
-import type { WatchVideo, PublicScore } from '@/lib/watch'
+import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress } from '@/lib/watch'
+import { LiveStatusBar } from './LiveStatusBar'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
 const ACCENT = '#8b22ff'
@@ -51,95 +52,70 @@ export function ArenaBanner() {
 }
 
 // ── Hero ───────────────────────────────────────────────────────────────────
-// Full-bleed arena background (arena_hero_bg_frameless.png) with, on top: two
-// CSS scoreboard panels flanking the center logo, and a left "Current
-// Competition" info block laid directly over the image (no card box -- only the
-// vote note is faintly tinted). A left->transparent gradient (NOT a solid black
-// fill) keeps the left copy legible over the crowd. The center OXXOVO logo +
-// silhouette come from the image. The framed variant (arena_hero_bg.png) is kept
-// for rollback; arena_image.png is a separate live asset (landing/OG card).
-//
-// seasonNumber / roundName / stats drive the info block. stats are live DB values
-// (getCurrentCompetitionStats), never hardcoded.
+// One contained box: on the left the live LIVE panel (LiveStatusBar, real DB
+// values), on the right the arena image kept at its own size (not shrunk into a
+// thumbnail), and a single context line beneath -- "Current Competition — Season
+// N", the round note, and the free "Join to vote" CTA (TK hero layout,
+// 2026-07-10). All live state lives in the panel, so nothing is duplicated.
 export function ArenaHero({
   seasonNumber,
   roundName,
+  seasonId,
+  stats,
+  closeAtISO,
+  isAccepting,
+  judging,
 }: {
   seasonNumber: number
   roundName: string
+  seasonId: string
+  stats: CompetitionStats
+  closeAtISO: string | null
+  isAccepting: boolean
+  judging: JudgingProgress
 }) {
   return (
-    <>
-    <section className="relative -mx-6 mb-5 overflow-hidden bg-[#050208]">
-      {/* Desktop: the 8_final image shown at its NATURAL aspect (w-full, height
-          auto) so it is never cropped -- the baked-in scoreboards / logo /
-          silhouette stay intact (the image is ~4.39:1; object-cover would slice
-          the sides off). Its left ~37% is empty black, which the info block sits
-          on -- no gradient needed. */}
-      <div className="relative hidden w-full md:block">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/hero_bg_8final.png" alt="" className="block w-full" />
-        <div className="absolute left-[3%] top-1/2 w-[33%] max-w-[430px] -translate-y-1/2">
-          <InfoBlock seasonNumber={seasonNumber} roundName={roundName} />
+    <section className="mb-6 rounded-2xl border border-white/10 bg-[#0d0716] p-5">
+      <div className="flex flex-col gap-[18px] md:flex-row md:items-stretch">
+        {/* Left: live LIVE panel */}
+        <div className="md:flex-1">
+          <LiveStatusBar
+            seasonNumber={seasonNumber}
+            roundName={roundName}
+            seasonId={seasonId}
+            initialStats={stats}
+            closeAtISO={closeAtISO}
+            isAccepting={isAccepting}
+            initialJudging={judging}
+          />
+        </div>
+
+        {/* Right: arena image at its own size (never shrunk to a thumbnail). The
+            8_final art is ~4.39:1 and designed to show uncropped, so it keeps its
+            natural aspect and simply fills the wider right column. */}
+        <div className="flex items-center justify-center overflow-hidden rounded-xl border border-[#33235a] bg-[#1c1030] md:flex-[1.55]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/hero_bg_8final.png" alt="OXXOVO arena" className="h-auto w-full" />
         </div>
       </div>
 
-      {/* Mobile: a portrait-friendly variant (~2.57:1) that keeps the silhouette
-          and BOTH scoreboards intact, shown at its natural aspect (no crop). The
-          info block renders below. */}
-      <div className="w-full md:hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/hero_bg_8final_mobile.png" alt="" className="block w-full" />
-      </div>
-    </section>
-
-    {/* Mobile: info block below the Hero (outside the -mx-6 bleed -> normal width). */}
-    <div className="mb-5 md:hidden">
-      <InfoBlock seasonNumber={seasonNumber} roundName={roundName} />
-    </div>
-    </>
-  )
-}
-
-// "Current Competition" info block: season badge, current round, the fairness
-// note, small inline stats, and the (free) voting invite. Text sits directly on
-// the Hero image (drop-shadows for legibility); only the vote note is tinted.
-// Used as a desktop overlay and, on mobile, as a block below the Hero.
-function InfoBlock({
-  seasonNumber,
-  roundName,
-}: {
-  seasonNumber: number
-  roundName: string
-}) {
-  return (
-    <div className="[&_*]:drop-shadow-[0_1px_8px_rgba(0,0,0,.85)]">
-      {/* Hierarchy (8_final): Current Competition (big white) is the title, with
-          the SEASON pill beside it. The live state (LIVE dot, judging bar,
-          countdown, countries) lives in the boxed LiveStatusBar below the Hero,
-          so it is not duplicated here -- this overlay is title + context only. */}
-      <div className="flex items-center gap-2.5">
-        <h2 className="text-2xl font-black leading-none text-white">Current Competition</h2>
-        <span className="rounded-md border border-[#8b22ff]/80 bg-[#8b22ff]/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#a855ff]">
-          Season {seasonNumber}
-        </span>
-      </div>
-      <p className="mt-2 max-w-[300px] text-[12px] leading-relaxed text-white/60">
-        {roundName} is in progress. Videos are shown in the order they were entered.
-      </p>
-
-      <div className="mt-4 max-w-[330px] rounded-lg border border-white/10 bg-black/45 p-3 backdrop-blur-sm">
-        <p className="text-[12px] leading-relaxed text-white/70">
-          Voting opens in the Main Round. Join OXXOVO for free to vote and support your favorite creators.
-        </p>
+      {/* Bottom: one context line + the free voting CTA */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-4">
+        <div className="min-w-0">
+          <p className="text-[14px] font-semibold text-[#e7e0f5]">Current Competition — Season {seasonNumber}</p>
+          <p className="mt-0.5 text-[12px] leading-relaxed text-[#9b8bc4]">
+            {roundName} is in progress. Videos are shown in the order they were entered. Join OXXOVO for
+            free to vote in the Main Round and support your favorite creators.
+          </p>
+        </div>
         <Link
           href="/signup"
-          className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-bold text-[#a855ff] transition hover:text-white"
+          className="shrink-0 rounded-lg bg-[#8b22ff] px-4 py-2 text-[13px] font-bold text-white transition hover:bg-[#7a1ee0]"
         >
           Join free to vote →
         </Link>
       </div>
-    </div>
+    </section>
   )
 }
 

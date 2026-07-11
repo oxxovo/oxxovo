@@ -20,7 +20,6 @@ import { getUserOrNull } from '@/lib/user-auth'
 import { ArenaShell } from './ArenaShell'
 import { ArenaFilterBar, type FilterSeason } from './ArenaFilterBar'
 import { ArenaBanner, ArenaHero, LatestEntries } from './Arena'
-import { LiveStatusBar } from './LiveStatusBar'
 
 export async function ArenaWatch({
   sort,
@@ -92,18 +91,15 @@ export async function ArenaWatch({
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
       <ArenaBanner />
-      <ArenaHero seasonNumber={seasonNumber} roundName={roundName} />
-      <div className="mb-6">
-        <LiveStatusBar
-          seasonNumber={seasonNumber}
-          roundName={roundName}
-          seasonId={currentSeasonId}
-          initialStats={heroStats}
-          closeAtISO={closeAtISO}
-          isAccepting={isAccepting}
-          initialJudging={judging}
-        />
-      </div>
+      <ArenaHero
+        seasonNumber={seasonNumber}
+        roundName={roundName}
+        seasonId={currentSeasonId}
+        stats={heroStats}
+        closeAtISO={closeAtISO}
+        isAccepting={isAccepting}
+        judging={judging}
+      />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />
     </ArenaShell>
