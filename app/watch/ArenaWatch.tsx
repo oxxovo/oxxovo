@@ -137,6 +137,8 @@ export async function ArenaWatch({
         revealAtISO={finalistReveal?.revealAt ?? null}
         theme={theme}
         themeSeconds={themeSeconds}
+        voteOpen={voteOpen}
+        voteEndISO={currentSeason?.community_vote_end_at ?? null}
       />
       <FinalistSection finalists={finalists} />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />

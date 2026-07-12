@@ -39,6 +39,8 @@ export function LiveStatusBar({
   revealAtISO,
   theme,
   themeSeconds,
+  voteOpen,
+  voteEndISO,
 }: {
   seasonNumber: number
   roundName: string
@@ -56,6 +58,10 @@ export function LiveStatusBar({
   // themeSeconds = main_round_video_seconds ("· 30초").
   theme?: string | null
   themeSeconds?: number | null
+  // Community vote window: while open, the panel shows a "투표 마감까지" countdown
+  // to voteEndISO so the audience feels the deadline (not just a static date).
+  voteOpen?: boolean
+  voteEndISO?: string | null
 }) {
   const [stats, setStats] = useState<Stats>(initialStats)
   const [judging, setJudging] = useState<Judging>(initialJudging)
@@ -92,6 +98,9 @@ export function LiveStatusBar({
   // Finalist-reveal countdown takes over the deadline row once finalists are set.
   const revealAt = revealAtISO ? new Date(revealAtISO) : null
   const showReveal = revealAt != null && revealAt.getTime() > Date.now()
+  // Vote-deadline countdown: only while the community vote window is genuinely open.
+  const voteEnd = voteEndISO ? new Date(voteEndISO) : null
+  const showVoteCountdown = !!voteOpen && voteEnd != null && voteEnd.getTime() > Date.now()
   const showJudging = judging.total > 0
   const pct = judging.total > 0 ? Math.round((judging.scored / judging.total) * 100) : 0
   // Shimmer runs only while judging is genuinely in progress; it stops at 완료.
@@ -152,6 +161,22 @@ export function LiveStatusBar({
             </span>
             <CountdownTimer
               targetAt={showReveal ? revealAt! : closeAt!}
+              className="ml-auto text-[15px] font-semibold tabular-nums text-white"
+            />
+          </div>
+        </>
+      )}
+
+      {/* Community vote deadline -- only while voting is genuinely open. Gives
+          the audience the urgency the static "voting closes" banner text can't. */}
+      {showVoteCountdown && (
+        <>
+          <div className="h-px bg-[#33235a]" />
+          <div className="flex items-center gap-2">
+            <span aria-hidden className="text-[#e24b4a]">🔥</span>
+            <span className="text-[12px] text-[#9b8bc4]">투표 마감까지</span>
+            <CountdownTimer
+              targetAt={voteEnd!}
               className="ml-auto text-[15px] font-semibold tabular-nums text-white"
             />
           </div>

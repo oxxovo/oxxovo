@@ -87,6 +87,8 @@ export function ArenaHero({
   revealAtISO,
   theme,
   themeSeconds,
+  voteOpen,
+  voteEndISO,
 }: {
   seasonNumber: number
   roundName: string
@@ -98,6 +100,8 @@ export function ArenaHero({
   revealAtISO?: string | null
   theme?: string | null
   themeSeconds?: number | null
+  voteOpen?: boolean
+  voteEndISO?: string | null
 }) {
   const panel = (
     <LiveStatusBar
@@ -111,6 +115,8 @@ export function ArenaHero({
       revealAtISO={revealAtISO ?? null}
       theme={theme ?? null}
       themeSeconds={themeSeconds ?? null}
+      voteOpen={voteOpen ?? false}
+      voteEndISO={voteEndISO ?? null}
     />
   )
   return (
