@@ -25,7 +25,33 @@ function fmtCount(n: number): string {
 // One slim dark bar restating the platform's fairness stance, with a link back
 // to the landing page. Full-bleed (matches the Hero's -mx-6) and slightly darker
 // than the Hero so it reads as a header strip.
-export function ArenaBanner() {
+// Announcement banner. Default = brand slogan. When finalists have been selected
+// but the reveal date hasn't arrived, it switches to the finalist-reveal notice
+// so the audience knows what happened and when to return. (TK 2026-07-12)
+export function ArenaBanner({
+  finalistReveal,
+}: {
+  finalistReveal?: { count: number; revealAt: string } | null
+}) {
+  if (finalistReveal) {
+    const d = new Date(finalistReveal.revealAt)
+    const dateLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+    return (
+      <div className="-mx-6 border-b border-[#8b22ff]/30 bg-[#0c0618] px-6 py-2.5">
+        <div className="flex items-center gap-3">
+          <span aria-hidden className="text-sm">🏆</span>
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="truncate text-[12px] font-bold text-[#c3a9f5] sm:text-[13px]">
+              {finalistReveal.count} finalists have advanced to the Main Round.
+            </p>
+            <p className="truncate text-[11px] text-white/55 sm:text-[12px]">
+              Main-round films are revealed on {dateLabel}. Check back to watch and vote.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="-mx-6 border-b border-white/10 bg-[#05040c] px-6 py-2.5">
       <div className="flex items-center gap-3">

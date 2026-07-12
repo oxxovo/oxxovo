@@ -12,6 +12,7 @@ import {
   getCurrentCompetitionStats,
   getJudgingProgress,
   isVoteWindowOpen,
+  getFinalistRevealState,
   type WatchSort,
   type WatchRound,
 } from '@/lib/watch'
@@ -87,10 +88,12 @@ export async function ArenaWatch({
   const judging = await getJudgingProgress(currentSeasonId)
   const cardsJudging = judging.total > 0
   const voteOpen = await isVoteWindowOpen(currentSeasonId)
+  // Finalist-reveal banner: after advancement, before main_round_start_at.
+  const finalistReveal = await getFinalistRevealState(currentSeasonId)
 
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
-      <ArenaBanner />
+      <ArenaBanner finalistReveal={finalistReveal} />
       <ArenaHero
         seasonNumber={seasonNumber}
         roundName={roundName}

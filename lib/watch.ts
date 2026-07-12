@@ -391,6 +391,26 @@ export async function getJudgingProgress(seasonId: string): Promise<JudgingProgr
   return { scored, total: pool.size }
 }
 
+// Finalist-reveal banner state. Between advancement (finalists selected) and the
+// reveal date (main_round_start_at), the audience should see "N finalists
+// advanced -- revealed on {date}" so nobody is left wondering what happened.
+// Returns null when there are no finalists yet, no reveal date, or the reveal
+// has already passed (at which point the finalist section shows instead).
+export async function getFinalistRevealState(
+  seasonId: string,
+): Promise<{ count: number; revealAt: string } | null> {
+  const admin = createSupabaseAdmin()
+  const [selRes, seasonRes] = await Promise.all([
+    admin.from('genesis_applications').select('id').eq('season_id', seasonId).eq('status', 'selected'),
+    admin.from('seasons').select('main_round_start_at').eq('id', seasonId).maybeSingle(),
+  ])
+  const count = selRes.data?.length ?? 0
+  const revealAt = (seasonRes.data?.main_round_start_at as string | null) ?? null
+  if (count === 0 || !revealAt) return null
+  if (Date.now() >= Date.parse(revealAt)) return null
+  return { count, revealAt }
+}
+
 // Whether the community vote window is currently open for a season. Read from the
 // BASE seasons table via service role (the community_vote_* columns are not on the
 // public seasons_public view). Drives the "🔥 투표중" card badge.
