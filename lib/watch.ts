@@ -723,6 +723,24 @@ export type VoteContext = {
 
 // Vote state for a main-round video. Public count is always returned; the
 // per-user fields require a userId. Window/cap come from seasons (admin-set).
+// Raw community vote tally for a season's MAIN round: application_id -> vote
+// count (one watch_votes row per user per video). Feeds computeCommunityScore
+// for the final_score blend on the admin main-results page. Cheap -- bounded by
+// (voters x per-user cap). Returns an empty map when no votes exist yet.
+export async function getMainRoundVoteTally(seasonId: string): Promise<Map<string, number>> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('watch_votes')
+    .select('application_id')
+    .eq('season_id', seasonId)
+    .eq('round', 'main')
+  const tally = new Map<string, number>()
+  for (const r of (data ?? []) as { application_id: string }[]) {
+    tally.set(r.application_id, (tally.get(r.application_id) ?? 0) + 1)
+  }
+  return tally
+}
+
 export async function getVoteContext(
   applicationId: string,
   seasonId: string,

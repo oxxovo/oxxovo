@@ -59,3 +59,21 @@ export function computeFinalScore(
     communityScore * season.community_vote_weight
   )
 }
+
+/**
+ * 커뮤니티 투표 원표수 → 정규화 점수 (0~100). 최다득표작 대비 비율 (B안,
+ * TK 2026-07-12): communityScore = votes / maxVotes × 100.
+ *
+ * @param votes    이 영상의 원표수 (watch_votes, round='main').
+ * @param maxVotes 본선 진출작 중 최다 득표수.
+ * @returns 0~100. 아무도 투표 안 함(maxVotes <= 0) → null = "votes pending"
+ *          (computeFinalScore가 null로 랭킹 제외; 미집계가 0점으로 둔갑 방지).
+ *          투표가 있었고 이 영상만 0표면 0 (실제 0점, null 아님).
+ *
+ * AI verified_score(0~100)와 같은 척도라 Layer-2에서 그대로 가중합산 가능.
+ * 시즌0(community_vote_weight=0)에선 computeFinalScore가 이 값을 무시(× 0).
+ */
+export function computeCommunityScore(votes: number, maxVotes: number): number | null {
+  if (maxVotes <= 0) return null
+  return (votes / maxVotes) * 100
+}
