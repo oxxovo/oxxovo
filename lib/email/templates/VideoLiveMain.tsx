@@ -1,121 +1,165 @@
-// Growth engine #2: sent once a creator's MAIN-ROUND film is live on Watch.
-// Unlike the prelim mail, the main round has an OPEN community vote, so the call
-// is "watch AND vote" -- the creator rallies their fans to cast official votes.
-// Tone (advisor): the film is officially competing; invite fans to watch and
-// vote -- the share links carry the creator's ?ref= so signups + votes credit
-// back to them (the growth loop).
-//
-// Mirrors VideoLivePrelim's structure/styles (plumbing first; Jenny3's KO dark
-// comp gets layered on after). (TK 2026-07-12)
+// Growth engine #2 -- MAIN-ROUND film NOW LIVE (Jenny3 dark comp, TK 2026-07-12).
+// The core growth loop: the film is officially live and community voting is open
+// (Triple-AI 50% + audience 50%). The email rallies the creator's fans to watch
+// AND vote, with a ?ref= share link that credits their signups + votes back.
+// Shares the dark building blocks with VideoLivePrelim.
 
-import { Heading, Text, Section, Button, Img, Link, Hr } from '@react-email/components'
-import { Layout } from '../components/Layout'
+import { Html, Head, Body } from '@react-email/components'
 import type { EmailLang } from '../lang'
+import { C, Thumb, Ctas, Footer } from './VideoLivePrelim'
+
+const LOGO = 'https://pub-bf4080d3cdcd422dbef5b1a7f2b9e19a.r2.dev/brand/oxxovo_email_logo_dark.png'
 
 export type VideoLiveMainProps = {
   lang: EmailLang
-  creatorName: string
+  nickname: string
   seasonName: string
   videoTitle: string
   thumbnailUrl: string | null
-  videoUrl: string
-  shareText: string
-  xUrl: string
-  fbUrl: string
-}
-
-export function VideoLiveMain(p: VideoLiveMainProps) {
-  return p.lang === 'ko' ? <Korean {...p} /> : <English {...p} />
+  watchUrl: string
+  shareUrl: string
+  voteDeadline: string // preformatted, e.g. "2일 14시간" / "2d 14h"
+  viewCount: number
 }
 
 export function subjectFor(p: VideoLiveMainProps): string {
   return p.lang === 'ko'
-    ? `🏆 ${p.videoTitle} — 본선 진출작 공개, 투표가 시작됐습니다`
-    : `🏆 Your main-round film is live — the vote is on`
+    ? `🏆 ${p.videoTitle} — 본선 공개, 공식 투표가 열렸습니다`
+    : `🏆 ${p.videoTitle} — live in the Main Round, the vote is on`
 }
 
-function Hero({ p }: { p: VideoLiveMainProps }) {
-  if (!p.thumbnailUrl) return null
+export function VideoLiveMain(p: VideoLiveMainProps) {
+  const ko = p.lang === 'ko'
+  const t = ko
+    ? {
+        head: 'MAIN ROUND',
+        badge: '🔴 NOW LIVE ON OXXOVO',
+        title: ['당신의 작품이', '공식 공개됐습니다'],
+        sub: '전 세계 관객이 지금 이 작품을 보고 있습니다.',
+        watch: '▶ Watch your film',
+        share: '팬들에게 공유하기',
+        voteTitle: '공식 투표가 열렸습니다',
+        voteBody: ['본선 결과는 ', 'Triple-AI 심사 50%', '와 ', '관객 투표 50%', '로 결정됩니다. 당신의 팬들을 공식 투표에 초대하세요.'],
+        deadlineLabel: '투표 마감',
+        viewLabel: '현재 조회',
+        closer: ['링크 하나면 팬들이 작품을 보고, 투표하고,', '당신을 팔로우합니다.'],
+      }
+    : {
+        head: 'MAIN ROUND',
+        badge: '🔴 NOW LIVE ON OXXOVO',
+        title: ['Your film is', 'officially live'],
+        sub: 'Audiences around the world are watching it right now.',
+        watch: '▶ Watch your film',
+        share: 'Share with your fans',
+        voteTitle: 'Community voting is open',
+        voteBody: ['The main round is decided by ', 'Triple-AI 50%', ' and ', 'audience votes 50%', '. Invite your fans to cast their official vote.'],
+        deadlineLabel: 'Voting closes in',
+        viewLabel: 'Views',
+        closer: ['One link, and your fans watch, vote,', 'and follow you.'],
+      }
+
   return (
-    <Link href={p.videoUrl}>
-      <Img src={p.thumbnailUrl} alt={p.videoTitle} width="536" style={hero} />
-    </Link>
+    <Html lang={p.lang}>
+      <Head />
+      <Body style={page}>
+        <table width="520" cellPadding={0} cellSpacing={0} border={0} align="center" style={shell}>
+          <tbody>
+            {/* header */}
+            <tr>
+              <td style={{ padding: '18px 24px', borderBottom: `1px solid ${C.border}` }}>
+                <table width="100%" cellPadding={0} cellSpacing={0} border={0}>
+                  <tbody>
+                    <tr>
+                      <td>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={LOGO} width={110} alt="OXXOVO" style={{ display: 'block', border: 0, height: 'auto' }} />
+                      </td>
+                      <td align="right" style={{ color: C.dim, fontSize: 11 }}>
+                        {p.seasonName} · {t.head}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+
+            {/* hero heading */}
+            <tr>
+              <td align="center" style={{ padding: '28px 24px 20px' }}>
+                <span style={badge}>{t.badge}</span>
+                <p style={title}>
+                  {t.title[0]}
+                  <br />
+                  {t.title[1]}
+                </p>
+                <p style={subtext}>{t.sub}</p>
+              </td>
+            </tr>
+
+            {/* thumbnail */}
+            <tr>
+              <td style={{ padding: '0 24px' }}>
+                <Thumb videoTitle={p.videoTitle} nickname={p.nickname} seasonName={p.seasonName} thumbnailUrl={p.thumbnailUrl} watchUrl={p.watchUrl} />
+              </td>
+            </tr>
+
+            {/* CTAs */}
+            <tr>
+              <td style={{ padding: '20px 24px 8px' }}>
+                <Ctas watchUrl={p.watchUrl} shareUrl={p.shareUrl} watchLabel={t.watch} shareLabel={t.share} />
+              </td>
+            </tr>
+
+            {/* vote block */}
+            <tr>
+              <td style={{ padding: '16px 24px 20px' }}>
+                <table width="100%" cellPadding={0} cellSpacing={0} border={0} style={{ background: C.card, borderRadius: 12 }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ padding: 18 }}>
+                        <p style={{ color: C.gray, fontSize: 12, margin: '0 0 12px' }}>{t.voteTitle}</p>
+                        <p style={{ color: C.body, fontSize: 13, lineHeight: 1.7, margin: '0 0 14px' }}>
+                          {t.voteBody[0]}
+                          <span style={{ color: '#fff' }}>{t.voteBody[1]}</span>
+                          {t.voteBody[2]}
+                          <span style={{ color: '#fff' }}>{t.voteBody[3]}</span>
+                          {t.voteBody[4]}
+                        </p>
+                        <table width="100%" cellPadding={0} cellSpacing={0} border={0}>
+                          <tbody>
+                            <tr>
+                              <VoteStat label={t.deadlineLabel} value={p.voteDeadline} />
+                              <td width="4%"></td>
+                              <VoteStat label={t.viewLabel} value={p.viewCount.toLocaleString()} />
+                            </tr>
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+
+            <Footer closer={t.closer} />
+          </tbody>
+        </table>
+      </Body>
+    </Html>
   )
 }
 
-function ShareRow({ p, L }: { p: VideoLiveMainProps; L: Record<string, string> }) {
+function VoteStat({ label, value }: { label: string; value: string }) {
   return (
-    <Section style={{ textAlign: 'center', margin: '8px 0 4px' }}>
-      <Button href={p.xUrl} style={xBtn}>X</Button>
-      <Button href={p.fbUrl} style={fbBtn}>Facebook</Button>
-      <Text style={shareHint}>
-        {L.moreShare}{' '}
-        <Link href={p.videoUrl} style={inlineLink}>{L.onWatch}</Link>
-      </Text>
-    </Section>
+    <td width="48%" align="center" style={{ background: C.mainStat, borderRadius: 8, padding: 12 }}>
+      <p style={{ color: C.dim, fontSize: 10, margin: '0 0 4px' }}>{label}</p>
+      <p style={{ color: '#fff', fontSize: 16, fontWeight: 600, margin: 0 }}>{value}</p>
+    </td>
   )
 }
 
-function Korean(p: VideoLiveMainProps) {
-  const L = { moreShare: 'Instagram · TikTok · 카카오톡 · 링크 복사는', onWatch: 'Watch 페이지에서 한 번에' }
-  return (
-    <Layout lang="ko" preview={`${p.videoTitle} — 본선 진출작 공개, 투표가 시작됐습니다.`}>
-      <Hero p={p} />
-      <Heading style={headingStyle}>본선 무대에 올랐습니다, {p.creatorName}님</Heading>
-      <Text style={paragraph}>
-        <strong>{p.videoTitle}</strong>이(가) OXXOVO {p.seasonName} 본선 진출작으로 공개되었습니다.
-        지금부터 관객 투표가 진행됩니다.
-      </Text>
-      <Section style={{ textAlign: 'center', margin: '24px 0 8px' }}>
-        <Button href={p.videoUrl} style={ctaButton}>▶ 내 작품 보고 투표하기</Button>
-      </Section>
-      <Hr style={hr} />
-      <Text style={paragraph}>
-        팬들을 불러오세요. 당신의 작품을 공유하고, 관객이 직접 감상하고 공식 투표에 참여하도록
-        OXXOVO에 초대하세요.
-      </Text>
-      <ShareRow p={p} L={L} />
-      <Hr style={hr} />
-      <Text style={closer}>AI is easy. Winning is hard.</Text>
-      <Text style={signoff}>Team OXXOVO</Text>
-    </Layout>
-  )
-}
-
-function English(p: VideoLiveMainProps) {
-  const L = { moreShare: 'Instagram, TikTok, and Copy Link are all on', onWatch: 'the Watch page' }
-  return (
-    <Layout lang="en" preview={`${p.videoTitle} is live in the Main Round — the vote is on.`}>
-      <Hero p={p} />
-      <Heading style={headingStyle}>You&rsquo;re on the main stage, {p.creatorName}</Heading>
-      <Text style={paragraph}>
-        <strong>{p.videoTitle}</strong> is now live as a main-round film in OXXOVO {p.seasonName}.
-        Community voting is on.
-      </Text>
-      <Section style={{ textAlign: 'center', margin: '24px 0 8px' }}>
-        <Button href={p.videoUrl} style={ctaButton}>▶ Watch &amp; Vote</Button>
-      </Section>
-      <Hr style={hr} />
-      <Text style={paragraph}>
-        Rally your fans. Share your film and invite them to OXXOVO to watch it and cast their
-        official vote.
-      </Text>
-      <ShareRow p={p} L={L} />
-      <Hr style={hr} />
-      <Text style={closer}>AI is easy. Winning is hard.</Text>
-      <Text style={signoff}>Team OXXOVO</Text>
-    </Layout>
-  )
-}
-
-const headingStyle: React.CSSProperties = { color: '#0a0608', fontSize: 24, lineHeight: 1.3, fontWeight: 800, margin: '20px 0 14px' }
-const paragraph: React.CSSProperties = { color: '#1a1a1f', fontSize: 15, lineHeight: 1.7, margin: '0 0 14px' }
-const hero: React.CSSProperties = { width: '100%', maxWidth: 536, height: 'auto', borderRadius: 10, display: 'block', margin: '0 auto' }
-const ctaButton: React.CSSProperties = { background: '#8b22ff', color: '#ffffff', fontSize: 16, fontWeight: 700, padding: '14px 34px', borderRadius: 10, textDecoration: 'none', display: 'inline-block' }
-const xBtn: React.CSSProperties = { background: '#111111', color: '#ffffff', fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 8, textDecoration: 'none', display: 'inline-block', margin: '0 4px' }
-const fbBtn: React.CSSProperties = { background: '#1877f2', color: '#ffffff', fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 8, textDecoration: 'none', display: 'inline-block', margin: '0 4px' }
-const shareHint: React.CSSProperties = { color: '#666666', fontSize: 12, lineHeight: 1.6, margin: '12px 0 0' }
-const inlineLink: React.CSSProperties = { color: '#8b22ff', fontWeight: 600, textDecoration: 'underline' }
-const hr: React.CSSProperties = { borderColor: '#eceaf2', margin: '24px 0' }
-const closer: React.CSSProperties = { color: '#1a1a1f', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }
-const signoff: React.CSSProperties = { color: '#8b22ff', fontSize: 13, fontWeight: 600, margin: '20px 0 0' }
+const page: React.CSSProperties = { margin: 0, padding: '40px 20px', background: C.page, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans KR',sans-serif" }
+const shell: React.CSSProperties = { maxWidth: 520, background: C.bg, borderRadius: 12, overflow: 'hidden' }
+const badge: React.CSSProperties = { display: 'inline-block', background: C.badgeBg, color: C.lilac, fontSize: 11, padding: '5px 12px', borderRadius: 12, marginBottom: 14 }
+const title: React.CSSProperties = { color: '#ffffff', fontSize: 24, fontWeight: 600, margin: '0 0 8px', lineHeight: 1.4 }
+const subtext: React.CSSProperties = { color: C.gray, fontSize: 13, margin: 0, lineHeight: 1.6 }

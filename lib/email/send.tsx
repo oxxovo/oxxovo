@@ -90,7 +90,7 @@ import {
   subjectFor as videoLiveMainSubject,
   type VideoLiveMainProps,
 } from './templates/VideoLiveMain'
-import { buildShareUrl, shareCopy, xIntentUrl, facebookShareUrl } from '@/lib/share-kit'
+import { buildShareUrl } from '@/lib/share-kit'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 export type SendResult =
@@ -666,47 +666,57 @@ export async function sendMembershipFoundingExpiry(
 
 // ─── growth-engine "your film is live" emails ─────────────────────────────
 // Application-scoped -> executeSend's per-application dedup makes them once-only.
-// The hero/CTA use a plain video URL (the creator viewing their own film); the
-// X/Facebook SHARE buttons carry a ?ref= link so their fans' signups + votes
+// "Watch your film" uses a plain URL (the creator viewing their own film); the
+// "share to fans" link carries a ?ref= + utm so their fans' signups + votes
 // credit back to them (the growth loop). creatorUserId null -> no attribution.
+// Data (score/rank/AI notes for prelim; vote deadline/views for main) is gathered
+// by the caller (email-tick fire trigger) and passed in.
 
 const APP_BASE = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
 
-function videoLiveShare(videoUrl: string, creatorUserId: string | null, seasonName: string) {
-  const shareUrl = creatorUserId ? buildShareUrl(videoUrl, creatorUserId, 'email_share') : videoUrl
-  const shareText = shareCopy(seasonName)
-  return { shareText, xUrl: xIntentUrl(shareText, shareUrl), fbUrl: facebookShareUrl(shareUrl) }
+function shareLink(watchUrl: string, creatorUserId: string | null, campaign: string): string {
+  return creatorUserId
+    ? buildShareUrl(watchUrl, creatorUserId, { source: 'email_share', medium: 'email', campaign })
+    : watchUrl
 }
 
-type SendVideoLiveInput = {
+type SendVideoLivePrelimInput = {
   toEmail: string
   country: string | null | undefined
-  creatorName: string
-  // Referrer id for the ?ref= share links (the creator's user id). null when the
-  // entry has no linked account (e.g. an admin-seeded row) -> no attribution.
+  // Referrer id for the ?ref= share link (the creator's user id). null when the
+  // entry has no linked account -> the email still sends, without attribution.
   creatorUserId: string | null
+  nickname: string
   seasonName: string
   videoTitle: string
   thumbnailUrl: string | null
+  score: number | null
+  percentile: number | null
+  rank: number | null
+  aiStrength: string
+  aiImprove: string
   applicationId: string
   seasonId?: string | null
   forceLang?: EmailLang
 }
 
-export async function sendVideoLivePrelim(input: SendVideoLiveInput): Promise<SendResult> {
+export async function sendVideoLivePrelim(input: SendVideoLivePrelimInput): Promise<SendResult> {
   const lang = input.forceLang ?? detectEmailLang(input.country)
-  const videoUrl = `${APP_BASE}/watch/${input.applicationId}?round=application`
-  const { shareText, xUrl, fbUrl } = videoLiveShare(videoUrl, input.creatorUserId, input.seasonName)
+  const watchUrl = `${APP_BASE}/watch/${input.applicationId}?round=application`
   const props: VideoLivePrelimProps = {
     lang,
-    creatorName: input.creatorName,
+    nickname: input.nickname,
     seasonName: input.seasonName,
     videoTitle: input.videoTitle,
     thumbnailUrl: input.thumbnailUrl,
-    videoUrl,
-    shareText,
-    xUrl,
-    fbUrl,
+    watchUrl,
+    shareUrl: shareLink(watchUrl, input.creatorUserId, 'prelim_published'),
+    reportUrl: watchUrl,
+    score: input.score,
+    percentile: input.percentile,
+    rank: input.rank,
+    aiStrength: input.aiStrength,
+    aiImprove: input.aiImprove,
   }
   return executeSend({
     toEmail: input.toEmail,
@@ -719,20 +729,34 @@ export async function sendVideoLivePrelim(input: SendVideoLiveInput): Promise<Se
   })
 }
 
-export async function sendVideoLiveMain(input: SendVideoLiveInput): Promise<SendResult> {
+type SendVideoLiveMainInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorUserId: string | null
+  nickname: string
+  seasonName: string
+  videoTitle: string
+  thumbnailUrl: string | null
+  voteDeadline: string
+  viewCount: number
+  applicationId: string
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendVideoLiveMain(input: SendVideoLiveMainInput): Promise<SendResult> {
   const lang = input.forceLang ?? detectEmailLang(input.country)
-  const videoUrl = `${APP_BASE}/watch/${input.applicationId}?round=main`
-  const { shareText, xUrl, fbUrl } = videoLiveShare(videoUrl, input.creatorUserId, input.seasonName)
+  const watchUrl = `${APP_BASE}/watch/${input.applicationId}?round=main`
   const props: VideoLiveMainProps = {
     lang,
-    creatorName: input.creatorName,
+    nickname: input.nickname,
     seasonName: input.seasonName,
     videoTitle: input.videoTitle,
     thumbnailUrl: input.thumbnailUrl,
-    videoUrl,
-    shareText,
-    xUrl,
-    fbUrl,
+    watchUrl,
+    shareUrl: shareLink(watchUrl, input.creatorUserId, 'main_round_live'),
+    voteDeadline: input.voteDeadline,
+    viewCount: input.viewCount,
   }
   return executeSend({
     toEmail: input.toEmail,

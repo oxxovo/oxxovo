@@ -13,12 +13,19 @@ export type ShareSource = 'email_share' | 'watch_share'
 
 // Append the growth-loop attribution params to a share target. `ref` is the
 // sharing creator's user id -- it credits both signups (profiles.referred_by)
-// and votes (watch_votes.referred_by) back to them; utm_source marks the
-// channel. Preserves any query already on the base URL. Pass an ABSOLUTE url.
-export function buildShareUrl(baseUrl: string, referrerId: string, source: ShareSource): string {
+// and votes (watch_votes.referred_by) back to them; utm_* mark the channel and
+// campaign (e.g. prelim_published / main_round_live). Preserves any query
+// already on the base URL. Pass an ABSOLUTE url.
+export function buildShareUrl(
+  baseUrl: string,
+  referrerId: string,
+  params: { source: ShareSource; medium?: string; campaign?: string },
+): string {
   const u = new URL(baseUrl)
   u.searchParams.set('ref', referrerId)
-  u.searchParams.set('utm_source', source)
+  u.searchParams.set('utm_source', params.source)
+  if (params.medium) u.searchParams.set('utm_medium', params.medium)
+  if (params.campaign) u.searchParams.set('utm_campaign', params.campaign)
   return u.toString()
 }
 
