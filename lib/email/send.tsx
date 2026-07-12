@@ -80,6 +80,17 @@ import {
   subjectFor as membershipFoundingExpirySubject,
   type MembershipFoundingExpiryProps,
 } from './templates/MembershipFoundingExpiry'
+import {
+  VideoLivePrelim,
+  subjectFor as videoLivePrelimSubject,
+  type VideoLivePrelimProps,
+} from './templates/VideoLivePrelim'
+import {
+  VideoLiveMain,
+  subjectFor as videoLiveMainSubject,
+  type VideoLiveMainProps,
+} from './templates/VideoLiveMain'
+import { buildShareUrl, shareCopy, xIntentUrl, facebookShareUrl } from '@/lib/share-kit'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 export type SendResult =
@@ -650,5 +661,86 @@ export async function sendMembershipFoundingExpiry(
     language: lang,
     subject: membershipFoundingExpirySubject(props),
     element: <MembershipFoundingExpiry {...props} />,
+  })
+}
+
+// ─── growth-engine "your film is live" emails ─────────────────────────────
+// Application-scoped -> executeSend's per-application dedup makes them once-only.
+// The hero/CTA use a plain video URL (the creator viewing their own film); the
+// X/Facebook SHARE buttons carry a ?ref= link so their fans' signups + votes
+// credit back to them (the growth loop). creatorUserId null -> no attribution.
+
+const APP_BASE = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
+
+function videoLiveShare(videoUrl: string, creatorUserId: string | null, seasonName: string) {
+  const shareUrl = creatorUserId ? buildShareUrl(videoUrl, creatorUserId, 'email_share') : videoUrl
+  const shareText = shareCopy(seasonName)
+  return { shareText, xUrl: xIntentUrl(shareText, shareUrl), fbUrl: facebookShareUrl(shareUrl) }
+}
+
+type SendVideoLiveInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  // Referrer id for the ?ref= share links (the creator's user id). null when the
+  // entry has no linked account (e.g. an admin-seeded row) -> no attribution.
+  creatorUserId: string | null
+  seasonName: string
+  videoTitle: string
+  thumbnailUrl: string | null
+  applicationId: string
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendVideoLivePrelim(input: SendVideoLiveInput): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const videoUrl = `${APP_BASE}/watch/${input.applicationId}?round=application`
+  const { shareText, xUrl, fbUrl } = videoLiveShare(videoUrl, input.creatorUserId, input.seasonName)
+  const props: VideoLivePrelimProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    videoTitle: input.videoTitle,
+    thumbnailUrl: input.thumbnailUrl,
+    videoUrl,
+    shareText,
+    xUrl,
+    fbUrl,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'video_live_prelim',
+    language: lang,
+    subject: videoLivePrelimSubject(props),
+    element: <VideoLivePrelim {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+export async function sendVideoLiveMain(input: SendVideoLiveInput): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const videoUrl = `${APP_BASE}/watch/${input.applicationId}?round=main`
+  const { shareText, xUrl, fbUrl } = videoLiveShare(videoUrl, input.creatorUserId, input.seasonName)
+  const props: VideoLiveMainProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    videoTitle: input.videoTitle,
+    thumbnailUrl: input.thumbnailUrl,
+    videoUrl,
+    shareText,
+    xUrl,
+    fbUrl,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'video_live_main',
+    language: lang,
+    subject: videoLiveMainSubject(props),
+    element: <VideoLiveMain {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
   })
 }

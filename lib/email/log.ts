@@ -18,6 +18,10 @@ export type TemplateKey =
   | 'awarded_contact_request'
   | 'partner_invitation'
   | 'partner_eligible'
+  // Growth engine: sent when a creator's film goes live on Watch (once per
+  // application per round). Application-scoped -> executeSend dedup applies.
+  | 'video_live_prelim'
+  | 'video_live_main'
   // P4e membership notices (profile-scoped; dedup via profiles.
   // membership_renewal_notified_at, not email_logs). Logged for transparency.
   | 'membership_renewal'
