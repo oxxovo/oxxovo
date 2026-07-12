@@ -142,8 +142,20 @@ export function ArenaHero({
         <div className="min-w-0">
           <p className="text-[14px] font-semibold text-[#e7e0f5]">Current Competition — Season {seasonNumber}</p>
           <p className="mt-0.5 text-[12px] leading-relaxed text-[#9b8bc4]">
-            {roundName} is in progress. Videos are shown in the order they were entered. Join OXXOVO for
-            free to vote in the Main Round and support your favorite creators.
+            {roundName === 'Judging Complete' ? (
+              <>
+                Judging is complete. Finalists will be revealed
+                {revealAtISO
+                  ? ` on ${new Date(revealAtISO).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
+                  : ' soon'}
+                .
+              </>
+            ) : (
+              <>
+                {roundName} is in progress. Videos are shown in the order they were entered. Join OXXOVO
+                for free to vote in the Main Round and support your favorite creators.
+              </>
+            )}
           </p>
         </div>
         <Link
