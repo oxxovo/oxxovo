@@ -7,7 +7,7 @@
 // no scored main-round videos.
 
 import Link from 'next/link'
-import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress, Finalist } from '@/lib/watch'
+import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress, Finalist, BannerContent } from '@/lib/watch'
 import { LiveStatusBar } from './LiveStatusBar'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
@@ -25,28 +25,20 @@ function fmtCount(n: number): string {
 // One slim dark bar restating the platform's fairness stance, with a link back
 // to the landing page. Full-bleed (matches the Hero's -mx-6) and slightly darker
 // than the Hero so it reads as a header strip.
-// Announcement banner. Default = brand slogan. When finalists have been selected
-// but the reveal date hasn't arrived, it switches to the finalist-reveal notice
-// so the audience knows what happened and when to return. (TK 2026-07-12)
-export function ArenaBanner({
-  finalistReveal,
-}: {
-  finalistReveal?: { count: number; revealAt: string } | null
-}) {
-  if (finalistReveal) {
-    const d = new Date(finalistReveal.revealAt)
-    const dateLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+// Announcement banner = a lifecycle stage machine (getBannerStage). 'accepting'
+// renders this brand strip; every other stage (judging / finalists_pending /
+// main_live / voting / results) reuses the finalist-banner layout below --
+// same size and color, only the icon/title/subtitle change per stage. Each
+// stage tells the audience what to do right now. (TK 2026-07-12)
+export function ArenaBanner({ content }: { content: BannerContent }) {
+  if (content.stage !== 'accepting') {
     return (
       <div className="pt-4 pb-5">
         <div className="flex items-center gap-4">
-          <span aria-hidden className="text-[44px] leading-none">🏆</span>
+          <span aria-hidden className="text-[44px] leading-none">{content.icon}</span>
           <div className="min-w-0 flex-1">
-            <p className="text-[20px] font-bold leading-snug text-white">
-              {finalistReveal.count} finalists have advanced to the Main Round.
-            </p>
-            <p className="mt-1 text-[15px] text-[#c3b8dd]">
-              Main-round films are revealed on {dateLabel}. Check back to watch and vote.
-            </p>
+            <p className="text-[20px] font-bold leading-snug text-white">{content.title}</p>
+            <p className="mt-1 text-[15px] text-[#c3b8dd]">{content.subtitle}</p>
           </div>
         </div>
       </div>
@@ -93,6 +85,8 @@ export function ArenaHero({
   isAccepting,
   judging,
   revealAtISO,
+  theme,
+  themeSeconds,
 }: {
   seasonNumber: number
   roundName: string
@@ -102,6 +96,8 @@ export function ArenaHero({
   isAccepting: boolean
   judging: JudgingProgress
   revealAtISO?: string | null
+  theme?: string | null
+  themeSeconds?: number | null
 }) {
   const panel = (
     <LiveStatusBar
@@ -113,6 +109,8 @@ export function ArenaHero({
       isAccepting={isAccepting}
       initialJudging={judging}
       revealAtISO={revealAtISO ?? null}
+      theme={theme ?? null}
+      themeSeconds={themeSeconds ?? null}
     />
   )
   return (

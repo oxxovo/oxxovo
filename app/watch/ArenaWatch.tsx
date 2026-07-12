@@ -14,6 +14,7 @@ import {
   isVoteWindowOpen,
   getFinalistRevealState,
   getFinalists,
+  getBannerStage,
   type WatchSort,
   type WatchRound,
 } from '@/lib/watch'
@@ -98,9 +99,32 @@ export async function ArenaWatch({
   // Post-reveal (main_round_start_at passed): finalists show at the top of Watch.
   const finalists = inMainRound ? await getFinalists(currentSeasonId) : []
 
+  // Public main-round theme teaser. Shown from "Judging Complete" onward (once
+  // finalists are pending) through the main round -- the banner is a come-back
+  // hook, so the theme is teased early (TK 2026-07-12). Hidden during the open
+  // prelim (no theme leak). Reads season.main_round_theme (now on the public
+  // view) -- null until an operator sets it.
+  const showTheme = finalistReveal != null || inMainRound
+  const theme = showTheme ? (currentSeason?.main_round_theme ?? null) : null
+  const themeSeconds = currentSeason?.main_round_video_seconds ?? null
+
+  // Top announcement banner: a date-driven lifecycle stage machine. Everything
+  // comes from the current season's schedule columns (no hardcoding) so the
+  // banner auto-advances accepting -> judging -> finalists -> main live ->
+  // voting -> results as time passes.
+  const bannerStage = getBannerStage({
+    applicationCloseAt: closeAtISO,
+    mainRoundStartAt: currentSeason?.main_round_start_at ?? null,
+    voteStartAt: currentSeason?.community_vote_start_at ?? null,
+    voteEndAt: currentSeason?.community_vote_end_at ?? null,
+    awardsAt: currentSeason?.awards_announcement_at ?? null,
+    finalistCount: finalistReveal?.count ?? finalists.length,
+    theme: currentSeason?.main_round_theme ?? null,
+  })
+
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
-      <ArenaBanner finalistReveal={finalistReveal} />
+      <ArenaBanner content={bannerStage} />
       <ArenaHero
         seasonNumber={seasonNumber}
         roundName={roundName}
@@ -110,6 +134,8 @@ export async function ArenaWatch({
         isAccepting={isAccepting}
         judging={judging}
         revealAtISO={finalistReveal?.revealAt ?? null}
+        theme={theme}
+        themeSeconds={themeSeconds}
       />
       <FinalistSection finalists={finalists} />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />

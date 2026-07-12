@@ -37,6 +37,8 @@ export function LiveStatusBar({
   isAccepting,
   initialJudging,
   revealAtISO,
+  theme,
+  themeSeconds,
 }: {
   seasonNumber: number
   roundName: string
@@ -48,6 +50,12 @@ export function LiveStatusBar({
   // Set in the finalist-pending window: switches the deadline row to
   // "본선 진출작 공개까지" counting to the reveal date.
   revealAtISO?: string | null
+  // Public main-round theme (season.main_round_theme). Non-null only from the
+  // "Judging Complete" stage onward (the caller gates it) so it reads as a
+  // come-back teaser before the main round, then the current brief once live.
+  // themeSeconds = main_round_video_seconds ("· 30초").
+  theme?: string | null
+  themeSeconds?: number | null
 }) {
   const [stats, setStats] = useState<Stats>(initialStats)
   const [judging, setJudging] = useState<Judging>(initialJudging)
@@ -148,6 +156,27 @@ export function LiveStatusBar({
             />
           </div>
         </>
+      )}
+
+      {/* Main-round theme (public brief). Purple gradient panel so it reads as
+          its own beat between the countdown and the country count. Label reads
+          as a teaser ("다음 라운드") while finalist-pending, then the live brief
+          once the main round is on. (TK 2026-07-12) */}
+      {theme && (
+        <div className="-mx-1 rounded-lg bg-gradient-to-r from-[#8b22ff]/25 via-[#8b22ff]/10 to-transparent px-3 py-2.5">
+          <div className="flex items-center gap-1.5">
+            <span aria-hidden>🎬</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#c9b4f5]">
+              {isMain ? 'Main Round Theme' : '다음 라운드 주제'}
+            </span>
+          </div>
+          <p className="mt-1 text-[15px] font-bold leading-snug text-white">
+            {theme}
+            {themeSeconds != null && (
+              <span className="font-semibold text-[#c3b8dd]"> · {themeSeconds}초</span>
+            )}
+          </p>
+        </div>
       )}
 
       {/* Countries */}

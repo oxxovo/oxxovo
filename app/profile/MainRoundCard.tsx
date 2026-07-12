@@ -7,8 +7,6 @@ import { CountdownTimer } from '@/app/_components/CountdownTimer'
 import { ConfirmModal } from '@/app/_components/ConfirmModal'
 import {
   canSubmitMainRound,
-  getThemeRevealTime,
-  isMainRoundThemeRevealed,
   type Season,
   type SubmitBlockReason,
 } from '@/lib/seasons'
@@ -175,9 +173,9 @@ function SubmitFormCard({
     [videoUrl, season.allowed_video_platforms],
   )
 
-  const themeRevealed =
-    mockOverrides?.themeRevealed ?? isMainRoundThemeRevealed(season)
-  const revealTime = getThemeRevealTime(season)
+  // Theme is a PUBLIC brief now (TK 2026-07-12, "A") -- shown as soon as the
+  // operator sets it, the same moment the audience sees it on Watch. No 60-min
+  // reveal gate: it would be pointless when the theme is already public there.
   const endAt = season.main_round_end_at ? new Date(season.main_round_end_at) : null
 
   const handleConfirm = async () => {
@@ -246,7 +244,7 @@ function SubmitFormCard({
         <div className="text-[10px] uppercase tracking-wider text-white/40 mb-2">
           {t.profile.main_round_theme_label}
         </div>
-        {themeRevealed && season.main_round_theme ? (
+        {season.main_round_theme ? (
           <div className="rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.08] px-4 py-3">
             <p className="text-lg font-bold text-[#d4a7ff]">{season.main_round_theme}</p>
           </div>
@@ -255,15 +253,6 @@ function SubmitFormCard({
             <p className="text-sm text-white/70">
               {getMessage(messages, 'main_round_theme_reveal_waiting', lang)}
             </p>
-            {revealTime && (
-              <p className="mt-2 text-xs text-white/50">
-                {t.profile.main_round_theme_reveal_countdown_label}{' '}
-                <CountdownTimer
-                  targetAt={revealTime}
-                  className="text-[#b66cff] font-bold tabular-nums"
-                />
-              </p>
-            )}
           </div>
         )}
       </div>

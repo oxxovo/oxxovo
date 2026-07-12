@@ -391,6 +391,106 @@ export async function getJudgingProgress(seasonId: string): Promise<JudgingProgr
   return { scored, total: pool.size }
 }
 
+// ── Announcement banner stage machine (top of Watch) ────────────────────────
+// Pure, date-driven (no I/O, no hardcoding -- every transition is a seasons
+// column). The banner is a come-back hook, so each stage tells the audience
+// exactly what to DO right now. Precedence is latest-stage-first:
+//   results          now >= awards_announcement_at        -> see who won
+//   voting           vote window open                     -> go vote
+//   main_live        main_round_start passed, pre-vote     -> come watch
+//   finalists_pending finalists selected, pre-reveal       -> come back on {date}
+//   judging          applications closed, no finalists yet -> results soon
+//   accepting        applications open (default)           -> brand identity
+// 'accepting' carries no copy: the caller renders the existing brand strip
+// (unchanged size/color). Every other stage reuses the finalist-banner layout.
+export type BannerStageName =
+  | 'accepting'
+  | 'judging'
+  | 'finalists_pending'
+  | 'main_live'
+  | 'voting'
+  | 'results'
+
+export type BannerContent =
+  | { stage: 'accepting' }
+  | {
+      stage: Exclude<BannerStageName, 'accepting'>
+      icon: string
+      title: string
+      subtitle: string
+    }
+
+export type BannerStageInput = {
+  applicationCloseAt: string | null
+  mainRoundStartAt: string | null
+  voteStartAt: string | null
+  voteEndAt: string | null
+  awardsAt: string | null
+  finalistCount: number
+  theme: string | null
+}
+
+export function getBannerStage(input: BannerStageInput, now: Date = new Date()): BannerContent {
+  const t = now.getTime()
+  const ms = (s: string | null) => (s ? Date.parse(s) : null)
+  const close = ms(input.applicationCloseAt)
+  const mainStart = ms(input.mainRoundStartAt)
+  const voteStart = ms(input.voteStartAt)
+  const voteEnd = ms(input.voteEndAt)
+  const awards = ms(input.awardsAt)
+  const fmt = (m: number) => new Date(m).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+
+  // 5. Results announced.
+  if (awards != null && t >= awards) {
+    return {
+      stage: 'results',
+      icon: '🏆',
+      title: 'The winners have been announced.',
+      subtitle: 'See who took the top spots this season.',
+    }
+  }
+  // 4. Community voting open.
+  if (voteStart != null && voteEnd != null && t >= voteStart && t < voteEnd) {
+    return {
+      stage: 'voting',
+      icon: '🔥',
+      title: 'Community voting is open.',
+      subtitle: `Watch the main-round films and vote for your favorite. Voting closes ${fmt(voteEnd)}.`,
+    }
+  }
+  // 3b. Main round live (finalists revealed), before voting opens.
+  if (mainStart != null && t >= mainStart) {
+    const themePart = input.theme ? ` — ${input.theme}` : ''
+    const voteWhen = voteStart != null ? ` Community voting opens ${fmt(voteStart)}.` : ''
+    return {
+      stage: 'main_live',
+      icon: '🎬',
+      title: `The Main Round is live${themePart}.`,
+      subtitle: `The finalists' films are up — come watch.${voteWhen}`,
+    }
+  }
+  // 3a. Finalists selected, before the reveal date.
+  if (input.finalistCount > 0 && mainStart != null && t < mainStart) {
+    return {
+      stage: 'finalists_pending',
+      icon: '🏆',
+      title: `${input.finalistCount} finalists have advanced to the Main Round.`,
+      subtitle: `Main-round films are revealed on ${fmt(mainStart)}. Check back to watch and vote.`,
+    }
+  }
+  // 2. Applications closed, judging under way (no finalists yet).
+  if (close != null && t >= close) {
+    return {
+      stage: 'judging',
+      icon: '⚡',
+      title: 'Triple-AI judging is under way.',
+      subtitle: 'Finalists will be announced soon. Check back to see who advanced.',
+    }
+  }
+  // 1. Applications open (default) — caller renders the brand strip.
+  return { stage: 'accepting' }
+}
+
 // Finalist-reveal banner state. Between advancement (finalists selected) and the
 // reveal date (main_round_start_at), the audience should see "N finalists
 // advanced -- revealed on {date}" so nobody is left wondering what happened.

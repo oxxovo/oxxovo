@@ -108,16 +108,23 @@ export type Season = {
   main_round_start_at: string | null
   main_round_end_at: string | null
   awards_announcement_at: string | null
+  // Community vote window. On the seasons_public view since
+  // main_round_theme_public_2026-07 (a schedule, not a secret). Drives the
+  // Watch "voting" banner stage + the 🔥 vote badge window.
+  community_vote_start_at: string | null
+  community_vote_end_at: string | null
 
   // Public theme (#6 hybrid model), shown openly. The secret main_round_twist
   // and its legacy main_round_theme fallback live only on the base table and
   // never travel through getSeasonById, which reads the secret-free
   // seasons_public view. See getThemeDisplay / lib/seasons-theme.
   season_theme: string | null
-  // Deprecated (kept for legacy #1 main-round UI refs only). NOT on the
-  // seasons_public view, so it is always undefined at runtime through
-  // getSeasonById -- no twist can leak. TODO 지수2: migrate MainRoundCard /
-  // main-results off season.main_round_theme to getThemeDisplay, then drop.
+  // PUBLIC main-round theme/brief (e.g. "OXXOVO Beauty CF"). Shown to the
+  // audience from the "Judging Complete" stage as a come-back teaser, and to
+  // finalists in their submission card. Now ON the seasons_public view
+  // (main_round_theme_public_2026-07 migration), so it IS populated at runtime.
+  // The SECRET surprise element, if any, lives in main_round_twist (still off
+  // the view, still reveal-gated) -- not here. (TK 2026-07-12: A = public/early.)
   main_round_theme: string | null
   allowed_video_platforms: string[]
   // Member Hosted Tournament (partner) fields.
