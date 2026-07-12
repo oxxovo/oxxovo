@@ -92,7 +92,6 @@ export function ArenaHero({
   closeAtISO,
   isAccepting,
   judging,
-  revealAtISO,
 }: {
   seasonNumber: number
   roundName: string
@@ -101,7 +100,6 @@ export function ArenaHero({
   closeAtISO: string | null
   isAccepting: boolean
   judging: JudgingProgress
-  revealAtISO?: string | null
 }) {
   const panel = (
     <LiveStatusBar
@@ -112,7 +110,6 @@ export function ArenaHero({
       closeAtISO={closeAtISO}
       isAccepting={isAccepting}
       initialJudging={judging}
-      revealAtISO={revealAtISO ?? null}
     />
   )
   return (
