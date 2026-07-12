@@ -99,20 +99,21 @@ export async function ArenaWatch({
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
       <ArenaBanner />
-      {finalistReveal ? (
+      {/* Finalist-reveal banner as a SEPARATE strip ABOVE the hero -- the hero
+          (LIVE panel + arena image) is never covered/replaced. (TK 2026-07-12) */}
+      {finalistReveal && (
         <FinalistRevealBanner count={finalistReveal.count} revealAt={finalistReveal.revealAt} />
-      ) : (
-        <ArenaHero
-          seasonNumber={seasonNumber}
-          roundName={roundName}
-          seasonId={currentSeasonId}
-          stats={heroStats}
-          closeAtISO={closeAtISO}
-          isAccepting={isAccepting}
-          judging={judging}
-          revealAtISO={null}
-        />
       )}
+      <ArenaHero
+        seasonNumber={seasonNumber}
+        roundName={roundName}
+        seasonId={currentSeasonId}
+        stats={heroStats}
+        closeAtISO={closeAtISO}
+        isAccepting={isAccepting}
+        judging={judging}
+        revealAtISO={null}
+      />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />
     </ArenaShell>
