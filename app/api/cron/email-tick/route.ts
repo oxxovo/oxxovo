@@ -27,6 +27,7 @@ import {
   sendMembershipFoundingExpiry,
   type SendResult,
 } from '@/lib/email/send'
+import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { isMembershipEnabled } from '@/lib/membership'
 import { getPlatformConfigMap } from '@/lib/partners'
 import type { Season } from '@/lib/seasons'
@@ -430,6 +431,14 @@ async function fireResultsAnnounced(season: Season) {
 // Each batch is dedup-safe (canSend + executeSend per applicationId+template).
 async function fireFinalistResults(season: Season) {
   const supabase = createSupabaseAdmin()
+
+  // Season Report inputs (shared with the admin path via lib/email/finalist-
+  // report): rank the scored pool + per-entry strengths/weaknesses, and resolve
+  // the dynamic next-season CTA target.
+  const rankMap = await loadScoredRanks(supabase, season.id)
+  const total = rankMap.size
+  const { name: nextSeasonName, openAt: nextSeasonOpenAt } = await loadNextSeason(supabase)
+
   const [selRes, rejRes] = await Promise.all([
     supabase
       .from('genesis_applications')
@@ -460,6 +469,7 @@ async function fireFinalistResults(season: Season) {
         creatorName: row.creator_name,
         seasonName: season.display_name,
         topNAdvance: season.top_n_advance,
+        totalParticipants: total,
         mainRoundStartAt: season.main_round_start_at,
         applicationId: row.id,
         seasonId: season.id,
@@ -468,15 +478,25 @@ async function fireFinalistResults(season: Season) {
   const rejected = await dispatchBatch(
     (rejRes.data ?? []) as ApplicantRow[],
     'not_selected',
-    async (row) =>
-      sendNotSelected({
+    async (row) => {
+      const m = rankMap.get(row.id)
+      return sendNotSelected({
         toEmail: row.email,
         country: row.country,
         creatorName: row.creator_name,
         seasonName: season.display_name,
+        score: m?.score ?? 0,
+        rank: m?.rank ?? total,
+        total: m?.total ?? total,
+        percentile: m?.percentile ?? 0,
+        strength: m?.strength ?? '',
+        improvement: m?.improvement ?? '',
+        nextSeasonName,
+        nextSeasonOpenAt,
         applicationId: row.id,
         seasonId: season.id,
-      }),
+      })
+    },
   )
 
   return {

@@ -285,6 +285,7 @@ type SendSelectedTop50Input = {
   creatorName: string
   seasonName: string
   topNAdvance: number
+  totalParticipants: number
   mainRoundStartAt: string | null
   applicationId?: string | null
   seasonId?: string | null
@@ -300,6 +301,7 @@ export async function sendSelectedTop50(
     creatorName: input.creatorName,
     seasonName: input.seasonName,
     topNAdvance: input.topNAdvance,
+    totalParticipants: input.totalParticipants,
     mainRoundStartAt: input.mainRoundStartAt,
   }
   return executeSend({
@@ -318,6 +320,14 @@ type SendNotSelectedInput = {
   country: string | null | undefined
   creatorName: string
   seasonName: string
+  score: number
+  rank: number
+  total: number
+  percentile: number
+  strength: string
+  improvement: string
+  nextSeasonName: string
+  nextSeasonOpenAt: string | null
   applicationId?: string | null
   seasonId?: string | null
   forceLang?: EmailLang
@@ -327,10 +337,27 @@ export async function sendNotSelected(
   input: SendNotSelectedInput,
 ): Promise<SendResult> {
   const lang = input.forceLang ?? detectEmailLang(input.country)
+  const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
+  const nextSeasonDate = input.nextSeasonOpenAt
+    ? new Date(input.nextSeasonOpenAt).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
+        dateStyle: 'long',
+      })
+    : ''
   const props: NotSelectedProps = {
     lang,
     creatorName: input.creatorName,
     seasonName: input.seasonName,
+    score: input.score,
+    rank: input.rank,
+    total: input.total,
+    percentile: input.percentile,
+    strength: input.strength,
+    improvement: input.improvement,
+    videoUrl: input.applicationId ? `${base}/watch/${input.applicationId}` : `${base}/watch`,
+    profileUrl: `${base}/profile`,
+    nextSeasonName: input.nextSeasonName,
+    nextSeasonDate,
+    applyUrl: `${base}/apply`,
   }
   return executeSend({
     toEmail: input.toEmail,

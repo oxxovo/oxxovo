@@ -11,6 +11,7 @@ import {
   sendNotSelected,
   sendAwardedContactRequest,
 } from '@/lib/email/send'
+import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { recomputePartnerStats } from '@/lib/partners'
 
 export type AdminActionState = {
@@ -97,22 +98,35 @@ export async function saveStatus(id: string, status: string): Promise<AdminActio
       if (!season) {
         console.error('[saveStatus] season missing — skipping email', row.season_id)
       } else if (status === 'selected') {
+        const ranks = await loadScoredRanks(supabase, season.id)
         await sendSelectedTop50({
           toEmail: row.email,
           country: row.country,
           creatorName: row.creator_name,
           seasonName: season.display_name,
           topNAdvance: season.top_n_advance,
+          totalParticipants: ranks.size,
           mainRoundStartAt: season.main_round_start_at,
           applicationId: row.id,
           seasonId: season.id,
         })
       } else {
+        const ranks = await loadScoredRanks(supabase, season.id)
+        const next = await loadNextSeason(supabase)
+        const m = ranks.get(row.id)
         await sendNotSelected({
           toEmail: row.email,
           country: row.country,
           creatorName: row.creator_name,
           seasonName: season.display_name,
+          score: m?.score ?? 0,
+          rank: m?.rank ?? ranks.size,
+          total: m?.total ?? ranks.size,
+          percentile: m?.percentile ?? 0,
+          strength: m?.strength ?? '',
+          improvement: m?.improvement ?? '',
+          nextSeasonName: next.name,
+          nextSeasonOpenAt: next.openAt,
           applicationId: row.id,
           seasonId: season.id,
         })
@@ -273,6 +287,9 @@ export async function applyRecommendation(
   const rejectedApps = rejRes.data ?? []
 
   // 5. Promise.allSettled 병렬 발송. 부분 실패 허용 (executeSend가 email_logs 기록).
+  // Season Report(순위/피드백) + 다음 시즌 CTA는 email-tick과 동일 헬퍼 사용.
+  const ranks = await loadScoredRanks(admin, input.seasonId)
+  const next = await loadNextSeason(admin)
   const emailPromises = [
     ...selectedApps.map((a) =>
       sendSelectedTop50({
@@ -281,21 +298,31 @@ export async function applyRecommendation(
         creatorName: a.creator_name,
         seasonName: season.display_name,
         topNAdvance: season.top_n_advance,
+        totalParticipants: ranks.size,
         mainRoundStartAt: season.main_round_start_at,
         applicationId: a.id,
         seasonId: season.id,
       }),
     ),
-    ...rejectedApps.map((a) =>
-      sendNotSelected({
+    ...rejectedApps.map((a) => {
+      const m = ranks.get(a.id)
+      return sendNotSelected({
         toEmail: a.email,
         country: a.country,
         creatorName: a.creator_name,
         seasonName: season.display_name,
+        score: m?.score ?? 0,
+        rank: m?.rank ?? ranks.size,
+        total: m?.total ?? ranks.size,
+        percentile: m?.percentile ?? 0,
+        strength: m?.strength ?? '',
+        improvement: m?.improvement ?? '',
+        nextSeasonName: next.name,
+        nextSeasonOpenAt: next.openAt,
         applicationId: a.id,
         seasonId: season.id,
-      }),
-    ),
+      })
+    }),
   ]
   const emailResults = await Promise.allSettled(emailPromises)
   let emailsSent = 0
