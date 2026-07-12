@@ -411,6 +411,57 @@ export async function getFinalistRevealState(
   return { count, revealAt }
 }
 
+// Finalists for the post-reveal Watch header (status selected/submitted/awarded).
+// mainVideoUrl null = advanced but hasn't submitted the main-round film yet
+// (the card shows a "준비 중" state). Sorted by prelim verified_score desc.
+export type Finalist = {
+  applicationId: string
+  creatorName: string
+  videoTitle: string | null
+  thumbnailUrl: string | null
+  mainVideoUrl: string | null
+  verifiedScore: number | null
+  awardRank: number | null
+}
+
+export async function getFinalists(seasonId: string): Promise<Finalist[]> {
+  const admin = createSupabaseAdmin()
+  const { data: apps } = await admin
+    .from('genesis_applications')
+    .select('id, creator_name, video_title, thumbnail_url, main_round_video_url, award_rank')
+    .eq('season_id', seasonId)
+    .in('status', ['selected', 'main_round_submitted', 'awarded'])
+  const rows = (apps ?? []) as {
+    id: string; creator_name: string; video_title: string | null
+    thumbnail_url: string | null; main_round_video_url: string | null; award_rank: number | null
+  }[]
+  if (rows.length === 0) return []
+  const { data: scores } = await admin
+    .from('scoring_results')
+    .select('application_id, verified_score')
+    .eq('season_id', seasonId)
+    .eq('round', 'application')
+    .eq('judged_status', 'completed')
+    .in('application_id', rows.map((r) => r.id))
+  const scoreMap = new Map(
+    (scores ?? []).map((s: { application_id: string; verified_score: number | null }) => [
+      s.application_id,
+      s.verified_score,
+    ]),
+  )
+  return rows
+    .map((r) => ({
+      applicationId: r.id,
+      creatorName: r.creator_name,
+      videoTitle: r.video_title,
+      thumbnailUrl: r.thumbnail_url,
+      mainVideoUrl: r.main_round_video_url,
+      verifiedScore: scoreMap.get(r.id) ?? null,
+      awardRank: r.award_rank,
+    }))
+    .sort((a, b) => (b.verifiedScore ?? 0) - (a.verifiedScore ?? 0))
+}
+
 // Whether the community vote window is currently open for a season. Read from the
 // BASE seasons table via service role (the community_vote_* columns are not on the
 // public seasons_public view). Drives the "🔥 투표중" card badge.

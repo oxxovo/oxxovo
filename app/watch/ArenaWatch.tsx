@@ -13,6 +13,7 @@ import {
   getJudgingProgress,
   isVoteWindowOpen,
   getFinalistRevealState,
+  getFinalists,
   type WatchSort,
   type WatchRound,
 } from '@/lib/watch'
@@ -20,7 +21,7 @@ import { getCurrentSeason, getCurrentSeasonId } from '@/lib/seasons'
 import { getUserOrNull } from '@/lib/user-auth'
 import { ArenaShell } from './ArenaShell'
 import { ArenaFilterBar, type FilterSeason } from './ArenaFilterBar'
-import { ArenaBanner, ArenaHero, LatestEntries } from './Arena'
+import { ArenaBanner, ArenaHero, LatestEntries, FinalistSection } from './Arena'
 
 export async function ArenaWatch({
   sort,
@@ -94,6 +95,8 @@ export async function ArenaWatch({
   const judging = await getJudgingProgress(currentSeasonId)
   const cardsJudging = judging.total > 0
   const voteOpen = await isVoteWindowOpen(currentSeasonId)
+  // Post-reveal (main_round_start_at passed): finalists show at the top of Watch.
+  const finalists = inMainRound ? await getFinalists(currentSeasonId) : []
 
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
@@ -108,6 +111,7 @@ export async function ArenaWatch({
         judging={judging}
         revealAtISO={finalistReveal?.revealAt ?? null}
       />
+      <FinalistSection finalists={finalists} />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />
     </ArenaShell>

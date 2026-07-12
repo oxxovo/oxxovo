@@ -7,7 +7,7 @@
 // no scored main-round videos.
 
 import Link from 'next/link'
-import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress } from '@/lib/watch'
+import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress, Finalist } from '@/lib/watch'
 import { LiveStatusBar } from './LiveStatusBar'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
@@ -37,14 +37,14 @@ export function ArenaBanner({
     const d = new Date(finalistReveal.revealAt)
     const dateLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
     return (
-      <div className="-mx-6 border-b border-[#8b22ff]/30 bg-[#0c0618] px-6 py-4">
-        <div className="flex items-start gap-3">
-          <span aria-hidden className="text-xl leading-none">🏆</span>
+      <div className="pt-4 pb-5">
+        <div className="flex items-center gap-4">
+          <span aria-hidden className="text-[44px] leading-none">🏆</span>
           <div className="min-w-0 flex-1">
             <p className="text-[20px] font-bold leading-snug text-white">
               {finalistReveal.count} finalists have advanced to the Main Round.
             </p>
-            <p className="mt-1 text-[15px] text-[#e7e0f5]">
+            <p className="mt-1 text-[15px] text-[#c3b8dd]">
               Main-round films are revealed on {dateLabel}. Check back to watch and vote.
             </p>
           </div>
@@ -152,6 +152,56 @@ export function ArenaHero({
         >
           Join free to vote →
         </Link>
+      </div>
+    </section>
+  )
+}
+
+// ── Finalists section (post-reveal, top of Watch) ───────────────────────────
+// 10 advanced entries with a 🏆 Finalist badge. Reuses the same card shape as
+// the entry grid. When a finalist hasn't submitted the main-round film yet, the
+// card overlays "본선 영상 준비 중" over the prelim thumbnail. (TK 2026-07-12)
+export function FinalistSection({ finalists }: { finalists: Finalist[] }) {
+  if (finalists.length === 0) return null
+  return (
+    <section className="mb-10">
+      <Heading kicker="Main Round" title="🏆 Finalists" />
+      <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+        {finalists.map((f) => (
+          <Link
+            key={f.applicationId}
+            href={`/watch/${f.applicationId}?round=main`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block overflow-hidden rounded-xl border border-[#8b22ff]/30 bg-[#110d1c] transition hover:border-[#8b22ff]/60 hover:shadow-[0_0_22px_rgba(139,34,255,.25)]"
+          >
+            <div className="relative aspect-video w-full overflow-hidden">
+              {f.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={f.thumbnailUrl} alt={f.videoTitle || f.creatorName} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2a0e52] via-[#3d1580] to-[#1a0633] p-4 text-center">
+                  <span className="text-sm font-black uppercase tracking-wide text-white/85">{f.creatorName}</span>
+                </div>
+              )}
+              <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-[#8b22ff]/90 px-2 py-1 text-[11px] font-black text-white backdrop-blur">
+                🏆 {f.awardRank ? `#${f.awardRank}` : 'Finalist'}
+              </span>
+              {!f.mainVideoUrl && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                  <span className="text-xs font-bold text-white/90">본선 영상 준비 중</span>
+                </div>
+              )}
+            </div>
+            <div className="p-3.5">
+              <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{f.videoTitle || f.creatorName}</h3>
+              <p className="mt-1 truncate text-xs text-[#7a7299]">
+                by {f.creatorName}
+                {f.verifiedScore != null ? ` · Triple-AI ${Number(f.verifiedScore).toFixed(2)}점` : ''}
+              </p>
+            </div>
+          </Link>
+        ))}
       </div>
     </section>
   )
