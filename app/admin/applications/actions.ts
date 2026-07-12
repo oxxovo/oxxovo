@@ -5,7 +5,8 @@ import { getAdminOrNull, requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getSeasonById, type Season } from '@/lib/seasons'
-import { computeFinalScore } from '@/lib/scoring'
+import { computeFinalScore, computeCommunityScore } from '@/lib/scoring'
+import { getMainRoundVoteTally } from '@/lib/watch'
 import {
   sendSelectedTop50,
   sendNotSelected,
@@ -362,7 +363,7 @@ async function rankMainRound(
   if (!season) return null
 
   const supabase = await createSupabaseServer()
-  const [appsRes, scoringRes] = await Promise.all([
+  const [appsRes, scoringRes, voteTally] = await Promise.all([
     supabase
       .from('genesis_applications')
       .select('id, email, country, creator_name, award_rank, main_round_submitted_at')
@@ -373,6 +374,7 @@ async function rankMainRound(
       .select('application_id, verified_score, judged_status')
       .eq('season_id', seasonId)
       .eq('round', 'main'),
+    getMainRoundVoteTally(seasonId),
   ])
 
   // 채점 완료(completed)된 것만 verified_score 인정 — 진행 중/실패는 랭킹 제외.
@@ -380,6 +382,10 @@ async function rankMainRound(
   for (const s of scoringRes.data ?? []) {
     scoreByApp.set(s.application_id, s.judged_status === 'completed' ? s.verified_score : null)
   }
+
+  // 최다 득표수 (B안 정규화 기준, main-results와 동일). 투표 0건이면 0 →
+  // computeCommunityScore가 null → 가중 시즌은 final=null(pending). 시즌0은 무관.
+  const maxVotes = voteTally.size > 0 ? Math.max(...voteTally.values()) : 0
 
   const ranked: MainRoundRanked[] = (appsRes.data ?? [])
     .map((a) => ({
@@ -390,8 +396,13 @@ async function rankMainRound(
         creator_name: a.creator_name,
         award_rank: a.award_rank,
       },
-      // Layer-2: Soak 모드(community_vote_weight=0)에선 final === verified.
-      finalScore: computeFinalScore(scoreByApp.get(a.id) ?? null, null, season),
+      // Layer-2: Soak(community_vote_weight=0)엔 final===verified(커뮤니티 무시).
+      // 가중 시즌(0.5)엔 AI50 + 관객50 블렌드로 우승자 선정.
+      finalScore: computeFinalScore(
+        scoreByApp.get(a.id) ?? null,
+        computeCommunityScore(voteTally.get(a.id) ?? 0, maxVotes),
+        season,
+      ),
     }))
     .filter((r): r is MainRoundRanked => r.finalScore != null)
     .sort((a, b) => b.finalScore - a.finalScore)
