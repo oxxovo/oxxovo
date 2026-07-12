@@ -66,7 +66,11 @@ export type WatchSeasonGroup = {
 
 // Applications in these states are never shown on Watch: 'rejected' (not in the
 // competition) and 'flagged' (integrity suspicion, pending review).
-const HIDDEN_STATUSES = new Set(['rejected', 'flagged'])
+// 'flagged' (integrity-suspect) stays hidden -- never promote questionable work.
+// 'rejected' (scored but didn't advance) is NOT hidden: eliminated entries stay
+// public on Watch, which the NotSelected email explicitly promises ("your work
+// stays public"). Hiding them would break that link. (TK/advisor 2026-07-11)
+const HIDDEN_STATUSES = new Set(['flagged'])
 
 // A video is PUBLIC only when: competition status isn't hidden, an admin hasn't
 // hidden it (watch_hidden), AND AI pre-moderation approved it. New submissions
