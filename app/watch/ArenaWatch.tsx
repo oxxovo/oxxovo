@@ -69,7 +69,14 @@ export async function ArenaWatch({
     ? Date.parse(currentSeason.main_round_start_at)
     : null
   const inMainRound = mainStart != null && Date.now() >= mainStart
-  const roundName = inMainRound ? 'Main Round' : 'Preliminary Round'
+  // Finalist-reveal state (after advancement, before main_round_start_at) drives
+  // the banner, the "Judging Complete" round label, and the reveal countdown.
+  const finalistReveal = await getFinalistRevealState(currentSeasonId)
+  const roundName = inMainRound
+    ? 'Main Round'
+    : finalistReveal
+      ? 'Judging Complete'
+      : 'Preliminary Round'
 
   // LIVE status: the application window is genuinely open (open <= now < close).
   // Drives the blinking LIVE dot, the deadline countdown, and the stats polling.
@@ -88,8 +95,6 @@ export async function ArenaWatch({
   const judging = await getJudgingProgress(currentSeasonId)
   const cardsJudging = judging.total > 0
   const voteOpen = await isVoteWindowOpen(currentSeasonId)
-  // Finalist-reveal banner: after advancement, before main_round_start_at.
-  const finalistReveal = await getFinalistRevealState(currentSeasonId)
 
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
@@ -102,6 +107,7 @@ export async function ArenaWatch({
         closeAtISO={closeAtISO}
         isAccepting={isAccepting}
         judging={judging}
+        revealAtISO={finalistReveal?.revealAt ?? null}
       />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />

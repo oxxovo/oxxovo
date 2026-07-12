@@ -36,6 +36,7 @@ export function LiveStatusBar({
   closeAtISO,
   isAccepting,
   initialJudging,
+  revealAtISO,
 }: {
   seasonNumber: number
   roundName: string
@@ -44,6 +45,9 @@ export function LiveStatusBar({
   closeAtISO: string | null
   isAccepting: boolean
   initialJudging: Judging
+  // Set once finalists are chosen but the main round hasn't opened: the deadline
+  // row switches from "예선 마감까지" to "본선 진출작 공개까지" (counts to reveal).
+  revealAtISO?: string | null
 }) {
   const [stats, setStats] = useState<Stats>(initialStats)
   const [judging, setJudging] = useState<Judging>(initialJudging)
@@ -77,6 +81,10 @@ export function LiveStatusBar({
 
   const closeAt = closeAtISO ? new Date(closeAtISO) : null
   const showCountdown = isAccepting && closeAt != null && closeAt.getTime() > Date.now()
+  // Finalist-reveal countdown (판정 완료 -> 본선 공개 전). Takes over the deadline
+  // row when set; the two phases are mutually exclusive (prelim window is closed).
+  const revealAt = revealAtISO ? new Date(revealAtISO) : null
+  const showReveal = revealAt != null && revealAt.getTime() > Date.now()
   const showJudging = judging.total > 0
   const pct = judging.total > 0 ? Math.round((judging.scored / judging.total) * 100) : 0
   // Shimmer runs only while judging is genuinely in progress; it stops at 완료.
@@ -127,13 +135,18 @@ export function LiveStatusBar({
       )}
 
       {/* Deadline countdown (only while genuinely accepting) */}
-      {showCountdown && (
+      {(showCountdown || showReveal) && (
         <>
           <div className="h-px bg-[#33235a]" />
           <div className="flex items-center gap-2">
-            <span aria-hidden className="text-[#9b8bc4]">🕐</span>
-            <span className="text-[12px] text-[#9b8bc4]">{closeLabel}</span>
-            <CountdownTimer targetAt={closeAt!} className="ml-auto text-[15px] font-semibold tabular-nums text-white" />
+            <span aria-hidden className="text-[#9b8bc4]">{showReveal ? '🏆' : '🕐'}</span>
+            <span className="text-[12px] text-[#9b8bc4]">
+              {showReveal ? '본선 진출작 공개까지' : closeLabel}
+            </span>
+            <CountdownTimer
+              targetAt={showReveal ? revealAt! : closeAt!}
+              className="ml-auto text-[15px] font-semibold tabular-nums text-white"
+            />
           </div>
         </>
       )}
