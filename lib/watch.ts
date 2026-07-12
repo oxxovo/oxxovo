@@ -731,10 +731,11 @@ export async function getWatchVideo(
 
 export type VoteContext = {
   open: boolean // vote window currently active
+  closed: boolean // vote window has ENDED (now > end) -- show the final tally
   cap: number // max videos a person may vote for this season/round
   usedVotes: number // how many this user has used this season/round
   voted: boolean // has this user voted for THIS video
-  totalVotes: number // this video's public vote count
+  totalVotes: number // this video's public vote count (shown during AND after)
 }
 
 // Vote state for a main-round video. Public count is always returned; the
@@ -773,6 +774,7 @@ export async function getVoteContext(
   const start = season?.community_vote_start_at ? Date.parse(season.community_vote_start_at as string) : null
   const end = season?.community_vote_end_at ? Date.parse(season.community_vote_end_at as string) : null
   const open = start != null && end != null && now >= start && now <= end
+  const closed = end != null && now > end
   const cap = (season?.community_vote_max_per_user as number | null) ?? 3
 
   const { count: totalVotes } = await admin
@@ -803,7 +805,7 @@ export async function getVoteContext(
     voted = !!mineRes.data
   }
 
-  return { open, cap, usedVotes, voted, totalVotes: totalVotes ?? 0 }
+  return { open, closed, cap, usedVotes, voted, totalVotes: totalVotes ?? 0 }
 }
 
 export type WatchComment = {

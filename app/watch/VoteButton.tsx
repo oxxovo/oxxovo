@@ -51,7 +51,10 @@ export function VoteButton({
     })
   }
 
-  if (!ctx.open && total === 0) {
+  // Before the window opens (and no votes yet) there is nothing to show. Once
+  // voting has opened -- or closed with a final tally -- the box stays visible so
+  // the vote count is public during AND after voting (TK 2026-07-12).
+  if (!ctx.open && !ctx.closed && total === 0) {
     return <p className="text-sm text-white/40">Community voting is not open.</p>
   }
 
@@ -63,6 +66,7 @@ export function VoteButton({
           <p className="text-xs text-white/50">
             {total.toLocaleString()} votes
             {ctx.open && isLoggedIn && <> · {remaining} of {ctx.cap} left</>}
+            {ctx.closed && <> · voting closed</>}
           </p>
         </div>
         <button

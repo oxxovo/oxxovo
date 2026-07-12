@@ -458,7 +458,10 @@ function cardStatusText(
   showJudging: boolean,
   seasonNames: Record<string, string>,
 ): string {
-  if (v.round === 'main' && voteOpen) return `${fmtCount(v.voteCount)} votes`
+  // Votes are public DURING the window (voteOpen) and stay public AFTER it
+  // closes -- a final scoreboard, not hidden (TK 2026-07-12). Any main-round
+  // video that has votes shows them, regardless of the window state.
+  if (v.round === 'main' && (voteOpen || v.voteCount > 0)) return `${fmtCount(v.voteCount)} votes`
   if (v.publicScore != null) return `Triple-AI ${Number(v.publicScore).toFixed(2)}점`
   if (showJudging && !v.scored) return '심사 대기'
   return seasonNames[v.seasonId] ?? ''
