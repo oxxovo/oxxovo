@@ -9,6 +9,7 @@
 import Link from 'next/link'
 import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress } from '@/lib/watch'
 import { LiveStatusBar } from './LiveStatusBar'
+import { CountdownTimer } from '@/app/_components/CountdownTimer'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
 const ACCENT = '#8b22ff'
@@ -28,30 +29,48 @@ function fmtCount(n: number): string {
 // Announcement banner. Default = brand slogan. When finalists have been selected
 // but the reveal date hasn't arrived, it switches to the finalist-reveal notice
 // so the audience knows what happened and when to return. (TK 2026-07-12)
-export function ArenaBanner({
-  finalistReveal,
-}: {
-  finalistReveal?: { count: number; revealAt: string } | null
-}) {
-  if (finalistReveal) {
-    const d = new Date(finalistReveal.revealAt)
-    const dateLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
-    return (
-      <div className="-mx-6 border-b border-[#8b22ff]/30 bg-[#0c0618] px-6 py-2.5">
-        <div className="flex items-center gap-3">
-          <span aria-hidden className="text-sm">🏆</span>
-          <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-[12px] font-bold text-[#c3a9f5] sm:text-[13px]">
-              {finalistReveal.count} finalists have advanced to the Main Round.
-            </p>
-            <p className="truncate text-[11px] text-white/55 sm:text-[12px]">
-              Main-round films are revealed on {dateLabel}. Check back to watch and vote.
-            </p>
-          </div>
+// Finalist-reveal HERO banner (large): shown in the hero slot from advancement
+// until the reveal date -- the audience's "something big is coming" moment. Big
+// type, brand glow, JULY date, live countdown, CTA. (TK 2026-07-12)
+export function FinalistRevealBanner({ count, revealAt }: { count: number; revealAt: string }) {
+  const d = new Date(revealAt)
+  const dateLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }).toUpperCase()
+  return (
+    <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#8b22ff]/40 bg-[#0a0512] px-6 py-12 text-center md:py-16">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-10%,rgba(139,34,255,.4),transparent_60%)]"
+      />
+      <div className="relative">
+        <p className="mb-4 text-xs font-bold uppercase tracking-[0.35em] text-[#c3a9f5] sm:text-sm">
+          🏆 The Finals Are Set
+        </p>
+        <h2 className="text-4xl font-black leading-[1.05] tracking-tight text-white sm:text-5xl md:text-6xl">
+          {count} FINALISTS ADVANCED
+        </h2>
+        <p className="mt-4 text-lg font-bold tracking-wide text-[#a855ff] sm:text-2xl">
+          MAIN ROUND FILMS REVEAL — {dateLabel}
+        </p>
+        <div className="mt-7 inline-flex items-baseline gap-2.5 rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/10 px-6 py-3">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-[#9b8bc4]">Reveal in</span>
+          <CountdownTimer targetAt={d} className="text-2xl font-black tabular-nums text-white sm:text-3xl" />
+        </div>
+        <div className="mt-8">
+          <Link
+            href="#entries"
+            className="inline-block rounded-full bg-[#8b22ff] px-8 py-3.5 text-sm font-bold text-white shadow-[0_0_30px_rgba(139,34,255,.5)] transition hover:bg-[#7a1de6] sm:text-base"
+          >
+            Watch the Reveal →
+          </Link>
         </div>
       </div>
-    )
-  }
+    </section>
+  )
+}
+
+// Thin announcement strip (brand slogan). The finalist moment is the big
+// FinalistRevealBanner above, rendered in the hero slot.
+export function ArenaBanner() {
   return (
     <div className="-mx-6 border-b border-white/10 bg-[#05040c] px-6 py-2.5">
       <div className="flex items-center gap-3">
