@@ -44,7 +44,7 @@ export function ArenaBanner({
             <p className="text-[20px] font-bold leading-snug text-white">
               {finalistReveal.count} finalists have advanced to the Main Round.
             </p>
-            <p className="mt-1 text-[14px] text-[#9b8bc4]">
+            <p className="mt-1 text-[15px] text-[#e7e0f5]">
               Main-round films are revealed on {dateLabel}. Check back to watch and vote.
             </p>
           </div>
