@@ -37,14 +37,14 @@ export function ArenaBanner({
     const d = new Date(finalistReveal.revealAt)
     const dateLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
     return (
-      <div className="-mx-6 border-b border-[#8b22ff]/30 bg-[#0c0618] px-6 py-2.5">
-        <div className="flex items-center gap-3">
-          <span aria-hidden className="text-sm">🏆</span>
-          <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-[12px] font-bold text-[#c3a9f5] sm:text-[13px]">
+      <div className="-mx-6 border-b border-[#8b22ff]/30 bg-[#0c0618] px-6 py-4">
+        <div className="flex items-start gap-3">
+          <span aria-hidden className="text-xl leading-none">🏆</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[20px] font-bold leading-snug text-white">
               {finalistReveal.count} finalists have advanced to the Main Round.
             </p>
-            <p className="truncate text-[11px] text-white/55 sm:text-[12px]">
+            <p className="mt-1 text-[14px] text-[#9b8bc4]">
               Main-round films are revealed on {dateLabel}. Check back to watch and vote.
             </p>
           </div>
