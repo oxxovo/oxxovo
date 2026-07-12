@@ -82,7 +82,7 @@ function RoundScore({ s, c }: { s: MyRoundScore; c: (typeof COPY)['en'] }) {
             </span>
           )}
           {s.verifiedScore != null && (
-            <span className="text-lg font-black text-white">{Number(s.verifiedScore).toFixed(1)}</span>
+            <span className="text-lg font-black text-white">{Number(s.verifiedScore).toFixed(2)}</span>
           )}
         </div>
       </div>
@@ -119,7 +119,7 @@ function Axis({ label, value }: { label: string; value: number | null }) {
     <div>
       <div className="flex justify-between text-[11px] text-white/50">
         <span>{label}</span>
-        <span>{value != null ? Number(value).toFixed(1) : '—'}</span>
+        <span>{value != null ? Number(value).toFixed(2) : '—'}</span>
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
         <div className="h-full rounded-full bg-[#8b22ff]" style={{ width: `${pct}%` }} />

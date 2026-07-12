@@ -161,7 +161,7 @@ function ScoreBadge({ score }: { score: PublicScore }) {
   if (score.verifiedScore == null) return null
   return (
     <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded bg-[#8b22ff]/85 px-1.5 py-0.5 text-[11px] font-black text-white backdrop-blur">
-      {Math.round(score.verifiedScore)}
+      {Number(score.verifiedScore).toFixed(2)}
       {score.grade ? <span className="font-bold opacity-80">· {score.grade}</span> : null}
     </span>
   )
@@ -228,7 +228,7 @@ export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seaso
               <p className="truncate text-[11px] text-[#7a7299]">{v.creatorName}</p>
               {score.verifiedScore != null && (
                 <p className="mt-0.5 text-[12px] font-black text-[#a855ff]">
-                  {Math.round(score.verifiedScore)}
+                  {Number(score.verifiedScore).toFixed(2)}
                   {score.grade ? <span className="text-[#7a7299]"> · {score.grade}</span> : null}
                   <span className="text-[#7a7299]"> · Triple-AI</span>
                 </p>
@@ -370,7 +370,7 @@ function cardStatusText(
   seasonNames: Record<string, string>,
 ): string {
   if (v.round === 'main' && voteOpen) return `${fmtCount(v.voteCount)} votes`
-  if (v.publicScore != null) return `Triple-AI ${Math.round(v.publicScore)}점`
+  if (v.publicScore != null) return `Triple-AI ${Number(v.publicScore).toFixed(2)}점`
   if (showJudging && !v.scored) return '심사 대기'
   return seasonNames[v.seasonId] ?? ''
 }

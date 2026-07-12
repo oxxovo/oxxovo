@@ -46,7 +46,7 @@ function ReportCard(p: NotSelectedProps & { L: Record<string, string> }) {
     <Section style={card}>
       <Text style={rowLine}>
         <span style={emoji}>🏅</span> <strong>{p.L.score}</strong>{' '}
-        <span style={scoreVal}>{Math.round(p.score)} / 100</span>
+        <span style={scoreVal}>{p.score.toFixed(2)} / 100</span>
       </Text>
       <Text style={rowLine}>
         <span style={emoji}>📈</span> <strong>{p.L.percentile}</strong>{' '}

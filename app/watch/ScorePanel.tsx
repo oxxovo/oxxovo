@@ -16,7 +16,7 @@ export function ScorePanel({ score }: { score: PublicScore }) {
 
       {score.verifiedScore != null && (
         <div className="mt-3 flex items-baseline gap-2">
-          <span className="text-4xl font-black text-white">{Number(score.verifiedScore).toFixed(1)}</span>
+          <span className="text-4xl font-black text-white">{Number(score.verifiedScore).toFixed(2)}</span>
           <span className="text-sm text-white/40">/ 100</span>
         </div>
       )}
@@ -61,7 +61,7 @@ function Axis({ label, value }: { label: string; value: number | null }) {
     <div>
       <div className="flex justify-between text-[11px] text-white/50">
         <span>{label}</span>
-        <span>{value != null ? Number(value).toFixed(1) : '—'}</span>
+        <span>{value != null ? Number(value).toFixed(2) : '—'}</span>
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
         <div className="h-full rounded-full bg-[#8b22ff]" style={{ width: `${pct}%` }} />

@@ -301,7 +301,7 @@ function ScoringSection({
             {t.application_detail.scoring_verified_score}
           </div>
           <div className="text-4xl font-black text-white">
-            {scoring.verified_score != null ? Math.round(scoring.verified_score) : '—'}
+            {scoring.verified_score != null ? Number(scoring.verified_score).toFixed(2) : '—'}
             <span className="text-base text-white/40 font-normal ml-1">/100</span>
           </div>
         </div>

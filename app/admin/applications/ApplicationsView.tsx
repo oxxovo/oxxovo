@@ -291,7 +291,7 @@ export function ApplicationsView({
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-white/90">
-                    {a.verified_score != null ? Math.round(a.verified_score) : <span className="text-white/40 font-normal">{t.applications.score_pending}</span>}
+                    {a.verified_score != null ? Number(a.verified_score).toFixed(2) : <span className="text-white/40 font-normal">{t.applications.score_pending}</span>}
                   </td>
                   <td className="px-4 py-3">
                     {derived ? (
