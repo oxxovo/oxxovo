@@ -426,7 +426,11 @@ export type BannerStageInput = {
   voteStartAt: string | null
   voteEndAt: string | null
   awardsAt: string | null
+  // Finalist headcount (dynamic: top 10% clamp 10..50 -- never hardcoded) and
+  // how many of them have actually submitted their main-round film. The
+  // main_live copy uses filmCount to avoid claiming films are up before any land.
   finalistCount: number
+  finalistFilmCount: number
   theme: string | null
 }
 
@@ -462,11 +466,23 @@ export function getBannerStage(input: BannerStageInput, now: Date = new Date()):
   if (mainStart != null && t >= mainStart) {
     const themePart = input.theme ? ` — ${input.theme}` : ''
     const voteWhen = voteStart != null ? ` Community voting opens ${fmt(voteStart)}.` : ''
+    // Before any main-round film has been submitted, don't claim films are up --
+    // the prelim entries + finalists' qualifying films are already watchable, so
+    // invite the audience to meet the finalists. Once >=1 main film lands, switch
+    // to the watch/vote call. finalistCount is dynamic (TK: never hardcoded).
+    if (input.finalistFilmCount <= 0) {
+      return {
+        stage: 'main_live',
+        icon: '🎬',
+        title: `The Main Round has begun${themePart}.`,
+        subtitle: `Meet the ${input.finalistCount} finalists.${voteWhen}`,
+      }
+    }
     return {
       stage: 'main_live',
       icon: '🎬',
-      title: `The Main Round is live${themePart}.`,
-      subtitle: `The finalists' films are up — come watch.${voteWhen}`,
+      title: "The finalists' films are up — come watch and vote.",
+      subtitle: `${input.theme ? `${input.theme}.` : 'The Main Round is live.'}${voteWhen}`,
     }
   }
   // 3a. Finalists selected, before the reveal date.

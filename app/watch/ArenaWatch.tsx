@@ -119,6 +119,7 @@ export async function ArenaWatch({
     voteEndAt: currentSeason?.community_vote_end_at ?? null,
     awardsAt: currentSeason?.awards_announcement_at ?? null,
     finalistCount: finalistReveal?.count ?? finalists.length,
+    finalistFilmCount: finalists.filter((f) => f.mainVideoUrl).length,
     theme: currentSeason?.main_round_theme ?? null,
   })
 
