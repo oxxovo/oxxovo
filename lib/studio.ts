@@ -41,6 +41,10 @@ export type StudioModel = {
   cost_per_second_usd: number
   min_duration_seconds: number
   max_duration_seconds: number
+  // Whether the model produces native audio. false for silent models (Hailuo 02
+  // Pro / Video-01 Director) so the picker can flag them -- a silent clip plays
+  // silent for its span in a composition (render.ts Plan C fills silence).
+  hasAudio: boolean
 }
 
 export type StudioJob = {
@@ -121,11 +125,24 @@ export async function getActiveModels(): Promise<StudioModel[]> {
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('model_catalog')
-    .select('id, tier, display_name, cost_per_second_usd, min_duration_seconds, max_duration_seconds')
+    .select('id, tier, display_name, cost_per_second_usd, min_duration_seconds, max_duration_seconds, metadata')
     .eq('active', true)
     .order('cost_per_second_usd', { ascending: true })
   if (error) throw new Error('getActiveModels: ' + error.message)
-  return (data ?? []) as StudioModel[]
+  return (data ?? []).map((m) => {
+    const md = (m.metadata ?? {}) as { has_audio?: boolean }
+    return {
+      id: m.id as string,
+      tier: m.tier as StudioTier,
+      display_name: m.display_name as string,
+      cost_per_second_usd: m.cost_per_second_usd as number,
+      min_duration_seconds: m.min_duration_seconds as number,
+      max_duration_seconds: m.max_duration_seconds as number,
+      // Missing flag -> assume audio (the audio-capable models are the norm);
+      // only an explicit has_audio:false marks a silent model.
+      hasAudio: md.has_audio !== false,
+    }
+  })
 }
 
 export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStudioConfig> {

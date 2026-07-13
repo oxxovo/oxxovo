@@ -51,6 +51,8 @@ const DICT = {
     already_submitted: '이미 제출을 완료했습니다. 제출은 영구적이며 수정할 수 없습니다.',
     gen_title: '새 영상 생성',
     model_label: '모델 (티어)',
+    silent_marker: '무음',
+    silent_note: '🔇 무음 모델입니다 — 최종 영상에서 이 클립 구간엔 소리가 없습니다. 필요하면 오디오가 있는 모델을 함께 쓰세요.',
     duration_label: '길이(초)',
     prompt_label: '프롬프트',
     prompt_ph: '생성할 영상을 설명하세요…',
@@ -121,6 +123,8 @@ const DICT = {
     already_submitted: 'You have already submitted. Submission is permanent and cannot be changed.',
     gen_title: 'New generation',
     model_label: 'Model (tier)',
+    silent_marker: 'silent',
+    silent_note: '🔇 Silent model — this clip’s span in the final video has no sound. Pair it with an audio-capable model if you need sound.',
     duration_label: 'Length (s)',
     prompt_label: 'Prompt',
     prompt_ph: 'Describe the video to generate…',
@@ -506,9 +510,13 @@ function Generator({
               {state.models.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.display_name} · {m.tier}
+                  {m.hasAudio ? '' : ` · ${t.silent_marker}`}
                 </option>
               ))}
             </select>
+            {model && !model.hasAudio && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-amber-300/80">{t.silent_note}</p>
+            )}
           </label>
           <label className="block">
             <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.duration_label}</div>
