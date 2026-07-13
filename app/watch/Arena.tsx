@@ -186,7 +186,11 @@ export function FinalistSection({ finalists }: { finalists: Finalist[] }) {
         {finalists.map((f) => (
           <Link
             key={f.applicationId}
-            href={`/watch/${f.applicationId}?round=main`}
+            href={
+              f.mainVideoUrl
+                ? `/watch/${f.applicationId}?round=main`
+                : `/watch/${f.applicationId}?round=application`
+            }
             target="_blank"
             rel="noopener noreferrer"
             className="group block overflow-hidden rounded-xl border border-[#8b22ff]/30 bg-[#110d1c] transition hover:border-[#8b22ff]/60 hover:shadow-[0_0_22px_rgba(139,34,255,.25)]"

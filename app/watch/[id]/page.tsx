@@ -14,6 +14,7 @@ import {
   getFollowedCreators,
   isFollowing,
   getPublicScore,
+  isMainRoundPending,
   type WatchRound,
   type WatchVideo,
 } from '@/lib/watch'
@@ -80,13 +81,18 @@ export default async function WatchDetailPage({
   // Public Triple-AI score is shown for BOTH rounds (scores are public -- TK
   // 2026-07-10); null until THIS round is judged. The community vote is still
   // main-round only (windowed).
-  const [comments, voteCtx, related, publicScore] = await Promise.all([
+  const [comments, voteCtx, related, publicScore, mainRoundPending] = await Promise.all([
     getWatchComments(id, round),
     round === 'main'
       ? getVoteContext(video.applicationId, video.seasonId, user?.id ?? null)
       : Promise.resolve(null),
     getRelatedVideos(video.seasonId, video.applicationId, video.round),
     getPublicScore(video.applicationId, round),
+    // On a finalist's prelim page (linked here when the main film isn't in yet),
+    // note that the main round is still coming. Only relevant on ?round=application.
+    round === 'application'
+      ? isMainRoundPending(video.applicationId)
+      : Promise.resolve(false),
   ])
 
   // Whether the signed-in member already liked this video (initial button state).
@@ -160,6 +166,12 @@ export default async function WatchDetailPage({
               </span>
             )}
           </div>
+
+          {mainRoundPending && (
+            <p className="mt-3 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/10 px-3 py-2 text-[13px] font-medium text-[#d9c2ff]">
+              🏆 본선 진출작입니다 · 본선 영상은 준비 중입니다.
+            </p>
+          )}
 
           <h1 className="mt-3 text-2xl font-black">{video.videoTitle || video.creatorName}</h1>
 

@@ -578,6 +578,23 @@ export async function getFinalists(seasonId: string): Promise<Finalist[]> {
     .sort((a, b) => (b.verifiedScore ?? 0) - (a.verifiedScore ?? 0))
 }
 
+// True when this application advanced to the Main Round but hasn't submitted the
+// main-round film yet. A Finalist card links to the prelim (?round=application)
+// until the main film lands, so the prelim detail page shows a "본선 영상 준비 중"
+// note explaining why the main round isn't here yet. Same advanced-status set as
+// getFinalists. (TK 2026-07-13)
+export async function isMainRoundPending(applicationId: string): Promise<boolean> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('genesis_applications')
+    .select('status, main_round_video_url')
+    .eq('id', applicationId)
+    .single()
+  if (!data) return false
+  const advanced = ['selected', 'main_round_submitted', 'awarded'].includes(data.status as string)
+  return advanced && !data.main_round_video_url
+}
+
 // Whether the community vote window is currently open for a season. Read from the
 // BASE seasons table via service role (the community_vote_* columns are not on the
 // public seasons_public view). Drives the "🔥 투표중" card badge.
