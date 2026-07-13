@@ -45,6 +45,10 @@ export type StudioModel = {
   // Pro / Video-01 Director) so the picker can flag them -- a silent clip plays
   // silent for its span in a composition (render.ts Plan C fills silence).
   hasAudio: boolean
+  // Max prompt length the fal model accepts (from metadata.prompt_max, measured
+  // per-model). null = unknown/unspecified (e.g. Seedance) -> the UI shows a
+  // char counter + caution but does NOT hard-cap (never fabricate a limit).
+  promptMax: number | null
 }
 
 export type StudioJob = {
@@ -146,7 +150,7 @@ export async function getActiveModels(): Promise<StudioModel[]> {
     .order('cost_per_second_usd', { ascending: true })
   if (error) throw new Error('getActiveModels: ' + error.message)
   return (data ?? []).map((m) => {
-    const md = (m.metadata ?? {}) as { has_audio?: boolean }
+    const md = (m.metadata ?? {}) as { has_audio?: boolean; prompt_max?: number }
     return {
       id: m.id as string,
       tier: m.tier as StudioTier,
@@ -157,6 +161,8 @@ export async function getActiveModels(): Promise<StudioModel[]> {
       // Missing flag -> assume audio (the audio-capable models are the norm);
       // only an explicit has_audio:false marks a silent model.
       hasAudio: md.has_audio !== false,
+      // null when unspecified (Seedance) -> UI counts but does not hard-cap.
+      promptMax: typeof md.prompt_max === 'number' ? md.prompt_max : null,
     }
   })
 }
@@ -230,7 +236,7 @@ export type CreateGenerationResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      reason: 'unknown_model' | 'bad_duration' | 'cap_reached' | 'insufficient_credits' | 'failed'
+      reason: 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'failed'
       detail?: string
     }
 
@@ -250,6 +256,13 @@ export async function createGeneration(args: {
   const models = await getActiveModels()
   const model = models.find((m) => m.id === args.modelId)
   if (!model) return { ok: false, reason: 'unknown_model' }
+
+  // 1b. Prompt within the model's max length (fal rejects over-limit prompts;
+  // surface it here instead of a silent worker failure that burned credits).
+  // promptMax null (unspecified, e.g. Seedance) -> no server cap.
+  if (model.promptMax !== null && prompt.length > model.promptMax) {
+    return { ok: false, reason: 'prompt_too_long', detail: String(model.promptMax) }
+  }
 
   // 2. Duration within the model's bounds.
   const duration = Math.round(args.durationSeconds)

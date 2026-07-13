@@ -116,6 +116,8 @@ const DICT = {
     under: (n: number) => `최소 ${n}초가 필요합니다. 클립을 추가하거나 트림을 늘리세요.`,
     over: (n: number) => `${n}초를 초과했습니다. 트림하거나 클립을 줄이세요.`,
     clip_over: (n: number) => `클립 수가 최대 ${n}개를 초과했습니다.`,
+    clip_count: (n: number, max: number) => `클립 ${n} / ${max}`,
+    clip_max_reached: (max: number) => `최대 ${max}개까지 담을 수 있습니다. 더 넣으려면 기존 클립을 빼세요.`,
     preview: '시퀀스 미리보기',
     stop: '정지',
     render: '완성본 만들기',
@@ -179,6 +181,8 @@ const DICT = {
     under: (n: number) => `At least ${n}s required. Add a clip or extend a trim.`,
     over: (n: number) => `Over ${n}s. Trim or remove a clip.`,
     clip_over: (n: number) => `More than the max of ${n} clips.`,
+    clip_count: (n: number, max: number) => `Clips ${n} / ${max}`,
+    clip_max_reached: (max: number) => `You can add up to ${max} clips. Remove one to add another.`,
     preview: 'Preview sequence',
     stop: 'Stop',
     render: 'Make final',
@@ -569,7 +573,16 @@ export default function ComposeEditor(props: ComposeEditorProps) {
 
       {/* My clips */}
       <section>
-        <h2 className={`${headCls} mb-3`}>{t.my_clips}</h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className={headCls}>{t.my_clips}</h2>
+          {/* Live clip count vs the cap, so a disabled Add button is explained. */}
+          <span className={`text-[11px] ${segments.length >= props.maxClips ? 'text-amber-300' : 'text-white/40'}`}>
+            {t.clip_count(segments.length, props.maxClips)}
+          </span>
+        </div>
+        {segments.length >= props.maxClips && (
+          <p className="mb-2 text-[11px] text-amber-300/80">{t.clip_max_reached(props.maxClips)}</p>
+        )}
         {props.clips.length === 0 ? (
           <p className="text-sm text-white/45">{t.no_clips}</p>
         ) : (

@@ -57,12 +57,14 @@ const DICT = {
     duration_label: '길이(초)',
     prompt_label: '프롬프트',
     prompt_ph: '생성할 영상을 설명하세요…',
+    prompt_no_limit_note: '이 모델은 프롬프트 길이 제한이 확인되지 않았습니다. 너무 길면 생성이 실패할 수 있습니다.',
     cost_preview: (c: number) => `예상 차감: ${c} 크레딧`,
     generate: '생성',
     generating: '생성 요청 중…',
     cap_reached: '이번 라운드 생성 횟수를 모두 사용했습니다.',
     insufficient: '크레딧이 부족합니다.',
     err_bad_duration: '선택한 모델의 허용 길이를 벗어났습니다.',
+    err_prompt_too_long: (max: string) => `프롬프트가 이 모델의 최대 길이(${max}자)를 초과했습니다.`,
     err_generic: '생성 실패',
     my_gens: '내 생성물',
     empty_gens: '아직 생성한 영상이 없습니다.',
@@ -135,12 +137,14 @@ const DICT = {
     duration_label: 'Length (s)',
     prompt_label: 'Prompt',
     prompt_ph: 'Describe the video to generate…',
+    prompt_no_limit_note: "This model's prompt length limit is unconfirmed. A very long prompt may fail to generate.",
     cost_preview: (c: number) => `Estimated charge: ${c} credits`,
     generate: 'Generate',
     generating: 'Requesting…',
     cap_reached: 'You have used all generations for this round.',
     insufficient: 'Not enough credits.',
     err_bad_duration: 'Duration is outside the selected model range.',
+    err_prompt_too_long: (max: string) => `Prompt exceeds this model's maximum length (${max} chars).`,
     err_generic: 'Generation failed',
     my_gens: 'My generations',
     empty_gens: 'No generations yet.',
@@ -486,11 +490,12 @@ function Generator({
   const insufficient = credits > state.balance
   const disabled = pending || !model || prompt.trim() === '' || capReached || insufficient || !state.models.length
 
-  const errText = (e: string): string => {
+  const errText = (e: string, detail?: string): string => {
     switch (e) {
       case 'cap_reached': return t.cap_reached
       case 'insufficient_credits': return t.insufficient
       case 'bad_duration': return t.err_bad_duration
+      case 'prompt_too_long': return t.err_prompt_too_long(detail ?? '')
       default: return t.err_generic
     }
   }
@@ -503,7 +508,7 @@ function Generator({
         setPrompt('')
         await onCreated()
       } else {
-        setError(errText(res.error))
+        setError(errText(res.error, res.detail))
       }
     })
   }
@@ -550,14 +555,36 @@ function Generator({
           </label>
         </div>
         <label className="block">
-          <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.prompt_label}</div>
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="text-[10px] uppercase tracking-wider text-white/40">{t.prompt_label}</span>
+            {model && (
+              <span
+                className={`text-[10px] ${
+                  model.promptMax != null && prompt.length >= model.promptMax
+                    ? 'text-[#ff8888]'
+                    : model.promptMax != null && prompt.length > model.promptMax * 0.9
+                      ? 'text-amber-300'
+                      : 'text-white/40'
+                }`}
+              >
+                {prompt.length.toLocaleString()}
+                {model.promptMax != null ? ` / ${model.promptMax.toLocaleString()}` : ''}
+              </span>
+            )}
+          </div>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={4}
+            // Hard-cap typing at the model's known limit; unknown (Seedance) ->
+            // no cap, a caution note is shown below instead.
+            maxLength={model?.promptMax ?? undefined}
             placeholder={t.prompt_ph}
             className={`${inputCls} resize-y`}
           />
+          {model && model.promptMax == null && (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-amber-300/80">{t.prompt_no_limit_note}</p>
+          )}
         </label>
         <div className="flex items-center justify-between gap-3">
           <span className={`text-xs ${insufficient ? 'text-[#ff8888]' : 'text-white/50'}`}>
