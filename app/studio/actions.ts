@@ -12,6 +12,7 @@ import {
   getActiveModels,
   getSeasonStudioConfig,
   resolveEffectiveRound,
+  isInEffectiveRound,
   countGenerationsForRound,
   listUserJobs,
   createGeneration,
@@ -321,9 +322,16 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
   try {
+    // Compose picks clips for the CURRENT round only -- a 'both' season splits
+    // application vs main clips at main_round_start_at, so main-round compose
+    // never lists prelim clips (and vice-versa). listUserJobs is season-wide;
+    // isInEffectiveRound applies the round boundary. (TK 2026-07-12: matches the
+    // "이번 라운드" copy the picker already showed.)
+    const cfg = await getSeasonStudioConfig(season.id)
+    const effectiveRound = resolveEffectiveRound(cfg)
     const jobs = await listUserJobs(auth.userId, season.id)
     const clips: ComposeClip[] = jobs
-      .filter((j) => j.status === 'ready' && j.video_url)
+      .filter((j) => j.status === 'ready' && j.video_url && isInEffectiveRound(j.created_at, cfg, effectiveRound))
       .map((j) => ({
         id: j.id,
         url: j.video_url as string,
@@ -338,9 +346,8 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
       .eq('id', season.id)
       .single()
 
-    // Submission context (round, application presence, already-submitted).
-    const cfg = await getSeasonStudioConfig(season.id)
-    const effectiveRound = resolveEffectiveRound(cfg)
+    // Submission context (application presence, already-submitted). cfg /
+    // effectiveRound are computed above (used for the round-scoped clip filter).
     const [{ data: appRow }, nickname] = await Promise.all([
       admin
         .from('genesis_applications')

@@ -121,6 +121,22 @@ export function resolveEffectiveRound(
   return 'application'
 }
 
+// Whether a clip created at `createdAtISO` belongs to the CURRENT effective
+// round. For a 'both' season the round boundary is main_round_start_at (created
+// before it = application clip, at/after = main clip). Fixed-round seasons have
+// no boundary -- every clip is that one round. Single source of truth for the
+// round split (compose picker + generation cap both use it).
+export function isInEffectiveRound(
+  createdAtISO: string,
+  cfg: Pick<SeasonStudioConfig, 'round' | 'mainRoundStartAt'>,
+  effectiveRound: EffectiveRound,
+): boolean {
+  if (cfg.round !== 'both' || !cfg.mainRoundStartAt) return true
+  const boundary = new Date(cfg.mainRoundStartAt).getTime()
+  const t = new Date(createdAtISO).getTime()
+  return effectiveRound === 'main' ? t >= boundary : t < boundary
+}
+
 export async function getActiveModels(): Promise<StudioModel[]> {
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
