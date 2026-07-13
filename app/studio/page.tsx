@@ -65,6 +65,8 @@ const DICT = {
     err_generic: '생성 실패',
     my_gens: '내 생성물',
     empty_gens: '아직 생성한 영상이 없습니다.',
+    clips_show_older: '이전 클립 더 보기',
+    clips_collapse: '접기',
     compose_title: '클립을 하나로 조합해 제출하세요',
     compose_hint: '이번 시즌은 조합 방식입니다. 만든 클립들을 15~30초 완성본으로 이어 붙여 제출하세요.',
     compose_cta: '조합 편집기 열기 →',
@@ -137,6 +139,8 @@ const DICT = {
     err_generic: 'Generation failed',
     my_gens: 'My generations',
     empty_gens: 'No generations yet.',
+    clips_show_older: 'Show older clips',
+    clips_collapse: 'Collapse',
     compose_title: 'Stitch your clips into one final and submit',
     compose_hint: 'This season is compose-based. Combine your clips into a 15–30s final and submit.',
     compose_cta: 'Open compose editor →',
@@ -581,6 +585,10 @@ function Generations({
   applicant: ApplicantDraft
   onChanged: () => void | Promise<void>
 }) {
+  // Workspace, not a library: show only recent clips by default so old clips
+  // don't drown the current work. Full history -> My Videos. (TK 2026-07-12)
+  const [showOlder, setShowOlder] = useState(false)
+  const RECENT_CLIPS = 8
   return (
     <section className="mt-8">
       <h2 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold mb-3">{t.my_gens}</h2>
@@ -602,7 +610,7 @@ function Generations({
         <p className="text-xs text-white/40 py-6 text-center">{t.empty_gens}</p>
       ) : (
         <div className="space-y-4">
-          {state.jobs.map((job) => (
+          {(showOlder ? state.jobs : state.jobs.slice(0, RECENT_CLIPS)).map((job) => (
             <JobCard
               key={job.id}
               t={t}
@@ -614,6 +622,15 @@ function Generations({
               onChanged={onChanged}
             />
           ))}
+          {state.jobs.length > RECENT_CLIPS && (
+            <button
+              type="button"
+              onClick={() => setShowOlder((v) => !v)}
+              className="w-full rounded-lg border border-white/10 py-2 text-xs text-white/50 transition hover:border-white/25 hover:text-white/75"
+            >
+              {showOlder ? t.clips_collapse : `${t.clips_show_older} (${state.jobs.length - RECENT_CLIPS})`}
+            </button>
+          )}
         </div>
       )}
     </section>
