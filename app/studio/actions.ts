@@ -20,6 +20,8 @@ import {
   createRender,
   listUserRenders,
   submitRender,
+  deleteClip,
+  deleteRender,
   STATEMENT_MIN,
   STATEMENT_MAX,
   type StudioModel,
@@ -258,6 +260,37 @@ export async function submitGenerationAction(
   })
   if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
   return { ok: true }
+}
+
+// =========================================================================
+// Soft-delete actions. A participant removes a clip / composed final from their
+// workspace. Submitted works are protected server-side (competition record).
+// =========================================================================
+
+export type DeleteActionResult =
+  | { ok: true }
+  | { ok: false; error: 'invalid_token' | 'disabled' | 'protected' | 'not_found' | 'failed'; detail?: string }
+
+function mapDeleteReason(reason?: string): DeleteActionResult {
+  if (reason === 'submitted' || reason === 'in_submitted_render') return { ok: false, error: 'protected', detail: reason }
+  if (reason === 'not_found') return { ok: false, error: 'not_found' }
+  return { ok: false, error: 'failed', detail: reason }
+}
+
+export async function deleteClipAction(token: string, jobId: string): Promise<DeleteActionResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const res = await deleteClip(auth.userId, jobId)
+  return res.ok ? { ok: true } : mapDeleteReason(res.reason)
+}
+
+export async function deleteRenderAction(token: string, renderId: string): Promise<DeleteActionResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const res = await deleteRender(auth.userId, renderId)
+  return res.ok ? { ok: true } : mapDeleteReason(res.reason)
 }
 
 // =========================================================================

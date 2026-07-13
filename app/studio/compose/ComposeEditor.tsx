@@ -79,6 +79,9 @@ export type ComposeEditorProps = {
     renderId: string,
     applicant?: ComposeApplicant,
   ) => Promise<{ ok: true } | { ok: false; error: string }>
+  // Discard a rendered final (soft-delete). Optional -- the demo omits it. A
+  // submitted final is competition record and is never offered for deletion.
+  onDelete?: (renderId: string) => Promise<{ ok: true } | { ok: false; error: string }>
 }
 
 type Segment = { uid: string; jobId: string; startMs: number; endMs: number }
@@ -128,6 +131,9 @@ const DICT = {
       r === 'main' ? '본선 라운드' : '예선 라운드',
     submit_btn: '제출하기',
     submitting: '제출 중…',
+    delete_final: '이 완성작 삭제',
+    deleting: '삭제 중…',
+    delete_final_confirm: '이 완성작을 삭제할까요? 편집 화면으로 돌아갑니다. (제출 전에만 가능)',
     submitted_ok: '제출 완료 — 채점 대기 중입니다. 제출 후에는 수정할 수 없습니다.',
     already_submitted: '이번 라운드에 이미 제출했습니다.',
     submit_warn: '제출하면 이 완성본이 채점에 들어가며 되돌릴 수 없습니다.',
@@ -188,6 +194,9 @@ const DICT = {
       r === 'main' ? 'Main round' : 'Application round',
     submit_btn: 'Submit',
     submitting: 'Submitting…',
+    delete_final: 'Delete this final',
+    deleting: 'Deleting…',
+    delete_final_confirm: 'Delete this final? You return to editing. (Only before submission.)',
     submitted_ok: 'Submitted — awaiting scoring. Submissions cannot be edited.',
     already_submitted: 'Already submitted for this round.',
     submit_warn: 'Submitting enters this final into scoring and cannot be undone.',
@@ -491,6 +500,24 @@ export default function ComposeEditor(props: ComposeEditorProps) {
     setSubmitting(false)
   }
 
+  // Discard the current rendered final (soft-delete) and return to editing. Only
+  // reachable before submission -- a submitted final is protected server-side.
+  const [deleting, setDeleting] = useState(false)
+  const doDeleteRender = async () => {
+    if (!props.onDelete || !renderId) return
+    if (typeof window !== 'undefined' && !window.confirm(t.delete_final_confirm)) return
+    setDeleting(true)
+    const res = await props.onDelete(renderId)
+    setDeleting(false)
+    if (res.ok) {
+      setRenderState(null)
+      setRenderId(null)
+      setSubmitErr(null)
+    } else {
+      setSubmitErr(res.error)
+    }
+  }
+
   // ---------- render ----------
   const headCls = 'text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold'
   return (
@@ -776,6 +803,19 @@ export default function ComposeEditor(props: ComposeEditorProps) {
                       {submitting ? t.submitting : t.submit_btn}
                     </button>
                   </div>
+                )}
+
+                {/* Discard this rendered final (soft-delete). Hidden once
+                    submitted -- a submitted final is competition record. */}
+                {props.onDelete && !submitDone && !props.submitCtx?.alreadySubmitted && (
+                  <button
+                    type="button"
+                    onClick={doDeleteRender}
+                    disabled={deleting}
+                    className="text-[11px] text-white/40 transition hover:text-[#ff8888] disabled:opacity-40"
+                  >
+                    {deleting ? t.deleting : t.delete_final}
+                  </button>
                 )}
               </div>
             )}

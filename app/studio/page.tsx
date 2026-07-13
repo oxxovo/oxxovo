@@ -10,6 +10,7 @@ import {
   createGenerationAction,
   pollJobsAction,
   submitGenerationAction,
+  deleteClipAction,
   getPurchaseOptions,
   type StudioState,
   type PurchaseOptions,
@@ -80,6 +81,10 @@ const DICT = {
     submitting: '제출 중…',
     submit_confirm: '제출하면 영구 확정되며 수정할 수 없습니다. 제출할까요?',
     submitted_badge: '제출 완료',
+    delete: '삭제',
+    delete_confirm: '이 클립을 삭제할까요? 화면에서 사라지지만 복구 문의는 가능합니다.',
+    delete_err_protected: '제출한 작품은 삭제할 수 없습니다 (시합 기록).',
+    delete_err_generic: '삭제 실패',
     submit_err_no_application: '이 시즌에 신청 기록이 없습니다. 먼저 신청하세요.',
     submit_err_already: '이미 제출했습니다.',
     submit_err_cryptobind: '생성 인증 검증에 실패했습니다(CryptoBind).',
@@ -154,6 +159,10 @@ const DICT = {
     submitting: 'Submitting…',
     submit_confirm: 'Submitting is permanent and cannot be changed. Submit?',
     submitted_badge: 'Submitted',
+    delete: 'Delete',
+    delete_confirm: 'Delete this clip? It disappears from your screen (recovery can be requested).',
+    delete_err_protected: 'Submitted works cannot be deleted (competition record).',
+    delete_err_generic: 'Delete failed',
     submit_err_no_application: 'No application for this season. Apply first.',
     submit_err_already: 'Already submitted.',
     submit_err_cryptobind: 'Generation authentication failed (CryptoBind).',
@@ -772,6 +781,16 @@ function JobCard({
     })
   }
 
+  const handleDelete = () => {
+    setError(null)
+    if (typeof window !== 'undefined' && !window.confirm(t.delete_confirm)) return
+    startTransition(async () => {
+      const res = await deleteClipAction(token, job.id)
+      if (res.ok) await onChanged()
+      else setError(res.error === 'protected' ? t.delete_err_protected : t.delete_err_generic)
+    })
+  }
+
   return (
     <div className="rounded-lg border border-white/10 bg-white/[.02] p-4">
       <div className="flex items-center justify-between gap-3 mb-2">
@@ -804,16 +823,31 @@ function JobCard({
         <p className="text-[11px] text-[#ff8888]">{job.error_message}</p>
       )}
 
-      {job.status === 'ready' && canSubmit && (
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={pending}
-          className="mt-1 px-4 py-2 rounded-lg border border-[#8b22ff]/50 text-[#b66cff] text-xs font-bold uppercase tracking-wider hover:bg-[#8b22ff]/10 transition disabled:opacity-40"
-        >
-          {pending ? t.submitting : t.submit}
-        </button>
-      )}
+      <div className="mt-1 flex items-center justify-between gap-3">
+        {job.status === 'ready' && canSubmit ? (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={pending}
+            className="px-4 py-2 rounded-lg border border-[#8b22ff]/50 text-[#b66cff] text-xs font-bold uppercase tracking-wider hover:bg-[#8b22ff]/10 transition disabled:opacity-40"
+          >
+            {pending ? t.submitting : t.submit}
+          </button>
+        ) : (
+          <span />
+        )}
+        {/* A submitted clip is competition record -- no delete affordance. */}
+        {job.status !== 'submitted' && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={pending}
+            className="text-[11px] text-white/40 hover:text-[#ff8888] transition disabled:opacity-40"
+          >
+            {t.delete}
+          </button>
+        )}
+      </div>
       {error && <p className="mt-2 text-[11px] text-[#ff8888]">{error}</p>}
     </div>
   )

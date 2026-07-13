@@ -219,6 +219,8 @@ export async function listUserJobs(userId: string, seasonId: string): Promise<St
     // Active workspace only: archived clips (round submitted) live in My Library,
     // not the generate screen or the Compose picker. (TK 2026-07-12)
     .is('archived_at', null)
+    // Soft-deleted clips are hidden everywhere (row + R2 file preserved).
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
   if (error) throw new Error('listUserJobs: ' + error.message)
   return (data ?? []) as StudioJob[]
@@ -695,9 +697,81 @@ export async function listUserRenders(userId: string, seasonId: string): Promise
     .select('id, status, total_duration_seconds, video_url, error_message, edl, submitted_at, created_at')
     .eq('user_id', userId)
     .eq('season_id', seasonId)
+    // Soft-deleted renders are hidden everywhere (row + R2 file preserved).
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
   if (error) throw new Error('listUserRenders: ' + error.message)
   return (data ?? []) as StudioRender[]
+}
+
+// ===========================================================================
+// Soft-delete: a participant removes a clip / composed final from their Studio
+// workspace + library. deleted_at is SET; the row and its R2 file are NEVER
+// removed, the lists just hide it (deleted_at IS NULL). A SUBMITTED work is
+// competition record and is never deletable (TK 2026-07-12, protection A):
+//   - a render with status='submitted'
+//   - a clip that is itself submitted, or was used inside a submitted render
+// Everything else (failures, unused clips, unsubmitted renders, spare clips
+// from a submitted round) is deletable. Best-effort ownership-scoped.
+// ===========================================================================
+
+export type DeleteResult = { ok: boolean; reason?: string }
+
+export async function deleteClip(userId: string, jobId: string): Promise<DeleteResult> {
+  const admin = createSupabaseAdmin()
+  const { data: job, error } = await admin
+    .from('generation_jobs')
+    .select('id, status, deleted_at')
+    .eq('id', jobId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) return { ok: false, reason: error.message }
+  if (!job) return { ok: false, reason: 'not_found' }
+  if (job.deleted_at) return { ok: true } // idempotent: already hidden
+  // Protection: a directly-submitted clip is competition record.
+  if (job.status === 'submitted') return { ok: false, reason: 'submitted' }
+  // Protection: a clip used inside a SUBMITTED render is competition record.
+  const { data: subs, error: subErr } = await admin
+    .from('render_jobs')
+    .select('source_job_ids')
+    .eq('user_id', userId)
+    .eq('status', 'submitted')
+  if (subErr) return { ok: false, reason: subErr.message }
+  const lockedByRender = (subs ?? []).some(
+    (r) => Array.isArray(r.source_job_ids) && (r.source_job_ids as string[]).includes(jobId),
+  )
+  if (lockedByRender) return { ok: false, reason: 'in_submitted_render' }
+  const now = new Date().toISOString()
+  const { error: upErr } = await admin
+    .from('generation_jobs')
+    .update({ deleted_at: now, updated_at: now })
+    .eq('id', jobId)
+    .eq('user_id', userId)
+  if (upErr) return { ok: false, reason: upErr.message }
+  return { ok: true }
+}
+
+export async function deleteRender(userId: string, renderId: string): Promise<DeleteResult> {
+  const admin = createSupabaseAdmin()
+  const { data: render, error } = await admin
+    .from('render_jobs')
+    .select('id, status, deleted_at')
+    .eq('id', renderId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) return { ok: false, reason: error.message }
+  if (!render) return { ok: false, reason: 'not_found' }
+  if (render.deleted_at) return { ok: true } // idempotent: already hidden
+  // Protection: a submitted final is the entry itself -- competition record.
+  if (render.status === 'submitted') return { ok: false, reason: 'submitted' }
+  const now = new Date().toISOString()
+  const { error: upErr } = await admin
+    .from('render_jobs')
+    .update({ deleted_at: now, updated_at: now })
+    .eq('id', renderId)
+    .eq('user_id', userId)
+  if (upErr) return { ok: false, reason: upErr.message }
+  return { ok: true }
 }
 
 // ===========================================================================

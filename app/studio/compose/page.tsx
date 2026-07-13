@@ -14,6 +14,7 @@ import {
   createRenderAction,
   pollRenderAction,
   submitRenderAction,
+  deleteRenderAction,
   type ComposeClip,
   type ResumeRender,
 } from '../actions'
@@ -103,6 +104,7 @@ export default function ComposePage() {
             onSubmit={(renderId: string, applicant?: ComposeApplicant) =>
               submitRenderAction(token, renderId, applicant)
             }
+            onDelete={(renderId: string) => deleteRenderAction(token, renderId)}
           />
         )}
       </div>
