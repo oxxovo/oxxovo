@@ -216,6 +216,9 @@ export async function listUserJobs(userId: string, seasonId: string): Promise<St
     .select('id, status, tier, prompt, duration_seconds, video_url, error_message, submitted_at, created_at')
     .eq('user_id', userId)
     .eq('season_id', seasonId)
+    // Active workspace only: archived clips (round submitted) live in My Library,
+    // not the generate screen or the Compose picker. (TK 2026-07-12)
+    .is('archived_at', null)
     .order('created_at', { ascending: false })
   if (error) throw new Error('listUserJobs: ' + error.message)
   return (data ?? []) as StudioJob[]
@@ -955,13 +958,33 @@ export async function submitRender(args: {
   }
 
   // 8. Lock the render: ready -> submitted (terminal). CAS guards a double
-  //    submit race. Source clips are intentionally left 'ready'.
+  //    submit race.
   const { error: rUpErr } = await admin
     .from('render_jobs')
     .update({ status: 'submitted', submitted_at: now, updated_at: now })
     .eq('id', render.id)
     .eq('status', 'ready')
   if (rUpErr) return { ok: false, reason: 'failed', detail: rUpErr.message }
+
+  // 9. Move THIS round's remaining ready source clips into My Library (soft
+  //    archive) so the Compose workspace + generate screen empty out -- single
+  //    submission means the round is done. NEVER deletes. Round-scoped by the
+  //    same created_at boundary as the compose picker. Best-effort: an archive
+  //    failure must NOT undo a successful submit.
+  let arch = admin
+    .from('generation_jobs')
+    .update({ archived_at: now, updated_at: now })
+    .eq('user_id', args.userId)
+    .eq('season_id', args.seasonId)
+    .eq('status', 'ready')
+    .is('archived_at', null)
+  if (cfg.round === 'both' && cfg.mainRoundStartAt) {
+    arch = effectiveRound === 'main'
+      ? arch.gte('created_at', cfg.mainRoundStartAt)
+      : arch.lt('created_at', cfg.mainRoundStartAt)
+  }
+  const { error: archErr } = await arch
+  if (archErr) console.error('[studio] submit archive failed (non-fatal):', archErr.message)
 
   return { ok: true }
 }
