@@ -12,7 +12,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
+// While the public site is gated (SITE_PUBLIC_ENABLED=false), the root <head>
+// must not describe the product — otherwise the exempt pages that legitimately
+// render (login/auth/admin) would leak "AI video creation tournament / judged
+// by AI" in their page source even though the visible UI is just a form. The
+// gate flip is per-deployment (an env change requires a redeploy), so reading
+// the env here at module load is correct for the active deployment. When the
+// gate lifts, the full marketing metadata returns automatically.
+const sitePublicGated = process.env.SITE_PUBLIC_ENABLED === "false";
+
+const richMetadata: Metadata = {
   metadataBase: new URL("https://www.oxxovo.ai"),
   title: {
     default: "OXXOVO — The Global Arena for AI Creators",
@@ -38,6 +47,16 @@ export const metadata: Metadata = {
     images: ["/arena_image.png"],
   },
 };
+
+const gatedMetadata: Metadata = {
+  metadataBase: new URL("https://www.oxxovo.ai"),
+  title: "OXXOVO",
+  description: "",
+  applicationName: "OXXOVO",
+  robots: { index: false, follow: false },
+};
+
+export const metadata: Metadata = sitePublicGated ? gatedMetadata : richMetadata;
 
 export default function RootLayout({
   children,
