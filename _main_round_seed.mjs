@@ -46,7 +46,10 @@ const admin = createClient(
 // 10th when TK's CF is ready, then --apply all 10 at once.
 const V3 = 'https://pub-bf4080d3cdcd422dbef5b1a7f2b9e19a.r2.dev/cf/v3/'
 const MAPPING = [
-  { appId: '75173f4c-961c-419c-981d-8d7011743ec1', url: V3 + 'cf_01_lumea_premium.mp4' },   // Frame & Muse
+  // Her Gaze (lowest prelim 80.58) — Kling cf_01_lumea REPLACED with 제니3's Seedance
+  // 2.0 lumea (hand+cream-application physics breakthrough), 720p/15s/portrait/no-audio.
+  // Deliberate quality-gap probe: does Triple-AI rank the clearly-better film #1? (TK 2026-07-13)
+  { appId: '75173f4c-961c-419c-981d-8d7011743ec1', url: 'https://pub-bf4080d3cdcd422dbef5b1a7f2b9e19a.r2.dev/seedance/seedance_t2v_720p_15s_lumea15c_s1.mp4' },   // Frame & Muse (Seedance 2.0)
   { appId: '1421a690-645e-4751-a435-e82ce355af52', url: V3 + 'cf_02_aurelie_premium.mp4' },  // Frame & Muse
   { appId: '138f7056-f7c5-4151-a8da-25bf75746df7', url: V3 + 'cf_03_novya_pop.mp4' },         // Green Gables
   { appId: 'bb5d2ab6-1cb3-48c5-a8b9-60905fc19faf', url: V3 + 'cf_08_soira_premium.mp4' },     // Green Gables (was cf_04; swapped per TK)
