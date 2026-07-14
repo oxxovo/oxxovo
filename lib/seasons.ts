@@ -177,13 +177,15 @@ export function isTwistRevealed(
 }
 
 // Single source of truth for how theme + twist render. theme (season_theme) is
-// always shown; twist (main_round_twist, falling back to the deprecated
-// main_round_theme) is shown ONLY once revealed. Pure and side-effect free, so
-// it is safe to call on the client — but it can only ever reveal a twist that
-// the caller already holds, and the client never holds one.
+// always shown; twist (main_round_twist) is shown ONLY once revealed. Pure and
+// side-effect free, so it is safe to call on the client — but it can only ever
+// reveal a twist that the caller already holds, and the client never holds one.
+// (The deprecated main_round_theme is the PUBLIC main-round brief now, NOT a
+// twist fallback — it drives the Watch banner + season_theme, so it must not
+// leak into the twist slot; TK 2026-07-13.)
 export function getThemeDisplay(s: ThemeSource, now: Date = new Date()): ThemeDisplay {
   const revealed = isTwistRevealed(s, now)
-  const twistRaw = s.main_round_twist ?? s.main_round_theme ?? null
+  const twistRaw = s.main_round_twist ?? null
   return {
     theme: s.season_theme ?? null,
     twist: revealed ? twistRaw : null,
