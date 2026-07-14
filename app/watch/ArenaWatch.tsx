@@ -111,6 +111,11 @@ export async function ArenaWatch({
   const finalistPrelims = currentSeasonVideos.filter(
     (v) => v.round === 'application' && finalistIds.has(v.applicationId),
   )
+  // Gallery excludes the current-season finalists — their prelim films already
+  // show in the "본선 진출작" section and their main films in the Main Round
+  // section, so the full gallery is the ELIMINATED entries (+ other seasons),
+  // never a duplicate of what's above. No entry is hidden overall. (TK 2026-07-14)
+  latest = latest.filter((v) => !(v.seasonId === currentSeasonId && finalistIds.has(v.applicationId)))
 
   // Public main-round theme teaser. Shown from "Judging Complete" onward (once
   // finalists are pending) through the main round -- the banner is a come-back
