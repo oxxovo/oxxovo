@@ -22,7 +22,7 @@ import { getCurrentSeason, getCurrentSeasonId } from '@/lib/seasons'
 import { getUserOrNull } from '@/lib/user-auth'
 import { ArenaShell } from './ArenaShell'
 import { ArenaFilterBar, type FilterSeason } from './ArenaFilterBar'
-import { ArenaBanner, ArenaHero, LatestEntries, FinalistSection } from './Arena'
+import { ArenaBanner, ArenaHero, LatestEntries, MainRoundSection, FinalistPrelimSection } from './Arena'
 
 export async function ArenaWatch({
   sort,
@@ -93,11 +93,24 @@ export async function ArenaWatch({
   // still open (prelim can be "LIVE" and "20/21 판정" at once). The boxed
   // LiveStatusBar shows the bar whenever the pool is non-zero; cards show
   // "⚡ AI 심사 중" for entries in that pool that are not scored yet.
-  const judging = await getJudgingProgress(currentSeasonId)
+  // Progress bar tracks the round that is actually live: main once the season is
+  // in the main round, prelim before that (else a finished prelim shows a stale
+  // "41/41" during the main event). (TK 2026-07-13)
+  const judging = await getJudgingProgress(currentSeasonId, inMainRound ? 'main' : 'application')
   const cardsJudging = judging.total > 0
   const voteOpen = await isVoteWindowOpen(currentSeasonId)
   // Post-reveal (main_round_start_at passed): finalists show at the top of Watch.
   const finalists = inMainRound ? await getFinalists(currentSeasonId) : []
+
+  // Main round layout (TK 2026-07-13): TOP = the finalists' MAIN videos (the live
+  // event), MIDDLE = their PRELIM entries tagged "본선 진출작" (reference). Derived
+  // from the already-loaded public videos so nothing extra is fetched.
+  const finalistIds = new Set(finalists.map((f) => f.applicationId))
+  const currentSeasonVideos = allVideos.filter((v) => v.seasonId === currentSeasonId)
+  const mainRoundVideos = currentSeasonVideos.filter((v) => v.round === 'main')
+  const finalistPrelims = currentSeasonVideos.filter(
+    (v) => v.round === 'application' && finalistIds.has(v.applicationId),
+  )
 
   // Public main-round theme teaser. Shown from "Judging Complete" onward (once
   // finalists are pending) through the main round -- the banner is a come-back
@@ -140,7 +153,8 @@ export async function ArenaWatch({
         voteOpen={voteOpen}
         voteEndISO={currentSeason?.community_vote_end_at ?? null}
       />
-      <FinalistSection finalists={finalists} />
+      <MainRoundSection videos={mainRoundVideos} seasonNames={seasonNames} voteOpen={voteOpen} />
+      <FinalistPrelimSection videos={finalistPrelims} seasonNames={seasonNames} />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />
     </ArenaShell>

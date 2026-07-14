@@ -227,6 +227,106 @@ export function FinalistSection({ finalists }: { finalists: Finalist[] }) {
   )
 }
 
+// ── Watch card (shared by the Main Round + Finalist-prelim sections) ─────────
+// Same card shape/colors as the LatestEntries grid (LatestEntries itself is left
+// untouched). `tag` overlays a small top-right label (e.g. "본선 진출작").
+function WatchCard({
+  v,
+  seasonNames,
+  showJudging,
+  voteOpen,
+  tag,
+}: {
+  v: WatchVideo
+  seasonNames: Record<string, string>
+  showJudging: boolean
+  voteOpen: boolean
+  tag?: string
+}) {
+  return (
+    <Link
+      href={`/watch/${v.applicationId}?round=${v.round}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block overflow-hidden rounded-xl border border-white/8 bg-[#110d1c] transition hover:border-[#8b22ff]/50 hover:shadow-[0_0_22px_rgba(139,34,255,.2)]"
+    >
+      <div className="relative aspect-video w-full overflow-hidden">
+        <Thumb v={v} />
+        <CardBadge v={v} showJudging={showJudging} voteOpen={voteOpen} />
+        <CardCenter v={v} showJudging={showJudging} voteOpen={voteOpen} />
+        {tag && (
+          <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-[#8b22ff]/90 px-2 py-1 text-[11px] font-black text-white backdrop-blur">
+            🏆 {tag}
+          </span>
+        )}
+      </div>
+      <div className="p-3.5">
+        <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</h3>
+        <p className="mt-1 truncate text-xs text-[#7a7299]">
+          by {v.creatorName} · {cardStatusText(v, voteOpen, showJudging, seasonNames)}
+        </p>
+      </div>
+    </Link>
+  )
+}
+
+// ── Main Round section (TOP, main round only) ────────────────────────────────
+// The films being judged RIGHT NOW: finalists' main-round videos, with the live
+// main-round badges (⚡ 심사 중 / ✓ Verified / 🔥 투표중) and ?round=main links.
+// This is what the audience is here to watch during the main round. (TK 2026-07-13)
+export function MainRoundSection({
+  videos,
+  seasonNames,
+  voteOpen,
+}: {
+  videos: WatchVideo[]
+  seasonNames: Record<string, string>
+  voteOpen: boolean
+}) {
+  if (videos.length === 0) return null
+  return (
+    <section className="mb-10">
+      <Heading kicker="Main Round" title="🏆 본선 · 지금 시합 중" />
+      <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+        {videos.map((v) => (
+          <WatchCard key={`${v.applicationId}:${v.round}`} v={v} seasonNames={seasonNames} showJudging voteOpen={voteOpen} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+// ── Finalist prelim section (MIDDLE, main round only) ────────────────────────
+// The finalists' PRELIMINARY entries, tagged "본선 진출작" -- reference for the
+// audience, below the live main-round films. Prelim is already judged, so no
+// live badges; ?round=application links. (TK 2026-07-13)
+export function FinalistPrelimSection({
+  videos,
+  seasonNames,
+}: {
+  videos: WatchVideo[]
+  seasonNames: Record<string, string>
+}) {
+  if (videos.length === 0) return null
+  return (
+    <section className="mb-10">
+      <Heading kicker="Finalists" title="본선 진출작 · 예선 라운드 작품" />
+      <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+        {videos.map((v) => (
+          <WatchCard
+            key={`${v.applicationId}:${v.round}`}
+            v={v}
+            seasonNames={seasonNames}
+            showJudging={false}
+            voteOpen={false}
+            tag="본선 진출작"
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 // ── Section heading ─────────────────────────────────────────────────────────
 function Heading({ kicker, title }: { kicker: string; title: string }) {
   return (

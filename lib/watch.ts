@@ -361,27 +361,36 @@ export async function getCurrentCompetitionStats(seasonId: string): Promise<Comp
 // scoring worker actually finishes each video. No score numbers are exposed here.
 export type JudgingProgress = { scored: number; total: number }
 
-export async function getJudgingProgress(seasonId: string): Promise<JudgingProgress> {
+// Round-aware (TK 2026-07-13): before the main round the bar tracks the PRELIM
+// pool (free_entry_url); once the season is in the main round the caller passes
+// round='main' so the bar tracks the MAIN submissions (main_round_video_url) and
+// their scoring_results(round='main') -- otherwise a finished prelim shows a
+// stale "41/41" while the main round is actually the live event.
+export async function getJudgingProgress(
+  seasonId: string,
+  round: WatchRound = 'application',
+): Promise<JudgingProgress> {
   const admin = createSupabaseAdmin()
   const [{ data: apps }, { data: scores }] = await Promise.all([
     admin
       .from('genesis_applications')
-      .select('id, status, watch_hidden, moderation_status, free_entry_url')
+      .select('id, status, watch_hidden, moderation_status, free_entry_url, main_round_video_url')
       .eq('season_id', seasonId),
     admin
       .from('scoring_results')
       .select('application_id, judged_status')
       .eq('season_id', seasonId)
-      .eq('round', 'application')
+      .eq('round', round)
       .eq('judged_status', 'completed'),
   ])
 
   const pool = new Set<string>()
   for (const row of (apps ?? []) as (Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'> & {
-    id: string; free_entry_url: string | null
+    id: string; free_entry_url: string | null; main_round_video_url: string | null
   })[]) {
     if (!isPublicRow(row)) continue
-    if (!row.free_entry_url?.trim()) continue
+    const url = round === 'main' ? row.main_round_video_url : row.free_entry_url
+    if (!url?.trim()) continue
     pool.add(row.id)
   }
   let scored = 0
