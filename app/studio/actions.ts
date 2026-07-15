@@ -77,6 +77,11 @@ export type StudioState = {
   // When the season runs in compose mode, clips are building blocks that get
   // stitched into one final in /studio/compose. Drives the compose entry CTA.
   composeEnabled: boolean
+  // Final-render length rule, straight from the season. The CTA hint STATES this
+  // rule, so it must never be written as a literal -- a season change has to move
+  // the copy with it. Enforcement lives in createRender, not here.
+  composeMinSeconds: number
+  composeMaxSeconds: number
   // Account-level identity prefilled into the applicant form (profile/work
   // split) so name/country are not re-typed each submission. Consents are not
   // prefilled -- they stay per-submission.
@@ -158,6 +163,8 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
         alreadySubmitted,
         pricing: { marginRate: pricing.marginRate, creditUsdValue: pricing.creditUsdValue },
         composeEnabled: cfg.studioComposeEnabled,
+        composeMinSeconds: cfg.studioComposeMinSeconds,
+        composeMaxSeconds: cfg.studioComposeMaxSeconds,
         profile: { creatorName: prefillName, country: prefillCountry },
       },
     }

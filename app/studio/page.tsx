@@ -71,7 +71,8 @@ const DICT = {
     clips_show_older: '이전 클립 더 보기',
     clips_collapse: '접기',
     compose_title: '클립을 하나로 조합해 제출하세요',
-    compose_hint: '이번 시즌은 조합 방식입니다. 만든 클립들을 15~30초 완성본으로 이어 붙여 제출하세요.',
+    compose_hint: (min: number, max: number) =>
+      `이번 시즌은 조합 방식입니다. 만든 클립들을 ${min}~${max}초 완성본으로 이어 붙여 제출하세요.`,
     compose_cta: '조합 편집기 열기 →',
     status_queued: '대기 중',
     status_generating: '생성 중',
@@ -151,7 +152,8 @@ const DICT = {
     clips_show_older: 'Show older clips',
     clips_collapse: 'Collapse',
     compose_title: 'Stitch your clips into one final and submit',
-    compose_hint: 'This season is compose-based. Combine your clips into a 15–30s final and submit.',
+    compose_hint: (min: number, max: number) =>
+      `This season is compose-based. Combine your clips into a ${min}–${max}s final and submit.`,
     compose_cta: 'Open compose editor →',
     status_queued: 'Queued',
     status_generating: 'Generating',
@@ -632,7 +634,9 @@ function Generations({
         <div className="mb-4 flex flex-col gap-3 rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/[.05] p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-bold text-white">{t.compose_title}</p>
-            <p className="mt-1 text-[11px] text-white/50">{t.compose_hint}</p>
+            <p className="mt-1 text-[11px] text-white/50">
+              {t.compose_hint(state.composeMinSeconds, state.composeMaxSeconds)}
+            </p>
           </div>
           <Link
             href="/studio/compose"

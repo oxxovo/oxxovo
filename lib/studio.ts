@@ -85,6 +85,11 @@ export type SeasonStudioConfig = {
   mainRoundVideoMaxSeconds: number
   // Compose on? When true, clip generation is gated by model-native bounds only.
   studioComposeEnabled: boolean
+  // Length bounds of the FINAL composed render (not of a clip). The authority is
+  // createRender/submitRender, which re-read these columns; these copies exist so
+  // the UI can STATE the rule without hardcoding it. 0 = unset -> caller decides.
+  studioComposeMinSeconds: number
+  studioComposeMaxSeconds: number
 }
 
 // Per-round video-length bounds, resolved from the season config. Application
@@ -171,7 +176,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled')
+    .select('studio_round, studio_max_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -185,6 +190,8 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     mainRoundVideoMinSeconds: Number(data.main_round_video_min_seconds ?? 0),
     mainRoundVideoMaxSeconds: Number(data.main_round_video_max_seconds ?? 0),
     studioComposeEnabled: Boolean(data.studio_compose_enabled),
+    studioComposeMinSeconds: Number(data.studio_compose_min_seconds ?? 0),
+    studioComposeMaxSeconds: Number(data.studio_compose_max_seconds ?? 0),
   }
 }
 

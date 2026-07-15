@@ -117,17 +117,17 @@ Q. Can I try again if I don't make it?
 
 ## D. How Videos Are Made
 Q. Where do I create the video?
-- KR: 시즌0 예선은 외부에서 만든 AI 영상을 신청 페이지(https://www.oxxovo.ai/apply)에서 URL로 제출합니다. 본선에 진출한 Finalist는 OXXOVO Studio(https://www.oxxovo.ai/studio, 플랫폼 내 제작 도구)에서 영상을 만듭니다. (시즌1부터는 예선도 Studio에서 제작합니다.)
-- EN: For the Season 0 preliminary, you submit an AI video you made elsewhere via URL on the application page (https://www.oxxovo.ai/apply). Finalists who advance to the main round create their videos in OXXOVO Studio (https://www.oxxovo.ai/studio, the in-platform tool). (From Season 1, the preliminary will also use Studio.)
+- KR: 시즌0은 예선·본선 모두 OXXOVO Studio(https://www.oxxovo.ai/studio, 플랫폼 내 제작 도구)에서 만듭니다. 신청 페이지(https://www.oxxovo.ai/apply)에서 시작하면 Studio로 안내됩니다.
+- EN: In Season 0, both the preliminary and the main round are created in OXXOVO Studio (https://www.oxxovo.ai/studio, the in-platform tool). Start on the application page (https://www.oxxovo.ai/apply) and you will be guided into Studio.
 Q. What tools can I use for the preliminary video?
-- KR: 시즌0 예선은 외부에서 만든 AI 영상을 제출하므로, 원하는 AI 영상 도구로 자유롭게 만들 수 있습니다. AI로 생성한 영상이어야 하며 진위 확인을 거칩니다.
-- EN: For the Season 0 preliminary, you submit an AI video made outside the platform, so you may use any AI video tool you like. It must be AI-generated and is checked for authenticity.
+- KR: 시즌0 예선은 OXXOVO Studio 안에서 제작하므로, Studio가 제공하는 AI 영상 모델 중에서 선택합니다. 외부 도구로 만든 영상이나 외부 에셋은 사용할 수 없습니다. (Genesis Rule)
+- EN: The Season 0 preliminary is created inside OXXOVO Studio, so you choose from the AI video models Studio offers. Videos made with outside tools and external assets cannot be used. (Genesis Rule)
 Q. Which AI models can I use in the main round?
 - KR: 본선은 OXXOVO Studio에서 제공하는 여러 AI 영상 모델 중 원하는 것을 자유롭게 선택할 수 있습니다. 모델마다 품질과 크레딧 사용량이 다릅니다.
 - EN: In the main round, you can freely choose from the multiple AI video models offered in OXXOVO Studio. Each model differs in quality and credit usage.
 Q. How long should the video be?
-- KR: 15~30초입니다.
-- EN: 15–30 seconds.
+- KR: 시즌0 기준 30~40초입니다.
+- EN: 30–40 seconds for Season 0.
 Q. What are the main-round rules? (Genesis Rule)
 - KR: 본선 영상은 OXXOVO Studio 안에서 생성·조합한 클립으로만 완성해야 합니다. 외부 에셋·별도 VFX는 사용할 수 없고, 오디오는 AI 클립의 오디오만 사용합니다. (Genesis Rule)
 - EN: Main-round videos must be composed only from clips generated and combined inside OXXOVO Studio. External assets and separate VFX are not allowed, and audio must come only from the AI clips. (Genesis Rule)
@@ -164,8 +164,8 @@ Q. Is there an entry fee?
 
 ## H. Video Generation Credits
 Q. Does creating videos cost anything?
-- KR: 시즌0 예선은 외부에서 만든 영상을 제출하므로 OXXOVO 크레딧이 들지 않습니다. 본선에 진출해 OXXOVO Studio에서 제작할 때는 크레딧이 사용되며(사용한 만큼 차감), 참가자 본인이 부담합니다. 멤버십과는 별개입니다.
-- EN: The Season 0 preliminary uses videos made elsewhere, so no OXXOVO credits are used. When you advance to the main round and create in OXXOVO Studio, credits are used (deducted by usage) and paid by you. This is separate from membership.
+- KR: 시즌0은 예선·본선 모두 OXXOVO Studio에서 제작하므로 두 라운드 다 크레딧이 사용되며(사용한 만큼 차감), 참가자 본인이 부담합니다. 멤버십(참가권)과는 별개입니다.
+- EN: In Season 0 both the preliminary and the main round are created in OXXOVO Studio, so credits are used in both (deducted by usage) and paid by you. This is separate from membership (entry).
 Q. How are main-round credits calculated?
 - KR: 선택한 AI 모델과 영상 길이에 따라 사용량이 달라집니다. 남은 크레딧과 예상 사용량은 OXXOVO Studio(https://www.oxxovo.ai/studio) 화면에서 확인할 수 있습니다.
 - EN: Usage depends on the AI model and video length you choose. You can see your remaining credit and estimated cost in OXXOVO Studio (https://www.oxxovo.ai/studio).
@@ -241,17 +241,17 @@ Q. My profile or application isn't showing.
 
 ## N. Video & Studio
 Q. How do I submit my preliminary video?
-- KR: 시즌0 예선은 어떤 AI 도구로든 만든 15~30초 영상을 신청 페이지(https://www.oxxovo.ai/apply)에서 외부 링크(URL)로 제출합니다. OXXOVO Studio는 본선부터 사용합니다.
-- EN: For the Season 0 preliminary, submit a 15-30 second video made with any AI tool as an external link on the application page (https://www.oxxovo.ai/apply). OXXOVO Studio is used from the main round.
+- KR: 시즌0은 예선·본선 모두 OXXOVO Studio에서 제작·제출합니다. 신청 페이지(https://www.oxxovo.ai/apply)에서 시작하면 Studio(https://www.oxxovo.ai/studio)로 안내되며, 거기서 AI 클립을 생성하고 조합해 30~40초 완성본을 제출합니다. 외부 링크(URL) 제출은 사용하지 않습니다.
+- EN: In Season 0, both the preliminary and the main round are created and submitted in OXXOVO Studio. Start on the application page (https://www.oxxovo.ai/apply) and you will be guided into Studio (https://www.oxxovo.ai/studio), where you generate AI clips and combine them into a 30-40 second final. External link (URL) submission is not used.
 Q. What is OXXOVO Studio?
-- KR: 플랫폼 안에서 AI 클립을 생성·조합해 완성 영상을 만드는 제작 도구입니다(https://www.oxxovo.ai/studio). 본선 진출자가 사용합니다.
-- EN: An in-platform tool to generate and combine AI clips into a finished video (https://www.oxxovo.ai/studio), used by main-round finalists.
+- KR: 플랫폼 안에서 AI 클립을 생성·조합해 완성 영상을 만드는 제작 도구입니다(https://www.oxxovo.ai/studio). 시즌0에서는 예선 참가자와 본선 진출자가 모두 사용합니다.
+- EN: An in-platform tool to generate and combine AI clips into a finished video (https://www.oxxovo.ai/studio). In Season 0 it is used by preliminary entrants and main-round finalists alike.
 Q. What if a generation fails?
 - KR: 생성이 실패하면 해당 크레딧은 자동 환불됩니다. 재생성도 크레딧을 사용합니다.
 - EN: Failed generations are automatically refunded. Each regeneration uses credits.
 Q. When is Studio available?
-- KR: 시즌0에서는 본선 진출자가 9월 본선부터 OXXOVO Studio(https://www.oxxovo.ai/studio)를 사용합니다. 시즌1(GENESIS, 9/28)부터는 예선부터 Studio입니다.
-- EN: In Season 0, finalists use OXXOVO Studio (https://www.oxxovo.ai/studio) from the September main round. From Season 1 (GENESIS, Sep 28), Studio is used starting in the preliminary.
+- KR: 시즌0 신청이 열리면 예선부터 OXXOVO Studio(https://www.oxxovo.ai/studio)를 사용합니다. 본선도 동일하게 Studio에서 제작·제출합니다.
+- EN: From the moment Season 0 applications open, OXXOVO Studio (https://www.oxxovo.ai/studio) is used starting in the preliminary. The main round is created and submitted in Studio as well.
 
 ## O. Rules, World Championship & Operator
 Q. Where can I see the rules?
@@ -282,17 +282,17 @@ Q. How do I make my AI video look less "AI" / more polished?
 
 ## Q. Using OXXOVO Studio (how-to)
 Q. How do I use OXXOVO Studio?
-- KR: OXXOVO Studio(https://www.oxxovo.ai/studio)는 플랫폼 안에서 AI 클립을 생성하고 조합해 완성 영상을 만드는 도구입니다. 기본 흐름: 프롬프트로 클립 생성 → 마음에 들 때까지 반복 → 여러 클립을 순서·트림·컷으로 조합해 15~30초 영상 완성. 생성에는 크레딧이 사용되며(사용한 만큼 차감, 본인 부담), 남은 크레딧·예상 사용량은 Studio 화면에서 확인합니다. 생성 실패 시 해당 크레딧은 자동 환불됩니다.
-- EN: OXXOVO Studio (https://www.oxxovo.ai/studio) generates AI clips and combines them into a finished video inside the platform. Basic flow: generate a clip from a prompt → iterate until you like it → combine clips by sequence/trim/cut into a 15–30 second video. Generation uses credits (deducted by usage, paid by you); remaining credit and estimated cost show in Studio. Failed generations are auto-refunded.
+- KR: OXXOVO Studio(https://www.oxxovo.ai/studio)는 플랫폼 안에서 AI 클립을 생성하고 조합해 완성 영상을 만드는 도구입니다. 기본 흐름: 프롬프트로 클립 생성 → 마음에 들 때까지 반복 → 여러 클립을 순서·트림·컷으로 조합해 30~40초 영상 완성(시즌0 기준). 생성에는 크레딧이 사용되며(사용한 만큼 차감, 본인 부담), 남은 크레딧·예상 사용량은 Studio 화면에서 확인합니다. 생성 실패 시 해당 크레딧은 자동 환불됩니다.
+- EN: OXXOVO Studio (https://www.oxxovo.ai/studio) generates AI clips and combines them into a finished video inside the platform. Basic flow: generate a clip from a prompt → iterate until you like it → combine clips by sequence/trim/cut into a 30–40 second video (Season 0). Generation uses credits (deducted by usage, paid by you); remaining credit and estimated cost show in Studio. Failed generations are auto-refunded.
 Q. Who uses OXXOVO Studio and when?
-- KR: 시즌0에서는 본선 진출자(Finalist)가 9월 본선부터 사용합니다. 시즌1(GENESIS, 9/28)부터는 예선부터 Studio로 제작합니다. 시즌0 예선은 외부에서 만든 AI 영상을 URL로 제출합니다.
-- EN: In Season 0, Finalists use it from the September main round; from Season 1 (GENESIS, Sep 28) it is used starting in the preliminary. The Season 0 preliminary is an external AI video URL submission.
+- KR: 시즌0은 예선 참가자와 본선 진출자(Finalist)가 모두 사용합니다. 예선 신청 단계부터 Studio에서 제작·제출하며, 외부에서 만든 영상을 URL로 제출하지 않습니다.
+- EN: In Season 0 it is used by both preliminary entrants and Finalists. You create and submit in Studio from the application stage onward; externally made videos are not submitted by URL.
 Q. What models are in OXXOVO Studio / how much do they cost?
 - KR: Studio는 여러 AI 영상 모델을 제공하며 모델마다 품질과 크레딧 사용량이 다릅니다. 사용 가능한 모델과 정확한 크레딧 단가는 OXXOVO Studio(https://www.oxxovo.ai/studio) 화면에서 확인해 주세요(여기서 단가를 단정하지 않습니다).
 - EN: Studio offers several AI video models that differ in quality and credit usage. See the exact available models and credit rates in OXXOVO Studio (https://www.oxxovo.ai/studio) — do not state prices here.
 
 ## R. Major AI Video Tools (general overview — use web_search for the latest)
-This is general, fast-moving information. Use web_search for current model names, capabilities, and pricing; do not assert stale specifics. OXXOVO does not endorse any third-party tool, and for the Season 0 preliminary you may use ANY AI tool.
+This is general, fast-moving information. Use web_search for current model names, capabilities, and pricing; do not assert stale specifics. OXXOVO does not endorse any third-party tool. Note: Season 0 entries are created inside OXXOVO Studio (both rounds), so third-party tools cannot be used for a Season 0 submission -- answer such questions as general information only.
 Q. What AI video tools exist / which should I use?
 - Widely used AI video generators include (non-exhaustive, changes often): OpenAI Sora, Google Veo, Runway (Gen-series), Kuaishou Kling, Pika, Luma Dream Machine, MiniMax Hailuo, and others. They differ in clip length, motion quality, realism, control, and price. For a current comparison or a tool's latest version, use web_search. Choose based on your concept (realism vs. stylized, length, camera control) and budget; many offer free or trial tiers.
 - KR: 자주 쓰이는 AI 영상 생성 도구로는 Sora(OpenAI), Veo(Google), Runway, Kling, Pika, Luma, Hailuo 등이 있습니다(자주 바뀜). 클립 길이·모션 품질·사실성·제어·가격이 다릅니다. 최신 비교나 버전은 web_search로 확인하세요. 시즌0 예선은 어떤 도구든 사용 가능합니다.
@@ -315,7 +315,7 @@ Treat these as outside the knowledge base. Do NOT guess; reply with the standard
 - Implying "free membership = everything free" -> membership (entry) is free for the first 100, but main-round video creation uses creator-paid credits.
 - Implying "Free entry to Season 0" includes free main-round credits -> entry is free; main-round Studio credits are still creator-paid.
 - Calling the Founding badge physical -> it is a DIGITAL badge (shown on the profile). The only physical item is the 1st-place trophy.
-- Describing the Season 0 preliminary as "created in Studio" -> Season 0 preliminary is an EXTERNAL AI video URL submission; only the main round uses Studio (from Season 1 the preliminary also uses Studio).
+- Describing the Season 0 preliminary as an "external AI video URL submission" -> Season 0 uses Studio for BOTH rounds; entrants create and submit in Studio from the application stage onward.
 - Inventing credit unit prices / per-model cost / top-up amounts -> point to Studio/info@oxxovo.com.
 - A fixed World Championship prize -> "Up to $250,000" / "TBD".
 - "OXXOVO®" -> "OXXOVO™".
