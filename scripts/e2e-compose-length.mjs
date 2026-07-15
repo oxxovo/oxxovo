@@ -55,8 +55,8 @@ async function main() {
   const maxSec = Number(s.studio_compose_max_seconds ?? 30)
   console.log(`season_0: compose_enabled=${s.studio_compose_enabled} min=${minSec}s max=${maxSec}s`)
   ok(s.studio_compose_enabled === true, 'studio_compose_enabled = true')
-  ok(minSec === 15, `studio_compose_min_seconds = 15 (live: ${minSec})`)
-  ok(maxSec === 30, `studio_compose_max_seconds = 30 (live: ${maxSec})`)
+  ok(minSec === 30, `studio_compose_min_seconds = 30 (live: ${minSec})`)
+  ok(maxSec === 40, `studio_compose_max_seconds = 40 (live: ${maxSec})`)
 
   // model + test user
   const { data: models } = await admin.from('model_catalog').select('id').eq('active', true).limit(1)
@@ -114,52 +114,62 @@ async function main() {
   }
 
   // --- 3 cases ---
-  console.log('\n-- length gate cases (min 15s / max 30s) --')
+  console.log('\n-- length gate cases (min 30s / max 40s) --')
 
-  // A. 5.1s -- the value that PASSED yesterday; must now be rejected.
+  // A. 5.1s -- far under the floor.
   {
     const r = await runCreateRender([{ jobId, startMs: 0, endMs: 5100 }])
-    ok(r.reason === 'too_short', `5.1s (yesterday's pass) -> too_short [got: ${r.reason}]`)
+    ok(r.reason === 'too_short', `5.1s -> too_short [got: ${r.reason}]`)
     ok(!r.renderId, '5.1s wrote NO render row')
   }
-  // boundary: 14.999s just under floor
+  // boundary: 29.999s just under floor. 20s passed under the old 15..30 rule;
+  // the Season 0 theme requires 30-40s, so it must now be rejected.
   {
-    const r = await runCreateRender([{ jobId, startMs: 0, endMs: 14999 }])
-    ok(r.reason === 'too_short', `14.999s -> too_short [got: ${r.reason}]`)
+    const r = await runCreateRender([{ jobId, startMs: 0, endMs: 29999 }])
+    ok(r.reason === 'too_short', `29.999s -> too_short [got: ${r.reason}]`)
+    const old = await runCreateRender([{ jobId, startMs: 0, endMs: 20000 }])
+    ok(old.reason === 'too_short', `20s (old 15..30 pass) -> too_short [got: ${old.reason}]`)
   }
-  // B. 20s -- within [15,30]; must pass and write a row.
-  {
-    const r = await runCreateRender([{ jobId, startMs: 0, endMs: 20000 }])
-    ok(r.reason === 'ok', `20s -> ok [got: ${r.reason}${r.detail ? ' / ' + r.detail : ''}]`)
-    ok(!!r.renderId && r.totalSeconds === 20, '20s wrote a render row (total 20s)')
-    if (r.renderId) {
-      const { data: row } = await admin.from('render_jobs').select('id, status, total_duration_seconds').eq('id', r.renderId).single()
-      ok(row?.status === 'queued' && Number(row.total_duration_seconds) === 20, '20s render row persisted (queued, 20s)')
-    }
-  }
-  // boundary: exactly 15s floor + exactly 30s ceiling
-  {
-    const lo = await runCreateRender([{ jobId, startMs: 0, endMs: 15000 }])
-    ok(lo.reason === 'ok', `15.0s (floor) -> ok [got: ${lo.reason}]`)
-    const hi = await runCreateRender([{ jobId, startMs: 0, endMs: 30000 }])
-    ok(hi.reason === 'ok', `30.0s (ceiling) -> ok [got: ${hi.reason}]`)
-  }
-  // C. 35s -- over max; two segments of one 30s clip (each within clip dur).
+  // B. 35s -- within [30,40]; must pass and write a row. Two segments of the
+  //    one 30s source clip (each within clip dur).
   {
     const r = await runCreateRender([
       { jobId, startMs: 0, endMs: 30000 },
       { jobId, startMs: 0, endMs: 5000 },
     ])
-    ok(r.reason === 'too_long', `35s -> too_long [got: ${r.reason}]`)
-    ok(!r.renderId, '35s wrote NO render row')
+    ok(r.reason === 'ok', `35s -> ok [got: ${r.reason}${r.detail ? ' / ' + r.detail : ''}]`)
+    ok(!!r.renderId && r.totalSeconds === 35, '35s wrote a render row (total 35s)')
+    if (r.renderId) {
+      const { data: row } = await admin.from('render_jobs').select('id, status, total_duration_seconds').eq('id', r.renderId).single()
+      ok(row?.status === 'queued' && Number(row.total_duration_seconds) === 35, '35s render row persisted (queued, 35s)')
+    }
   }
-  // boundary: 30.001s just over ceiling
+  // boundary: exactly 30s floor + exactly 40s ceiling
+  {
+    const lo = await runCreateRender([{ jobId, startMs: 0, endMs: 30000 }])
+    ok(lo.reason === 'ok', `30.0s (floor) -> ok [got: ${lo.reason}]`)
+    const hi = await runCreateRender([
+      { jobId, startMs: 0, endMs: 30000 },
+      { jobId, startMs: 0, endMs: 10000 },
+    ])
+    ok(hi.reason === 'ok', `40.0s (ceiling) -> ok [got: ${hi.reason}]`)
+  }
+  // C. 45s -- over max.
   {
     const r = await runCreateRender([
       { jobId, startMs: 0, endMs: 30000 },
-      { jobId, startMs: 0, endMs: 1 },
+      { jobId, startMs: 0, endMs: 15000 },
     ])
-    ok(r.reason === 'too_long', `30.001s -> too_long [got: ${r.reason}]`)
+    ok(r.reason === 'too_long', `45s -> too_long [got: ${r.reason}]`)
+    ok(!r.renderId, '45s wrote NO render row')
+  }
+  // boundary: 40.001s just over ceiling
+  {
+    const r = await runCreateRender([
+      { jobId, startMs: 0, endMs: 30000 },
+      { jobId, startMs: 0, endMs: 10001 },
+    ])
+    ok(r.reason === 'too_long', `40.001s -> too_long [got: ${r.reason}]`)
   }
 }
 
