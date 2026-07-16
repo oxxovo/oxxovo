@@ -32,6 +32,16 @@ import {
   canSubmitMainRound,
 } from '@/lib/seasons'
 
+import {
+  assemblePresetPrompt,
+  type StudioParamRule,
+  type StudioPreset,
+  type StudioPresetGroup,
+} from '@/lib/studio-shared'
+
+export type { StudioParamRule, StudioPreset, StudioPresetGroup } from '@/lib/studio-shared'
+export { assemblePresetPrompt } from '@/lib/studio-shared'
+
 export type StudioTier = 'budget' | 'standard' | 'premium'
 
 export type StudioModel = {
@@ -49,6 +59,12 @@ export type StudioModel = {
   // per-model). null = unknown/unspecified (e.g. Seedance) -> the UI shows a
   // char counter + caution but does NOT hard-cap (never fabricate a limit).
   promptMax: number | null
+  // 'bracket' -> preset [tags] prefix the prompt (Hailuo/Director, measured).
+  // null -> natural-language description only.
+  promptStyle: 'bracket' | null
+  // Participant-tunable fal params (measured per model). null = none -> the
+  // advanced panel does not render for this model.
+  paramWhitelist: Record<string, StudioParamRule> | null
 }
 
 export type StudioJob = {
@@ -155,7 +171,12 @@ export async function getActiveModels(): Promise<StudioModel[]> {
     .order('cost_per_second_usd', { ascending: true })
   if (error) throw new Error('getActiveModels: ' + error.message)
   return (data ?? []).map((m) => {
-    const md = (m.metadata ?? {}) as { has_audio?: boolean; prompt_max?: number }
+    const md = (m.metadata ?? {}) as {
+      has_audio?: boolean
+      prompt_max?: number
+      prompt_style?: string
+      param_whitelist?: Record<string, StudioParamRule>
+    }
     return {
       id: m.id as string,
       tier: m.tier as StudioTier,
@@ -168,8 +189,24 @@ export async function getActiveModels(): Promise<StudioModel[]> {
       hasAudio: md.has_audio !== false,
       // null when unspecified (Seedance) -> UI counts but does not hard-cap.
       promptMax: typeof md.prompt_max === 'number' ? md.prompt_max : null,
+      promptStyle: md.prompt_style === 'bracket' ? 'bracket' : null,
+      paramWhitelist: md.param_whitelist ?? null,
     }
   })
+}
+
+// The 8 TK-approved camera/motion presets (studio_presets, data not code).
+// Server-only read via the admin client -- the table is RLS-locked like the
+// rest of the studio tables; the UI receives these through the page loader.
+export async function getActivePresets(): Promise<StudioPreset[]> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('studio_presets')
+    .select('id, group_id, label_en, bracket_tags, desc_text, preview_url, sort_order')
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+  if (error) throw new Error('getActivePresets: ' + error.message)
+  return (data ?? []) as StudioPreset[]
 }
 
 export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStudioConfig> {
@@ -243,9 +280,48 @@ export type CreateGenerationResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      reason: 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'failed'
+      reason:
+        | 'unknown_model'
+        | 'bad_duration'
+        | 'prompt_too_long'
+        | 'cap_reached'
+        | 'insufficient_credits'
+        | 'unknown_preset'
+        | 'invalid_param'
+        | 'failed'
       detail?: string
     }
+
+// Server-side STRICT validation of participant advanced params against the
+// model's measured whitelist. Unlike the worker (which silently drops, as the
+// last line before fal), the server REJECTS so the participant gets feedback.
+// Returns the normalized params to store, or the offending key.
+function validateAdvancedParams(
+  advanced: Record<string, unknown>,
+  whitelist: Record<string, StudioParamRule> | null,
+): { ok: true; params: Record<string, unknown> } | { ok: false; key: string } {
+  const out: Record<string, unknown> = {}
+  for (const [key, raw] of Object.entries(advanced)) {
+    if (raw === undefined || raw === null) continue
+    const rule = whitelist?.[key]
+    if (!rule) return { ok: false, key }
+    if (rule.type === 'string') {
+      if (typeof raw !== 'string') return { ok: false, key }
+      const s = raw.trim()
+      if (!s) continue // empty after trim -> treat as not provided
+      if (typeof rule.max_len === 'number' && s.length > rule.max_len) return { ok: false, key }
+      out[key] = s
+    } else if (rule.type === 'number') {
+      if (typeof raw !== 'number' || !Number.isFinite(raw)) return { ok: false, key }
+      if (typeof rule.min === 'number' && raw < rule.min) return { ok: false, key }
+      if (typeof rule.max === 'number' && raw > rule.max) return { ok: false, key }
+      out[key] = raw
+    } else {
+      return { ok: false, key } // unmeasured rule type -> never accepted
+    }
+  }
+  return { ok: true, params: out }
+}
 
 export async function createGeneration(args: {
   userId: string
@@ -253,20 +329,47 @@ export async function createGeneration(args: {
   modelId: string
   prompt: string
   durationSeconds: number
+  // Stage 1 (CameraDirector): optional preset + measured advanced params.
+  // Omitted -> the legacy free-prompt path, byte-for-byte unchanged.
+  presetId?: string
+  advanced?: Record<string, unknown>
 }): Promise<CreateGenerationResult> {
   const admin = createSupabaseAdmin()
 
-  const prompt = (args.prompt ?? '').trim()
-  if (!prompt) return { ok: false, reason: 'failed', detail: 'empty prompt' }
+  const userPrompt = (args.prompt ?? '').trim()
+  if (!userPrompt) return { ok: false, reason: 'failed', detail: 'empty prompt' }
 
   // 1. Model must exist + be active.
   const models = await getActiveModels()
   const model = models.find((m) => m.id === args.modelId)
   if (!model) return { ok: false, reason: 'unknown_model' }
 
-  // 1b. Prompt within the model's max length (fal rejects over-limit prompts;
-  // surface it here instead of a silent worker failure that burned credits).
-  // promptMax null (unspecified, e.g. Seedance) -> no server cap.
+  // 1a. Preset (optional). Must exist + be active; the server assembles the
+  // final prompt itself -- a client-assembled prompt is never trusted.
+  let preset: StudioPreset | null = null
+  if (args.presetId !== undefined && args.presetId !== null && args.presetId !== '') {
+    const presets = await getActivePresets()
+    preset = presets.find((p) => p.id === args.presetId) ?? null
+    if (!preset) return { ok: false, reason: 'unknown_preset' }
+  }
+
+  // 1a2. Advanced params: STRICT-validate against the model's measured
+  // whitelist (reject with the offending key, so the UI can point at it).
+  let advancedParams: Record<string, unknown> = {}
+  if (args.advanced && Object.keys(args.advanced).length > 0) {
+    const v = validateAdvancedParams(args.advanced, model.paramWhitelist)
+    if (!v.ok) return { ok: false, reason: 'invalid_param', detail: v.key }
+    advancedParams = v.params
+  }
+
+  // 1a3. Assemble the final prompt (preset tags/description around the
+  // participant's prompt; no preset -> untouched).
+  const prompt = assemblePresetPrompt(userPrompt, preset, model.promptStyle)
+
+  // 1b. ASSEMBLED prompt within the model's max length (fal rejects over-limit
+  // prompts; surface it here instead of a silent worker failure that burned
+  // credits). The preset adds real characters, so the check must run on the
+  // assembled result, not the raw input. promptMax null -> no server cap.
   if (model.promptMax !== null && prompt.length > model.promptMax) {
     return { ok: false, reason: 'prompt_too_long', detail: String(model.promptMax) }
   }
@@ -315,6 +418,16 @@ export async function createGeneration(args: {
     durationSeconds: duration,
     generatedAt,
   })
+  // What the participant actually picked, for audit/UI redisplay + the worker's
+  // advanced-param merge. NULL when neither was used (legacy-identical row).
+  const userParams =
+    preset || Object.keys(advancedParams).length > 0
+      ? {
+          ...(preset ? { preset_id: preset.id } : {}),
+          ...(Object.keys(advancedParams).length > 0 ? { advanced: advancedParams } : {}),
+        }
+      : null
+
   const { error: insErr } = await admin.from('generation_jobs').insert({
     id: jobId,
     user_id: args.userId,
@@ -326,6 +439,7 @@ export async function createGeneration(args: {
     status: 'queued',
     estimated_cost_usd: estCost,
     credits_charged: credits,
+    user_params: userParams,
     ...cb,
   })
   if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }

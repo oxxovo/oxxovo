@@ -177,13 +177,20 @@ export type CreateGenResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'disabled' | 'failed'
+      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'unknown_preset' | 'invalid_param' | 'disabled' | 'failed'
       detail?: string
     }
 
 export async function createGenerationAction(
   token: string,
-  input: { modelId: string; prompt: string; durationSeconds: number },
+  input: {
+    modelId: string
+    prompt: string
+    durationSeconds: number
+    // Stage 1 (CameraDirector). Optional; omitted = legacy free-prompt path.
+    presetId?: string
+    advanced?: Record<string, unknown>
+  },
 ): Promise<CreateGenResult> {
   if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
   const auth = await verifyToken(token)
@@ -197,6 +204,8 @@ export async function createGenerationAction(
     modelId: input.modelId,
     prompt: input.prompt,
     durationSeconds: input.durationSeconds,
+    presetId: input.presetId,
+    advanced: input.advanced,
   })
   if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
   return { ok: true, jobId: res.jobId, credits: res.credits }
