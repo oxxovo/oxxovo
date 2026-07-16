@@ -15,6 +15,7 @@ import 'server-only'
 import { createSupabaseAdmin } from './supabase-admin'
 import { parseVideoUrl } from './video-url'
 import { getDisplayName, getDisplayNames } from './nickname'
+import { formatDeadlinePT } from './seasons'
 
 export type WatchRound = 'application' | 'main'
 export type WatchSort = 'trending' | 'latest' | 'award'
@@ -145,16 +146,28 @@ async function loadRenderThumbnails(
   return new Map((data ?? []).map((r) => [r.id as string, (r.thumbnail_url as string | null) ?? null]))
 }
 
-// Resolve THIS round's render poster: undefined when no render applies (external
-// entry or the render row is gone) so toWatchVideo uses its fallback chain; the
-// render's thumbnail_url (possibly null) when the render is known, so the round
-// is authoritative and never shows the other round's poster.
+// Resolve THIS round's render poster: the render's own thumbnail when it has
+// one, so a round never shows the other round's frame. Otherwise undefined, so
+// toWatchVideo falls back (genesis_applications.thumbnail_url, the scoring
+// worker's backfill).
+//
+// The null case used to return null = "authoritative, show nothing". That made
+// the backfill useless in exactly the case it exists for: the Studio worker
+// keeps thumbnail_url=null on ANY poster failure (worker.ts, isolated try/catch),
+// so a participant whose poster step failed got a permanently blank tile even
+// though scoring had already backfilled a real frame for them. At 500 entrants
+// that is a handful of blank cards.
+//
+// Trade-off (accepted, TK 2026-07-15): genesis_applications.thumbnail_url is one
+// column for both rounds, last-write-wins, so the fallback can show the other
+// round's frame. A slightly-wrong frame beats a blank tile, and it only applies
+// when this round's render has no poster of its own.
 function roundThumb(
   renderThumbs: Map<string, string | null>,
   renderId: string | null,
 ): string | null | undefined {
-  if (!renderId || !renderThumbs.has(renderId)) return undefined
-  return renderThumbs.get(renderId) ?? null
+  if (!renderId) return undefined
+  return renderThumbs.get(renderId) ?? undefined
 }
 
 function toWatchVideo(
@@ -440,6 +453,10 @@ export type BannerStageInput = {
   // main_live copy uses filmCount to avoid claiming films are up before any land.
   finalistCount: number
   finalistFilmCount: number
+  // How many entries actually carry an award_rank. The results stage is gated on
+  // this, not on the calendar: writing the ranks is a MANUAL admin approval
+  // (approveTop3Awards), so awards_announcement_at can pass with none written.
+  winnerCount: number
   theme: string | null
 }
 
@@ -453,13 +470,23 @@ export function getBannerStage(input: BannerStageInput, now: Date = new Date()):
   const awards = ms(input.awardsAt)
   const fmt = (m: number) => new Date(m).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
 
-  // 5. Results announced.
-  if (awards != null && t >= awards) {
+  // 5. Results announced. The date alone is NOT enough: award_rank is written by
+  // approveTop3Awards, a manual admin approval, so this instant can pass with
+  // zero winners recorded -- and then the banner sends the audience to a grid of
+  // "Finalist" badges and no winner. Gate on real winners, same honesty rule the
+  // main_live stage already applies with finalistFilmCount. When the ranking is
+  // late we fall through to the main-round copy, which is still true.
+  // Time is formatted with formatDeadlinePT (canonical PT + explicit label) --
+  // the local fmt() below is date-only and renders in the SERVER's timezone.
+  if (awards != null && t >= awards && input.winnerCount > 0) {
+    const announcedAt = formatDeadlinePT(input.awardsAt)
     return {
       stage: 'results',
       icon: '🏆',
       title: 'The winners have been announced.',
-      subtitle: 'See who took the top spots this season.',
+      subtitle: announcedAt
+        ? `Announced ${announcedAt}. See who took the top spots this season.`
+        : 'See who took the top spots this season.',
     }
   }
   // 4. Community voting open.

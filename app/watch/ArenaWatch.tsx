@@ -140,6 +140,9 @@ export async function ArenaWatch({
     awardsAt: currentSeason?.awards_announcement_at ?? null,
     finalistCount: finalistReveal?.count ?? finalists.length,
     finalistFilmCount: finalists.filter((f) => f.mainVideoUrl).length,
+    // Real winners, not the calendar: award_rank is written by a manual admin
+    // approval, so "announced" must never be claimed before any rank exists.
+    winnerCount: finalists.filter((f) => f.awardRank != null).length,
     theme: currentSeason?.main_round_theme_label ?? null,
   })
 
