@@ -71,6 +71,14 @@ ok(presets.length === 8, `8 active presets (got ${presets.length})`)
 ok(presets.map((p) => p.id).join(',') === 'A1,A2,A3,D1,D2,B1,B2,B3', 'sort order A1..B3')
 ok(presets.every((p) => ['action', 'drama', 'beauty'].includes(p.group_id)), 'groups valid')
 ok(presets.every((p) => p.preview_url && p.preview_url.includes('stage1-backup')), 'preview URLs present')
+// 2026-07-16 incident: chat-pasted SQL line-wrapped inside the URL string
+// literals -> CRLF stored in every preview_url -> R2 404/ORB, silent preview
+// failure. Guard: byte-clean URLs AND each actually serves 200.
+ok(presets.every((p) => !/\s/.test(p.preview_url)), 'preview URLs contain no whitespace')
+for (const p of presets) {
+  const res = await fetch(p.preview_url, { method: 'HEAD' })
+  ok(res.ok, `preview URL live: ${p.id} (HTTP ${res.status})`)
+}
 
 // --- 2. model metadata (EXACT getActiveModels select) -----------------------
 console.log('2. model_catalog metadata')

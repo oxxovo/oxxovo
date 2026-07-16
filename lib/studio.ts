@@ -206,7 +206,14 @@ export async function getActivePresets(): Promise<StudioPreset[]> {
     .eq('active', true)
     .order('sort_order', { ascending: true })
   if (error) throw new Error('getActivePresets: ' + error.message)
-  return (data ?? []) as StudioPreset[]
+  // URLs cannot contain whitespace, so stripping is lossless. Guards against
+  // copy-paste line-wrap corruption in hand-run SQL/dashboard edits -- exactly
+  // what shipped a CRLF into every preview_url on 2026-07-16 and made the
+  // preview fail SILENTLY (R2 404 -> browser ORB block, no console error).
+  return ((data ?? []) as StudioPreset[]).map((p) => ({
+    ...p,
+    preview_url: p.preview_url ? p.preview_url.replace(/\s+/g, '') : p.preview_url,
+  }))
 }
 
 export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStudioConfig> {
