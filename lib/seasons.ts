@@ -126,6 +126,15 @@ export type Season = {
   // The SECRET surprise element, if any, lives in main_round_twist (still off
   // the view, still reveal-gated) -- not here. (TK 2026-07-12: A = public/early.)
   main_round_theme: string | null
+  // Short display label for main_round_theme (e.g. "Cosmetic Commercial Film").
+  // main_round_theme is a full brief -- 901 chars / 10 lines for season 0 -- and
+  // every surface that shows it is a one-line slot. So the UI shows THIS and
+  // links to /rules for the full text; the scorer keeps using main_round_theme
+  // verbatim (batch.ts), which is the whole point of splitting them.
+  // Deliberately NOT season_theme: that stays NULL for season 0 because the
+  // preliminary is free-form, and it renders on season-wide surfaces (lobby,
+  // /tournament, studio) that prelim entrants see. (TK 2026-07-15)
+  main_round_theme_label: string | null
   allowed_video_platforms: string[]
   // Member Hosted Tournament (partner) fields.
   host_type: 'official' | 'partner'

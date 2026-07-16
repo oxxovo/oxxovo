@@ -86,7 +86,6 @@ export function ArenaHero({
   judging,
   revealAtISO,
   theme,
-  themeSeconds,
   voteOpen,
   voteEndISO,
 }: {
@@ -99,7 +98,6 @@ export function ArenaHero({
   judging: JudgingProgress
   revealAtISO?: string | null
   theme?: string | null
-  themeSeconds?: number | null
   voteOpen?: boolean
   voteEndISO?: string | null
 }) {
@@ -114,7 +112,6 @@ export function ArenaHero({
       initialJudging={judging}
       revealAtISO={revealAtISO ?? null}
       theme={theme ?? null}
-      themeSeconds={themeSeconds ?? null}
       voteOpen={voteOpen ?? false}
       voteEndISO={voteEndISO ?? null}
     />

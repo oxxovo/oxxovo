@@ -244,9 +244,15 @@ function SubmitFormCard({
         <div className="text-[10px] uppercase tracking-wider text-white/40 mb-2">
           {t.profile.main_round_theme_label}
         </div>
-        {season.main_round_theme ? (
+        {season.main_round_theme_label ? (
           <div className="rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.08] px-4 py-3">
-            <p className="text-lg font-bold text-[#d4a7ff]">{season.main_round_theme}</p>
+            <p className="text-lg font-bold text-[#d4a7ff]">{season.main_round_theme_label}</p>
+            <a
+              href="/rules"
+              className="mt-1 inline-block text-xs font-semibold text-[#b66cff] hover:text-[#d4a7ff] transition"
+            >
+              {t.profile.main_round_theme_full_link}
+            </a>
           </div>
         ) : (
           <div className="rounded-lg border border-white/10 bg-white/[.02] px-4 py-3">

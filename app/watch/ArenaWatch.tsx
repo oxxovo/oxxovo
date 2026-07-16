@@ -122,9 +122,11 @@ export async function ArenaWatch({
   // hook, so the theme is teased early (TK 2026-07-12). Hidden during the open
   // prelim (no theme leak). Reads season.main_round_theme (now on the public
   // view) -- null until an operator sets it.
+  // Show the LABEL, never main_round_theme itself: the theme is a full brief
+  // (901 chars for season 0) and this is a one-line banner slot. Full text lives
+  // on /rules. main_round_theme stays untouched for the scorer.
   const showTheme = finalistReveal != null || inMainRound
-  const theme = showTheme ? (currentSeason?.main_round_theme ?? null) : null
-  const themeSeconds = currentSeason?.main_round_video_seconds ?? null
+  const theme = showTheme ? (currentSeason?.main_round_theme_label ?? null) : null
 
   // Top announcement banner: a date-driven lifecycle stage machine. Everything
   // comes from the current season's schedule columns (no hardcoding) so the
@@ -138,7 +140,7 @@ export async function ArenaWatch({
     awardsAt: currentSeason?.awards_announcement_at ?? null,
     finalistCount: finalistReveal?.count ?? finalists.length,
     finalistFilmCount: finalists.filter((f) => f.mainVideoUrl).length,
-    theme: currentSeason?.main_round_theme ?? null,
+    theme: currentSeason?.main_round_theme_label ?? null,
   })
 
   return (
@@ -154,7 +156,6 @@ export async function ArenaWatch({
         judging={judging}
         revealAtISO={finalistReveal?.revealAt ?? null}
         theme={theme}
-        themeSeconds={themeSeconds}
         voteOpen={voteOpen}
         voteEndISO={currentSeason?.community_vote_end_at ?? null}
       />

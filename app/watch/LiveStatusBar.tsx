@@ -38,7 +38,6 @@ export function LiveStatusBar({
   initialJudging,
   revealAtISO,
   theme,
-  themeSeconds,
   voteOpen,
   voteEndISO,
 }: {
@@ -52,12 +51,12 @@ export function LiveStatusBar({
   // Set in the finalist-pending window: switches the deadline row to
   // "본선 진출작 공개까지" counting to the reveal date.
   revealAtISO?: string | null
-  // Public main-round theme (season.main_round_theme). Non-null only from the
-  // "Judging Complete" stage onward (the caller gates it) so it reads as a
-  // come-back teaser before the main round, then the current brief once live.
-  // themeSeconds = main_round_video_seconds ("· 30초").
+  // Public main-round theme LABEL (season.main_round_theme_label, e.g. "Cosmetic
+  // Commercial Film"). Non-null only from the "Judging Complete" stage onward
+  // (the caller gates it) so it reads as a come-back teaser before the main
+  // round. NOT main_round_theme -- that is the full brief (901 chars for season
+  // 0) and this is a one-line slot; the full text lives on /rules.
   theme?: string | null
-  themeSeconds?: number | null
   // Community vote window: while open, the panel shows a "투표 마감까지" countdown
   // to voteEndISO so the audience feels the deadline (not just a static date).
   voteOpen?: boolean
@@ -195,12 +194,7 @@ export function LiveStatusBar({
               {isMain ? 'Main Round Theme' : '다음 라운드 주제'}
             </span>
           </div>
-          <p className="mt-1 text-[15px] font-bold leading-snug text-white">
-            {theme}
-            {themeSeconds != null && (
-              <span className="font-semibold text-[#c3b8dd]"> · {themeSeconds}초</span>
-            )}
-          </p>
+          <p className="mt-1 text-[15px] font-bold leading-snug text-white">{theme}</p>
         </div>
       )}
 

@@ -539,6 +539,10 @@ type Messages = {
     // Main round submission (2026-05-29) — single-submission model
     main_round_section_title: string
     main_round_theme_label: string
+    // Link to the full brief on /rules. The card shows the short label
+    // (seasons.main_round_theme_label); the full main_round_theme is a brief
+    // too long for this slot. (TK 2026-07-15)
+    main_round_theme_full_link: string
     main_round_allowed_platforms_label: string
     main_round_video_url_label: string
     main_round_video_url_placeholder: string
@@ -1137,6 +1141,7 @@ const MESSAGES_EN: Messages = {
     celebration_season_label: (n, name) => `Season ${n} — ${name}`,
     main_round_section_title: 'Main Round Submission',
     main_round_theme_label: 'Main Round Theme',
+    main_round_theme_full_link: 'Read the full brief →',
     main_round_allowed_platforms_label: 'Allowed Platforms',
     main_round_video_url_label: 'Video URL',
     main_round_video_url_placeholder: 'YouTube, Vimeo, or other video link',
@@ -1744,6 +1749,7 @@ const MESSAGES_KO: Messages = {
     celebration_season_label: (n, name) => `시즌 ${n} — ${name}`,
     main_round_section_title: '본선 영상 제출',
     main_round_theme_label: '본선 테마',
+    main_round_theme_full_link: '전체 규정 보기 →',
     main_round_allowed_platforms_label: '허용 플랫폼',
     main_round_video_url_label: '영상 URL',
     main_round_video_url_placeholder: 'YouTube, Vimeo 등 영상 링크',

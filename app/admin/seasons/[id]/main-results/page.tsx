@@ -92,7 +92,7 @@ export default async function MainResultsPage({
     <MainResultsView
       seasonId={id}
       seasonName={season.display_name}
-      mainRoundTheme={season.main_round_theme}
+      mainRoundTheme={season.main_round_theme_label}
       aiWeight={season.ai_score_weight}
       communityWeight={season.community_vote_weight}
       soakMode={season.community_vote_weight === 0}

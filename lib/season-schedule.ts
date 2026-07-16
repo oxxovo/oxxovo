@@ -105,6 +105,10 @@ const NON_CLONED_KEYS = [
   'name',
   'display_name',
   'main_round_theme',
+  // Same rule as main_round_theme: per-season, set by an admin before the main
+  // round. Without this, a cloned season silently inherits season 0's
+  // "Cosmetic Commercial Film" label. (TK 2026-07-15)
+  'main_round_theme_label',
   'application_open_at',
   'application_close_at',
   'scoring_start_at',
@@ -157,6 +161,7 @@ export function buildNextSeasonRow(prev: Season, communityVoteWeight: number): N
     display_name: `OXXOVO Season ${seasonNumber}`,
     // Theme is set per-season by an admin before the main round; never inherited.
     main_round_theme: null,
+    main_round_theme_label: null,
     community_vote_weight: communityVoteWeight,
     ai_score_weight,
     ...schedule,

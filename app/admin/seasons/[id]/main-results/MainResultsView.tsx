@@ -147,7 +147,9 @@ export function MainResultsView({
             </span>
           )}
         </div>
-        {/* 본선 공통 주제 — 모든 영상이 같은 주제(=statement)라 1회만 표시 */}
+        {/* 본선 공통 주제 — 모든 영상이 같은 주제(=statement)라 1회만 표시.
+            표시는 짧은 라벨(main_round_theme_label). 채점에 실제로 쓰인 전문은
+            main_round_theme이며 /rules에 공개된다. (TK 2026-07-15) */}
         {mainRoundTheme && (
           <div className="mt-4 rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.08] px-4 py-3">
             <span className="text-[11px] uppercase tracking-wider text-white/50">
