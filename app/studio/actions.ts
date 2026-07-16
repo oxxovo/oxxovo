@@ -16,6 +16,7 @@ import {
   countGenerationsForRound,
   listUserJobs,
   createGeneration,
+  getActivePresets,
   submitGeneration,
   createRender,
   listUserRenders,
@@ -25,6 +26,7 @@ import {
   STATEMENT_MIN,
   STATEMENT_MAX,
   type StudioModel,
+  type StudioPreset,
   type StudioJob,
   type ApplicantInfo,
   type EdlSegment,
@@ -67,6 +69,9 @@ export type StudioState = {
     twistRevealed: boolean
   }
   models: StudioModel[]
+  // The 8 camera/motion presets (Stage 1 CameraDirector), server-loaded from
+  // studio_presets (RLS-locked; the client cannot read the table directly).
+  presets: StudioPreset[]
   balance: number
   generationsUsed: number
   maxGenerations: number
@@ -101,9 +106,10 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
     const season = await getCurrentSeason()
     if (!season) return { ok: false, error: 'no_season' }
 
-    const [cfg, models, balance, jobs, theme, pricing, creatorProfile] = await Promise.all([
+    const [cfg, models, presets, balance, jobs, theme, pricing, creatorProfile] = await Promise.all([
       getSeasonStudioConfig(season.id),
       getActiveModels(),
+      getActivePresets(),
       getBalance(auth.userId),
       listUserJobs(auth.userId, season.id),
       getRevealedTheme(season.id),
@@ -155,6 +161,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
           twistRevealed: theme.revealed,
         },
         models,
+        presets,
         balance,
         generationsUsed: used,
         maxGenerations: cfg.maxGenerationsPerRound,

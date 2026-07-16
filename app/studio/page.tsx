@@ -15,7 +15,9 @@ import {
   type StudioState,
   type PurchaseOptions,
 } from './actions'
-import { type StudioJob, type ApplicantInfo } from '@/lib/studio'
+import { type StudioJob, type ApplicantInfo, type StudioModel } from '@/lib/studio'
+// Client-safe pure helpers (lib/studio itself is server-only).
+import { assemblePresetPrompt, type StudioPreset, type StudioPresetGroup } from '@/lib/studio-shared'
 
 type ApplicantDraft = {
   name: string
@@ -55,6 +57,31 @@ const DICT = {
     silent_marker: '무음',
     silent_note: '🔇 무음 모델입니다 — 최종 영상에서 이 클립 구간엔 소리가 없습니다. 필요하면 오디오가 있는 모델을 함께 쓰세요.',
     duration_label: '길이(초)',
+    preset_title: '카메라 디렉팅',
+    preset_selected: '선택된 프리셋',
+    preset_clear: '해제',
+    preset_group_action: '액션',
+    preset_group_drama: '드라마',
+    preset_group_beauty: '뷰티/제품',
+    preset_labels: {
+      A1: 'FPV 체이스', A2: '휩팬 리빌', A3: '아크 오빗',
+      D1: '슬로우 푸시인', D2: '핸드헬드 긴장',
+      B1: '엘레강트 오빗', B2: '마크로 푸시인', B3: '틸트업 리빌',
+    } as Record<string, string>,
+    preset_example_badge: '예시',
+    preset_example_note:
+      '프리셋의 카메라 느낌을 보여주는 예시 영상입니다 — 정답작이 아닙니다. 결과물은 내 프롬프트에 따라 완전히 달라집니다.',
+    assembled_label: '이렇게 조립됩니다',
+    assembled_hint_bracket: '이 모델은 [대괄호] 카메라 태그를 지원합니다.',
+    assembled_hint_nl: '이 모델은 카메라 서술 문장만 반영합니다 (태그 미지원 모델).',
+    advanced_show: '고급 설정 ▸',
+    advanced_hide: '고급 설정 ▾',
+    adv_negative_label: 'Negative prompt — 빼고 싶은 요소',
+    adv_negative_ph: '예: blurry, low quality, watermark',
+    adv_cfg_label: 'CFG Scale — 프롬프트 충실도',
+    adv_cfg_enable: 'CFG Scale 직접 조절',
+    err_unknown_preset: '프리셋을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.',
+    err_invalid_param: (k: string) => `고급 파라미터가 유효하지 않습니다: ${k}`,
     prompt_label: '프롬프트',
     prompt_ph: '생성할 영상을 설명하세요…',
     prompt_no_limit_note: '이 모델은 프롬프트 길이 제한이 확인되지 않았습니다. 너무 길면 생성이 실패할 수 있습니다.',
@@ -136,6 +163,27 @@ const DICT = {
     silent_marker: 'silent',
     silent_note: '🔇 Silent model — this clip’s span in the final video has no sound. Pair it with an audio-capable model if you need sound.',
     duration_label: 'Length (s)',
+    preset_title: 'Camera directing',
+    preset_selected: 'Selected preset',
+    preset_clear: 'Clear',
+    preset_group_action: 'Action',
+    preset_group_drama: 'Drama',
+    preset_group_beauty: 'Beauty/Product',
+    preset_labels: {} as Record<string, string>, // en falls back to DB label_en
+    preset_example_badge: 'Example',
+    preset_example_note:
+      'An example clip showing this preset\'s camera feel — not a reference answer. Your result depends entirely on your prompt.',
+    assembled_label: 'Assembled prompt',
+    assembled_hint_bracket: 'This model supports [bracket] camera tags.',
+    assembled_hint_nl: 'This model uses the camera description sentence only (no tag support).',
+    advanced_show: 'Advanced ▸',
+    advanced_hide: 'Advanced ▾',
+    adv_negative_label: 'Negative prompt — what to avoid',
+    adv_negative_ph: 'e.g. blurry, low quality, watermark',
+    adv_cfg_label: 'CFG Scale — prompt adherence',
+    adv_cfg_enable: 'Set CFG Scale manually',
+    err_unknown_preset: 'Preset not found. Refresh and try again.',
+    err_invalid_param: (k: string) => `Invalid advanced parameter: ${k}`,
     prompt_label: 'Prompt',
     prompt_ph: 'Describe the video to generate…',
     prompt_no_limit_note: "This model's prompt length limit is unconfirmed. A very long prompt may fail to generate.",
@@ -476,6 +524,12 @@ function Generator({
   const model = state.models.find((m) => m.id === modelId) ?? state.models[0]
   const [duration, setDuration] = useState(model?.min_duration_seconds ?? 4)
   const [prompt, setPrompt] = useState('')
+  // CameraDirector (Stage 1): chosen preset + advanced params. No preset = the
+  // legacy free-prompt path, untouched.
+  const [presetId, setPresetId] = useState<string | null>(null)
+  const [negPrompt, setNegPrompt] = useState('')
+  const [cfgOn, setCfgOn] = useState(false)
+  const [cfgScale, setCfgScale] = useState(0.5)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -484,6 +538,15 @@ function Generator({
     if (!model) return
     setDuration((d) => Math.min(Math.max(d, model.min_duration_seconds), model.max_duration_seconds))
   }, [model])
+
+  const preset = presetId ? state.presets.find((p) => p.id === presetId) ?? null : null
+  // The SERVER assembles the real prompt; this mirror exists only so the
+  // participant sees exactly what will be generated (same shared function).
+  const assembled = assemblePresetPrompt(prompt, preset, model?.promptStyle ?? null)
+  // Length budget: the limit applies to the ASSEMBLED prompt, so the preset's
+  // overhead shrinks what the participant can type.
+  const presetOverhead = preset ? assemblePresetPrompt('x', preset, model?.promptStyle ?? null).length - 1 : 0
+  const typeMax = model?.promptMax != null ? Math.max(0, model.promptMax - presetOverhead) : null
 
   const credits = model
     ? creditsPreview(model.cost_per_second_usd, duration, state.pricing.marginRate, state.pricing.creditUsdValue)
@@ -498,6 +561,8 @@ function Generator({
       case 'insufficient_credits': return t.insufficient
       case 'bad_duration': return t.err_bad_duration
       case 'prompt_too_long': return t.err_prompt_too_long(detail ?? '')
+      case 'unknown_preset': return t.err_unknown_preset
+      case 'invalid_param': return t.err_invalid_param(detail ?? '')
       default: return t.err_generic
     }
   }
@@ -505,7 +570,19 @@ function Generator({
   const handle = () => {
     setError(null)
     startTransition(async () => {
-      const res = await createGenerationAction(token, { modelId, prompt: prompt.trim(), durationSeconds: duration })
+      // Advanced params ride along only when the model's whitelist offers them
+      // (the panel is hidden otherwise, but never trust hidden UI state).
+      const wl = model?.paramWhitelist ?? null
+      const advanced: Record<string, unknown> = {}
+      if (wl?.negative_prompt && negPrompt.trim()) advanced.negative_prompt = negPrompt.trim()
+      if (wl?.cfg_scale && cfgOn) advanced.cfg_scale = cfgScale
+      const res = await createGenerationAction(token, {
+        modelId,
+        prompt: prompt.trim(),
+        durationSeconds: duration,
+        ...(preset ? { presetId: preset.id } : {}),
+        ...(Object.keys(advanced).length > 0 ? { advanced } : {}),
+      })
       if (res.ok) {
         setPrompt('')
         await onCreated()
@@ -556,20 +633,29 @@ function Generator({
             )}
           </label>
         </div>
+        <CameraDirector
+          t={t}
+          presets={state.presets}
+          model={model ?? null}
+          presetId={presetId}
+          onPick={setPresetId}
+        />
         <label className="block">
           <div className="flex items-baseline justify-between mb-1">
             <span className="text-[10px] uppercase tracking-wider text-white/40">{t.prompt_label}</span>
             {model && (
+              // The limit applies to the ASSEMBLED prompt (preset overhead
+              // included), so count what will actually be sent to the model.
               <span
                 className={`text-[10px] ${
-                  model.promptMax != null && prompt.length >= model.promptMax
+                  model.promptMax != null && assembled.length >= model.promptMax
                     ? 'text-[#ff8888]'
-                    : model.promptMax != null && prompt.length > model.promptMax * 0.9
+                    : model.promptMax != null && assembled.length > model.promptMax * 0.9
                       ? 'text-amber-300'
                       : 'text-white/40'
                 }`}
               >
-                {prompt.length.toLocaleString()}
+                {assembled.length.toLocaleString()}
                 {model.promptMax != null ? ` / ${model.promptMax.toLocaleString()}` : ''}
               </span>
             )}
@@ -578,9 +664,9 @@ function Generator({
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={4}
-            // Hard-cap typing at the model's known limit; unknown (Seedance) ->
-            // no cap, a caution note is shown below instead.
-            maxLength={model?.promptMax ?? undefined}
+            // Hard-cap typing at the model's known limit MINUS the preset's
+            // overhead; unknown (Seedance) -> no cap, a caution note instead.
+            maxLength={typeMax ?? undefined}
             placeholder={t.prompt_ph}
             className={`${inputCls} resize-y`}
           />
@@ -588,6 +674,29 @@ function Generator({
             <p className="mt-1.5 text-[11px] leading-relaxed text-amber-300/80">{t.prompt_no_limit_note}</p>
           )}
         </label>
+        {preset && model && (
+          <div className="rounded-lg border border-[#8b22ff]/25 bg-[#8b22ff]/[.05] px-4 py-3">
+            <div className="text-[10px] uppercase tracking-wider text-[#b66cff] font-bold">{t.assembled_label}</div>
+            <p className="mt-1.5 text-[12px] leading-relaxed text-white/70 font-mono break-words">
+              {assemblePresetPrompt(prompt.trim() || '…', preset, model.promptStyle)}
+            </p>
+            <p className="mt-1.5 text-[10px] text-white/40">
+              {model.promptStyle === 'bracket' ? t.assembled_hint_bracket : t.assembled_hint_nl}
+            </p>
+          </div>
+        )}
+        {model?.paramWhitelist && (
+          <AdvancedPanel
+            t={t}
+            whitelist={model.paramWhitelist}
+            negPrompt={negPrompt}
+            onNegPrompt={setNegPrompt}
+            cfgOn={cfgOn}
+            onCfgOn={setCfgOn}
+            cfgScale={cfgScale}
+            onCfgScale={setCfgScale}
+          />
+        )}
         <div className="flex items-center justify-between gap-3">
           <span className={`text-xs ${insufficient ? 'text-[#ff8888]' : 'text-white/50'}`}>
             {t.cost_preview(credits)}
@@ -605,6 +714,200 @@ function Generator({
         {error && <p className="text-[11px] text-[#ff8888]">{error}</p>}
       </div>
     </section>
+  )
+}
+
+// Stage 1 CameraDirector: genre segments -> one-click preset chips -> example
+// preview. Picking nothing = the legacy free-prompt path. Presets come from
+// studio_presets (data, not code) via the server loader.
+function CameraDirector({
+  t,
+  presets,
+  model,
+  presetId,
+  onPick,
+}: {
+  t: Dict
+  presets: StudioPreset[]
+  model: StudioModel | null
+  presetId: string | null
+  onPick: (id: string | null) => void
+}) {
+  const GROUPS: { id: StudioPresetGroup; label: string }[] = [
+    { id: 'action', label: t.preset_group_action },
+    { id: 'drama', label: t.preset_group_drama },
+    { id: 'beauty', label: t.preset_group_beauty },
+  ]
+  const [group, setGroup] = useState<StudioPresetGroup | null>(null)
+  if (presets.length === 0) return null
+  const selected = presetId ? presets.find((p) => p.id === presetId) ?? null : null
+  const label = (p: StudioPreset) => t.preset_labels[p.id] ?? p.label_en
+  const visible = group ? presets.filter((p) => p.group_id === group) : []
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[.015] p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-white/40 mr-1">{t.preset_title}</span>
+        {GROUPS.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            onClick={() => setGroup((cur) => (cur === g.id ? null : g.id))}
+            className={`px-3 py-1 rounded-full text-[11px] font-bold border transition ${
+              group === g.id
+                ? 'border-[#8b22ff] bg-[#8b22ff]/20 text-[#d9b8ff]'
+                : 'border-white/15 text-white/50 hover:border-white/30'
+            }`}
+          >
+            {g.label}
+          </button>
+        ))}
+        {selected && (
+          // Stays visible even when the segment view is on another group, so the
+          // active preset is never silently "hidden state".
+          <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[#8b22ff]/50 bg-[#8b22ff]/10 pl-3 pr-1.5 py-0.5 text-[11px] text-[#d9b8ff]">
+            {t.preset_selected}: <b>{label(selected)}</b>
+            <button
+              type="button"
+              onClick={() => onPick(null)}
+              className="rounded-full px-1.5 text-white/60 hover:text-white hover:bg-white/10"
+              aria-label={t.preset_clear}
+            >
+              ×
+            </button>
+          </span>
+        )}
+      </div>
+
+      {visible.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {visible.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onPick(presetId === p.id ? null : p.id)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold border transition ${
+                presetId === p.id
+                  ? 'border-[#8b22ff] bg-gradient-to-br from-[#7d23ff]/30 to-[#6220dc]/30 text-white'
+                  : 'border-white/15 text-white/60 hover:border-[#8b22ff]/50 hover:text-white'
+              }`}
+            >
+              {label(p)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected?.preview_url && (
+        <div className="mt-3">
+          <div className="relative overflow-hidden rounded-lg border border-white/10 max-w-md">
+            <video
+              key={selected.id}
+              src={selected.preview_url}
+              muted
+              loop
+              autoPlay
+              playsInline
+              controls
+              preload="metadata"
+              className="w-full bg-black"
+            />
+            <span className="absolute top-2 left-2 rounded bg-black/70 border border-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/90 pointer-events-none">
+              {t.preset_example_badge}
+            </span>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-white/40 max-w-md">{t.preset_example_note}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Collapsed advanced panel -- rendered ONLY for models whose measured
+// param_whitelist offers something (kling-v3-pro today). Fields are driven by
+// the whitelist so a data-only catalog change lights them up without code.
+function AdvancedPanel({
+  t,
+  whitelist,
+  negPrompt,
+  onNegPrompt,
+  cfgOn,
+  onCfgOn,
+  cfgScale,
+  onCfgScale,
+}: {
+  t: Dict
+  whitelist: NonNullable<StudioModel['paramWhitelist']>
+  negPrompt: string
+  onNegPrompt: (v: string) => void
+  cfgOn: boolean
+  onCfgOn: (v: boolean) => void
+  cfgScale: number
+  onCfgScale: (v: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const neg = whitelist.negative_prompt
+  const cfg = whitelist.cfg_scale
+  if (!neg && !cfg) return null
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[.015]">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-white/50 hover:text-white/80 transition"
+      >
+        {open ? t.advanced_hide : t.advanced_show}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          {neg && (
+            <label className="block">
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-[10px] uppercase tracking-wider text-white/40">{t.adv_negative_label}</span>
+                {typeof neg.max_len === 'number' && (
+                  <span className="text-[10px] text-white/40">
+                    {negPrompt.length} / {neg.max_len}
+                  </span>
+                )}
+              </div>
+              <textarea
+                value={negPrompt}
+                onChange={(e) => onNegPrompt(e.target.value)}
+                rows={2}
+                maxLength={typeof neg.max_len === 'number' ? neg.max_len : undefined}
+                placeholder={t.adv_negative_ph}
+                className={`${inputCls} resize-y`}
+              />
+            </label>
+          )}
+          {cfg && (
+            <div>
+              <label className="flex items-center gap-2 text-[11px] text-white/60">
+                <input type="checkbox" checked={cfgOn} onChange={(e) => onCfgOn(e.target.checked)} />
+                {t.adv_cfg_enable}
+              </label>
+              {cfgOn && (
+                <label className="mt-2 block">
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="text-[10px] uppercase tracking-wider text-white/40">{t.adv_cfg_label}</span>
+                    <span className="text-[10px] text-[#b66cff] font-bold">{cfgScale.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={cfg.min ?? 0}
+                    max={cfg.max ?? 1}
+                    step={0.05}
+                    value={cfgScale}
+                    onChange={(e) => onCfgScale(Number(e.target.value))}
+                    className="w-full accent-[#8b22ff]"
+                  />
+                </label>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
