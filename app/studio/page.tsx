@@ -29,6 +29,17 @@ type ApplicantDraft = {
   integrity: boolean
 }
 
+// Draft promotion (Sandbox -> Competition): what "이 프롬프트로 최종 렌더"
+// prefills into the generator form. The participant reviews the estimated
+// credits and confirms with Generate -- nothing is charged on click.
+type Prefill = {
+  modelId: string
+  prompt: string
+  presetId: string | null
+  negPrompt: string
+  cfgScale: number | null
+}
+
 const DICT = {
   ko: {
     brand: 'OXXOVO',
@@ -54,6 +65,18 @@ const DICT = {
     already_submitted: '이미 제출을 완료했습니다. 제출은 영구적이며 수정할 수 없습니다.',
     gen_title: '새 영상 생성',
     model_label: '모델 (티어)',
+    competition_group: '경기장 (Competition)',
+    sandbox_group: '연습장 (Sandbox) · 제출 불가',
+    draft_used_label: (u: number, m: number) => `연습 ${u}/${m}회`,
+    draft_badge: 'DRAFT · 연습장',
+    draft_note:
+      '🎨 연습장(Sandbox) 모델입니다 — 저가·저해상도로 마음껏 시행착오하세요. 영상에 DRAFT 워터마크가 박히고 제출/조합에는 쓸 수 없습니다. 연습 캡(별도)만 차감됩니다.',
+    draft_cap_reached: '이번 라운드 연습(드래프트) 횟수를 모두 사용했습니다.',
+    draft_no_submit: '연습 클립 — 제출 불가',
+    promote: '이 프롬프트로 최종 렌더 →',
+    promote_notice:
+      '드래프트는 느낌 미리보기입니다 — 같은 프롬프트라도 최종 결과는 달라질 수 있습니다. 모델·프롬프트를 확인하고 생성을 눌러 확정하세요.',
+    err_draft_not_submittable: '드래프트(연습) 클립은 제출할 수 없습니다.',
     silent_marker: '무음',
     silent_note: '🔇 무음 모델입니다 — 최종 영상에서 이 클립 구간엔 소리가 없습니다. 필요하면 오디오가 있는 모델을 함께 쓰세요.',
     duration_label: '길이(초)',
@@ -160,6 +183,18 @@ const DICT = {
     already_submitted: 'You have already submitted. Submission is permanent and cannot be changed.',
     gen_title: 'New generation',
     model_label: 'Model (tier)',
+    competition_group: 'Competition',
+    sandbox_group: 'Sandbox · not submittable',
+    draft_used_label: (u: number, m: number) => `Sandbox ${u}/${m}`,
+    draft_badge: 'DRAFT · Sandbox',
+    draft_note:
+      '🎨 Sandbox model — cheap, low-res practice runs. Output carries a DRAFT watermark and can never be submitted or composed. Uses the separate Sandbox cap only.',
+    draft_cap_reached: 'You have used all Sandbox (draft) generations for this round.',
+    draft_no_submit: 'Practice clip — not submittable',
+    promote: 'Final render with this prompt →',
+    promote_notice:
+      'A draft previews the feel — the final result can differ even with the same prompt. Review the model/prompt below and press Generate to confirm.',
+    err_draft_not_submittable: 'Draft (practice) clips cannot be submitted.',
     silent_marker: 'silent',
     silent_note: '🔇 Silent model — this clip’s span in the final video has no sound. Pair it with an audio-capable model if you need sound.',
     duration_label: 'Length (s)',
@@ -258,6 +293,7 @@ export default function StudioPage() {
   const token = useLocalToken()
   const [state, setState] = useState<StudioState | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [prefill, setPrefill] = useState<Prefill | null>(null)
   const [applicant, setApplicant] = useState<ApplicantDraft>({
     name: '', statement: '', country: '', channelUrl: '',
     rules: false, privacy: false, integrity: false,
@@ -294,7 +330,9 @@ export default function StudioPage() {
       const res = await pollJobsAction(token)
       if (res.ok) {
         setState((prev) =>
-          prev ? { ...prev, jobs: res.jobs, balance: res.balance, generationsUsed: res.generationsUsed } : prev,
+          prev
+            ? { ...prev, jobs: res.jobs, balance: res.balance, generationsUsed: res.generationsUsed, draftGenerationsUsed: res.draftGenerationsUsed }
+            : prev,
         )
       }
     }, 4000)
@@ -306,7 +344,9 @@ export default function StudioPage() {
     const res = await pollJobsAction(token)
     if (res.ok) {
       setState((prev) =>
-        prev ? { ...prev, jobs: res.jobs, balance: res.balance, generationsUsed: res.generationsUsed } : prev,
+        prev
+          ? { ...prev, jobs: res.jobs, balance: res.balance, generationsUsed: res.generationsUsed, draftGenerationsUsed: res.draftGenerationsUsed }
+          : prev,
       )
     }
   }
@@ -380,7 +420,14 @@ export default function StudioPage() {
           </div>
         )}
 
-        <Generator t={t} token={token} state={state} onCreated={refresh} />
+        <Generator
+          t={t}
+          token={token}
+          state={state}
+          onCreated={refresh}
+          prefill={prefill}
+          onPrefillApplied={() => setPrefill(null)}
+        />
 
         {needsApplicantInfo && (
           <ApplicantForm t={t} applicant={applicant} onChange={setApplicant} />
@@ -392,6 +439,24 @@ export default function StudioPage() {
           state={state}
           needsApplicantInfo={needsApplicantInfo}
           applicant={applicant}
+          onPromote={(job) => {
+            // Sandbox -> Competition: prefill the form with the draft's raw
+            // prompt/preset/advanced and its competition sibling model.
+            const draftModel = state.models.find((m) => m.id === job.model_id)
+            const target =
+              (draftModel?.promotesTo && state.models.find((m) => m.id === draftModel.promotesTo)) ||
+              state.models.find((m) => m.tier !== 'draft')
+            if (!target) return
+            const adv = job.user_params?.advanced ?? {}
+            setPrefill({
+              modelId: target.id,
+              prompt: job.user_params?.user_prompt ?? job.prompt,
+              presetId: job.user_params?.preset_id ?? null,
+              negPrompt: typeof adv.negative_prompt === 'string' ? adv.negative_prompt : '',
+              cfgScale: typeof adv.cfg_scale === 'number' ? adv.cfg_scale : null,
+            })
+            document.getElementById('studio-generator')?.scrollIntoView({ behavior: 'smooth' })
+          }}
           onChanged={async () => {
             // After submit, reload full state (to flip alreadySubmitted) + jobs.
             const res = await loadStudioState(token)
@@ -439,6 +504,10 @@ function StatusBar({ t, state }: { t: Dict; state: StudioState }) {
         {t.balance}: <span className="font-bold text-[#b66cff]">{state.balance}</span>
       </span>
       <span className="text-white/50">{t.used_label(state.generationsUsed, state.maxGenerations)}</span>
+      {/* Sandbox cap -- independent of the competition cap. */}
+      <span className="text-white/40">
+        {t.draft_used_label(state.draftGenerationsUsed, state.maxDraftGenerations)}
+      </span>
     </div>
   )
 }
@@ -514,11 +583,15 @@ function Generator({
   token,
   state,
   onCreated,
+  prefill,
+  onPrefillApplied,
 }: {
   t: Dict
   token: string
   state: StudioState
   onCreated: () => void | Promise<void>
+  prefill: Prefill | null
+  onPrefillApplied: () => void
 }) {
   const [modelId, setModelId] = useState(state.models[0]?.id ?? '')
   const model = state.models.find((m) => m.id === modelId) ?? state.models[0]
@@ -532,12 +605,29 @@ function Generator({
   const [cfgScale, setCfgScale] = useState(0.5)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  // Set while a draft promotion prefill is active -- shows the "final can
+  // differ" honesty notice until the participant generates or edits away.
+  const [promoteNote, setPromoteNote] = useState(false)
 
   // Clamp duration into the selected model's range when the model changes.
   useEffect(() => {
     if (!model) return
     setDuration((d) => Math.min(Math.max(d, model.min_duration_seconds), model.max_duration_seconds))
   }, [model])
+
+  // Apply a draft promotion prefill (one-shot; parent clears it after).
+  useEffect(() => {
+    if (!prefill) return
+    setModelId(prefill.modelId)
+    setPrompt(prefill.prompt)
+    setPresetId(prefill.presetId)
+    setNegPrompt(prefill.negPrompt)
+    setCfgOn(prefill.cfgScale !== null)
+    if (prefill.cfgScale !== null) setCfgScale(prefill.cfgScale)
+    setPromoteNote(true)
+    onPrefillApplied()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill])
 
   const preset = presetId ? state.presets.find((p) => p.id === presetId) ?? null : null
   // The SERVER assembles the real prompt; this mirror exists only so the
@@ -551,13 +641,18 @@ function Generator({
   const credits = model
     ? creditsPreview(model.cost_per_second_usd, duration, state.pricing.marginRate, state.pricing.creditUsdValue)
     : 0
-  const capReached = state.generationsUsed >= state.maxGenerations
+  // Sandbox and competition caps are independent -- check the one the selected
+  // model actually consumes (server re-checks with the same split).
+  const isDraftModel = model?.tier === 'draft'
+  const capReached = isDraftModel
+    ? state.draftGenerationsUsed >= state.maxDraftGenerations
+    : state.generationsUsed >= state.maxGenerations
   const insufficient = credits > state.balance
   const disabled = pending || !model || prompt.trim() === '' || capReached || insufficient || !state.models.length
 
   const errText = (e: string, detail?: string): string => {
     switch (e) {
-      case 'cap_reached': return t.cap_reached
+      case 'cap_reached': return detail === 'draft' ? t.draft_cap_reached : t.cap_reached
       case 'insufficient_credits': return t.insufficient
       case 'bad_duration': return t.err_bad_duration
       case 'prompt_too_long': return t.err_prompt_too_long(detail ?? '')
@@ -585,6 +680,7 @@ function Generator({
       })
       if (res.ok) {
         setPrompt('')
+        setPromoteNote(false)
         await onCreated()
       } else {
         setError(errText(res.error, res.detail))
@@ -592,10 +688,20 @@ function Generator({
     })
   }
 
+  const competitionModels = state.models.filter((m) => m.tier !== 'draft')
+  const draftModels = state.models.filter((m) => m.tier === 'draft')
+  const optionLabel = (m: (typeof state.models)[number]) =>
+    `${m.display_name} · ${m.tier}${m.hasAudio ? '' : ` · ${t.silent_marker}`}`
+
   return (
-    <section className="mt-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
+    <section id="studio-generator" className="mt-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
       <h2 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold mb-4">{t.gen_title}</h2>
       <div className="space-y-4">
+        {promoteNote && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[12px] leading-relaxed text-amber-200">
+            {t.promote_notice}
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <label className="sm:col-span-2 block">
             <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{t.model_label}</div>
@@ -604,13 +710,24 @@ function Generator({
               onChange={(e) => setModelId(e.target.value)}
               className={inputCls}
             >
-              {state.models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.display_name} · {m.tier}
-                  {m.hasAudio ? '' : ` · ${t.silent_marker}`}
-                </option>
-              ))}
+              <optgroup label={t.competition_group}>
+                {competitionModels.map((m) => (
+                  <option key={m.id} value={m.id}>{optionLabel(m)}</option>
+                ))}
+              </optgroup>
+              {draftModels.length > 0 && (
+                <optgroup label={t.sandbox_group}>
+                  {draftModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {optionLabel(m)}{m.resolutionLabel ? ` · ${m.resolutionLabel}` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
+            {model && isDraftModel && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[#d9b8ff]/80">{t.draft_note}</p>
+            )}
             {model && !model.hasAudio && (
               <p className="mt-1.5 text-[11px] leading-relaxed text-amber-300/80">{t.silent_note}</p>
             )}
@@ -710,7 +827,9 @@ function Generator({
             {pending ? t.generating : t.generate}
           </button>
         </div>
-        {capReached && <p className="text-[11px] text-amber-300">{t.cap_reached}</p>}
+        {capReached && (
+          <p className="text-[11px] text-amber-300">{isDraftModel ? t.draft_cap_reached : t.cap_reached}</p>
+        )}
         {error && <p className="text-[11px] text-[#ff8888]">{error}</p>}
       </div>
     </section>
@@ -917,6 +1036,7 @@ function Generations({
   state,
   needsApplicantInfo,
   applicant,
+  onPromote,
   onChanged,
 }: {
   t: Dict
@@ -924,6 +1044,7 @@ function Generations({
   state: StudioState
   needsApplicantInfo: boolean
   applicant: ApplicantDraft
+  onPromote: (job: StudioJob) => void
   onChanged: () => void | Promise<void>
 }) {
   // Workspace, not a library: show only recent clips by default so old clips
@@ -962,6 +1083,7 @@ function Generations({
               canSubmit={!state.alreadySubmitted}
               needsApplicantInfo={needsApplicantInfo}
               applicant={applicant}
+              onPromote={onPromote}
               onChanged={onChanged}
             />
           ))}
@@ -1051,6 +1173,7 @@ function JobCard({
   canSubmit,
   needsApplicantInfo,
   applicant,
+  onPromote,
   onChanged,
 }: {
   t: Dict
@@ -1059,6 +1182,7 @@ function JobCard({
   canSubmit: boolean
   needsApplicantInfo: boolean
   applicant: ApplicantDraft
+  onPromote: (job: StudioJob) => void
   onChanged: () => void | Promise<void>
 }) {
   const [pending, startTransition] = useTransition()
@@ -1125,15 +1249,24 @@ function JobCard({
     })
   }
 
+  const isDraft = job.tier === 'draft'
+
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[.02] p-4">
+    <div className={`rounded-lg border p-4 ${isDraft ? 'border-dashed border-[#8b22ff]/30 bg-[#8b22ff]/[.03]' : 'border-white/10 bg-white/[.02]'}`}>
       <div className="flex items-center justify-between gap-3 mb-2">
-        <span
-          className={`inline-block px-2.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border ${
-            STATUS_STYLE[job.status] ?? STATUS_STYLE.queued
-          }`}
-        >
-          {statusLabel[job.status] ?? job.status}
+        <span className="flex items-center gap-2">
+          <span
+            className={`inline-block px-2.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border ${
+              STATUS_STYLE[job.status] ?? STATUS_STYLE.queued
+            }`}
+          >
+            {statusLabel[job.status] ?? job.status}
+          </span>
+          {isDraft && (
+            <span className="inline-block px-2.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border border-[#8b22ff]/40 bg-[#8b22ff]/10 text-[#d9b8ff]">
+              {t.draft_badge}
+            </span>
+          )}
         </span>
         <span className="text-[10px] text-white/35">
           {new Date(job.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })} · {job.tier} · {job.duration_seconds}s
@@ -1158,7 +1291,21 @@ function JobCard({
       )}
 
       <div className="mt-1 flex items-center justify-between gap-3">
-        {job.status === 'ready' && canSubmit ? (
+        {job.status === 'ready' && isDraft ? (
+          // A draft can never be submitted (server enforces too). Its action is
+          // promotion: prefill the generator with this prompt on the
+          // competition sibling model -- nothing is charged until Generate.
+          <span className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onPromote(job)}
+              className="px-4 py-2 rounded-lg bg-gradient-to-br from-[#7d23ff] to-[#6220dc] text-white text-xs font-bold uppercase tracking-wider hover:brightness-110 transition"
+            >
+              {t.promote}
+            </button>
+            <span className="text-[10px] text-white/40">{t.draft_no_submit}</span>
+          </span>
+        ) : job.status === 'ready' && canSubmit ? (
           <button
             type="button"
             onClick={handleSubmit}
