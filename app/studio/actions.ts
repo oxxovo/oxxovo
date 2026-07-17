@@ -75,6 +75,9 @@ export type StudioState = {
   balance: number
   generationsUsed: number
   maxGenerations: number
+  // Sandbox(draft) cap -- independent of the competition cap above.
+  draftGenerationsUsed: number
+  maxDraftGenerations: number
   jobs: StudioJob[]
   hasApplication: boolean
   alreadySubmitted: boolean
@@ -119,7 +122,10 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
 
     // The round is decided server-side from the schedule (client never chooses).
     const effectiveRound = resolveEffectiveRound(cfg)
-    const used = await countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound)
+    const [used, draftUsed] = await Promise.all([
+      countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound, 'competition'),
+      countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound, 'draft'),
+    ])
 
     // Application presence + whether a studio submission already landed for the
     // current (effective) round.
@@ -165,6 +171,8 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
         balance,
         generationsUsed: used,
         maxGenerations: cfg.maxGenerationsPerRound,
+        draftGenerationsUsed: draftUsed,
+        maxDraftGenerations: cfg.maxDraftGenerationsPerRound,
         jobs,
         hasApplication: !!appRow,
         alreadySubmitted,
@@ -219,7 +227,7 @@ export async function createGenerationAction(
 }
 
 export type PollResult =
-  | { ok: true; jobs: StudioJob[]; balance: number; generationsUsed: number }
+  | { ok: true; jobs: StudioJob[]; balance: number; generationsUsed: number; draftGenerationsUsed: number }
   | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' }
 
 export async function pollJobsAction(token: string): Promise<PollResult> {
@@ -230,12 +238,13 @@ export async function pollJobsAction(token: string): Promise<PollResult> {
   if (!season) return { ok: false, error: 'no_season' }
   const cfg = await getSeasonStudioConfig(season.id)
   const effectiveRound = resolveEffectiveRound(cfg)
-  const [jobs, balance, used] = await Promise.all([
+  const [jobs, balance, used, draftUsed] = await Promise.all([
     listUserJobs(auth.userId, season.id),
     getBalance(auth.userId),
-    countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound),
+    countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound, 'competition'),
+    countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound, 'draft'),
   ])
-  return { ok: true, jobs, balance, generationsUsed: used }
+  return { ok: true, jobs, balance, generationsUsed: used, draftGenerationsUsed: draftUsed }
 }
 
 export type SubmitGenResult =
@@ -248,6 +257,7 @@ export type SubmitGenResult =
         | 'job_not_found'
         | 'not_owner'
         | 'not_ready'
+        | 'draft_not_submittable'
         | 'cryptobind_failed'
         | 'no_application'
         | 'already_submitted'
@@ -387,7 +397,9 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     const effectiveRound = resolveEffectiveRound(cfg)
     const jobs = await listUserJobs(auth.userId, season.id)
     const clips: ComposeClip[] = jobs
-      .filter((j) => j.status === 'ready' && j.video_url && isInEffectiveRound(j.created_at, cfg, effectiveRound))
+      // Drafts (Sandbox) are practice-only: hidden from the compose picker here,
+      // and createRender rejects them server-side even if one sneaks into an EDL.
+      .filter((j) => j.tier !== 'draft' && j.status === 'ready' && j.video_url && isInEffectiveRound(j.created_at, cfg, effectiveRound))
       .map((j) => ({
         id: j.id,
         url: j.video_url as string,

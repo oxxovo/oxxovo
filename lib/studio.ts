@@ -42,7 +42,10 @@ import {
 export type { StudioParamRule, StudioPreset, StudioPresetGroup } from '@/lib/studio-shared'
 export { assemblePresetPrompt } from '@/lib/studio-shared'
 
-export type StudioTier = 'budget' | 'standard' | 'premium'
+// 'draft' = Sandbox tier (연습장): cheap low-res practice generations with their
+// own per-round cap, watermarked by the worker, and blocked from EVERY
+// submission path (submitGeneration + createRender sources) -- fairness rule.
+export type StudioTier = 'draft' | 'budget' | 'standard' | 'premium'
 
 export type StudioModel = {
   id: string
@@ -65,18 +68,31 @@ export type StudioModel = {
   // Participant-tunable fal params (measured per model). null = none -> the
   // advanced panel does not render for this model.
   paramWhitelist: Record<string, StudioParamRule> | null
+  // Draft models only: the competition sibling this draft promotes to
+  // ("이 프롬프트로 최종 렌더" prefills the form with this model).
+  promotesTo: string | null
+  // Native output resolution label ('720p', '480p', ...) for the draft badge.
+  resolutionLabel: string | null
 }
 
 export type StudioJob = {
   id: string
   status: 'queued' | 'generating' | 'uploading' | 'ready' | 'submitted' | 'failed'
   tier: string
+  model_id: string
   prompt: string
   duration_seconds: number
   video_url: string | null
   error_message: string | null
   submitted_at: string | null
   created_at: string
+  // What the participant picked (preset/advanced + the RAW pre-assembly prompt).
+  // Feeds the draft "이 프롬프트로 최종 렌더" form prefill. NULL on legacy rows.
+  user_params: {
+    user_prompt?: string
+    preset_id?: string
+    advanced?: Record<string, unknown>
+  } | null
 }
 
 export type StudioRoundSetting = 'application' | 'main' | 'both'
@@ -87,6 +103,9 @@ export type EffectiveRound = 'application' | 'main'
 export type SeasonStudioConfig = {
   round: StudioRoundSetting
   maxGenerationsPerRound: number
+  // Sandbox(draft) cap -- counted SEPARATELY from the competition cap above.
+  // Draft generations never consume competition slots and vice versa.
+  maxDraftGenerationsPerRound: number
   mainRoundStartAt: string | null
   // S-3: main-round submission window = mainRoundStartAt + submissionHours.
   submissionHours: number
@@ -176,6 +195,8 @@ export async function getActiveModels(): Promise<StudioModel[]> {
       prompt_max?: number
       prompt_style?: string
       param_whitelist?: Record<string, StudioParamRule>
+      promotes_to?: string
+      resolution_label?: string
     }
     return {
       id: m.id as string,
@@ -191,6 +212,8 @@ export async function getActiveModels(): Promise<StudioModel[]> {
       promptMax: typeof md.prompt_max === 'number' ? md.prompt_max : null,
       promptStyle: md.prompt_style === 'bracket' ? 'bracket' : null,
       paramWhitelist: md.param_whitelist ?? null,
+      promotesTo: typeof md.promotes_to === 'string' ? md.promotes_to : null,
+      resolutionLabel: typeof md.resolution_label === 'string' ? md.resolution_label : null,
     }
   })
 }
@@ -220,13 +243,14 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
+    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
   return {
     round: (data.studio_round as StudioRoundSetting) ?? 'main',
     maxGenerationsPerRound: Number(data.studio_max_generations_per_round ?? 10),
+    maxDraftGenerationsPerRound: Number(data.studio_max_draft_generations_per_round ?? 30),
     mainRoundStartAt: (data.main_round_start_at as string | null) ?? null,
     submissionHours: Number(data.submission_hours ?? 48),
     applicationVideoMinSeconds: Number(data.application_video_min_seconds ?? 0),
@@ -248,6 +272,9 @@ export async function countGenerationsForRound(
   seasonId: string,
   cfg: SeasonStudioConfig,
   effectiveRound: EffectiveRound,
+  // Which cap this count feeds. Draft (Sandbox) and competition generations
+  // have INDEPENDENT per-round caps -- one never consumes the other's slots.
+  kind: 'draft' | 'competition' = 'competition',
 ): Promise<number> {
   const admin = createSupabaseAdmin()
   let q = admin
@@ -255,6 +282,9 @@ export async function countGenerationsForRound(
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('season_id', seasonId)
+
+  if (kind === 'draft') q = q.eq('tier', 'draft')
+  else q = q.neq('tier', 'draft')
 
   if (cfg.round === 'both' && cfg.mainRoundStartAt) {
     if (effectiveRound === 'main') q = q.gte('created_at', cfg.mainRoundStartAt)
@@ -270,7 +300,7 @@ export async function listUserJobs(userId: string, seasonId: string): Promise<St
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('generation_jobs')
-    .select('id, status, tier, prompt, duration_seconds, video_url, error_message, submitted_at, created_at')
+    .select('id, status, tier, model_id, prompt, duration_seconds, video_url, error_message, submitted_at, created_at, user_params')
     .eq('user_id', userId)
     .eq('season_id', seasonId)
     // Active workspace only: archived clips (round submitted) live in My Library,
@@ -404,8 +434,12 @@ export async function createGeneration(args: {
     if (bounds.max > 0 && duration > bounds.max) return { ok: false, reason: 'bad_duration' }
   }
 
-  const used = await countGenerationsForRound(args.userId, args.seasonId, cfg, effectiveRound)
-  if (used >= cfg.maxGenerationsPerRound) return { ok: false, reason: 'cap_reached' }
+  // Draft (Sandbox) and competition generations count toward SEPARATE caps.
+  const capKind = model.tier === 'draft' ? 'draft' : 'competition'
+  const capMax =
+    capKind === 'draft' ? cfg.maxDraftGenerationsPerRound : cfg.maxGenerationsPerRound
+  const used = await countGenerationsForRound(args.userId, args.seasonId, cfg, effectiveRound, capKind)
+  if (used >= capMax) return { ok: false, reason: 'cap_reached', detail: capKind }
 
   // 4. Price + balance.
   const pricing = await getStudioPricing()
@@ -426,10 +460,13 @@ export async function createGeneration(args: {
     generatedAt,
   })
   // What the participant actually picked, for audit/UI redisplay + the worker's
-  // advanced-param merge. NULL when neither was used (legacy-identical row).
+  // advanced-param merge. user_prompt keeps the RAW pre-assembly text so the
+  // draft promotion flow can prefill the form without double-assembling the
+  // preset. NULL when nothing beyond a plain competition prompt was involved.
   const userParams =
-    preset || Object.keys(advancedParams).length > 0
+    preset || Object.keys(advancedParams).length > 0 || model.tier === 'draft'
       ? {
+          user_prompt: userPrompt,
           ...(preset ? { preset_id: preset.id } : {}),
           ...(Object.keys(advancedParams).length > 0 ? { advanced: advancedParams } : {}),
         }
@@ -494,6 +531,7 @@ export type SubmitResult =
         | 'job_not_found'
         | 'not_owner'
         | 'not_ready'
+        | 'draft_not_submittable'
         | 'cryptobind_failed'
         | 'no_application'
         | 'already_submitted'
@@ -525,13 +563,16 @@ export async function submitGeneration(args: {
   const { data: job, error: jErr } = await admin
     .from('generation_jobs')
     .select(
-      'id, user_id, season_id, status, video_url, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
+      'id, user_id, season_id, status, tier, video_url, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
     )
     .eq('id', args.jobId)
     .single()
   if (jErr || !job) return { ok: false, reason: 'job_not_found' }
   if (job.user_id !== args.userId) return { ok: false, reason: 'not_owner' }
   if (job.status !== 'ready') return { ok: false, reason: 'not_ready' }
+  // Sandbox fairness rule: a draft generation can NEVER be an entry. This is
+  // the server layer of the triple block (low-res + watermark + server).
+  if (job.tier === 'draft') return { ok: false, reason: 'draft_not_submittable' }
 
   // 2. CryptoBind verify -- signature valid AND bound to THIS tournament.
   const v = verifyCryptoBind(job, args.seasonId)
@@ -707,6 +748,7 @@ export type CreateRenderResult =
         | 'bad_segment'
         | 'source_not_found'
         | 'source_not_owned'
+        | 'source_draft'
         | 'source_not_ready'
         | 'source_cryptobind_failed'
         | 'failed'
@@ -760,7 +802,7 @@ export async function createRender(args: {
   const { data: sources, error: srcErr } = await admin
     .from('generation_jobs')
     .select(
-      'id, user_id, season_id, status, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
+      'id, user_id, season_id, status, tier, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
     )
     .in('id', ids)
   if (srcErr) return { ok: false, reason: 'failed', detail: srcErr.message }
@@ -776,6 +818,10 @@ export async function createRender(args: {
     if (row.status !== 'ready') {
       return { ok: false, reason: 'source_not_ready', detail: `${id} (${row.status})` }
     }
+    // Sandbox fairness rule: draft clips can never enter a composition -- this
+    // closes the "launder a draft through compose" path. Server layer of the
+    // triple block (the picker also hides drafts, but the server is authority).
+    if (row.tier === 'draft') return { ok: false, reason: 'source_draft', detail: id }
     const v = verifyCryptoBind(row as Parameters<typeof verifyCryptoBind>[0], args.seasonId)
     if (!v.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${v.reason}` }
   }
