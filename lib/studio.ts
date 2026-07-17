@@ -218,6 +218,46 @@ export async function getActiveModels(): Promise<StudioModel[]> {
   })
 }
 
+// Honest per-model ETA: rolling MEDIAN of the last <=20 real completed
+// generations per model (worker start -> finish). Measured 2026-07-16: fal
+// queue wait is ~0 and congestion varies by the hour, so a static per-model
+// label would lie -- only rolling measurement is shown, and models without
+// samples show nothing (never a fabricated number). FAL_FAKE loadtest rows are
+// excluded (fake requestId).
+export async function getModelEtas(): Promise<Record<string, number>> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('generation_jobs')
+    .select('model_id, worker_started_at, worker_finished_at, fal_request_id')
+    .eq('status', 'ready')
+    .not('worker_started_at', 'is', null)
+    .not('worker_finished_at', 'is', null)
+    .order('worker_finished_at', { ascending: false })
+    .limit(400)
+  if (error) throw new Error('getModelEtas: ' + error.message)
+  const samples = new Map<string, number[]>()
+  for (const r of data ?? []) {
+    if (!r.fal_request_id || String(r.fal_request_id).startsWith('fake-')) continue
+    const arr = samples.get(r.model_id as string) ?? []
+    if (arr.length >= 20) continue
+    const secs =
+      (new Date(r.worker_finished_at as string).getTime() -
+        new Date(r.worker_started_at as string).getTime()) /
+      1000
+    if (secs > 0 && Number.isFinite(secs)) {
+      arr.push(secs)
+      samples.set(r.model_id as string, arr)
+    }
+  }
+  const etas: Record<string, number> = {}
+  for (const [modelId, arr] of samples) {
+    if (arr.length < 3) continue // too few samples -> show nothing, not a guess
+    const sorted = [...arr].sort((a, b) => a - b)
+    etas[modelId] = Math.round(sorted[Math.floor(sorted.length / 2)])
+  }
+  return etas
+}
+
 // The 8 TK-approved camera/motion presets (studio_presets, data not code).
 // Server-only read via the admin client -- the table is RLS-locked like the
 // rest of the studio tables; the UI receives these through the page loader.

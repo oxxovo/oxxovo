@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
@@ -109,6 +109,11 @@ const DICT = {
     prompt_ph: '생성할 영상을 설명하세요…',
     prompt_no_limit_note: '이 모델은 프롬프트 길이 제한이 확인되지 않았습니다. 너무 길면 생성이 실패할 수 있습니다.',
     cost_preview: (c: number) => `예상 차감: ${c} 크레딧`,
+    eta_value: (secs: number) => (secs < 90 ? `${secs}초` : `${Math.round(secs / 60)}분`),
+    eta_hint: (v: string) => `최근 실측 기준 보통 ~${v} · 혼잡 시 더 걸릴 수 있습니다`,
+    notif_title: 'OXXOVO Studio',
+    notif_ready: '영상 생성이 완료됐습니다.',
+    notif_failed: '영상 생성이 실패했습니다 — 크레딧은 환불됩니다.',
     generate: '생성',
     generating: '생성 요청 중…',
     cap_reached: '이번 라운드 생성 횟수를 모두 사용했습니다.',
@@ -223,6 +228,11 @@ const DICT = {
     prompt_ph: 'Describe the video to generate…',
     prompt_no_limit_note: "This model's prompt length limit is unconfirmed. A very long prompt may fail to generate.",
     cost_preview: (c: number) => `Estimated charge: ${c} credits`,
+    eta_value: (secs: number) => (secs < 90 ? `${secs}s` : `${Math.round(secs / 60)} min`),
+    eta_hint: (v: string) => `Usually ~${v} (recent measured) · can take longer when busy`,
+    notif_title: 'OXXOVO Studio',
+    notif_ready: 'Your video is ready.',
+    notif_failed: 'A generation failed — credits are refunded.',
     generate: 'Generate',
     generating: 'Requesting…',
     cap_reached: 'You have used all generations for this round.',
@@ -321,6 +331,53 @@ export default function StudioPage() {
       cancelled = true
     }
   }, [token])
+
+  // Completion notification: when a job flips active -> ready/failed while the
+  // tab is hidden, fire a browser notification (if granted) and badge the tab
+  // title with the unseen count. Generation itself is already background work
+  // server-side; this only stops the participant from staring at "생성 중".
+  const prevStatusRef = useRef<Map<string, string> | null>(null)
+  const unseenRef = useRef(0)
+  const baseTitleRef = useRef('')
+  useEffect(() => {
+    baseTitleRef.current = document.title
+    const onVisible = () => {
+      if (!document.hidden) {
+        unseenRef.current = 0
+        document.title = baseTitleRef.current
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+  useEffect(() => {
+    if (!state) return
+    const cur = new Map(state.jobs.map((j) => [j.id, j.status as string]))
+    const prev = prevStatusRef.current
+    prevStatusRef.current = cur
+    if (!prev) return
+    let ready = 0
+    let failed = 0
+    for (const [id, s] of cur) {
+      const p = prev.get(id)
+      if (p && p !== s && ACTIVE_STATUSES.has(p)) {
+        if (s === 'ready') ready++
+        else if (s === 'failed') failed++
+      }
+    }
+    if ((ready || failed) && document.hidden) {
+      unseenRef.current += ready + failed
+      document.title = `(${unseenRef.current}) ${baseTitleRef.current}`
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          new Notification(t.notif_title, { body: failed ? t.notif_failed : t.notif_ready })
+        } catch {
+          // Notification constructor can throw (e.g. Android Chrome) -- badge suffices.
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.jobs])
 
   // Poll while any job is mid-flight.
   const hasActive = !!state?.jobs.some((j) => ACTIVE_STATUSES.has(j.status))
@@ -664,6 +721,11 @@ function Generator({
 
   const handle = () => {
     setError(null)
+    // Ask for notification permission at the moment it becomes useful (first
+    // generate), never on page load.
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
     startTransition(async () => {
       // Advanced params ride along only when the model's whitelist offers them
       // (the panel is hidden otherwise, but never trust hidden UI state).
@@ -730,6 +792,13 @@ function Generator({
             )}
             {model && !model.hasAudio && (
               <p className="mt-1.5 text-[11px] leading-relaxed text-amber-300/80">{t.silent_note}</p>
+            )}
+            {/* Rolling measured ETA only -- a model with too few samples shows
+                nothing rather than a made-up number (honesty rule). */}
+            {model && state.modelEtas[model.id] !== undefined && (
+              <p className="mt-1.5 text-[11px] text-white/45">
+                ⏱ {t.eta_hint(t.eta_value(state.modelEtas[model.id]))}
+              </p>
             )}
           </label>
           <label className="block">
@@ -1080,6 +1149,7 @@ function Generations({
               t={t}
               token={token}
               job={job}
+              etaSeconds={state.modelEtas[job.model_id]}
               canSubmit={!state.alreadySubmitted}
               needsApplicantInfo={needsApplicantInfo}
               applicant={applicant}
@@ -1170,6 +1240,7 @@ function JobCard({
   t,
   token,
   job,
+  etaSeconds,
   canSubmit,
   needsApplicantInfo,
   applicant,
@@ -1179,6 +1250,7 @@ function JobCard({
   t: Dict
   token: string
   job: StudioJob
+  etaSeconds?: number
   canSubmit: boolean
   needsApplicantInfo: boolean
   applicant: ApplicantDraft
@@ -1274,6 +1346,12 @@ function JobCard({
       </div>
 
       <p className="text-sm text-white/80 mb-3 line-clamp-3">{job.prompt}</p>
+
+      {/* Mid-flight: show the measured rolling ETA so a normal 3-7min wait
+          does not read as "stuck". No samples -> no number (honesty rule). */}
+      {ACTIVE_STATUSES.has(job.status) && etaSeconds !== undefined && (
+        <p className="mb-3 text-[11px] text-white/45">⏱ {t.eta_hint(t.eta_value(etaSeconds))}</p>
+      )}
 
       {job.status === 'ready' && job.video_url && (
         <video src={job.video_url} controls className="w-full rounded-lg border border-white/10 mb-3 bg-black" />

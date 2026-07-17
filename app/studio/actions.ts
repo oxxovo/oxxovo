@@ -17,6 +17,7 @@ import {
   listUserJobs,
   createGeneration,
   getActivePresets,
+  getModelEtas,
   submitGeneration,
   createRender,
   listUserRenders,
@@ -72,6 +73,10 @@ export type StudioState = {
   // The 8 camera/motion presets (Stage 1 CameraDirector), server-loaded from
   // studio_presets (RLS-locked; the client cannot read the table directly).
   presets: StudioPreset[]
+  // Rolling median generation seconds per model (last <=20 real completions).
+  // A model absent here has too few samples -- the UI shows NOTHING for it
+  // (honest display: measured rolling data only, never a static label).
+  modelEtas: Record<string, number>
   balance: number
   generationsUsed: number
   maxGenerations: number
@@ -109,10 +114,11 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
     const season = await getCurrentSeason()
     if (!season) return { ok: false, error: 'no_season' }
 
-    const [cfg, models, presets, balance, jobs, theme, pricing, creatorProfile] = await Promise.all([
+    const [cfg, models, presets, modelEtas, balance, jobs, theme, pricing, creatorProfile] = await Promise.all([
       getSeasonStudioConfig(season.id),
       getActiveModels(),
       getActivePresets(),
+      getModelEtas(),
       getBalance(auth.userId),
       listUserJobs(auth.userId, season.id),
       getRevealedTheme(season.id),
@@ -168,6 +174,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
         },
         models,
         presets,
+        modelEtas,
         balance,
         generationsUsed: used,
         maxGenerations: cfg.maxGenerationsPerRound,
