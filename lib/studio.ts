@@ -17,13 +17,12 @@ import {
   buildComposeRequestBind,
   verifyComposeBind,
   buildImageBind,
-  verifyImageBind,
   buildI2vBind,
-  verifyI2vBind,
   computeSourceBundle,
   CRYPTOBIND_ALGO,
   type EdlSegment,
 } from '@/lib/cryptobind'
+import { verifySourceClipCrypto } from '@/lib/studio-verify'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -633,6 +632,30 @@ async function loadOwnedReadyImages(
   return { ok: true, rows: byId }
 }
 
+// Verify ONE source clip's CryptoBind for compose (create + submit). A normal
+// clip (no parent images) takes the EXACT existing v1/v1c path -- byte-for-byte
+// old behavior, so plain-video submissions are unaffected. An i2v clip (media_
+// type='video' AND parent_image_job_ids present) additionally verifies every
+// parent image (v1i/v1ic + own + season + ready + image), recomputes parentBundle
+// from the LIVE parent signatures, and checks the clip's v1v. Returns the clip's
+// own signature (v1 or v1v) for the render source bundle. `row` must carry
+// media_type + parent_image_job_ids + cryptobind_parent_bundle + duration_seconds.
+async function verifySourceCryptoBind(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  row: any,
+  expectedTid: string,
+): Promise<{ ok: true; signature: string } | { ok: false; detail: string }> {
+  const parents = ((row.parent_image_job_ids as string[] | null) ?? []) as string[]
+  if (row.media_type === 'video' && parents.length > 0) {
+    // Load + own/season/ready/image-validate the parents (DB), then route to the
+    // pure crypto core (which recomputes parentBundle + checks v1i/v1ic/v1v).
+    const loaded = await loadOwnedReadyImages(admin, parents, row.user_id, expectedTid)
+    if (!loaded.ok) return { ok: false, detail: `parent ${loaded.reason}${loaded.detail ? ' ' + loaded.detail : ''}` }
+    return verifySourceClipCrypto(row, expectedTid, (id) => loaded.rows.get(id))
+  }
+  return verifySourceClipCrypto(row, expectedTid, () => undefined)
+}
+
 // Enqueue a t2i character-sheet image. Mirrors createGeneration (credit charge +
 // generation-time CryptoBind) but IMAGE: no duration, v1i signature, per-image
 // cost (cost_per_second_usd holds the per-image USD), its own per-round cap.
@@ -1216,7 +1239,7 @@ export async function createRender(args: {
   const { data: sources, error: srcErr } = await admin
     .from('generation_jobs')
     .select(
-      'id, user_id, season_id, status, tier, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
+      'id, user_id, season_id, status, tier, duration_seconds, model_id, media_type, parent_image_job_ids, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_parent_bundle, cryptobind_content_hash, cryptobind_content_signature',
     )
     .in('id', ids)
   if (srcErr) return { ok: false, reason: 'failed', detail: srcErr.message }
@@ -1236,8 +1259,10 @@ export async function createRender(args: {
     // closes the "launder a draft through compose" path. Server layer of the
     // triple block (the picker also hides drafts, but the server is authority).
     if (row.tier === 'draft') return { ok: false, reason: 'source_draft', detail: id }
-    const v = verifyCryptoBind(row as Parameters<typeof verifyCryptoBind>[0], args.seasonId)
-    if (!v.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${v.reason}` }
+    // v1/v1c for a normal clip; v1v + parent v1i/v1ic for an i2v clip (unchanged
+    // path for parent-less clips).
+    const sv = await verifySourceCryptoBind(admin, row, args.seasonId)
+    if (!sv.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${sv.detail}` }
   }
   // trim must lie within each clip's duration (a small +1ms tolerance for rounding).
   for (const seg of edl) {
@@ -1458,7 +1483,7 @@ export async function submitRender(args: {
   const { data: sources, error: srcErr } = await admin
     .from('generation_jobs')
     .select(
-      'id, user_id, season_id, status, duration_seconds, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
+      'id, user_id, season_id, status, duration_seconds, model_id, media_type, parent_image_job_ids, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_parent_bundle, cryptobind_content_hash, cryptobind_content_signature',
     )
     .in('id', sourceIds)
   if (srcErr) return { ok: false, reason: 'failed', detail: srcErr.message }
@@ -1474,8 +1499,10 @@ export async function submitRender(args: {
     if (row.season_id !== args.seasonId) {
       return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: season mismatch` }
     }
-    const v = verifyCryptoBind(row as Parameters<typeof verifyCryptoBind>[0], args.seasonId)
-    if (!v.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${v.reason}` }
+    // v1/v1c for a normal clip; v1v + parent v1i/v1ic chain for an i2v clip. A
+    // parent-less clip takes the exact old verifyCryptoBind path (no regression).
+    const sv = await verifySourceCryptoBind(admin, row, args.seasonId)
+    if (!sv.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${sv.detail}` }
     sourceSignatures.push(String(row.cryptobind_signature))
   }
 

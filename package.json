@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:crypto": "node --import ./scripts/test-register.mjs --test lib/cryptobind.stage3.test.ts"
+    "test:crypto": "node --import ./scripts/test-register.mjs --test lib/cryptobind.stage3.test.ts lib/studio-verify.stage3.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
