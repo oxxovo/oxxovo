@@ -288,3 +288,209 @@ export function verifyComposeBind(
   }
   return { ok: true }
 }
+
+// ===========================================================================
+// Image / i2v bindings (v1i / v1ic / v1v) -- Stage 3 AI-actor extension.
+// Mirrors oxxovo-studio/src/cryptobind.ts byte-for-byte in the CANONICAL / HASH
+// / BUILD region (only the secret injection differs: here sign() reads the
+// secret internally, the worker copy takes it as an argument). Verify functions
+// are main-app only, exactly like verifyComposeBind.
+//   v1i  -- platform-generated IMAGE generation signature (v1 without duration).
+//   v1ic -- image content hash (worker-stamped, verified here) -- v1c for images.
+//   v1v  -- i2v generation signature = v1 + parentBundle, binding the clip to
+//           EXACTLY the parent images (start_image + elements) it was built from.
+//           The i2v output is a video, so its CONTENT binding stays v1c.
+// ===========================================================================
+
+const IMAGE_CANON_VERSION = 'v1i'
+const IMAGE_CONTENT_VERSION = 'v1ic'
+const I2V_CANON_VERSION = 'v1v'
+
+export interface ImageBindInput {
+  jobId: string
+  pid: string
+  tid: string
+  modelId: string
+  generatedAt: Date
+}
+
+export interface I2vBindInput {
+  jobId: string
+  pid: string
+  tid: string
+  modelId: string
+  durationSeconds: number
+  generatedAt: Date
+  parentBundle: string
+}
+
+export interface ImageContentBindFields {
+  cryptobind_content_hash: string
+  cryptobind_content_signature: string
+}
+
+export interface I2vBindFields extends CryptoBindFields {
+  cryptobind_parent_bundle: string
+}
+
+// v1i canonical -- v1 without duration (images have none).
+export function imageCanonicalString(i: ImageBindInput): string {
+  return [IMAGE_CANON_VERSION, i.pid, i.tid, i.jobId, i.generatedAt.toISOString(), i.modelId].join('|')
+}
+
+// v1ic canonical -- image content. Worker stamps, main verifies -> byte-mirror.
+function imageContentCanonicalString(i: { jobId: string; tid: string; contentHash: string }): string {
+  return [IMAGE_CONTENT_VERSION, i.jobId, i.tid, i.contentHash].join('|')
+}
+
+// v1v canonical -- v1 plus the parentBundle that pins the parent images.
+export function i2vCanonicalString(i: I2vBindInput): string {
+  return [
+    I2V_CANON_VERSION,
+    i.pid,
+    i.tid,
+    i.jobId,
+    i.generatedAt.toISOString(),
+    i.modelId,
+    String(i.durationSeconds),
+    i.parentBundle,
+  ].join('|')
+}
+
+// sha256 over image bytes -- identical to the worker copy.
+export function hashImageContent(buffer: Buffer | Uint8Array): string {
+  return createHash('sha256').update(buffer).digest('hex')
+}
+
+// Generation-time (main, enqueue): image signature columns.
+export function buildImageBind(i: ImageBindInput): CryptoBindFields {
+  return {
+    cryptobind_pid: i.pid,
+    cryptobind_tid: i.tid,
+    cryptobind_generated_at: i.generatedAt.toISOString(),
+    cryptobind_signature: sign(imageCanonicalString(i)),
+    cryptobind_algo: CRYPTOBIND_ALGO,
+  }
+}
+
+// Content stage for an image (mirrored; the worker actually stamps these).
+export function buildImageContentBind(i: { jobId: string; tid: string; contentHash: string }): ImageContentBindFields {
+  return {
+    cryptobind_content_hash: i.contentHash,
+    cryptobind_content_signature: sign(imageContentCanonicalString(i)),
+  }
+}
+
+// Generation-time (main, enqueue): i2v signature columns (includes parentBundle).
+export function buildI2vBind(i: I2vBindInput): I2vBindFields {
+  return {
+    cryptobind_pid: i.pid,
+    cryptobind_tid: i.tid,
+    cryptobind_generated_at: i.generatedAt.toISOString(),
+    cryptobind_signature: sign(i2vCanonicalString(i)),
+    cryptobind_algo: CRYPTOBIND_ALGO,
+    cryptobind_parent_bundle: i.parentBundle,
+  }
+}
+
+// --- verify (main app only, same placement as verifyComposeBind) ---
+
+// Verify a platform-generated image's v1i (+ v1ic content when the worker stamped it).
+export function verifyImageBind(
+  row: {
+    id: string
+    cryptobind_pid: string
+    cryptobind_tid: string
+    cryptobind_generated_at: string
+    cryptobind_signature: string
+    cryptobind_algo: string
+    model_id: string
+    cryptobind_content_hash?: string | null
+    cryptobind_content_signature?: string | null
+  },
+  expectedTid: string,
+): VerifyResult {
+  if (row.cryptobind_algo !== CRYPTOBIND_ALGO) return { ok: false, reason: 'unsupported_algo' }
+  if (row.cryptobind_tid !== expectedTid) return { ok: false, reason: 'tid_mismatch' }
+  const expected = sign(
+    imageCanonicalString({
+      jobId: row.id,
+      pid: row.cryptobind_pid,
+      tid: row.cryptobind_tid,
+      modelId: row.model_id,
+      generatedAt: new Date(row.cryptobind_generated_at),
+    }),
+  )
+  if (!safeEqualHex(expected, row.cryptobind_signature)) return { ok: false, reason: 'signature_mismatch' }
+  if (row.cryptobind_content_hash || row.cryptobind_content_signature) {
+    if (!row.cryptobind_content_hash || !row.cryptobind_content_signature) {
+      return { ok: false, reason: 'content_mismatch' }
+    }
+    const expectedContent = sign(
+      imageContentCanonicalString({ jobId: row.id, tid: row.cryptobind_tid, contentHash: row.cryptobind_content_hash }),
+    )
+    if (!safeEqualHex(expectedContent, row.cryptobind_content_signature)) {
+      return { ok: false, reason: 'content_mismatch' }
+    }
+  }
+  return { ok: true }
+}
+
+export type I2vVerifyResult =
+  | { ok: true }
+  | {
+      ok: false
+      reason: 'unsupported_algo' | 'tid_mismatch' | 'parent_bundle_mismatch' | 'signature_mismatch' | 'content_mismatch'
+    }
+
+// Verify an i2v clip's v1v. `parentSignatures` are the LIVE parent image v1i
+// signatures (each parent separately verified by the caller via verifyImageBind
+// + ownership + season). The parentBundle is recomputed here from those live
+// signatures -- the stored column is never trusted.
+export function verifyI2vBind(
+  row: {
+    id: string
+    cryptobind_pid: string
+    cryptobind_tid: string
+    cryptobind_generated_at: string
+    cryptobind_signature: string
+    cryptobind_algo: string
+    model_id: string
+    duration_seconds: number
+    cryptobind_parent_bundle: string
+    cryptobind_content_hash?: string | null
+    cryptobind_content_signature?: string | null
+  },
+  expectedTid: string,
+  parentSignatures: string[],
+): I2vVerifyResult {
+  if (row.cryptobind_algo !== CRYPTOBIND_ALGO) return { ok: false, reason: 'unsupported_algo' }
+  if (row.cryptobind_tid !== expectedTid) return { ok: false, reason: 'tid_mismatch' }
+  const parentBundle = computeSourceBundle(parentSignatures)
+  if (parentBundle !== row.cryptobind_parent_bundle) return { ok: false, reason: 'parent_bundle_mismatch' }
+  const expected = sign(
+    i2vCanonicalString({
+      jobId: row.id,
+      pid: row.cryptobind_pid,
+      tid: row.cryptobind_tid,
+      modelId: row.model_id,
+      durationSeconds: row.duration_seconds,
+      generatedAt: new Date(row.cryptobind_generated_at),
+      parentBundle,
+    }),
+  )
+  if (!safeEqualHex(expected, row.cryptobind_signature)) return { ok: false, reason: 'signature_mismatch' }
+  // i2v output is a video -> content binding uses v1c (contentCanonicalString).
+  if (row.cryptobind_content_hash || row.cryptobind_content_signature) {
+    if (!row.cryptobind_content_hash || !row.cryptobind_content_signature) {
+      return { ok: false, reason: 'content_mismatch' }
+    }
+    const expectedContent = sign(
+      contentCanonicalString({ jobId: row.id, tid: row.cryptobind_tid, contentHash: row.cryptobind_content_hash }),
+    )
+    if (!safeEqualHex(expectedContent, row.cryptobind_content_signature)) {
+      return { ok: false, reason: 'content_mismatch' }
+    }
+  }
+  return { ok: true }
+}

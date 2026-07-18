@@ -1,0 +1,14 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  crypto:
+    # CryptoBind v1i/v1ic/v1v tamper-rejection + cross-repo KAT regression guard.
+    # Zero deps: Node builtins only (server-only is stubbed by test-register.mjs).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: CryptoBind tamper-rejection + KAT
+        run: node --import ./scripts/test-register.mjs --test lib/cryptobind.stage3.test.ts
