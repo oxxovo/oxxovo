@@ -76,6 +76,11 @@ export type StudioState = {
     twistRevealed: boolean
   }
   models: StudioModel[]
+  // Stage 3 AI-actor mode: active image (t2i) models for the character-sheet
+  // selector (Nano Banana Pro / FLUX.2 pro). EMPTY until they are flipped
+  // active=true (after the 2.5 real-browser check), so the mode shows no
+  // selector prematurely -- same active gate as the video picker.
+  imageModels: StudioModel[]
   // The 8 camera/motion presets (Stage 1 CameraDirector), server-loaded from
   // studio_presets (RLS-locked; the client cannot read the table directly).
   presets: StudioPreset[]
@@ -89,6 +94,10 @@ export type StudioState = {
   // Sandbox(draft) cap -- independent of the competition cap above.
   draftGenerationsUsed: number
   maxDraftGenerations: number
+  // Stage 3 AI-actor mode: per-round image (t2i) generation cap, counted apart
+  // from the video caps (media_type='image').
+  imageGenerationsUsed: number
+  maxImageGenerations: number
   jobs: StudioJob[]
   hasApplication: boolean
   alreadySubmitted: boolean
@@ -120,9 +129,10 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
     const season = await getCurrentSeason()
     if (!season) return { ok: false, error: 'no_season' }
 
-    const [cfg, models, presets, modelEtas, balance, jobs, theme, pricing, creatorProfile] = await Promise.all([
+    const [cfg, models, imageModels, presets, modelEtas, balance, jobs, theme, pricing, creatorProfile] = await Promise.all([
       getSeasonStudioConfig(season.id),
       getActiveModels(),
+      getActiveModels('image'),
       getActivePresets(),
       getModelEtas(),
       getBalance(auth.userId),
@@ -134,9 +144,10 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
 
     // The round is decided server-side from the schedule (client never chooses).
     const effectiveRound = resolveEffectiveRound(cfg)
-    const [used, draftUsed] = await Promise.all([
+    const [used, draftUsed, imageUsed] = await Promise.all([
       countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound, 'competition'),
       countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound, 'draft'),
+      countGenerationsForRound(auth.userId, season.id, cfg, effectiveRound, 'competition', 'image'),
     ])
 
     // Application presence + whether a studio submission already landed for the
@@ -179,6 +190,7 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
           twistRevealed: theme.revealed,
         },
         models,
+        imageModels,
         presets,
         modelEtas,
         balance,
@@ -186,6 +198,8 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
         maxGenerations: cfg.maxGenerationsPerRound,
         draftGenerationsUsed: draftUsed,
         maxDraftGenerations: cfg.maxDraftGenerationsPerRound,
+        imageGenerationsUsed: imageUsed,
+        maxImageGenerations: cfg.maxImageGenerationsPerRound,
         jobs,
         hasApplication: !!appRow,
         alreadySubmitted,
@@ -243,7 +257,7 @@ export async function createGenerationAction(
 
 export async function createImageGenerationAction(
   token: string,
-  input: { modelId: string; prompt: string; advanced?: Record<string, unknown> },
+  input: { modelId: string; prompt: string; advanced?: Record<string, unknown>; referenceImageJobId?: string },
 ): Promise<CreateGenResult> {
   if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
   const auth = await verifyToken(token)
@@ -256,6 +270,7 @@ export async function createImageGenerationAction(
     modelId: input.modelId,
     prompt: input.prompt,
     advanced: input.advanced,
+    referenceImageJobId: input.referenceImageJobId,
   })
   if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
   return { ok: true, jobId: res.jobId, credits: res.credits }

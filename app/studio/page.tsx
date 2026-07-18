@@ -18,6 +18,9 @@ import {
 import { type StudioJob, type ApplicantInfo, type StudioModel } from '@/lib/studio'
 // Client-safe pure helpers (lib/studio itself is server-only).
 import { assemblePresetPrompt, type StudioPreset, type StudioPresetGroup } from '@/lib/studio-shared'
+// Stage 3 AI-actor mode (t2i character sheet + library + i2v). Additive: the
+// clip generator / compose / Watch paths are untouched.
+import ActorMode from './ActorMode'
 
 type ApplicantDraft = {
   name: string
@@ -51,6 +54,8 @@ const DICT = {
     no_season: '현재 진행 중인 시즌이 없습니다.',
     title: 'Studio',
     subtitle: '외부 도구 없이 OXXOVO 안에서 영상을 생성하고 제출하세요.',
+    mode_clip: '클립 생성',
+    mode_actor: 'AI 배우',
     round_main: '본선',
     round_application: '예선',
     round_label: (r: string) => `이번 제출: ${r}`,
@@ -174,6 +179,8 @@ const DICT = {
     no_season: 'No active season right now.',
     title: 'Studio',
     subtitle: 'Generate and submit your video inside OXXOVO — no external tools.',
+    mode_clip: 'Clip generator',
+    mode_actor: 'AI actor',
     round_main: 'Main round',
     round_application: 'Application',
     round_label: (r: string) => `This submission: ${r}`,
@@ -304,6 +311,10 @@ export default function StudioPage() {
   const [state, setState] = useState<StudioState | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [prefill, setPrefill] = useState<Prefill | null>(null)
+  // Top-level mode: existing clip generator vs the new AI-actor flow. The
+  // switcher only swaps the working area below; the theme/status/buy header and
+  // compose/Watch stay put.
+  const [mode, setMode] = useState<'clip' | 'actor'>('clip')
   const [applicant, setApplicant] = useState<ApplicantDraft>({
     name: '', statement: '', country: '', channelUrl: '',
     rules: false, privacy: false, integrity: false,
@@ -408,6 +419,15 @@ export default function StudioPage() {
     }
   }
 
+  // Full reload: re-reads fields pollJobsAction omits (image caps, models). Used
+  // after AI-actor generations so the image counter reflects the new job.
+  const reloadFull = async () => {
+    if (!token) return
+    const res = await loadStudioState(token)
+    if (res.ok) setState(res.data)
+    else await refresh()
+  }
+
   if (token === null) {
     return (
       <Shell t={t} onLogout={() => router.push('/')} hideLogout>
@@ -446,6 +466,12 @@ export default function StudioPage() {
   // application, so we must collect applicant info (incl. the Intent statement).
   const needsApplicantInfo = !state.hasApplication && state.season.round === 'application'
 
+  // Clip mode lists video jobs; AI-actor mode lists image (t2i) jobs. Splitting
+  // here keeps the existing Generator/Generations code untouched (they only ever
+  // see video jobs, exactly as before image jobs existed).
+  const videoJobs = state.jobs.filter((j) => j.media_type !== 'image')
+  const imageJobs = state.jobs.filter((j) => j.media_type === 'image')
+
   return (
     <Shell t={t} email={state.email} onLogout={() => { clearLocalUser(); router.push('/') }}>
       <section className="max-w-3xl mx-auto px-6 py-12">
@@ -458,6 +484,27 @@ export default function StudioPage() {
         <StatusBar t={t} state={state} />
         <BuyCredits token={token} />
 
+        {/* Top-level mode switcher. Only shown once the season exposes image
+            models (Stage 3 active); until then AI-actor has nothing to select so
+            the switcher stays hidden and Studio looks exactly as before. */}
+        {state.imageModels.length > 0 && (
+          <div className="mt-6 inline-flex rounded-lg border border-white/10 bg-white/[.02] p-1">
+            {([['clip', t.mode_clip], ['actor', t.mode_actor]] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMode(id)}
+                className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${
+                  mode === id
+                    ? 'bg-gradient-to-br from-[#7d23ff] to-[#6220dc] text-white'
+                    : 'text-white/55 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* In the application round the inline ApplicantForm below IS the entry
             (studio is in-platform, no external URL), so the "apply via /apply"
@@ -477,25 +524,29 @@ export default function StudioPage() {
           </div>
         )}
 
-        <Generator
-          t={t}
-          token={token}
-          state={state}
-          onCreated={refresh}
-          prefill={prefill}
-          onPrefillApplied={() => setPrefill(null)}
-        />
+        {mode === 'actor' ? (
+          <ActorMode token={token} state={state} imageJobs={imageJobs} onCreated={reloadFull} />
+        ) : (
+          <>
+            <Generator
+              t={t}
+              token={token}
+              state={state}
+              onCreated={refresh}
+              prefill={prefill}
+              onPrefillApplied={() => setPrefill(null)}
+            />
 
-        {needsApplicantInfo && (
-          <ApplicantForm t={t} applicant={applicant} onChange={setApplicant} />
-        )}
+            {needsApplicantInfo && (
+              <ApplicantForm t={t} applicant={applicant} onChange={setApplicant} />
+            )}
 
-        <Generations
-          t={t}
-          token={token}
-          state={state}
-          needsApplicantInfo={needsApplicantInfo}
-          applicant={applicant}
+            <Generations
+              t={t}
+              token={token}
+              state={{ ...state, jobs: videoJobs }}
+              needsApplicantInfo={needsApplicantInfo}
+              applicant={applicant}
           onPromote={(job) => {
             // Sandbox -> Competition: prefill the form with the draft's raw
             // prompt/preset/advanced and its competition sibling model.
@@ -520,7 +571,9 @@ export default function StudioPage() {
             if (res.ok) setState(res.data)
             else await refresh()
           }}
-        />
+            />
+          </>
+        )}
       </section>
     </Shell>
   )

@@ -77,6 +77,9 @@ export type StudioModel = {
   promotesTo: string | null
   // Native output resolution label ('720p', '480p', ...) for the draft badge.
   resolutionLabel: string | null
+  // Stage 3: participant-facing positioning shown on the image-model selector
+  // ('premium' -> 고품질 / 'value' -> 가성비). null = no label. Data, from metadata.
+  tierLabel: string | null
   // Stage 3: 'video' (default) or 'image' (t2i character sheet model). The video
   // model picker filters to 'video'; image gen loads 'image' models.
   mediaType: 'video' | 'image'
@@ -93,12 +96,20 @@ export type StudioJob = {
   error_message: string | null
   submitted_at: string | null
   created_at: string
+  // Stage 3: 'video' (t2v / i2v) or 'image' (t2i character sheet). NOT NULL
+  // DEFAULT 'video' in the DB, so legacy rows read as video. The AI-actor mode
+  // lists image jobs; the clip/compose paths list video jobs.
+  media_type: 'video' | 'image'
+  image_url: string | null
   // What the participant picked (preset/advanced + the RAW pre-assembly prompt).
   // Feeds the draft "이 프롬프트로 최종 렌더" form prefill. NULL on legacy rows.
   user_params: {
     user_prompt?: string
     preset_id?: string
     advanced?: Record<string, unknown>
+    // Path B: R2 url of the OWN reference image this shot was generated from
+    // (character consistency). Set by createImageGeneration, read by the worker.
+    image_ref?: string
   } | null
 }
 
@@ -205,6 +216,7 @@ function mapModelRow(m: Record<string, unknown>): StudioModel {
     param_whitelist?: Record<string, StudioParamRule>
     promotes_to?: string
     resolution_label?: string
+    tier_label?: string
   }
   return {
     id: m.id as string,
@@ -219,6 +231,8 @@ function mapModelRow(m: Record<string, unknown>): StudioModel {
     paramWhitelist: md.param_whitelist ?? null,
     promotesTo: typeof md.promotes_to === 'string' ? md.promotes_to : null,
     resolutionLabel: typeof md.resolution_label === 'string' ? md.resolution_label : null,
+    // Stage 3: participant-facing positioning label (e.g. 'premium' / 'value').
+    tierLabel: typeof md.tier_label === 'string' ? md.tier_label : null,
     mediaType: md.media_type === 'image' ? 'image' : 'video',
   }
 }
@@ -375,7 +389,7 @@ export async function listUserJobs(userId: string, seasonId: string): Promise<St
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('generation_jobs')
-    .select('id, status, tier, model_id, prompt, duration_seconds, video_url, error_message, submitted_at, created_at, user_params')
+    .select('id, status, tier, model_id, prompt, duration_seconds, video_url, error_message, submitted_at, created_at, media_type, image_url, user_params')
     .eq('user_id', userId)
     .eq('season_id', seasonId)
     // Active workspace only: archived clips (round submitted) live in My Library,
@@ -665,6 +679,9 @@ export async function createImageGeneration(args: {
   modelId: string
   prompt: string
   advanced?: Record<string, unknown>
+  // Path B (character consistency): an OWN, ready, image job to generate FROM.
+  // Present => the worker calls the model's edit endpoint with image_urls.
+  referenceImageJobId?: string
 }): Promise<CreateGenerationResult> {
   const admin = createSupabaseAdmin()
   const userPrompt = (args.prompt ?? '').trim()
@@ -684,6 +701,18 @@ export async function createImageGeneration(args: {
     advancedParams = v.params
   }
 
+  // Path B reference (character-consistency shot): validate an OWN/ready/image
+  // parent; the worker calls the model's edit endpoint with image_urls. The
+  // reference is a generation INPUT (like the prompt), NOT part of the crypto
+  // chain -- the output image still gets its own v1i + v1ic (platform-generated
+  // bytes), so provenance holds without binding to the reference.
+  let imageRefUrl: string | null = null
+  if (args.referenceImageJobId) {
+    const loaded = await loadOwnedReadyImages(admin, [args.referenceImageJobId], args.userId, args.seasonId)
+    if (!loaded.ok) return { ok: false, reason: loaded.reason, detail: loaded.detail }
+    imageRefUrl = (loaded.rows.get(args.referenceImageJobId)?.image_url as string | undefined) ?? null
+  }
+
   const cfg = await getSeasonStudioConfig(args.seasonId)
   const effectiveRound = resolveEffectiveRound(cfg)
   const capKind = model.tier === 'draft' ? 'draft' : 'competition'
@@ -700,7 +729,13 @@ export async function createImageGeneration(args: {
   const jobId = randomUUID()
   const generatedAt = new Date()
   const cb = buildImageBind({ jobId, pid: args.userId, tid: args.seasonId, modelId: model.id, generatedAt })
-  const userParams = Object.keys(advancedParams).length > 0 ? { advanced: advancedParams } : null
+  const userParams =
+    Object.keys(advancedParams).length > 0 || imageRefUrl
+      ? {
+          ...(Object.keys(advancedParams).length > 0 ? { advanced: advancedParams } : {}),
+          ...(imageRefUrl ? { image_ref: imageRefUrl } : {}),
+        }
+      : null
 
   const { error: insErr } = await admin.from('generation_jobs').insert({
     id: jobId,
