@@ -11,7 +11,7 @@
 // lane, order/trim/cut only, no track layers, no compositing.
 // Tone matches /studio + ComposeEditor (dark #030305 + purple #8b22ff).
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAdminLang, setAdminLang } from '@/lib/admin-i18n'
 
 const T = {
@@ -43,13 +43,20 @@ const T = {
   },
 } as const
 
-// Placeholder pool clips (density demo -- proves scroll/search at 50-100 scale).
-const POOL = Array.from({ length: 60 }, (_, i) => ({
+// Placeholder pool clips (density demo -- proves scroll/search + virtualization
+// at 100+ scale; only the on-screen window of cells is mounted).
+const POOL = Array.from({ length: 120 }, (_, i) => ({
   id: i,
   dur: 5 + (i % 4) * 2, // 5..11s
   draft: i % 5 === 0, // every 5th is a Sandbox/draft clip
   hue: (i * 47) % 360, // distinct placeholder swatch so reordering is visible
 }))
+
+// Virtualization geometry: 3-col grid, fixed row height. Only rows intersecting
+// the scroll viewport (+ overscan) are rendered, so 100-500 clips stay smooth.
+const POOL_COLS = 3
+const POOL_ROW_H = 92 // px per grid row (thumb + meta + gap)
+const POOL_OVERSCAN = 2
 
 type Seg = { uid: string; clipId: number; dur: number; start: number; end: number; hue: number }
 let uidN = 0
@@ -68,6 +75,24 @@ export default function ComposeProDemo() {
     [tier],
   )
   const total = segs.reduce((a, s) => a + (s.end - s.start), 0)
+
+  // --- media-pool virtualization: mount only the on-screen window of cells ---
+  const poolRef = useRef<HTMLDivElement>(null)
+  const [poolScroll, setPoolScroll] = useState(0)
+  const [poolH, setPoolH] = useState(420)
+  useEffect(() => {
+    const el = poolRef.current
+    if (!el) return
+    const update = () => setPoolH(el.clientHeight)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const poolRows = Math.ceil(pool.length / POOL_COLS)
+  const startRow = Math.max(0, Math.floor(poolScroll / POOL_ROW_H) - POOL_OVERSCAN)
+  const endRow = Math.min(poolRows, Math.ceil((poolScroll + poolH) / POOL_ROW_H) + POOL_OVERSCAN)
+  const visiblePool = pool.slice(startRow * POOL_COLS, endRow * POOL_COLS)
 
   // --- timeline ops (mirror ComposeEditor semantics: order / trim / cut) ---
   const addClip = (c: (typeof POOL)[number]) =>
@@ -149,33 +174,57 @@ export default function ComposeProDemo() {
         <section className="flex flex-col rounded-xl border border-white/10 bg-[#08060f] lg:col-start-1 lg:row-start-1 lg:overflow-hidden">
           <div className="flex items-center justify-between gap-2 border-b border-white/8 px-3.5 py-2.5">
             <h2 className={paneHead}>{t.pool}</h2>
-            <span className="text-[10px] text-white/35">{pool.length} {t.clip}</span>
+            {/* rendered/total makes the windowing visible: only a slice is mounted */}
+            <span className="text-[10px] text-white/35">{visiblePool.length}/{pool.length} {t.clip}</span>
           </div>
           <div className="flex flex-col gap-2 border-b border-white/8 px-3 py-2.5">
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search}
               className="w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white placeholder:text-white/30 focus:border-[#8b22ff] focus:outline-none" />
             <div className="flex gap-1.5">{[chip('all', t.all), chip('practice', t.practice), chip('comp', t.comp)]}</div>
           </div>
-          <div className="grid grid-cols-3 gap-2 overflow-y-auto p-3 lg:min-h-0 lg:flex-1">
-            {pool.map((c) => (
-              <button
-                key={c.id}
-                draggable
-                onDragStart={() => setDragUid(`pool_${c.id}`)}
-                onClick={() => addClip(c)}
-                title={t.add}
-                className="group cursor-grab overflow-hidden rounded-lg border border-white/10 bg-[#0c0a14] text-left transition hover:border-[#8b22ff]/60"
-              >
-                <div className="relative flex aspect-video items-center justify-center text-[9px] text-white/25" style={{ background: swatch(c.hue) }}>
-                  {t.clip} {c.id + 1}
-                  {c.draft && <span className="absolute left-1 top-1 rounded bg-amber-400/20 px-1 py-0.5 text-[7px] font-bold text-amber-300">DRAFT</span>}
-                  <span className="absolute inset-0 flex items-center justify-center bg-[#8b22ff]/0 text-[16px] font-black text-white opacity-0 transition group-hover:bg-[#8b22ff]/25 group-hover:opacity-100">＋</span>
-                </div>
-                <div className="flex items-center justify-between px-1.5 py-1 text-[9px] text-white/35">
-                  <span>{c.dur}{t.sec}</span>
-                </div>
-              </button>
-            ))}
+          {/* virtualized scroll area: a full-height spacer creates the scrollbar;
+              only cells whose row intersects the viewport (+overscan) are mounted. */}
+          <div
+            ref={poolRef}
+            onScroll={(e) => setPoolScroll(e.currentTarget.scrollTop)}
+            className="overflow-y-auto p-3 lg:min-h-0 lg:flex-1"
+          >
+            <div className="relative" style={{ height: poolRows * POOL_ROW_H }}>
+              {visiblePool.map((c, i) => {
+                const idx = startRow * POOL_COLS + i
+                const row = Math.floor(idx / POOL_COLS)
+                const col = idx % POOL_COLS
+                return (
+                  <div
+                    key={c.id}
+                    className="absolute p-1"
+                    style={{
+                      top: row * POOL_ROW_H,
+                      left: `${(col * 100) / POOL_COLS}%`,
+                      width: `${100 / POOL_COLS}%`,
+                      height: POOL_ROW_H,
+                    }}
+                  >
+                    <button
+                      draggable
+                      onDragStart={() => setDragUid(`pool_${c.id}`)}
+                      onClick={() => addClip(c)}
+                      title={t.add}
+                      className="group flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/10 bg-[#0c0a14] text-left transition hover:border-[#8b22ff]/60"
+                    >
+                      <div className="relative flex flex-1 items-center justify-center text-[9px] text-white/25" style={{ background: swatch(c.hue) }}>
+                        {t.clip} {c.id + 1}
+                        {c.draft && <span className="absolute left-1 top-1 rounded bg-amber-400/20 px-1 py-0.5 text-[7px] font-bold text-amber-300">DRAFT</span>}
+                        <span className="absolute inset-0 flex items-center justify-center bg-[#8b22ff]/0 text-[16px] font-black text-white opacity-0 transition group-hover:bg-[#8b22ff]/25 group-hover:opacity-100">＋</span>
+                      </div>
+                      <div className="flex items-center justify-between px-1.5 py-1 text-[9px] text-white/35">
+                        <span>{c.dur}{t.sec}</span>
+                      </div>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </section>
 
