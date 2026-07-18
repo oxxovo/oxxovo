@@ -16,6 +16,11 @@ import {
   verifyCryptoBind,
   buildComposeRequestBind,
   verifyComposeBind,
+  buildImageBind,
+  verifyImageBind,
+  buildI2vBind,
+  verifyI2vBind,
+  computeSourceBundle,
   CRYPTOBIND_ALGO,
   type EdlSegment,
 } from '@/lib/cryptobind'
@@ -73,6 +78,9 @@ export type StudioModel = {
   promotesTo: string | null
   // Native output resolution label ('720p', '480p', ...) for the draft badge.
   resolutionLabel: string | null
+  // Stage 3: 'video' (default) or 'image' (t2i character sheet model). The video
+  // model picker filters to 'video'; image gen loads 'image' models.
+  mediaType: 'video' | 'image'
 }
 
 export type StudioJob = {
@@ -106,6 +114,10 @@ export type SeasonStudioConfig = {
   // Sandbox(draft) cap -- counted SEPARATELY from the competition cap above.
   // Draft generations never consume competition slots and vice versa.
   maxDraftGenerationsPerRound: number
+  // Stage 3: per-round IMAGE (t2i character sheet) caps, counted separately from
+  // the video caps (media_type='image'). Draft image tier has its own cap.
+  maxImageGenerationsPerRound: number
+  maxDraftImageGenerationsPerRound: number
   mainRoundStartAt: string | null
   // S-3: main-round submission window = mainRoundStartAt + submissionHours.
   submissionHours: number
@@ -181,41 +193,58 @@ export function isInEffectiveRound(
   return effectiveRound === 'main' ? t >= boundary : t < boundary
 }
 
-export async function getActiveModels(): Promise<StudioModel[]> {
+const MODEL_COLS = 'id, tier, display_name, cost_per_second_usd, min_duration_seconds, max_duration_seconds, metadata'
+
+// Map a model_catalog row -> StudioModel. Shared by getActiveModels (selector)
+// and getModelById (enqueue). Keeps metadata parsing in one place.
+function mapModelRow(m: Record<string, unknown>): StudioModel {
+  const md = (m.metadata ?? {}) as {
+    media_type?: string
+    has_audio?: boolean
+    prompt_max?: number
+    prompt_style?: string
+    param_whitelist?: Record<string, StudioParamRule>
+    promotes_to?: string
+    resolution_label?: string
+  }
+  return {
+    id: m.id as string,
+    tier: m.tier as StudioTier,
+    display_name: m.display_name as string,
+    cost_per_second_usd: m.cost_per_second_usd as number,
+    min_duration_seconds: m.min_duration_seconds as number,
+    max_duration_seconds: m.max_duration_seconds as number,
+    hasAudio: md.has_audio !== false,
+    promptMax: typeof md.prompt_max === 'number' ? md.prompt_max : null,
+    promptStyle: md.prompt_style === 'bracket' ? 'bracket' : null,
+    paramWhitelist: md.param_whitelist ?? null,
+    promotesTo: typeof md.promotes_to === 'string' ? md.promotes_to : null,
+    resolutionLabel: typeof md.resolution_label === 'string' ? md.resolution_label : null,
+    mediaType: md.media_type === 'image' ? 'image' : 'video',
+  }
+}
+
+// Active models for the picker. Video-only by default (the /studio video picker
+// must never list image models); pass 'image' for the character-sheet picker.
+export async function getActiveModels(mediaType: 'video' | 'image' = 'video'): Promise<StudioModel[]> {
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('model_catalog')
-    .select('id, tier, display_name, cost_per_second_usd, min_duration_seconds, max_duration_seconds, metadata')
+    .select(MODEL_COLS)
     .eq('active', true)
     .order('cost_per_second_usd', { ascending: true })
   if (error) throw new Error('getActiveModels: ' + error.message)
-  return (data ?? []).map((m) => {
-    const md = (m.metadata ?? {}) as {
-      has_audio?: boolean
-      prompt_max?: number
-      prompt_style?: string
-      param_whitelist?: Record<string, StudioParamRule>
-      promotes_to?: string
-      resolution_label?: string
-    }
-    return {
-      id: m.id as string,
-      tier: m.tier as StudioTier,
-      display_name: m.display_name as string,
-      cost_per_second_usd: m.cost_per_second_usd as number,
-      min_duration_seconds: m.min_duration_seconds as number,
-      max_duration_seconds: m.max_duration_seconds as number,
-      // Missing flag -> assume audio (the audio-capable models are the norm);
-      // only an explicit has_audio:false marks a silent model.
-      hasAudio: md.has_audio !== false,
-      // null when unspecified (Seedance) -> UI counts but does not hard-cap.
-      promptMax: typeof md.prompt_max === 'number' ? md.prompt_max : null,
-      promptStyle: md.prompt_style === 'bracket' ? 'bracket' : null,
-      paramWhitelist: md.param_whitelist ?? null,
-      promotesTo: typeof md.promotes_to === 'string' ? md.promotes_to : null,
-      resolutionLabel: typeof md.resolution_label === 'string' ? md.resolution_label : null,
-    }
-  })
+  return (data ?? []).map(mapModelRow).filter((m) => m.mediaType === mediaType)
+}
+
+// Load ONE model by id regardless of `active` (image/i2v models stay active=false
+// until the Stage 3 UI ships; the image/i2v enqueue paths load them by id and
+// gate on media_type instead of the selector's active flag). null if not found.
+export async function getModelById(id: string): Promise<StudioModel | null> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin.from('model_catalog').select(MODEL_COLS).eq('id', id).maybeSingle()
+  if (error) throw new Error('getModelById: ' + error.message)
+  return data ? mapModelRow(data) : null
 }
 
 // Honest per-model ETA: rolling MEDIAN of the last <=20 real completed
@@ -283,7 +312,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
+    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -291,6 +320,8 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     round: (data.studio_round as StudioRoundSetting) ?? 'main',
     maxGenerationsPerRound: Number(data.studio_max_generations_per_round ?? 10),
     maxDraftGenerationsPerRound: Number(data.studio_max_draft_generations_per_round ?? 30),
+    maxImageGenerationsPerRound: Number(data.studio_max_image_generations_per_round ?? 20),
+    maxDraftImageGenerationsPerRound: Number(data.studio_max_draft_image_generations_per_round ?? 40),
     mainRoundStartAt: (data.main_round_start_at as string | null) ?? null,
     submissionHours: Number(data.submission_hours ?? 48),
     applicationVideoMinSeconds: Number(data.application_video_min_seconds ?? 0),
@@ -315,6 +346,10 @@ export async function countGenerationsForRound(
   // Which cap this count feeds. Draft (Sandbox) and competition generations
   // have INDEPENDENT per-round caps -- one never consumes the other's slots.
   kind: 'draft' | 'competition' = 'competition',
+  // Stage 3: image and video generations have INDEPENDENT caps. Every legacy row
+  // is media_type='video' (migration default NOT NULL), so the default filter is
+  // a no-op on existing data.
+  mediaType: 'video' | 'image' = 'video',
 ): Promise<number> {
   const admin = createSupabaseAdmin()
   let q = admin
@@ -322,6 +357,7 @@ export async function countGenerationsForRound(
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('season_id', seasonId)
+    .eq('media_type', mediaType)
 
   if (kind === 'draft') q = q.eq('tier', 'draft')
   else q = q.neq('tier', 'draft')
@@ -366,6 +402,14 @@ export type CreateGenerationResult =
         | 'unknown_preset'
         | 'invalid_param'
         | 'failed'
+        // Stage 3 (image / i2v):
+        | 'not_image_model'
+        | 'not_video_model'
+        | 'character_not_found'
+        | 'parent_not_found'
+        | 'parent_not_ready'
+        | 'parent_not_image'
+        | 'bad_shots'
       detail?: string
     }
 
@@ -542,6 +586,336 @@ export async function createGeneration(args: {
     return { ok: false, reason: 'failed', detail: 'charge failed: ' + chErr.message }
   }
 
+  return { ok: true, jobId, credits }
+}
+
+// ===========================================================================
+// Stage 3: image (t2i character sheet) + i2v (Kling elements) generation, and
+// the character library. All ADDITIVE -- the video generation/compose paths are
+// unchanged. i2v clips flow into the existing compose layer as ready videos.
+// ===========================================================================
+
+type ImageLoadError = {
+  ok: false
+  reason: 'failed' | 'parent_not_found' | 'parent_not_image' | 'parent_not_ready'
+  detail?: string
+}
+
+// Load + validate that the given ids are the caller's OWN, in THIS season, ready,
+// and media_type='image'. Returns rows keyed by id. Shared by createCharacter +
+// createI2vGeneration (the parent-image validation for v1v binding).
+async function loadOwnedReadyImages(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  ids: string[],
+  userId: string,
+  seasonId: string,
+): Promise<{ ok: true; rows: Map<string, any> } | ImageLoadError> {
+  const unique = [...new Set(ids)]
+  if (unique.length === 0) return { ok: false, reason: 'parent_not_found', detail: 'no images' }
+  const { data, error } = await admin
+    .from('generation_jobs')
+    .select(
+      'id, user_id, season_id, status, media_type, image_url, model_id, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_content_hash, cryptobind_content_signature',
+    )
+    .in('id', unique)
+  if (error) return { ok: false, reason: 'failed', detail: error.message }
+  const byId = new Map((data ?? []).map((r) => [r.id as string, r]))
+  for (const id of unique) {
+    const r = byId.get(id)
+    if (!r) return { ok: false, reason: 'parent_not_found', detail: id }
+    if (r.media_type !== 'image') return { ok: false, reason: 'parent_not_image', detail: id }
+    if (r.user_id !== userId || r.season_id !== seasonId) {
+      return { ok: false, reason: 'parent_not_found', detail: id + ' (owner/season)' }
+    }
+    if (r.status !== 'ready') return { ok: false, reason: 'parent_not_ready', detail: id }
+    if (!r.image_url) return { ok: false, reason: 'parent_not_ready', detail: id + ' (no image_url)' }
+  }
+  return { ok: true, rows: byId }
+}
+
+// Enqueue a t2i character-sheet image. Mirrors createGeneration (credit charge +
+// generation-time CryptoBind) but IMAGE: no duration, v1i signature, per-image
+// cost (cost_per_second_usd holds the per-image USD), its own per-round cap.
+export async function createImageGeneration(args: {
+  userId: string
+  seasonId: string
+  modelId: string
+  prompt: string
+  advanced?: Record<string, unknown>
+}): Promise<CreateGenerationResult> {
+  const admin = createSupabaseAdmin()
+  const userPrompt = (args.prompt ?? '').trim()
+  if (!userPrompt) return { ok: false, reason: 'failed', detail: 'empty prompt' }
+
+  const model = await getModelById(args.modelId)
+  if (!model) return { ok: false, reason: 'unknown_model' }
+  if (model.mediaType !== 'image') return { ok: false, reason: 'not_image_model' }
+  if (model.promptMax !== null && userPrompt.length > model.promptMax) {
+    return { ok: false, reason: 'prompt_too_long', detail: String(model.promptMax) }
+  }
+
+  let advancedParams: Record<string, unknown> = {}
+  if (args.advanced && Object.keys(args.advanced).length > 0) {
+    const v = validateAdvancedParams(args.advanced, model.paramWhitelist)
+    if (!v.ok) return { ok: false, reason: 'invalid_param', detail: v.key }
+    advancedParams = v.params
+  }
+
+  const cfg = await getSeasonStudioConfig(args.seasonId)
+  const effectiveRound = resolveEffectiveRound(cfg)
+  const capKind = model.tier === 'draft' ? 'draft' : 'competition'
+  const capMax = capKind === 'draft' ? cfg.maxDraftImageGenerationsPerRound : cfg.maxImageGenerationsPerRound
+  const used = await countGenerationsForRound(args.userId, args.seasonId, cfg, effectiveRound, capKind, 'image')
+  if (used >= capMax) return { ok: false, reason: 'cap_reached', detail: `image_${capKind}` }
+
+  const pricing = await getStudioPricing()
+  const estCost = model.cost_per_second_usd // per-image (no duration)
+  const credits = creditsForCost(estCost, pricing)
+  const balance = await getBalance(args.userId)
+  if (balance < credits) return { ok: false, reason: 'insufficient_credits' }
+
+  const jobId = randomUUID()
+  const generatedAt = new Date()
+  const cb = buildImageBind({ jobId, pid: args.userId, tid: args.seasonId, modelId: model.id, generatedAt })
+  const userParams = Object.keys(advancedParams).length > 0 ? { advanced: advancedParams } : null
+
+  const { error: insErr } = await admin.from('generation_jobs').insert({
+    id: jobId,
+    user_id: args.userId,
+    season_id: args.seasonId,
+    model_id: model.id,
+    tier: model.tier,
+    media_type: 'image',
+    prompt: userPrompt,
+    duration_seconds: null,
+    status: 'queued',
+    estimated_cost_usd: estCost,
+    credits_charged: credits,
+    user_params: userParams,
+    ...cb,
+  })
+  if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
+
+  const { error: chErr } = await admin.from('credit_transactions').insert({
+    user_id: args.userId,
+    amount_credits: -credits,
+    type: 'generation_charge',
+    generation_job_id: jobId,
+    metadata: { cost_usd: estCost, media_type: 'image' },
+  })
+  if (chErr) {
+    await admin.from('generation_jobs').delete().eq('id', jobId)
+    return { ok: false, reason: 'failed', detail: 'charge failed: ' + chErr.message }
+  }
+  return { ok: true, jobId, credits }
+}
+
+// --- character library (AI-actor naming layer over image jobs) ---
+export type StudioCharacter = {
+  id: string
+  name: string
+  status: string
+  frontalImageJobId: string | null
+  frontalImageUrl: string | null
+  referenceImageJobIds: string[]
+  referenceImageUrls: string[]
+  createdAt: string
+}
+
+export type CreateCharacterResult = { ok: true; characterId: string } | ImageLoadError
+
+export async function createCharacter(args: {
+  userId: string
+  seasonId: string
+  name: string
+  frontalImageJobId: string
+  referenceImageJobIds?: string[]
+}): Promise<CreateCharacterResult> {
+  const admin = createSupabaseAdmin()
+  const refs = [...new Set(args.referenceImageJobIds ?? [])].filter((id) => id && id !== args.frontalImageJobId)
+  const loaded = await loadOwnedReadyImages(admin, [args.frontalImageJobId, ...refs], args.userId, args.seasonId)
+  if (!loaded.ok) return loaded
+  const id = randomUUID()
+  const { error } = await admin.from('studio_characters').insert({
+    id,
+    user_id: args.userId,
+    season_id: args.seasonId,
+    name: (args.name ?? '').trim().slice(0, 80),
+    status: 'ready',
+    frontal_image_job_id: args.frontalImageJobId,
+    reference_image_job_ids: refs,
+  })
+  if (error) return { ok: false, reason: 'failed', detail: error.message }
+  return { ok: true, characterId: id }
+}
+
+export async function listCharacters(userId: string, seasonId: string): Promise<StudioCharacter[]> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('studio_characters')
+    .select('id, name, status, frontal_image_job_id, reference_image_job_ids, created_at')
+    .eq('user_id', userId)
+    .eq('season_id', seasonId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error('listCharacters: ' + error.message)
+  const rows = data ?? []
+  const jobIds = [
+    ...new Set(
+      rows.flatMap((c) => [c.frontal_image_job_id, ...((c.reference_image_job_ids as string[] | null) ?? [])]).filter(Boolean),
+    ),
+  ] as string[]
+  const urlById = new Map<string, string>()
+  if (jobIds.length) {
+    const { data: imgs } = await admin.from('generation_jobs').select('id, image_url').in('id', jobIds)
+    for (const r of imgs ?? []) if (r.image_url) urlById.set(r.id as string, r.image_url as string)
+  }
+  return rows.map((c) => {
+    const refIds = ((c.reference_image_job_ids as string[] | null) ?? []) as string[]
+    return {
+      id: c.id as string,
+      name: c.name as string,
+      status: c.status as string,
+      frontalImageJobId: (c.frontal_image_job_id as string | null) ?? null,
+      frontalImageUrl: c.frontal_image_job_id ? urlById.get(c.frontal_image_job_id as string) ?? null : null,
+      referenceImageJobIds: refIds,
+      referenceImageUrls: refIds.map((id) => urlById.get(id)).filter((u): u is string => Boolean(u)),
+      createdAt: c.created_at as string,
+    }
+  })
+}
+
+export async function deleteCharacter(
+  userId: string,
+  characterId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('studio_characters')
+    .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', characterId)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .select('id')
+  if (error) return { ok: false, reason: error.message }
+  if (!data || data.length === 0) return { ok: false, reason: 'not_found' }
+  return { ok: true }
+}
+
+// Enqueue an i2v (Kling elements) generation from a character. Assembles the fal
+// input (start_image_url + elements + multi_prompt) from INTERNAL R2 urls only
+// (Genesis Rule), binds v1v over the parent images' v1i signatures, and enqueues
+// a VIDEO job (counts toward the video cap). The output clip flows into compose
+// like any ready video.
+export async function createI2vGeneration(args: {
+  userId: string
+  seasonId: string
+  modelId: string
+  characterId: string
+  shots: { prompt: string; durationSeconds: number }[]
+}): Promise<CreateGenerationResult> {
+  const admin = createSupabaseAdmin()
+  const model = await getModelById(args.modelId)
+  if (!model) return { ok: false, reason: 'unknown_model' }
+  if (model.mediaType !== 'video') return { ok: false, reason: 'not_video_model' }
+
+  const shots = (args.shots ?? []).map((s) => ({
+    prompt: (s.prompt ?? '').trim(),
+    durationSeconds: Math.round(s.durationSeconds),
+  }))
+  if (shots.length < 1 || shots.length > 6) return { ok: false, reason: 'bad_shots', detail: '1..6 shots' }
+  if (shots.some((s) => !s.prompt)) return { ok: false, reason: 'bad_shots', detail: 'empty shot prompt' }
+  const totalDuration = shots.reduce((a, s) => a + s.durationSeconds, 0)
+  if (totalDuration < model.min_duration_seconds || totalDuration > model.max_duration_seconds) {
+    return { ok: false, reason: 'bad_duration' }
+  }
+
+  const { data: charRow, error: cErr } = await admin
+    .from('studio_characters')
+    .select('id, frontal_image_job_id, reference_image_job_ids')
+    .eq('id', args.characterId)
+    .eq('user_id', args.userId)
+    .eq('season_id', args.seasonId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (cErr) return { ok: false, reason: 'failed', detail: cErr.message }
+  if (!charRow || !charRow.frontal_image_job_id) return { ok: false, reason: 'character_not_found' }
+  const refIds = ((charRow.reference_image_job_ids as string[] | null) ?? []) as string[]
+  const parentIds = [...new Set([charRow.frontal_image_job_id as string, ...refIds])]
+
+  const loaded = await loadOwnedReadyImages(admin, parentIds, args.userId, args.seasonId)
+  if (!loaded.ok) return loaded
+
+  const frontal = loaded.rows.get(charRow.frontal_image_job_id as string)
+  const refRows = refIds.map((id) => loaded.rows.get(id)).filter(Boolean)
+  // Genesis Rule: fal input references ONLY internal R2 image urls.
+  const i2vInput: Record<string, unknown> = {
+    start_image_url: frontal.image_url,
+    elements: [
+      { frontal_image_url: frontal.image_url, reference_image_urls: refRows.map((r) => r.image_url) },
+    ],
+    multi_prompt: shots.map((s) => ({ prompt: s.prompt, duration: String(s.durationSeconds) })),
+  }
+
+  // parentBundle over the parents' v1i signatures (sorted) -> folded into v1v.
+  const parentSignatures = parentIds.map((id) => String(loaded.rows.get(id).cryptobind_signature))
+  const parentBundle = computeSourceBundle(parentSignatures)
+
+  const cfg = await getSeasonStudioConfig(args.seasonId)
+  const effectiveRound = resolveEffectiveRound(cfg)
+  const capKind = model.tier === 'draft' ? 'draft' : 'competition'
+  const capMax = capKind === 'draft' ? cfg.maxDraftGenerationsPerRound : cfg.maxGenerationsPerRound
+  const used = await countGenerationsForRound(args.userId, args.seasonId, cfg, effectiveRound, capKind, 'video')
+  if (used >= capMax) return { ok: false, reason: 'cap_reached', detail: capKind }
+
+  const pricing = await getStudioPricing()
+  const estCost = model.cost_per_second_usd * totalDuration
+  const credits = creditsForCost(estCost, pricing)
+  const balance = await getBalance(args.userId)
+  if (balance < credits) return { ok: false, reason: 'insufficient_credits' }
+
+  const jobId = randomUUID()
+  const generatedAt = new Date()
+  const cb = buildI2vBind({
+    jobId,
+    pid: args.userId,
+    tid: args.seasonId,
+    modelId: model.id,
+    durationSeconds: totalDuration,
+    generatedAt,
+    parentBundle,
+  })
+  const displayPrompt = shots.map((s) => s.prompt).join(' / ').slice(0, 2000)
+
+  const { error: insErr } = await admin.from('generation_jobs').insert({
+    id: jobId,
+    user_id: args.userId,
+    season_id: args.seasonId,
+    model_id: model.id,
+    tier: model.tier,
+    media_type: 'video',
+    prompt: displayPrompt,
+    duration_seconds: totalDuration,
+    status: 'queued',
+    estimated_cost_usd: estCost,
+    credits_charged: credits,
+    parent_image_job_ids: parentIds,
+    user_params: { i2v_input: i2vInput, character_id: args.characterId },
+    ...cb, // includes cryptobind_parent_bundle
+  })
+  if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
+
+  const { error: chErr } = await admin.from('credit_transactions').insert({
+    user_id: args.userId,
+    amount_credits: -credits,
+    type: 'generation_charge',
+    generation_job_id: jobId,
+    metadata: { cost_usd: estCost, media_type: 'video', i2v: true },
+  })
+  if (chErr) {
+    await admin.from('generation_jobs').delete().eq('id', jobId)
+    return { ok: false, reason: 'failed', detail: 'charge failed: ' + chErr.message }
+  }
   return { ok: true, jobId, credits }
 }
 

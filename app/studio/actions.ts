@@ -16,6 +16,11 @@ import {
   countGenerationsForRound,
   listUserJobs,
   createGeneration,
+  createImageGeneration,
+  createCharacter,
+  listCharacters,
+  deleteCharacter,
+  createI2vGeneration,
   getActivePresets,
   getModelEtas,
   submitGeneration,
@@ -27,6 +32,7 @@ import {
   STATEMENT_MIN,
   STATEMENT_MAX,
   type StudioModel,
+  type StudioCharacter,
   type StudioPreset,
   type StudioJob,
   type ApplicantInfo,
@@ -199,7 +205,7 @@ export type CreateGenResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'unknown_preset' | 'invalid_param' | 'disabled' | 'failed'
+      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'unknown_preset' | 'invalid_param' | 'disabled' | 'failed' | 'not_image_model' | 'not_video_model' | 'character_not_found' | 'parent_not_found' | 'parent_not_ready' | 'parent_not_image' | 'bad_shots'
       detail?: string
     }
 
@@ -231,6 +237,96 @@ export async function createGenerationAction(
   })
   if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
   return { ok: true, jobId: res.jobId, credits: res.credits }
+}
+
+// --- Stage 3: image (t2i character sheet) + character library + i2v ---
+
+export async function createImageGenerationAction(
+  token: string,
+  input: { modelId: string; prompt: string; advanced?: Record<string, unknown> },
+): Promise<CreateGenResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const season = await getCurrentSeason()
+  if (!season) return { ok: false, error: 'no_season' }
+  const res = await createImageGeneration({
+    userId: auth.userId,
+    seasonId: season.id,
+    modelId: input.modelId,
+    prompt: input.prompt,
+    advanced: input.advanced,
+  })
+  if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
+  return { ok: true, jobId: res.jobId, credits: res.credits }
+}
+
+export async function createI2vGenerationAction(
+  token: string,
+  input: { modelId: string; characterId: string; shots: { prompt: string; durationSeconds: number }[] },
+): Promise<CreateGenResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const season = await getCurrentSeason()
+  if (!season) return { ok: false, error: 'no_season' }
+  const res = await createI2vGeneration({
+    userId: auth.userId,
+    seasonId: season.id,
+    modelId: input.modelId,
+    characterId: input.characterId,
+    shots: input.shots,
+  })
+  if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
+  return { ok: true, jobId: res.jobId, credits: res.credits }
+}
+
+export type CharacterListResult =
+  | { ok: true; characters: StudioCharacter[] }
+  | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' }
+
+export async function listCharactersAction(token: string): Promise<CharacterListResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const season = await getCurrentSeason()
+  if (!season) return { ok: false, error: 'no_season' }
+  return { ok: true, characters: await listCharacters(auth.userId, season.id) }
+}
+
+export type CreateCharacterActionResult =
+  | { ok: true; characterId: string }
+  | { ok: false; error: string; detail?: string }
+
+export async function createCharacterAction(
+  token: string,
+  input: { name: string; frontalImageJobId: string; referenceImageJobIds?: string[] },
+): Promise<CreateCharacterActionResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const season = await getCurrentSeason()
+  if (!season) return { ok: false, error: 'no_season' }
+  const res = await createCharacter({
+    userId: auth.userId,
+    seasonId: season.id,
+    name: input.name,
+    frontalImageJobId: input.frontalImageJobId,
+    referenceImageJobIds: input.referenceImageJobIds,
+  })
+  if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
+  return { ok: true, characterId: res.characterId }
+}
+
+export async function deleteCharacterAction(
+  token: string,
+  characterId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const res = await deleteCharacter(auth.userId, characterId)
+  return res.ok ? { ok: true } : { ok: false, error: res.reason }
 }
 
 export type PollResult =
