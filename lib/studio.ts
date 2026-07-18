@@ -80,6 +80,9 @@ export type StudioModel = {
   // Stage 3: participant-facing positioning shown on the image-model selector
   // ('premium' -> 고품질 / 'value' -> 가성비). null = no label. Data, from metadata.
   tierLabel: string | null
+  // Stage 3 i2v: video model that accepts a start image + elements (Kling i2v),
+  // i.e. it can shoot shots from an AI actor. false for plain t2v models.
+  acceptsI2v: boolean
   // Stage 3: 'video' (default) or 'image' (t2i character sheet model). The video
   // model picker filters to 'video'; image gen loads 'image' models.
   mediaType: 'video' | 'image'
@@ -217,6 +220,7 @@ function mapModelRow(m: Record<string, unknown>): StudioModel {
     promotes_to?: string
     resolution_label?: string
     tier_label?: string
+    accepts_start_image?: boolean
   }
   return {
     id: m.id as string,
@@ -233,6 +237,9 @@ function mapModelRow(m: Record<string, unknown>): StudioModel {
     resolutionLabel: typeof md.resolution_label === 'string' ? md.resolution_label : null,
     // Stage 3: participant-facing positioning label (e.g. 'premium' / 'value').
     tierLabel: typeof md.tier_label === 'string' ? md.tier_label : null,
+    // Stage 3 i2v: this (video) model accepts a start image + elements, i.e. it
+    // drives the AI-actor "shoot shots" step. Filters the ③ model list.
+    acceptsI2v: md.accepts_start_image === true,
     mediaType: md.media_type === 'image' ? 'image' : 'video',
   }
 }
