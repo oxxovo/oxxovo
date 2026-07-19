@@ -270,7 +270,7 @@ async function falSpend(uid) {
     // add 1 reference angle so the actor's elements carry a ref (needed for i2v)
     const nRef = Math.min(1, await page.locator('button:has(img.opacity-70)').count())
     for (let r = 0; r < nRef; r++) { await page.locator('button:has(img.opacity-70)').nth(0).click(); await page.waitForTimeout(300) }
-    await page.getByPlaceholder('예: KIRA').fill('E2E_ACTOR')
+    await page.getByPlaceholder(/^예: /).fill('E2E_ACTOR')
     await page.getByRole('button', { name: '이 배우 등록' }).click()
     await page.getByText('E2E_ACTOR', { exact: false }).first().waitFor({ timeout: 15000 })
     const { data: chars } = await admin.from('studio_characters').select('id,name,frontal_image_job_id,reference_image_job_ids').eq('user_id', uid).is('deleted_at', null)

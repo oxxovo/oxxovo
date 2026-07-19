@@ -21,6 +21,7 @@ import {
   type StudioState,
 } from './actions'
 import { type StudioJob, type StudioCharacter } from '@/lib/studio'
+import { STUDIO_ACTOR_EXAMPLES } from '@/lib/studio-actors'
 
 const DICT = {
   ko: {
@@ -54,7 +55,10 @@ const DICT = {
     pick_frontal: '정면 (필수)',
     pick_refs: '추가 참조 컷 (선택)',
     name_label: '배우 이름',
-    name_ph: '예: KIRA',
+    // Example names come from the single actor roster (lib/studio-actors.ts) so a
+    // clearance rename is a one-line swap. KIRA/YUZU are OXXOVO's own showcase
+    // actors, shown here only as naming examples.
+    name_ph: `예: ${STUDIO_ACTOR_EXAMPLES}`,
     register_btn: '이 배우 등록',
     registering: '등록 중…',
     my_actors: '내 배우',
@@ -118,7 +122,7 @@ const DICT = {
     pick_frontal: 'Frontal (required)',
     pick_refs: 'Extra reference shots (optional)',
     name_label: 'Actor name',
-    name_ph: 'e.g. KIRA',
+    name_ph: `e.g. ${STUDIO_ACTOR_EXAMPLES}`,
     register_btn: 'Register this actor',
     registering: 'Registering…',
     my_actors: 'My actors',
