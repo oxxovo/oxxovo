@@ -1,20 +1,28 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import type { EmailOtpType } from '@supabase/supabase-js'
 import { createSupabaseServer } from '@/lib/supabase-server'
 
 // Public-site Supabase auth callback — handles magic-link redirects.
 // Mirrors app/admin/auth/callback for general users.
 //
 // Inbound URL shapes:
-//   /auth/callback?code=<pkce>&next=<path>   (explicit redirect target)
-//   /auth/callback?code=<pkce>               (plain magic link)
+//   /auth/callback?code=<pkce>&next=<path>          (browser-initiated PKCE)
+//   /auth/callback?code=<pkce>                       (plain magic link)
+//   /auth/callback?token_hash=<hash>&type=<t>&next=  (OTP-hash / admin-minted link)
 //   /auth/callback?error=...&error_description=...
 //
-// We exchange the PKCE code for a cookie session, then route the browser:
-//   explicit `next` (must be a safe in-app path) → that path
-//   otherwise                                    → /profile
+// Two auth mechanisms:
+//   ?code       — PKCE exchange; needs the code_verifier cookie set by the browser
+//                 that STARTED signInWithOtp (normal user login).
+//   ?token_hash — verifyOtp; needs NO verifier, so an admin-minted link (generateLink,
+//                 e.g. a demo/support login) works in any browser. Same token family
+//                 Supabase email-confirmation uses.
+// Then route the browser: safe in-app `next` → that path, else → /profile.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
+  const tokenHash = searchParams.get('token_hash')
+  const otpType = searchParams.get('type')
   const nextParam = searchParams.get('next')
   const errorParam =
     searchParams.get('error_description') ?? searchParams.get('error')
@@ -26,14 +34,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (!code) {
+  if (!code && !tokenHash) {
     const url = new URL('/login', origin)
     url.searchParams.set('error', 'missing_code')
     return NextResponse.redirect(url)
   }
 
   const supabase = await createSupabaseServer()
-  const { error } = await supabase.auth.exchangeCodeForSession(code)
+  const { error } = tokenHash
+    ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: (otpType as EmailOtpType) || 'magiclink' })
+    : await supabase.auth.exchangeCodeForSession(code as string)
 
   if (error) {
     const url = new URL('/login', origin)
