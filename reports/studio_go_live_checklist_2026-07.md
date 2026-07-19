@@ -155,5 +155,19 @@ Do these at launch, not before:
   (The E2E also self-guards: it ABORTS if any target model is already active on
   startup, so a leftover is caught at the next run too.)
 
+- ★**Submission-moderation PROD live check (right before/at launch)** -- the
+  submission gate (`moderateSubmission`, lib/moderation.ts) scans the creator
+  statement and FAILS SAFE to `moderation_status='pending'` (NOT public) when the
+  prod `OPENAI_API_KEY` is missing/invalid. So a mis-wired prod key = EVERY entry
+  silently stuck pending = **no videos ever appear on /watch** on launch day.
+  A2 proved the gate logic (unit `npm test` 23/23 + CI) but the PROD wiring needs
+  one live eyeball: after session6 is on, submit ONE clean test entry on prod and
+  confirm `moderation_status='approved'` + it shows on /watch (clean content passes,
+  not silently all-pending). If it lands 'pending', the prod OPENAI key is the
+  culprit -- fix before real participants submit. (Distinct from B4, which is the
+  pre-generation PROMPT gate that fails open; this is the submission gate that
+  fails safe.) Cleanup the test entry after. Live proof harness for a keyed env:
+  `e2e/moderation-gate.mjs`.
+
 Until Phase E, checkout is double-gated (session6 AND purchase both off), so
 nothing is buyable/visible on prod even after Phases A-D.

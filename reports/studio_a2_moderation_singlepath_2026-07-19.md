@@ -39,6 +39,22 @@ A2-2(studio moderation)의 **배선+timeout 하드닝이 이미 완비**돼 있�
    (임시 키 필요 시 platform.openai.com 새 키->1회 실행->폐기).
    당겨온 프로드 시크릿 파일(.env.vercel.local)은 즉시 삭제함.
 
-## 미착수 (TK 결정 대기, 별건)
-- A3 AI 배우 이름(KIRA/SUNNY) / A4 워터마크 문구 -- 결정 오면 각 30분.
-- 발사 게이트 B1 fal 동시성(2~4주 리드) 등은 [[project_jenny2_resume_2026-07-19]] 참조.
+## A3 + A4 (2026-07-19, TK 결정 반영 -- 완료)
+- **A4 = "DRAFT" 유지 확정**. DRAFT_WATERMARK_TEXT env 불변. 코드 변경 0. 종결.
+- **A3 = AI 배우 공식 이름**: KIRA(액션/실사, 빨간머리) + YUZU(애니, 주황곱슬). OXXOVO 자체
+  마케팅/데모 배우(참가자 자유명명과 별개). commit e882430.
+  - **단일 config**: `lib/studio-actors.ts`(STUDIO_ACTORS roster = name+kind+descriptor +
+    STUDIO_ACTOR_EXAMPLES). 하드코딩 0 -- 클리어런스 리네임(특히 YUZU)은 **이 파일 한 줄 수정**으로
+    전파. plain 모듈이라 client ActorMode가 직접 import.
+  - **노출**: ActorMode 이름 입력 placeholder(ko/en)가 config에서 "예: KIRA, YUZU" /
+    "e.g. KIRA, YUZU" 렌더. e2e/stage3.mjs 셀렉터 `/^예: /`로 견고화(이름 변경에 안 깨짐).
+  - preview-only(session6 off + 이미지모델 active=false) -- 공개 노출 0.
+  - **스샷 주의**: 이름 필드를 실제로 보려면 이미지모델 active=true + 브라우저 로그인 흐름 필요
+    (active 게이트 유지 위해 placeholder 하나 보려고 안 켬). 다음 데모(active 켜는 시점)에 육안 확인.
+
+→ **A1~A4 전부 완료. Studio 지수2 트랙 매듭.** 남은 건 발사 스위치(C) + 본체 영역(③ getSeasonPhase).
+
+## 발사 게이트 추가 (TK 요청, go-live 체크리스트 Phase E에 반영)
+- **제출 moderation 프로드 실환경 1회 확인**: 프로드 OPENAI키 미배선이면 전 제출이 pending 고착
+  → Watch에 영상 0 = 발사일 조용한 장애. session6 ON 후 정상 콘텐츠 1건 제출 → approved + Watch
+  노출 확인. `reports/studio_go_live_checklist_2026-07.md` Phase E에 항목 추가함.
