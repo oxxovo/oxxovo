@@ -28,11 +28,16 @@ A2-2(studio moderation)의 **배선+timeout 하드닝이 이미 완비**돼 있�
 - UI: compose 시즌에서 per-clip "Submit this video" + 인라인 ApplicantForm + /apply 배너 숨김.
   compose CTA가 유일 진입. compose_required 문구 en/ko.
 
-## TK 대기 (2건)
-1. **live 증명 실행**: `node --import ./scripts/test-register.mjs --env-file=.env.local e2e/moderation-gate.mjs`
-   (프로드 OPENAI_API_KEY 필요, ~$0). 악성->BLOCKED / clean->approved 확인.
-2. **가정 확인**: `studio_compose_enabled == compose-only entry`로 취급함(시즌0 규칙 일치).
-   하이브리드(단일+compose 병행) 시즌을 원하면 별도 플래그 필요 -- 지금은 시즌0 기준.
+## TK 확인 -- 둘 다 처리됨 (2026-07-19, A2 종결)
+1. **가정 = OK 확정**: `studio_compose_enabled == compose-only entry`(시즌0 규칙 일치, 하이브리드
+   플래그 불필요). → A2-3 종결.
+2. **live 증명 = 유닛+CI로 종결**: 프로드 OPENAI_API_KEY가 Vercel **Sensitive 변수**라 `vercel env
+   pull`이 값을 빈칸으로 가져옴([[reference_vercel_sensitive_env]] 함정, 실측 value_length=0) --
+   이건 프로드 키 유출을 막는 **올바른 설정**이라 낮추지 않음. 게이트 정확성은 이미 유닛
+   `npm test` 23/23(매 push CI) + 코드 3경로 검증으로 잠김. live는 OpenAI 자체 동작 재확인일 뿐이라
+   생략(TK 결정). `e2e/moderation-gate.mjs`는 보존 -- 유효한 OPENAI 키가 생기면 그대로 실행 가능
+   (임시 키 필요 시 platform.openai.com 새 키->1회 실행->폐기).
+   당겨온 프로드 시크릿 파일(.env.vercel.local)은 즉시 삭제함.
 
 ## 미착수 (TK 결정 대기, 별건)
 - A3 AI 배우 이름(KIRA/SUNNY) / A4 워터마크 문구 -- 결정 오면 각 30분.
