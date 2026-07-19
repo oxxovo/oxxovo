@@ -14,11 +14,33 @@ function LoginInner() {
   const nextPath = params.get('redirect') ?? params.get('next') ?? '/profile'
   const errorParam = params.get('error')
   const reason = params.get('reason')
+  // Opt-in password sign-in (?pw=1). Kept out of the default UX: real users use
+  // the magic link. This exists for accounts whose mailbox isn't reachable (demo/
+  // support) so login is REUSABLE -- immune to the single-use link consumption a
+  // prefetch/scanner can cause. Standard Supabase email+password; no new secret.
+  const pwMode = params.get('pw') === '1'
 
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    const supabase = createSupabaseBrowser()
+    const { error: pwError } = await supabase.auth.signInWithPassword({ email, password })
+    if (pwError) {
+      setLoading(false)
+      setError(pwError.message)
+      return
+    }
+    // Full navigation so the server picks up the freshly-set cookie session.
+    const safeNext = nextPath.startsWith('/') && !nextPath.startsWith('//') ? nextPath : '/profile'
+    window.location.assign(safeNext)
+  }
 
   const callbackError =
     errorParam === 'callback_failed'
@@ -63,7 +85,42 @@ function LoginInner() {
           </div>
         )}
 
-        {sent ? (
+        {pwMode ? (
+          <form onSubmit={handlePasswordLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm text-white/60 mb-2">Email</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                className="w-full px-4 py-3 rounded-lg bg-white/95 text-black"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-white/60 mb-2">Password</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                className="w-full px-4 py-3 rounded-lg bg-white/95 text-black"
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-lg bg-[#8b22ff] hover:bg-[#7a1de8] text-white font-bold disabled:opacity-50"
+            >
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        ) : sent ? (
           <div className="space-y-4 text-center">
             <p className="text-white/70 text-sm leading-relaxed">
               We sent a login link to{' '}
