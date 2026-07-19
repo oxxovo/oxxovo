@@ -148,7 +148,14 @@ export function ArenaHero({
         <div className="min-w-0">
           <p className="text-[14px] font-semibold text-[#e7e0f5]">Current Competition — Season {seasonNumber}</p>
           <p className="mt-0.5 text-[12px] leading-relaxed text-[#9b8bc4]">
-            {roundName === 'Judging Complete' ? (
+            {/* Stage-gated so the context line + CTA don't stay stuck on the
+                "vote in the Main Round" pitch after the lifecycle moves on. Same
+                A안 stopgap as the card/heading -- reuses the banner stage. */}
+            {stage === 'results' ? (
+              <>The winners have been announced. See who took the top spots this season.</>
+            ) : stage === 'voting' ? (
+              <>Community voting is open. Watch the main-round films and vote for your favorite creator.</>
+            ) : roundName === 'Judging Complete' ? (
               <>
                 Judging is complete. Finalists will be revealed
                 {revealAtISO
@@ -168,7 +175,7 @@ export function ArenaHero({
           href="/signup"
           className="shrink-0 rounded-lg bg-[#8b22ff] px-4 py-2 text-[13px] font-bold text-white transition hover:bg-[#7a1ee0]"
         >
-          Join free to vote →
+          {stage === 'results' ? 'See who won →' : 'Join free to vote →'}
         </Link>
       </div>
     </section>
