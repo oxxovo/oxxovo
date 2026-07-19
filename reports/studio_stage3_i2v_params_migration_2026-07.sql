@@ -8,7 +8,7 @@
 -- ASCII-only. No long URLs. Idempotent (jsonb_set replaces input_params). Run
 -- STAGE by STAGE. Prereq for the 2.6 i2v E2E.
 --
--- ★CURRENT STATE: the fix was already applied to the LIVE DB at runtime (admin
+-- !!CURRENT STATE: the fix was already applied to the LIVE DB at runtime (admin
 -- UPDATE during the 2.5 demo). So STAGE 1 INSPECT will ALREADY show the 4 keys,
 -- and STAGE 2 is an idempotent no-op that just makes it official/reproducible.
 -- The ROLLBACK section below undoes it (back to the 2.1 original) if ever needed.
