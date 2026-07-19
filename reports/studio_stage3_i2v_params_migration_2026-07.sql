@@ -7,6 +7,18 @@
 -- worker merges metadata.input_params into the fal call, so this is data-only.
 -- ASCII-only. No long URLs. Idempotent (jsonb_set replaces input_params). Run
 -- STAGE by STAGE. Prereq for the 2.6 i2v E2E.
+--
+-- ★CURRENT STATE: the fix was already applied to the LIVE DB at runtime (admin
+-- UPDATE during the 2.5 demo). So STAGE 1 INSPECT will ALREADY show the 4 keys,
+-- and STAGE 2 is an idempotent no-op that just makes it official/reproducible.
+-- The ROLLBACK section below undoes it (back to the 2.1 original) if ever needed.
+--
+-- RUN ORDER (stage by stage, NOT all at once):
+--   1) Run STAGE 1 -> read the current input_params (keep the output).
+--   2) Run STAGE 2 -> apply (no-op if STAGE 1 already showed the 4 keys).
+--   3) Run STAGE 3 -> confirm 4 keys present + other metadata survived +
+--      the whitespace guard flags are ALL false.
+-- Keep the ROLLBACK block in hand; do NOT run it unless reverting.
 -- ============================================================
 
 
@@ -62,3 +74,25 @@ SELECT id,
        ((metadata->'input_params'->>'cfg_scale') ~ '\s')    AS cfg_scale_ws
 FROM model_catalog
 WHERE id = 'kling-v3-pro-i2v';
+
+
+-- ============================================================
+-- ROLLBACK -- run ONLY to revert. Restores input_params to what STAGE 1 showed.
+-- ============================================================
+-- Option A (recommended default): back to the 2.1 original -- cfg_scale only.
+--   Use this if STAGE 1 showed {"cfg_scale": 0.5} (pre-fix), or to fully undo
+--   the i2v params fix (i2v generation would 422 again until re-applied).
+UPDATE model_catalog
+SET metadata = jsonb_set(metadata, '{input_params}', '{"cfg_scale":0.5}'::jsonb, true),
+    updated_at = now()
+WHERE id = 'kling-v3-pro-i2v';
+
+-- Option B (exact restore): if STAGE 1 showed a DIFFERENT input_params object,
+-- paste that exact one-line JSON between the single quotes below instead:
+-- UPDATE model_catalog
+-- SET metadata = jsonb_set(metadata, '{input_params}', '<PASTE STAGE 1 input_params HERE>'::jsonb, true),
+--     updated_at = now()
+-- WHERE id = 'kling-v3-pro-i2v';
+
+-- rollback verify (expect input_params back to the restored value)
+SELECT id, metadata->'input_params' AS input_params FROM model_catalog WHERE id = 'kling-v3-pro-i2v';
