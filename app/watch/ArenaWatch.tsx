@@ -146,12 +146,28 @@ export async function ArenaWatch({
     theme: currentSeason?.main_round_theme_label ?? null,
   })
 
+  // Stopgap (A안, 2026-07): the hero card's roundName is derived from the
+  // TIMELINE only (inMainRound = now>=main_round_start, no upper bound), so once
+  // a season reaches the terminal stages it stays stuck on "Main Round" while the
+  // top banner correctly says voting/results -> a self-contradicting screen (e.g.
+  // "우승 발표됨" + "본선 · 심사 중"). Reflect the banner stage in the card label at
+  // those stages so the two never disagree. The judging row is suppressed in the
+  // card the same way (see LiveStatusBar `stage`). This whole patch is absorbed
+  // once a canonical getSeasonPhase() unifies banner + card + awards gate.
+  const cardRoundName =
+    bannerStage.stage === 'results'
+      ? 'Results'
+      : bannerStage.stage === 'voting'
+        ? 'Community Vote'
+        : roundName
+
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
       <ArenaBanner content={bannerStage} />
       <ArenaHero
         seasonNumber={seasonNumber}
-        roundName={roundName}
+        roundName={cardRoundName}
+        stage={bannerStage.stage}
         seasonId={currentSeasonId}
         stats={heroStats}
         closeAtISO={closeAtISO}
@@ -162,7 +178,7 @@ export async function ArenaWatch({
         voteOpen={voteOpen}
         voteEndISO={currentSeason?.community_vote_end_at ?? null}
       />
-      <MainRoundSection videos={mainRoundVideos} seasonNames={seasonNames} voteOpen={voteOpen} />
+      <MainRoundSection videos={mainRoundVideos} seasonNames={seasonNames} voteOpen={voteOpen} stage={bannerStage.stage} />
       <FinalistPrelimSection videos={finalistPrelims} seasonNames={seasonNames} />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />

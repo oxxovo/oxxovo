@@ -79,6 +79,7 @@ export function ArenaBanner({ content }: { content: BannerContent }) {
 export function ArenaHero({
   seasonNumber,
   roundName,
+  stage,
   seasonId,
   stats,
   closeAtISO,
@@ -91,6 +92,9 @@ export function ArenaHero({
 }: {
   seasonNumber: number
   roundName: string
+  // Banner lifecycle stage (getBannerStage). Lets the card suppress the "심사 중"
+  // row + reflect voting/results so it never contradicts the top banner.
+  stage?: string
   seasonId: string
   stats: CompetitionStats
   closeAtISO: string | null
@@ -105,6 +109,7 @@ export function ArenaHero({
     <LiveStatusBar
       seasonNumber={seasonNumber}
       roundName={roundName}
+      stage={stage}
       seasonId={seasonId}
       initialStats={stats}
       closeAtISO={closeAtISO}
@@ -275,15 +280,24 @@ export function MainRoundSection({
   videos,
   seasonNames,
   voteOpen,
+  stage,
 }: {
   videos: WatchVideo[]
   seasonNames: Record<string, string>
   voteOpen: boolean
+  // Banner lifecycle stage. Once winners are announced ('results') the heading
+  // must not keep saying "지금 시합 중" (competing now) -- that contradicts the
+  // "winners announced" banner. (A안 stopgap, same gate as the hero card.)
+  stage?: string
 }) {
   if (videos.length === 0) return null
+  const isResults = stage === 'results'
   return (
     <section className="mb-10">
-      <Heading kicker="Main Round" title="🏆 본선 · 지금 시합 중" />
+      <Heading
+        kicker={isResults ? 'Results' : 'Main Round'}
+        title={isResults ? '🏆 본선 결과' : '🏆 본선 · 지금 시합 중'}
+      />
       <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
         {videos.map((v) => (
           <WatchCard key={`${v.applicationId}:${v.round}`} v={v} seasonNames={seasonNames} showJudging voteOpen={voteOpen} />

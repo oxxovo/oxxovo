@@ -31,6 +31,7 @@ const POLL_MS = 20_000
 export function LiveStatusBar({
   seasonNumber,
   roundName,
+  stage,
   seasonId,
   initialStats,
   closeAtISO,
@@ -43,6 +44,10 @@ export function LiveStatusBar({
 }: {
   seasonNumber: number
   roundName: string
+  // Banner lifecycle stage (getBannerStage). At 'voting'/'results' the judging
+  // row is suppressed so the card never shows "심사 중" while the banner says the
+  // winners are announced. Absent (older callers) -> old behavior.
+  stage?: string
   seasonId: string
   initialStats: Stats
   closeAtISO: string | null
@@ -100,7 +105,11 @@ export function LiveStatusBar({
   // Vote-deadline countdown: only while the community vote window is genuinely open.
   const voteEnd = voteEndISO ? new Date(voteEndISO) : null
   const showVoteCountdown = !!voteOpen && voteEnd != null && voteEnd.getTime() > Date.now()
-  const showJudging = judging.total > 0
+  // Once the lifecycle has moved past judging (community voting / results
+  // announced), the card must NOT keep showing "심사 중 N/N" -- that contradicts
+  // the top banner. Suppress the judging row at those stages. (A안 stopgap.)
+  const pastJudging = stage === 'voting' || stage === 'results'
+  const showJudging = judging.total > 0 && !pastJudging
   const pct = judging.total > 0 ? Math.round((judging.scored / judging.total) * 100) : 0
   // Shimmer runs only while judging is genuinely in progress; it stops at 완료.
   const judgingComplete = judging.total > 0 && judging.scored >= judging.total
@@ -129,7 +138,7 @@ export function LiveStatusBar({
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-[14px] text-[#e7e0f5]">
                 <span aria-hidden className="text-[#8b22ff]">⚡</span>
-                Triple-AI 심사 중
+                Triple-AI {judgingComplete ? '심사 완료' : '심사 중'}
               </span>
               <span className="text-[15px] font-semibold text-white">
                 {judging.scored} / {judging.total}
