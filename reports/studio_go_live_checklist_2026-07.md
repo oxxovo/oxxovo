@@ -140,6 +140,20 @@ Do these at launch, not before:
 - `session6_enabled = true` (master switch -- opens Studio on prod)
 - season_0 auto-activates draft->active at application_open_at (7/25 00:00 PT);
   confirm studio_round + schedule.
+- ★**Stage 3 model_catalog active GATE** -- BEFORE flipping session6, confirm the
+  AI-actor models' `active` flags are INTENTIONAL, not test residue. The Stage 3
+  routine E2E (`e2e/stage3.mjs`) flips nano-banana-pro / flux2-pro-image /
+  kling-v3-pro-i2v to active=true in test scope and reverts on teardown, but a
+  SIGKILL mid-run could leave one active. Run this and confirm the result matches
+  the launch intent (all false until the 2.5 AI-actor UI is intentionally
+  launched):
+  ```sql
+  SELECT id, active FROM model_catalog
+  WHERE id IN ('nano-banana-pro','flux2-pro-image','kling-v3-pro-i2v','ideogram-character','ideogram-character-draft')
+  ORDER BY id;
+  ```
+  (The E2E also self-guards: it ABORTS if any target model is already active on
+  startup, so a leftover is caught at the next run too.)
 
 Until Phase E, checkout is double-gated (session6 AND purchase both off), so
 nothing is buyable/visible on prod even after Phases A-D.
