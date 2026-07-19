@@ -2,7 +2,8 @@ name: tests
 on: [push, pull_request]
 jobs:
   crypto:
-    # CryptoBind v1i/v1ic/v1v tamper-rejection + cross-repo KAT regression guard.
+    # CryptoBind v1i/v1ic/v1v tamper-rejection + cross-repo KAT regression guard
+    # + moderation gate (flagged/fail-safe -> never public) invariant.
     # Zero deps: Node builtins only (server-only is stubbed by test-register.mjs).
     runs-on: ubuntu-latest
     steps:
@@ -10,5 +11,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: CryptoBind tamper-rejection + KAT + compose source-verify routing
-        run: node --import ./scripts/test-register.mjs --test lib/cryptobind.stage3.test.ts lib/studio-verify.stage3.test.ts
+      - name: CryptoBind tamper-rejection + KAT + compose verify + moderation gate
+        run: npm test
