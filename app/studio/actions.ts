@@ -376,6 +376,7 @@ export type SubmitGenResult =
         | 'not_owner'
         | 'not_ready'
         | 'draft_not_submittable'
+        | 'compose_required'
         | 'cryptobind_failed'
         | 'no_application'
         | 'already_submitted'

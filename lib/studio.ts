@@ -1011,6 +1011,7 @@ export type SubmitResult =
         | 'not_owner'
         | 'not_ready'
         | 'draft_not_submittable'
+        | 'compose_required'
         | 'cryptobind_failed'
         | 'no_application'
         | 'already_submitted'
@@ -1063,6 +1064,15 @@ export async function submitGeneration(args: {
   //    path so a studio main-round submission transitions status the same way.
   const cfg = await getSeasonStudioConfig(args.seasonId)
   const effectiveRound = resolveEffectiveRound(cfg)
+
+  // 3b. Single-path enforcement: when the season is compose-based, a raw single
+  //     clip is a building-block, NOT a valid entry -- the entry is the composed
+  //     final submitted via submitRender. Rejecting here closes the split-path
+  //     bypass (a raw clip minting an application) so compose seasons have ONE
+  //     submission path (both rounds). Non-compose studio seasons are unchanged:
+  //     there the single clip IS the entry. UI mirrors this (submit hidden when
+  //     composeEnabled); this is the server-authoritative layer.
+  if (cfg.studioComposeEnabled) return { ok: false, reason: 'compose_required' }
 
   // 4. Find the participant's application (by email, like the rest of the site).
   const email = args.email.toLowerCase()

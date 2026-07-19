@@ -168,6 +168,7 @@ const DICT = {
     submit_err_app_info: '신청 정보를 입력하세요.',
     submit_err_app_closed: '신청이 마감되었습니다.',
     submit_err_round_closed: '본선 제출 기한이 지났습니다.',
+    submit_err_compose_required: '이 시즌은 조합(compose) 완성본으로만 제출합니다. 클립을 조합 편집기에서 이어 붙여 제출하세요.',
   },
   en: {
     brand: 'OXXOVO',
@@ -289,6 +290,7 @@ const DICT = {
     submit_err_app_info: 'Enter your application info.',
     submit_err_app_closed: 'Applications are closed.',
     submit_err_round_closed: 'The main-round submission deadline has passed.',
+    submit_err_compose_required: 'This season accepts only composed finals. Stitch your clips in the compose editor and submit that.',
   },
 }
 
@@ -506,11 +508,13 @@ export default function StudioPage() {
           </div>
         )}
 
-        {/* In the application round the inline ApplicantForm below IS the entry
-            (studio is in-platform, no external URL), so the "apply via /apply"
-            banner would misdirect. Show it only outside that round, where the
-            inline form does not apply. */}
-        {!state.hasApplication && !needsApplicantInfo && (
+        {/* The "apply via /apply" banner points to the external-URL (YouTube)
+            application form, which an in-platform studio participant structurally
+            cannot fill. It is hidden in the application round (the inline form is
+            the entry) AND in any compose season (compose is the entry, no external
+            URL exists) -- so for Season 0 (compose) it never shows. It remains only
+            for legacy external-URL seasons outside the application round. */}
+        {!state.hasApplication && !needsApplicantInfo && !state.composeEnabled && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
             <span className="text-sm text-amber-200">{t.need_apply}</span>
             <a href="/apply" className="shrink-0 text-xs font-bold text-amber-200 underline hover:text-amber-100">
@@ -537,7 +541,11 @@ export default function StudioPage() {
               onPrefillApplied={() => setPrefill(null)}
             />
 
-            {needsApplicantInfo && (
+            {/* Inline applicant form pairs with the per-clip submit (single-clip
+                entry). In a compose season that path is off and the applicant info
+                is collected in the compose editor instead, so hide it here to keep
+                one entry path. */}
+            {needsApplicantInfo && !state.composeEnabled && (
               <ApplicantForm t={t} applicant={applicant} onChange={setApplicant} />
             )}
 
@@ -1203,7 +1211,10 @@ function Generations({
               token={token}
               job={job}
               etaSeconds={state.modelEtas[job.model_id]}
-              canSubmit={!state.alreadySubmitted}
+              // Single-path unification: in a compose season the per-clip "Submit
+              // this video" is hidden -- the only entry is the composed final
+              // (compose CTA above). The server enforces this too (compose_required).
+              canSubmit={!state.alreadySubmitted && !state.composeEnabled}
               needsApplicantInfo={needsApplicantInfo}
               applicant={applicant}
               onPromote={onPromote}
@@ -1333,6 +1344,7 @@ function JobCard({
       case 'agreements_required': return t.submit_err_agreements
       case 'application_closed': return t.submit_err_app_closed
       case 'round_closed': return t.submit_err_round_closed
+      case 'compose_required': return t.submit_err_compose_required
       default: return t.submit_err_generic
     }
   }
