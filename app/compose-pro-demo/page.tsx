@@ -27,6 +27,7 @@ const T = {
     tl_hint: '풀에서 클립을 추가하고, 드래그로 순서를 바꾸고, 양끝을 끌어 트림하세요. 층 겹치기는 없습니다 — Genesis Rule.',
     clip: '클립', sec: '초', seg: '구간', remove: '제거', drag_here: '풀에서 클립을 추가하세요',
     reset: '초기화',
+    zoom_in: '확대', zoom_out: '축소', fit: '맞춤', zoom_hint: 'Ctrl+휠로 줌',
   },
   en: {
     shell: 'PRO editor · A+B stage',
@@ -40,6 +41,7 @@ const T = {
     tl_hint: 'Add clips from the pool, drag to reorder, and drag the ends to trim. No stacked layers — Genesis Rule.',
     clip: 'Clip', sec: 's', seg: 'Segment', remove: 'Remove', drag_here: 'Add clips from the pool',
     reset: 'Reset',
+    zoom_in: 'Zoom in', zoom_out: 'Zoom out', fit: 'Fit', zoom_hint: 'Ctrl+wheel to zoom',
   },
 } as const
 
@@ -69,12 +71,30 @@ export default function ComposeProDemo() {
   const [segs, setSegs] = useState<Seg[]>([])
   const [dragUid, setDragUid] = useState<string | null>(null)
   const [sel, setSel] = useState<string | null>(null)
+  // Timeline zoom: pixels-per-second. The timeline used to fit-to-width (flexGrow
+  // proportional); zoom switches to a FIXED px/second scale so it can enlarge past
+  // the pane and scroll horizontally -- presentation only, the EDL (Seg[]) is
+  // untouched. (jisu2 2026-07-19)
+  const [pxPerSec, setPxPerSec] = useState(24)
+  const tlRef = useRef<HTMLDivElement>(null)
 
   const pool = useMemo(
     () => POOL.filter((c) => (tier === 'all' ? true : tier === 'practice' ? c.draft : !c.draft)),
     [tier],
   )
   const total = segs.reduce((a, s) => a + (s.end - s.start), 0)
+  const ZOOM_MIN = 6
+  const ZOOM_MAX = 120
+  const clampZoom = (z: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z))
+  const zoomBy = (f: number) => setPxPerSec((z) => Math.round(clampZoom(z * f)))
+  // Fit the whole timeline into the visible track width.
+  const fitZoom = () => {
+    const el = tlRef.current
+    if (el && total > 0) setPxPerSec(clampZoom((el.clientWidth - 32) / total))
+  }
+  // Ruler tick spacing adapts to zoom so labels never crowd.
+  const tickSec = pxPerSec < 12 ? 10 : pxPerSec < 30 ? 5 : 2
+  const trackW = total * pxPerSec
 
   // --- media-pool virtualization: mount only the on-screen window of cells ---
   const poolRef = useRef<HTMLDivElement>(null)
@@ -116,10 +136,9 @@ export default function ComposeProDemo() {
   const onTrimDown = (e: React.PointerEvent, s: Seg, edge: 'start' | 'end') => {
     e.preventDefault()
     e.stopPropagation()
-    const segEl = (e.currentTarget as HTMLElement).closest('[data-seg]') as HTMLElement | null
-    const wPx = segEl?.getBoundingClientRect().width ?? 1
-    const span = Math.max(0.001, s.end - s.start)
-    trim.current = { uid: s.uid, edge, x0: e.clientX, pxPerSec: wPx / span, orig: edge === 'start' ? s.start : s.end }
+    // pxPerSec IS the timeline zoom, so px->seconds is exact at every zoom level
+    // (no more deriving it from the rendered width).
+    trim.current = { uid: s.uid, edge, x0: e.clientX, pxPerSec, orig: edge === 'start' ? s.start : s.end }
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
   const onTrimMove = useCallback((e: React.PointerEvent) => {
@@ -258,55 +277,82 @@ export default function ComposeProDemo() {
               <h2 className={paneHead}>{t.timeline}</h2>
               <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/40">{t.single_track}</span>
             </div>
-            <span className="text-[10px] text-white/30">{segs.length} {t.clip} · {total.toFixed(1)}{t.sec}</span>
+            <div className="flex items-center gap-2">
+              {/* Zoom controls (presentation only -- no EDL change). */}
+              <div className="flex items-center gap-0.5 rounded-lg border border-white/10 p-0.5" title={t.zoom_hint}>
+                <button onClick={() => zoomBy(1 / 1.4)} disabled={pxPerSec <= ZOOM_MIN} title={t.zoom_out}
+                  className="flex h-6 w-6 items-center justify-center rounded text-[15px] text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-30">−</button>
+                <span className="w-[52px] text-center text-[10px] tabular-nums text-white/45">{Math.round(pxPerSec)}px/s</span>
+                <button onClick={() => zoomBy(1.4)} disabled={pxPerSec >= ZOOM_MAX} title={t.zoom_in}
+                  className="flex h-6 w-6 items-center justify-center rounded text-[15px] text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-30">+</button>
+                <button onClick={fitZoom} disabled={!segs.length} title={t.fit}
+                  className="ml-0.5 flex h-6 items-center rounded px-1.5 text-[10px] font-bold text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-30">{t.fit}</button>
+              </div>
+              <span className="text-[10px] text-white/30">{segs.length} {t.clip} · {total.toFixed(1)}{t.sec}</span>
+            </div>
           </div>
           <div
+            ref={tlRef}
             className="min-h-0 flex-1 overflow-x-auto p-4"
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => {
               if (dragUid?.startsWith('pool_')) { const id = Number(dragUid.slice(5)); const c = POOL[id]; if (c) addClip(c) }
               setDragUid(null)
             }}
+            onWheel={(e) => { if (e.ctrlKey) { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15) } }}
           >
-            <div className="flex h-24 min-w-full items-stretch gap-1">
-              {segs.map((s, i) => (
-                <div
-                  key={s.uid}
-                  data-seg
-                  draggable
-                  onDragStart={(e) => { if (trim.current) { e.preventDefault(); return } setDragUid(s.uid) }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => { e.stopPropagation(); if (dragUid && !dragUid.startsWith('pool_')) reorderTo(dragUid, s.uid); setDragUid(null) }}
-                  onClick={() => setSel(s.uid)}
-                  style={{ flexGrow: s.end - s.start, flexBasis: 0, background: swatch(s.hue) }}
-                  className={`group relative flex min-w-[64px] cursor-grab items-center justify-center rounded-lg border text-[10px] transition ${
-                    sel === s.uid ? 'border-[#b66cff] ring-1 ring-[#8b22ff]' : dragUid === s.uid ? 'border-[#8b22ff]' : 'border-[#8b22ff]/25 hover:border-[#8b22ff]/70'
-                  }`}
-                >
-                  <span
-                    onPointerDown={(e) => onTrimDown(e, s, 'start')} onPointerMove={onTrimMove} onPointerUp={onTrimUp}
-                    className="absolute left-0 top-0 z-10 h-full w-2 cursor-ew-resize rounded-l-lg bg-[#8b22ff]/50 opacity-0 transition group-hover:opacity-100"
-                    title={t.seg}
-                  />
-                  <span className="pointer-events-none flex flex-col items-center text-white/70">
-                    <span className="font-bold">{i + 1}</span>
-                    <span className="text-[9px] text-white/45">{(s.end - s.start).toFixed(1)}{t.sec}</span>
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeSeg(s.uid); if (sel === s.uid) setSel(null) }}
-                    className="absolute right-1 top-1 z-10 rounded bg-black/40 px-1 text-[10px] text-white/50 opacity-0 transition hover:text-[#ff8888] group-hover:opacity-100"
-                    title={t.remove}
-                  >×</button>
-                  <span
-                    onPointerDown={(e) => onTrimDown(e, s, 'end')} onPointerMove={onTrimMove} onPointerUp={onTrimUp}
-                    className="absolute right-0 top-0 z-10 h-full w-2 cursor-ew-resize rounded-r-lg bg-[#8b22ff]/50 opacity-0 transition group-hover:opacity-100"
-                    title={t.seg}
-                  />
+            {/* Fixed px/second track: width = total*pxPerSec, min 100% so a short
+                timeline still fills the pane; wider-than-pane scrolls horizontally. */}
+            <div style={{ width: segs.length ? trackW : undefined, minWidth: '100%' }}>
+              {segs.length > 0 && (
+                <div className="relative mb-1 h-4 select-none">
+                  {Array.from({ length: Math.floor(total / tickSec) + 1 }, (_, k) => k * tickSec).map((tick) => (
+                    <span key={tick} className="absolute top-0 h-4 border-l border-white/10 pl-1 text-[8px] tabular-nums text-white/30" style={{ left: tick * pxPerSec }}>
+                      {tick}{t.sec}
+                    </span>
+                  ))}
                 </div>
-              ))}
-              {segs.length === 0 && (
-                <div className="flex min-w-full flex-1 items-center justify-center rounded-lg border border-dashed border-white/12 text-[11px] text-white/25">{t.drag_here}</div>
               )}
+              <div className="flex h-24 items-stretch gap-1">
+                {segs.map((s, i) => (
+                  <div
+                    key={s.uid}
+                    data-seg
+                    draggable
+                    onDragStart={(e) => { if (trim.current) { e.preventDefault(); return } setDragUid(s.uid) }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => { e.stopPropagation(); if (dragUid && !dragUid.startsWith('pool_')) reorderTo(dragUid, s.uid); setDragUid(null) }}
+                    onClick={() => setSel(s.uid)}
+                    style={{ width: Math.max(18, (s.end - s.start) * pxPerSec), background: swatch(s.hue) }}
+                    className={`group relative flex shrink-0 cursor-grab items-center justify-center overflow-hidden rounded-lg border text-[10px] transition ${
+                      sel === s.uid ? 'border-[#b66cff] ring-1 ring-[#8b22ff]' : dragUid === s.uid ? 'border-[#8b22ff]' : 'border-[#8b22ff]/25 hover:border-[#8b22ff]/70'
+                    }`}
+                  >
+                    <span
+                      onPointerDown={(e) => onTrimDown(e, s, 'start')} onPointerMove={onTrimMove} onPointerUp={onTrimUp}
+                      className="absolute left-0 top-0 z-10 h-full w-2 cursor-ew-resize rounded-l-lg bg-[#8b22ff]/50 opacity-0 transition group-hover:opacity-100"
+                      title={t.seg}
+                    />
+                    <span className="pointer-events-none flex flex-col items-center text-white/70">
+                      <span className="font-bold">{i + 1}</span>
+                      <span className="text-[9px] text-white/45">{(s.end - s.start).toFixed(1)}{t.sec}</span>
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeSeg(s.uid); if (sel === s.uid) setSel(null) }}
+                      className="absolute right-1 top-1 z-10 rounded bg-black/40 px-1 text-[10px] text-white/50 opacity-0 transition hover:text-[#ff8888] group-hover:opacity-100"
+                      title={t.remove}
+                    >×</button>
+                    <span
+                      onPointerDown={(e) => onTrimDown(e, s, 'end')} onPointerMove={onTrimMove} onPointerUp={onTrimUp}
+                      className="absolute right-0 top-0 z-10 h-full w-2 cursor-ew-resize rounded-r-lg bg-[#8b22ff]/50 opacity-0 transition group-hover:opacity-100"
+                      title={t.seg}
+                    />
+                  </div>
+                ))}
+                {segs.length === 0 && (
+                  <div className="flex min-w-full flex-1 items-center justify-center rounded-lg border border-dashed border-white/12 text-[11px] text-white/25">{t.drag_here}</div>
+                )}
+              </div>
             </div>
             <p className="mt-3 text-[10px] text-white/30">{t.tl_hint}</p>
           </div>
