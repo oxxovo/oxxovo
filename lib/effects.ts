@@ -1,0 +1,74 @@
+// Client-safe effect param model (shared by the GL preview engine [D] and the
+// effect UI [E]). cryptobind.ts defines the SAME shape server-side but imports
+// 'server-only', so the client can't reuse it -- this is the client mirror.
+//
+// ★ Canonical contract: the RENDER (oxxovo-studio ffmpeg, B1) is authoritative;
+// the GL preview must MATCH it, never the reverse. Param ranges + the neutral
+// default (0) must line up with effectVideoFilters() in the worker's render.ts.
+// Adding a param = append to EffectParams + EFFECT_SPECS AND to cryptobind's
+// EFFECT_KEYS (in both repos) in the same order.
+
+export type EffectParams = {
+  exposure?: number
+  contrast?: number
+  saturation?: number
+  temperature?: number
+  tint?: number
+  lut?: string
+  lutIntensity?: number
+  grain?: number
+  vignette?: number
+  glow?: number
+  motionBlur?: number
+  sharpen?: number
+  chromatic?: number
+}
+
+export type EffectSpec = {
+  key: keyof EffectParams
+  label: string
+  min: number
+  max: number
+  // How well the GL preview can match the ffmpeg render:
+  //   exact       -- shader reproduces the filter closely (color math, LUT, vignette)
+  //   approximate -- stochastic/temporal; preview is indicative only (grain, motion blur)
+  parity: 'exact' | 'approximate'
+}
+
+// Slider specs for the UI (E). Order here is display order; the SIGNATURE order
+// is EFFECT_KEYS in cryptobind (kept in lockstep).
+export const EFFECT_SPECS: readonly EffectSpec[] = [
+  { key: 'exposure', label: 'Exposure', min: -100, max: 100, parity: 'exact' },
+  { key: 'contrast', label: 'Contrast', min: -100, max: 100, parity: 'exact' },
+  { key: 'saturation', label: 'Saturation', min: -100, max: 100, parity: 'exact' },
+  { key: 'temperature', label: 'Temperature', min: -100, max: 100, parity: 'exact' },
+  { key: 'tint', label: 'Tint', min: -100, max: 100, parity: 'exact' },
+  { key: 'lutIntensity', label: 'LUT intensity', min: 0, max: 100, parity: 'exact' },
+  { key: 'vignette', label: 'Vignette', min: 0, max: 100, parity: 'exact' },
+  { key: 'glow', label: 'Glow', min: 0, max: 100, parity: 'exact' },
+  { key: 'sharpen', label: 'Sharpen', min: 0, max: 100, parity: 'exact' },
+  { key: 'chromatic', label: 'Chromatic', min: 0, max: 100, parity: 'exact' },
+  { key: 'grain', label: 'Grain', min: 0, max: 100, parity: 'approximate' },
+  { key: 'motionBlur', label: 'Motion blur', min: 0, max: 100, parity: 'approximate' },
+]
+
+// Available in-platform LUTs (must match oxxovo-studio assets/luts + LUT_FILES).
+export const LUT_OPTIONS: readonly { id: string; label: string }[] = [
+  { id: '', label: 'None' },
+  { id: 'teal-orange', label: 'Teal / Orange' },
+  { id: 'warm-film', label: 'Warm Film' },
+  { id: 'cool-cinema', label: 'Cool Cinema' },
+  { id: 'noir', label: 'Noir' },
+  { id: 'vibrant', label: 'Vibrant' },
+]
+
+// True if the EDL carries any non-neutral effect (drives the "approximate" note
+// when the raw fallback preview is showing a composition that HAS effects).
+export function hasAnyEffect(e?: EffectParams): boolean {
+  if (!e) return false
+  for (const k of Object.keys(e) as (keyof EffectParams)[]) {
+    const v = e[k]
+    if (typeof v === 'number' ? Math.round(v) !== 0 : !!v) return true
+  }
+  return false
+}

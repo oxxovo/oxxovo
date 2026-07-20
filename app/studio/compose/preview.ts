@@ -14,18 +14,27 @@
 // render's deterministic filter contract (render is authoritative, preview
 // follows). The editor picks the best available engine; the seam is this file.
 
+import type { EffectParams } from '@/lib/effects'
+
 export type PreviewClip = { id: string; url: string }
-export type PreviewSegment = { uid: string; jobId: string; startMs: number; endMs: number }
+export type PreviewSegment = {
+  uid: string
+  jobId: string
+  startMs: number
+  endMs: number
+  speed?: number
+  effects?: EffectParams
+}
 
 export interface PreviewEngine {
   readonly kind: 'raw' | 'gl'
   // true if this engine does NOT reproduce the exact final (e.g. effects unshown).
   approximate(hasEffects: boolean): boolean
   mount(video: HTMLVideoElement): void
-  play(segments: PreviewSegment[], clips: Map<string, PreviewClip>): void
+  play(segments: PreviewSegment[], clips: Map<string, PreviewClip>, global?: EffectParams): void
   pause(): void
   // paused single-segment preview (on select): show the segment's first frame.
-  showFrame(seg: PreviewSegment, clips: Map<string, PreviewClip>): void
+  showFrame(seg: PreviewSegment, clips: Map<string, PreviewClip>, global?: EffectParams): void
   destroy(): void
 }
 
