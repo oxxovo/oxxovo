@@ -55,11 +55,21 @@ const provenance = {
 
 // CryptoBind: sign over the canonical sheet + source. Reproducible from the same
 // secret -> proves this actor's canonical set + provenance were not altered.
-const provHash = createHash('sha256').update(JSON.stringify(provenance), 'utf8').digest('hex')
+// ★ Use a STABLE (recursively key-sorted) JSON serialization for the provenance
+// hash: Postgres jsonb does NOT preserve key order, so signing raw JSON.stringify
+// would not re-verify after a round-trip. stableStringify sorts keys so the hash
+// is identical before and after storage.
+const stableStringify = (v) =>
+  Array.isArray(v)
+    ? '[' + v.map(stableStringify).join(',') + ']'
+    : v && typeof v === 'object'
+      ? '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}'
+      : JSON.stringify(v)
+const provHash = createHash('sha256').update(stableStringify(provenance), 'utf8').digest('hex')
 const canonical = ['v1actor', SLUG, canonical_frontal_url, [...reference_urls].sort().join(','), provHash].join('|')
 const cryptobind_hash = createHash('sha256').update(canonical, 'utf8').digest('hex')
 const cryptobind_signature = createHmac('sha256', SECRET).update(canonical, 'utf8').digest('hex')
-const cryptobind_algo = 'HMAC-SHA256'
+const cryptobind_algo = 'HMAC-SHA256-v1actor-stable'
 
 const admin = createClient(URL, KEY, { auth: { persistSession: false } })
 
