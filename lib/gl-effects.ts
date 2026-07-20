@@ -57,6 +57,33 @@ void main() { vec3 b = texture(u_base, v_uv).rgb; vec3 g = texture(u_blur, v_uv)
 export const FRAG_COPY = `#version 300 es
 precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u; void main() { o = texture(u, v_uv); }`
 
+// Transition blend (crossfade + wipes) at progress p in [0,1]. Matches ffmpeg
+// xfade fade/wipeleft/wiperight/wipeup/wipedown (validated by transition-parity).
+export const FRAG_TRANSITION = `#version 300 es
+precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u_a, u_b; uniform float u_p; uniform int u_type;
+void main() {
+  vec3 a = texture(u_a, v_uv).rgb, b = texture(u_b, v_uv).rgb; vec3 c;
+  if (u_type == 0) c = mix(a, b, u_p);
+  else if (u_type == 1) c = v_uv.x > 1.0 - u_p ? b : a;      // wipe-left
+  else if (u_type == 2) c = v_uv.x < u_p ? b : a;            // wipe-right
+  else if (u_type == 3) c = v_uv.y > 1.0 - u_p ? b : a;      // wipe-up
+  else c = v_uv.y < u_p ? b : a;                             // wipe-down
+  o = vec4(c, 1.0);
+}`
+
+// transition id -> shader type int (E exposes only the parity-passed set).
+export const TRANSITION_TYPE: Record<string, number> = {
+  crossfade: 0, 'wipe-left': 1, 'wipe-right': 2, 'wipe-up': 3, 'wipe-down': 4,
+}
+
+// ★ Boundary timing: at progress p the OUTGOING clip must show endMs_out - t(1-p)
+// and the INCOMING clip startMs_in + t*p, so the preview's sampled frames line up
+// with the render's xfade (offset = out_duration - t). Times in SECONDS.
+export function transitionSample(p: number, tSec: number, outEndSec: number, inStartSec: number): { aTime: number; bTime: number } {
+  const cp = p < 0 ? 0 : p > 1 ? 1 : p
+  return { aTime: outEndSec - tSec * (1 - cp), bTime: inStartSec + tSec * cp }
+}
+
 // glow -> { sigma, opacity }. 0 = no glow. Per-seg then global are applied as two
 // screen-blend stages (matches render.ts B2c).
 export function glowStages(seg?: EffectParams, global?: EffectParams): { sigma: number; opacity: number }[] {
