@@ -8,7 +8,7 @@
 
 import type { PreviewEngine, PreviewClip, PreviewSegment, PreviewTransition } from './preview'
 import type { EffectParams } from '@/lib/effects'
-import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, glowStages, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
+import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, glowStages, grainAmount, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
 
 type TiledLut = { W: number; H: number; px: Uint8Array; N: number }
 
@@ -25,6 +25,7 @@ export class GLProcessor {
   private tex: WebGLTexture
   private lutTex: WebGLTexture
   private lutN = 0
+  private seed = 0
   private fbos: { fb: WebGLFramebuffer; tex: WebGLTexture }[] = []
   private fw = 0
   private fh = 0
@@ -115,6 +116,7 @@ export class GLProcessor {
     this.uf(this.progCL, 'u_exposure', u.exposure); this.uf(this.progCL, 'u_contrast', u.contrast); this.uf(this.progCL, 'u_saturation', u.saturation)
     this.uf(this.progCL, 'u_tempK', u.tempK); this.uf(this.progCL, 'u_tint', u.tint); this.uf(this.progCL, 'u_vignette', u.vignette)
     this.uf(this.progCL, 'u_hasLut', useLut ? 1 : 0); this.uf(this.progCL, 'u_N', this.lutN || 2)
+    this.uf(this.progCL, 'u_grain', grainAmount(seg, global)); this.uf(this.progCL, 'u_seed', (this.seed = (this.seed + 1) % 997))
     if (!stages.length) {
       this.bindTarget(targetIdx, w, h)
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
@@ -289,6 +291,10 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       if (!segments.length) return
       setPlaying(true); void playAt(0)
       cancelAnimationFrame(raf); raf = requestAnimationFrame(loop)
+    },
+    update(segments, clips, global, transitions) {
+      segs = segments; clipMap = clips; glob = global
+      trans = new Map((transitions ?? []).map((tr) => [tr.afterIndex, tr]))
     },
     pause() { setPlaying(false); video?.pause(); cancelAnimationFrame(raf) },
     showFrame(seg, clips, global) {

@@ -28,7 +28,7 @@ import type {
 } from './ComposeEditor'
 import { createRawPreview, type PreviewEngine, type PreviewTransition } from './preview'
 import { createGLPreview } from './preview-gl'
-import { hasAnyEffect, type EffectParams } from '@/lib/effects'
+import { hasAnyEffect, EXPOSED_SLIDERS, LUT_OPTIONS, EXPOSED_TRANSITIONS, type EffectParams } from '@/lib/effects'
 
 // effects/speed are populated by the effect UI (E); undefined in C (no effect UI
 // yet), which keeps the composition effect-free -> the raw preview stays accurate.
@@ -97,6 +97,18 @@ const DICT = {
     agree_integrity: '무결성 고지에 동의합니다',
     submit_err: (e: string) => `제출 실패: ${e}`,
     chars: '자',
+    fx_title: '효과',
+    fx_clip: '선택 클립',
+    fx_global: '전체 그레이드',
+    fx_no_clip: '타임라인에서 클립을 선택하면 효과를 조절할 수 있어요.',
+    fx_lut: 'LUT (룩)',
+    fx_speed: '속도',
+    fx_reset: '초기화',
+    fx_transitions: '전환',
+    fx_no_trans: '없음',
+    fx_between: (a: number, b: number) => `클립 ${a} → ${b}`,
+    approx_badge: '근사',
+    approx_note: '그레인 미리보기는 근사치입니다 — 최종본의 입자 패턴은 다릅니다(양은 동일).',
   },
   en: {
     shell: 'PRO editor',
@@ -156,6 +168,18 @@ const DICT = {
     agree_integrity: 'I agree to the integrity notice',
     submit_err: (e: string) => `Submission failed: ${e}`,
     chars: 'chars',
+    fx_title: 'Effects',
+    fx_clip: 'Selected clip',
+    fx_global: 'Whole timeline',
+    fx_no_clip: 'Select a clip in the timeline to adjust its effects.',
+    fx_lut: 'LUT (look)',
+    fx_speed: 'Speed',
+    fx_reset: 'Reset',
+    fx_transitions: 'Transitions',
+    fx_no_trans: 'None',
+    fx_between: (a: number, b: number) => `Clip ${a} → ${b}`,
+    approx_badge: 'approx',
+    approx_note: 'Grain preview is approximate — the final grain pattern differs (the amount matches).',
   },
 } as const
 
@@ -369,11 +393,47 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (!playing && selSeg) engineRef.current?.showFrame(selSeg, previewClips, globalFx)
   }, [sel, playing, selSeg, previewClips, globalFx])
 
+  // ---- effect UI (E): per-clip + global, neutral(0) default -----------------
+  const [fxTab, setFxTab] = useState<'clip' | 'global'>('clip')
+  const setSegFx = (uid: string, key: keyof EffectParams, val: number) =>
+    setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, effects: { ...x.effects, [key]: val } } : x)))
+  const setSegLut = (uid: string, lut: string) =>
+    setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, effects: { ...x.effects, lut } } : x)))
+  const setSegSpeed = (uid: string, speed: number) =>
+    setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, speed } : x)))
+  const setGlobalKey = (key: keyof EffectParams, val: number) => setGlobalFx((g) => ({ ...g, [key]: val }))
+  const setGlobalLut = (lut: string) => setGlobalFx((g) => ({ ...g, lut }))
+  const setBoundaryTransition = (afterIndex: number, type: string) =>
+    setTransitions((tr) => {
+      const rest = tr.filter((x) => x.afterIndex !== afterIndex)
+      return type ? [...rest, { afterIndex, type, durationMs: 500 }].sort((a, b) => a.afterIndex - b.afterIndex) : rest
+    })
+  // live-apply while a preview is playing so sliders update WYSIWYG immediately
+  // (update refs in place -- do NOT restart playback).
+  useEffect(() => {
+    if (playing) engineRef.current?.update?.(segments, previewClips, globalFx, transitions)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segments, globalFx, transitions])
+
   // ---- render + poll (reused) -----------------------------------------------
   const doRender = async () => {
     setErr(null); setBusy(true); setSubmitDone(false); setSubmitErr(null); setRenderId(null)
     setRenderState({ status: 'queued', videoUrl: null, totalSeconds: totalSec })
-    const edl = segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
+    // Send EDL v2 (effects/transitions/global) so the worker applies them and the
+    // composed final matches the WYSIWYG preview. No effects -> bare v1 array (keeps
+    // the edl1 hash + the existing effect-free render path).
+    const edl = compositionHasEffects
+      ? {
+          version: 2 as const,
+          segments: segments.map((s) => ({
+            jobId: s.jobId, startMs: s.startMs, endMs: s.endMs,
+            ...(s.speed !== undefined && Math.round(s.speed * 1000) !== 1000 ? { speed: s.speed } : {}),
+            ...(hasAnyEffect(s.effects) ? { effects: s.effects } : {}),
+          })),
+          ...(transitions.length ? { transitions: transitions.map((tr) => ({ afterIndex: tr.afterIndex, type: tr.type, durationMs: tr.durationMs })) } : {}),
+          ...(hasAnyEffect(globalFx) ? { global: globalFx } : {}),
+        }
+      : segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
     const res = await props.onRender(edl)
     if (!res.ok) { setErr(res.error); setRenderState(null); setBusy(false); return }
     setRenderId(res.renderId)
@@ -571,6 +631,90 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
         <p className="text-[12px] text-[#ff8888]">
           {tooMany ? t.clip_over(props.maxClips) : over ? t.over(props.maxSeconds) : t.under(props.minSeconds)}
         </p>
+      )}
+
+      {/* EFFECTS (E): per-clip + global, neutral(0)=off. Slider edits flow to the
+          GL WYSIWYG engine live. Only parity-passed effects are exposed. */}
+      {segments.length > 0 && (
+        <div className="rounded-xl border border-white/10 bg-[#08060f] p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <h3 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold">{t.fx_title}</h3>
+            <div className="ml-auto inline-flex rounded-lg border border-white/10 bg-white/[.02] p-0.5">
+              {([['clip', t.fx_clip], ['global', t.fx_global]] as const).map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setFxTab(id)}
+                  className={`rounded-md px-3 py-1 text-[11px] font-bold transition ${fxTab === id ? 'bg-[#8b22ff]/25 text-[#d9b8ff]' : 'text-white/45 hover:text-white/70'}`}>{label}</button>
+              ))}
+            </div>
+          </div>
+
+          {fxTab === 'clip' && !selSeg && <p className="py-4 text-center text-[11px] text-white/35">{t.fx_no_clip}</p>}
+
+          {(fxTab === 'global' || selSeg) && (() => {
+            const fx: EffectParams = (fxTab === 'clip' ? selSeg!.effects : globalFx) ?? {}
+            const setKey = (k: keyof EffectParams, v: number) => (fxTab === 'clip' ? setSegFx(selSeg!.uid, k, v) : setGlobalKey(k, v))
+            const setLut = (l: string) => (fxTab === 'clip' ? setSegLut(selSeg!.uid, l) : setGlobalLut(l))
+            const grainOn = (Number(fx.grain) || 0) > 0
+            return (
+              <div className="space-y-3">
+                {/* LUT */}
+                <label className="block">
+                  <span className="text-[11px] text-white/55">{t.fx_lut}</span>
+                  <select value={(fx.lut as string) || ''} onChange={(e) => setLut(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none">
+                    {LUT_OPTIONS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+                  </select>
+                </label>
+                {/* sliders */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  {EXPOSED_SLIDERS.map((spec) => {
+                    const val = Number(fx[spec.key]) || 0
+                    return (
+                      <label key={spec.key} className="block">
+                        <span className="flex items-center justify-between text-[11px] text-white/55">
+                          <span>{spec.label}{spec.parity === 'approximate' && <span className="ml-1 rounded bg-amber-400/20 px-1 py-0.5 text-[9px] font-bold text-amber-300">{t.approx_badge}</span>}</span>
+                          <span className="tabular-nums text-white/35">{val}</span>
+                        </span>
+                        <input type="range" min={spec.min} max={spec.max} value={val} onChange={(e) => setKey(spec.key, Number(e.target.value))} className="w-full accent-[#8b22ff]" />
+                      </label>
+                    )
+                  })}
+                  {/* per-clip speed */}
+                  {fxTab === 'clip' && (
+                    <label className="block">
+                      <span className="flex items-center justify-between text-[11px] text-white/55">
+                        <span>{t.fx_speed}</span><span className="tabular-nums text-white/35">{(selSeg!.speed ?? 1).toFixed(2)}x</span>
+                      </span>
+                      <input type="range" min={0.25} max={4} step={0.05} value={selSeg!.speed ?? 1} onChange={(e) => setSegSpeed(selSeg!.uid, Number(e.target.value))} className="w-full accent-[#8b22ff]" />
+                    </label>
+                  )}
+                </div>
+                {grainOn && <p className="text-[10px] text-amber-300/80">⚠ {t.approx_note}</p>}
+              </div>
+            )
+          })()}
+
+          {/* transitions between clips */}
+          {segments.length > 1 && (
+            <div className="mt-4 border-t border-white/8 pt-3">
+              <p className="mb-2 text-[11px] uppercase tracking-[0.15em] text-white/45">{t.fx_transitions}</p>
+              <div className="flex flex-wrap gap-2">
+                {segments.slice(0, -1).map((_, i) => {
+                  const cur = transitions.find((x) => x.afterIndex === i)
+                  return (
+                    <label key={i} className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[.02] px-2 py-1">
+                      <span className="text-[10px] text-white/45">{t.fx_between(i + 1, i + 2)}</span>
+                      <select value={cur?.type ?? ''} onChange={(e) => setBoundaryTransition(i, e.target.value)}
+                        className="rounded border border-white/10 bg-[#070610] px-1.5 py-0.5 text-[11px] text-white focus:border-[#8b22ff] focus:outline-none">
+                        <option value="">{t.fx_no_trans}</option>
+                        {EXPOSED_TRANSITIONS.map((tr) => <option key={tr.id} value={tr.id}>{tr.label}</option>)}
+                      </select>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* RENDER + SUBMIT (reused backend flow) */}

@@ -52,6 +52,22 @@ export const EFFECT_SPECS: readonly EffectSpec[] = [
   { key: 'motionBlur', label: 'Motion blur', min: 0, max: 100, parity: 'approximate' },
 ]
 
+// The effects E EXPOSES (parity-passed + engine-previewable). Order = UI order.
+// Excludes: sharpen/chromatic/lutIntensity/motionBlur (not previewable / deferred).
+export const EXPOSED_SLIDER_KEYS: readonly (keyof EffectParams)[] = [
+  'exposure', 'contrast', 'saturation', 'temperature', 'tint', 'vignette', 'glow', 'grain',
+]
+export const EXPOSED_SLIDERS: readonly EffectSpec[] = EFFECT_SPECS.filter((s) => EXPOSED_SLIDER_KEYS.includes(s.key))
+
+// The transitions E EXPOSES (parity-passed). crossfade + 4 wipes.
+export const EXPOSED_TRANSITIONS: readonly { id: string; label: string }[] = [
+  { id: 'crossfade', label: 'Crossfade' },
+  { id: 'wipe-left', label: 'Wipe left' },
+  { id: 'wipe-right', label: 'Wipe right' },
+  { id: 'wipe-up', label: 'Wipe up' },
+  { id: 'wipe-down', label: 'Wipe down' },
+]
+
 // Available in-platform LUTs (must match oxxovo-studio assets/luts + LUT_FILES).
 export const LUT_OPTIONS: readonly { id: string; label: string }[] = [
   { id: '', label: 'None' },

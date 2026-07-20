@@ -6,6 +6,7 @@
 // no transitions/effects (hard cut by design). Tone matches /studio (dark + purple).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ComposeEdl } from '@/lib/cryptobind'
 
 export type SourceClip = {
   id: string
@@ -69,7 +70,7 @@ export type ComposeEditorProps = {
   // identity is the account, shown as a notice and editable in /profile).
   nickname?: string
   onRender: (
-    edl: { jobId: string; startMs: number; endMs: number }[],
+    edl: ComposeEdl | { jobId: string; startMs: number; endMs: number }[],
   ) => Promise<{ ok: true; renderId: string } | { ok: false; error: string }>
   pollRender: (renderId: string) => Promise<EditorRenderStatus | null>
   // Submission step (optional -- the editor renders the submit UI only when both

@@ -20,8 +20,9 @@ precision highp float;
 in vec2 v_uv;
 out vec4 o;
 uniform sampler2D u_tex, u_lut;
-uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_vignette, u_hasLut, u_N;
+uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_vignette, u_hasLut, u_N, u_grain, u_seed;
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 vec3 lutSample(vec3 c) {
   float N = u_N; c = clamp(c, 0.0, 1.0);
   float bF = c.b * (N - 1.0); float b0 = floor(bF); float b1 = min(b0 + 1.0, N - 1.0); float f = bF - b0;
@@ -38,6 +39,9 @@ void main() {
   c.g += u_tint * (1.0 - abs(2.0 * dot(c, LUMA) - 1.0));
   if (u_hasLut > 0.5) c = lutSample(clamp(c, 0.0, 1.0));
   if (u_vignette > 0.0) { float d = distance(v_uv, vec2(0.5)); c *= 1.0 - u_vignette * smoothstep(0.35, 0.75, d); }
+  // Grain: APPROXIMATE preview only (a different random field than the ffmpeg
+  // render; amplitude tracks the slider so the amount matches). UI shows a badge.
+  if (u_grain > 0.0) { float n = hash(v_uv * 1024.0 + u_seed) - 0.5; c += n * u_grain * 0.006; }
   o = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`
 
@@ -96,6 +100,11 @@ export function glowStages(seg?: EffectParams, global?: EffectParams): { sigma: 
 }
 
 const iv = (v: number | undefined) => (typeof v === 'number' ? Math.round(v) : 0)
+
+// Grain amount for the shader (single u_grain). per-seg wins, else global.
+export function grainAmount(seg?: EffectParams, global?: EffectParams): number {
+  return iv(seg?.grain) || iv(global?.grain)
+}
 
 export type ColorUniforms = { exposure: number; contrast: number; saturation: number; tempK: number; tint: number; vignette: number }
 

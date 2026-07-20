@@ -33,6 +33,8 @@ export interface PreviewEngine {
   approximate(hasEffects: boolean): boolean
   mount(video: HTMLVideoElement): void
   play(segments: PreviewSegment[], clips: Map<string, PreviewClip>, global?: EffectParams, transitions?: PreviewTransition[]): void
+  // Update composition refs in place WITHOUT restarting playback (live slider edits).
+  update?(segments: PreviewSegment[], clips: Map<string, PreviewClip>, global?: EffectParams, transitions?: PreviewTransition[]): void
   pause(): void
   // paused single-segment preview (on select): show the segment's first frame.
   showFrame(seg: PreviewSegment, clips: Map<string, PreviewClip>, global?: EffectParams): void
@@ -83,6 +85,7 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
       setPlaying(true)
       void playAt(0)
     },
+    update(segments, clips) { segs = segments; clipMap = clips },
     pause() { setPlaying(false); video?.pause() },
     showFrame(seg, clips) {
       if (playing || !video) return

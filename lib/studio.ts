@@ -21,13 +21,14 @@ import {
   computeSourceBundle,
   CRYPTOBIND_ALGO,
   type EdlSegment,
+  type ComposeEdl,
 } from '@/lib/cryptobind'
 import { verifySourceClipCrypto } from '@/lib/studio-verify'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
 // server-only cryptobind module directly.
-export type { EdlSegment } from '@/lib/cryptobind'
+export type { EdlSegment, ComposeEdl } from '@/lib/cryptobind'
 import {
   getSeasonById,
   getActiveApplicationCount,
@@ -1247,11 +1248,14 @@ export type CreateRenderResult =
 export async function createRender(args: {
   userId: string
   seasonId: string
-  edl: EdlSegment[]
+  edl: EdlSegment[] | ComposeEdl
 }): Promise<CreateRenderResult> {
   const admin = createSupabaseAdmin()
-  const edl = Array.isArray(args.edl) ? args.edl : []
-  if (!edl.length) return { ok: false, reason: 'empty_edl' }
+  // EDL v2 (with effects/transitions/global) or a bare v1 array. Validation runs
+  // on the segments; the FULL edl is stored + signed so the worker applies the
+  // effects and the composed final matches the WYSIWYG preview.
+  const segments = Array.isArray(args.edl) ? args.edl : (args.edl.segments ?? [])
+  if (!segments.length) return { ok: false, reason: 'empty_edl' }
 
   // 1. Season compose config (caps are season-variable).
   const { data: seasonRow, error: sErr } = await admin
@@ -1265,11 +1269,11 @@ export async function createRender(args: {
   const minSeconds = Number(seasonRow.studio_compose_min_seconds ?? 0)
   const maxSeconds = Number(seasonRow.studio_compose_max_seconds ?? 30)
 
-  if (edl.length > maxClips) return { ok: false, reason: 'too_many_clips' }
+  if (segments.length > maxClips) return { ok: false, reason: 'too_many_clips' }
 
   // 2. Segment shape + total duration <= compose cap.
   let totalMs = 0
-  for (const seg of edl) {
+  for (const seg of segments) {
     if (
       !seg ||
       typeof seg.jobId !== 'string' ||
@@ -1287,7 +1291,7 @@ export async function createRender(args: {
 
   // 3. Load distinct sources; each must be the participant's own, same-season,
   //    ready clip with a valid CryptoBind, and each trim must fit the clip.
-  const ids = [...new Set(edl.map((s) => s.jobId))]
+  const ids = [...new Set(segments.map((s) => s.jobId))]
   const { data: sources, error: srcErr } = await admin
     .from('generation_jobs')
     .select(
@@ -1317,7 +1321,7 @@ export async function createRender(args: {
     if (!sv.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${sv.detail}` }
   }
   // trim must lie within each clip's duration (a small +1ms tolerance for rounding).
-  for (const seg of edl) {
+  for (const seg of segments) {
     const row = byId.get(seg.jobId)!
     const durMs = Number(row.duration_seconds) * 1000
     if (seg.endMs > durMs + 1) {
@@ -1334,7 +1338,7 @@ export async function createRender(args: {
     pid: args.userId,
     tid: args.seasonId,
     renderId,
-    edl,
+    edl: args.edl,
     sourceSignatures,
   })
 
@@ -1343,7 +1347,7 @@ export async function createRender(args: {
     user_id: args.userId,
     season_id: args.seasonId,
     status: 'queued',
-    edl,
+    edl: args.edl,
     source_job_ids: ids,
     total_duration_seconds: totalMs / 1000,
     cryptobind_pid: args.userId,
@@ -1568,7 +1572,7 @@ export async function submitRender(args: {
       cryptobind_render_signature: String(render.cryptobind_render_signature),
       cryptobind_final_hash: render.cryptobind_final_hash as string | null,
       cryptobind_final_signature: render.cryptobind_final_signature as string | null,
-      edl: (render.edl as EdlSegment[]) ?? [],
+      edl: (render.edl as EdlSegment[] | ComposeEdl) ?? [],
     },
     args.seasonId,
     sourceSignatures,

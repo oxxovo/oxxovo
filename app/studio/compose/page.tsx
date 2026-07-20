@@ -2,7 +2,7 @@
 
 // Real compose editor route. Behind the /studio layout gate (session6). Loads
 // the participant's ready clips + compose caps, wires the editor to the real
-// createRender / pollRender server actions. Demo lives at /compose-demo.
+// createRender / pollRender server actions.
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -100,7 +100,7 @@ export default function ComposePage() {
             submitCtx={data.submit}
             resumeRender={data.resumeRender}
             nickname={data.nickname}
-            onRender={(edl: EdlSegment[]) => createRenderAction(token, edl)}
+            onRender={(edl) => createRenderAction(token, edl)}
             pollRender={(renderId: string) => pollRenderAction(token, renderId)}
             onSubmit={(renderId: string, applicant?: ComposeApplicant) =>
               submitRenderAction(token, renderId, applicant)

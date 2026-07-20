@@ -37,6 +37,7 @@ import {
   type StudioJob,
   type ApplicantInfo,
   type EdlSegment,
+  type ComposeEdl,
   type EffectiveRound,
 } from '@/lib/studio'
 import { getBalance, getStudioPricing, getStudioPurchaseConfig } from '@/lib/credits'
@@ -599,7 +600,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
 
 export type CreateRenderActionResult = { ok: true; renderId: string } | { ok: false; error: string }
 
-export async function createRenderAction(token: string, edl: EdlSegment[]): Promise<CreateRenderActionResult> {
+export async function createRenderAction(token: string, edl: EdlSegment[] | ComposeEdl): Promise<CreateRenderActionResult> {
   if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
   const auth = await verifyToken(token)
   if (!auth) return { ok: false, error: 'invalid_token' }
