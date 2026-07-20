@@ -156,20 +156,104 @@ export function verifyCryptoBind(
 
 const COMPOSE_REQUEST_VERSION = 'v1sr'
 const COMPOSE_CONTENT_VERSION = 'v1sc'
-const EDL_VERSION = 'edl1'
+const EDL_VERSION_V1 = 'edl1'
+const EDL_VERSION_V2 = 'edl2'
 
 export type EdlSegment = { jobId: string; startMs: number; endMs: number }
 
-// Canonical EDL string. Order IS the sequence; startMs/endMs encode trim + cut.
-export function edlCanonicalString(edl: EdlSegment[]): string {
-  return [EDL_VERSION, ...edl.map((s) => `${s.jobId}:${s.startMs}:${s.endMs}`)].join('|')
+// ---------------------------------------------------------------------------
+// EDL v2 -- adds in-platform effects to the composition (Genesis Rule redefined:
+// grade / LUT / transitions / stylize are creator skill, all in-platform). The
+// signed canonical string covers EVERY effect param, so the render must match the
+// request byte-for-byte (determinism = same EDL -> same render -> same signature).
+// v1 (bare {jobId,startMs,endMs}[]) stays valid; v2 is the {version,segments,
+// transitions,global} object. Both repos mirror THIS serialization exactly (KAT).
+// ---------------------------------------------------------------------------
+
+// Effect params. Integer sliders (neutral = 0, so 0/absent are the SAME canonical
+// -- never signature-visible). `lut` is an enum id (''/absent = none). Extend by
+// APPENDING to EFFECT_KEYS (never reorder -- order is part of the signature).
+export type EffectParams = {
+  exposure?: number
+  contrast?: number
+  saturation?: number
+  temperature?: number
+  tint?: number
+  lut?: string
+  lutIntensity?: number
+  grain?: number
+  vignette?: number
+  glow?: number
+  motionBlur?: number
+  sharpen?: number
+  chromatic?: number
+}
+
+// Fixed order -- part of the canonical signature. APPEND-ONLY.
+const EFFECT_KEYS: readonly (keyof EffectParams)[] = [
+  'exposure', 'contrast', 'saturation', 'temperature', 'tint',
+  'lut', 'lutIntensity', 'grain', 'vignette', 'glow', 'motionBlur', 'sharpen', 'chromatic',
+]
+
+export type SegmentEffect = EdlSegment & { speed?: number; effects?: EffectParams }
+export type Transition = { afterIndex: number; type: string; durationMs: number }
+export type ComposeEdl = {
+  version: 2
+  segments: SegmentEffect[]
+  transitions?: Transition[]
+  global?: EffectParams
+}
+
+// Canonical, minimal effect string: only non-neutral params, in EFFECT_KEYS order.
+// Numbers are rounded to integers (slider grid) so preview/store/render never drift
+// a float and break the signature.
+function effectsCanonical(e?: EffectParams): string {
+  if (!e) return ''
+  const parts: string[] = []
+  for (const k of EFFECT_KEYS) {
+    const v = e[k]
+    if (v === undefined || v === null || v === '') continue
+    if (typeof v === 'number') {
+      const r = Math.round(v)
+      if (r === 0) continue // neutral == absent
+      parts.push(`${k}=${r}`)
+    } else {
+      parts.push(`${k}=${v}`)
+    }
+  }
+  return parts.join(',')
+}
+
+function segCanonical(s: SegmentEffect): string {
+  let out = `${s.jobId}:${s.startMs}:${s.endMs}`
+  if (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000) out += `;spd=${Math.round(s.speed * 1000)}`
+  const fx = effectsCanonical(s.effects)
+  if (fx) out += `;fx=${fx}`
+  return out
+}
+
+function edlCanonicalStringV2(edl: ComposeEdl): string {
+  const segs = edl.segments.map(segCanonical).join('|')
+  const trans = (edl.transitions ?? [])
+    .slice()
+    .sort((a, b) => a.afterIndex - b.afterIndex || a.type.localeCompare(b.type))
+    .map((tr) => `${tr.type}@${tr.afterIndex}:${Math.round(tr.durationMs)}`)
+    .join('|')
+  return [EDL_VERSION_V2, segs, `T:${trans}`, `G:${effectsCanonical(edl.global)}`].join('||')
+}
+
+// Canonical EDL string. Order IS the sequence; startMs/endMs encode trim + cut;
+// v2 additionally encodes per-segment speed + effects, transitions, global grade.
+export function edlCanonicalString(edl: EdlSegment[] | ComposeEdl): string {
+  if (Array.isArray(edl)) return [EDL_VERSION_V1, ...edl.map((s) => `${s.jobId}:${s.startMs}:${s.endMs}`)].join('|')
+  return edlCanonicalStringV2(edl)
 }
 
 function sha256Hex(payload: string): string {
   return createHash('sha256').update(payload, 'utf8').digest('hex')
 }
 
-export function computeEdlHash(edl: EdlSegment[]): string {
+export function computeEdlHash(edl: EdlSegment[] | ComposeEdl): string {
   return sha256Hex(edlCanonicalString(edl))
 }
 
@@ -204,7 +288,7 @@ export function buildComposeRequestBind(i: {
   pid: string
   tid: string
   renderId: string
-  edl: EdlSegment[]
+  edl: EdlSegment[] | ComposeEdl
   sourceSignatures: string[]
 }): ComposeRequestFields {
   const edlHash = computeEdlHash(i.edl)
@@ -254,7 +338,7 @@ export function verifyComposeBind(
     cryptobind_render_signature: string
     cryptobind_final_hash?: string | null
     cryptobind_final_signature?: string | null
-    edl: EdlSegment[]
+    edl: EdlSegment[] | ComposeEdl
   },
   expectedTid: string,
   sourceSignatures: string[],
