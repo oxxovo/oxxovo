@@ -8,7 +8,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAdminLang, setAdminLang } from '@/lib/admin-i18n'
 import { useLocalToken } from '@/lib/use-local-user'
-import ComposeEditor, { type ComposeApplicant, type ComposeSubmitCtx } from './ComposeEditor'
+import ProComposeEditor from './ProComposeEditor'
+import { type ComposeApplicant, type ComposeSubmitCtx } from './ComposeEditor'
 import {
   loadComposeState,
   createRenderAction,
@@ -89,7 +90,7 @@ export default function ComposePage() {
         ) : err || !data ? (
           <p className="px-6 py-24 text-center text-[#ff8888]">{err ?? 'load failed'}</p>
         ) : (
-          <ComposeEditor
+          <ProComposeEditor
             lang={lang}
             seasonId={data.seasonId}
             clips={data.clips}
