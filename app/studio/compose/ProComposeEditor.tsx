@@ -27,8 +27,12 @@ import type {
   ComposeEditorProps,
 } from './ComposeEditor'
 import { createRawPreview, type PreviewEngine } from './preview'
+import { createGLPreview } from './preview-gl'
+import { hasAnyEffect, type EffectParams } from '@/lib/effects'
 
-type Segment = { uid: string; jobId: string; startMs: number; endMs: number }
+// effects/speed are populated by the effect UI (E); undefined in C (no effect UI
+// yet), which keeps the composition effect-free -> the raw preview stays accurate.
+type Segment = { uid: string; jobId: string; startMs: number; endMs: number; speed?: number; effects?: EffectParams }
 
 let uidSeq = 0
 const nextUid = () => `pseg_${++uidSeq}`
@@ -329,31 +333,38 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const endRow = Math.min(poolRows, Math.ceil((poolScroll + poolH) / POOL_ROW_H) + POOL_OVERSCAN)
   const visiblePool = pool.slice(startRow * POOL_COLS, endRow * POOL_COLS)
 
-  // ---- preview (PLUGGABLE engine) -------------------------------------------
-  // C ships the raw engine (sequential playback, no effects). D swaps in the GL
-  // WYSIWYG engine here with zero editor changes -- the editor only speaks the
-  // PreviewEngine interface. Effects are not user-settable in C, so raw is
-  // accurate; once effects exist the engine's `approximate` flag drives an honest
-  // "final is produced on render" note rather than faking the graded result.
+  // ---- preview (PLUGGABLE engine: GL when effects are set, else raw) ---------
+  // TK contract: "effects on -> GL, effects off -> raw." The composition carries
+  // NO effects in C (no effect UI), so raw is used + accurate. When E sets any
+  // effect, `compositionHasEffects` flips and the WYSIWYG GL engine takes over.
+  // GL renders the render's authoritative filter math (render is the source of
+  // truth; the preview follows). Falls back to raw if WebGL is unavailable.
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(false)
+  const [globalFx, setGlobalFx] = useState<EffectParams>({}) // whole-timeline grade (E)
   const engineRef = useRef<PreviewEngine | null>(null)
   const previewClips = useMemo(
     () => new Map(props.clips.map((c) => [c.id, { id: c.id, url: c.url }])),
     [props.clips],
   )
+  const webglOk = useMemo(() => {
+    if (typeof document === 'undefined') return false
+    try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')) } catch { return false }
+  }, [])
+  const compositionHasEffects = hasAnyEffect(globalFx) || segments.some((s) => hasAnyEffect(s.effects) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
+  const useGL = webglOk && compositionHasEffects
   useEffect(() => {
-    const engine = createRawPreview({ onPlayingChange: setPlaying })
+    const engine = useGL ? createGLPreview({ onPlayingChange: setPlaying }) : createRawPreview({ onPlayingChange: setPlaying })
     engineRef.current = engine
     if (videoRef.current) engine.mount(videoRef.current)
     return () => engine.destroy()
-  }, [])
-  const startPreview = () => { if (!segments.length) return; setSel(null); engineRef.current?.play(segments, previewClips) }
+  }, [useGL])
+  const startPreview = () => { if (!segments.length) return; setSel(null); engineRef.current?.play(segments, previewClips, globalFx) }
   const stopPreview = () => engineRef.current?.pause()
   const selSeg = segments.find((s) => s.uid === sel) ?? null
   useEffect(() => {
-    if (!playing && selSeg) engineRef.current?.showFrame(selSeg, previewClips)
-  }, [sel, playing, selSeg, previewClips])
+    if (!playing && selSeg) engineRef.current?.showFrame(selSeg, previewClips, globalFx)
+  }, [sel, playing, selSeg, previewClips, globalFx])
 
   // ---- render + poll (reused) -----------------------------------------------
   const doRender = async () => {

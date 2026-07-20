@@ -141,6 +141,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
   let video: HTMLVideoElement | null = null
   let canvas: HTMLCanvasElement | null = null
   let proc: GLProcessor | null = null
+  let savedVideoStyle = ''
   let raf = 0
   let segs: PreviewSegment[] = []
   let clipMap: Map<string, PreviewClip> = new Map()
@@ -176,11 +177,18 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     approximate: () => false, // aims to reproduce the render (verified by harness)
     mount(v) {
       video = v
-      // A canvas overlay shows the processed frames; the video stays as the
-      // texture + audio source (visually hidden by the caller when GL is active).
+      // Canvas shows the processed frames; the <video> stays as the texture +
+      // audio source but is hidden off-screen (NOT display:none, so it keeps
+      // decoding frames for texImage2D). Restored on destroy.
       canvas = document.createElement('canvas')
       canvas.className = 'oxxovo-gl-preview max-h-full w-full max-w-2xl rounded-xl'
       v.parentElement?.insertBefore(canvas, v)
+      savedVideoStyle = v.getAttribute('style') ?? ''
+      v.style.position = 'absolute'
+      v.style.width = '1px'
+      v.style.height = '1px'
+      v.style.opacity = '0'
+      v.style.pointerEvents = 'none'
       proc = new GLProcessor(canvas)
       v.addEventListener('timeupdate', onTimeUpdate)
       v.addEventListener('ended', () => setPlaying(false))
@@ -206,6 +214,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       cancelAnimationFrame(raf)
       video?.removeEventListener('timeupdate', onTimeUpdate)
       video?.pause()
+      if (video) video.setAttribute('style', savedVideoStyle) // restore visibility
       canvas?.remove()
       video = null; canvas = null; proc = null
     },
