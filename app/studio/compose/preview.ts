@@ -25,13 +25,14 @@ export type PreviewSegment = {
   speed?: number
   effects?: EffectParams
 }
+export type PreviewTransition = { afterIndex: number; type: string; durationMs: number }
 
 export interface PreviewEngine {
   readonly kind: 'raw' | 'gl'
   // true if this engine does NOT reproduce the exact final (e.g. effects unshown).
   approximate(hasEffects: boolean): boolean
   mount(video: HTMLVideoElement): void
-  play(segments: PreviewSegment[], clips: Map<string, PreviewClip>, global?: EffectParams): void
+  play(segments: PreviewSegment[], clips: Map<string, PreviewClip>, global?: EffectParams, transitions?: PreviewTransition[]): void
   pause(): void
   // paused single-segment preview (on select): show the segment's first frame.
   showFrame(seg: PreviewSegment, clips: Map<string, PreviewClip>, global?: EffectParams): void

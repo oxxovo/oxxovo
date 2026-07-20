@@ -26,7 +26,7 @@ import type {
   EditorRenderStatus,
   ComposeEditorProps,
 } from './ComposeEditor'
-import { createRawPreview, type PreviewEngine } from './preview'
+import { createRawPreview, type PreviewEngine, type PreviewTransition } from './preview'
 import { createGLPreview } from './preview-gl'
 import { hasAnyEffect, type EffectParams } from '@/lib/effects'
 
@@ -342,6 +342,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [globalFx, setGlobalFx] = useState<EffectParams>({}) // whole-timeline grade (E)
+  const [transitions, setTransitions] = useState<PreviewTransition[]>([]) // clip-boundary transitions (E)
   const engineRef = useRef<PreviewEngine | null>(null)
   const previewClips = useMemo(
     () => new Map(props.clips.map((c) => [c.id, { id: c.id, url: c.url }])),
@@ -353,7 +354,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (typeof document === 'undefined') return false
     try { return !!document.createElement('canvas').getContext('webgl2') } catch { return false }
   }, [])
-  const compositionHasEffects = hasAnyEffect(globalFx) || segments.some((s) => hasAnyEffect(s.effects) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
+  const compositionHasEffects = hasAnyEffect(globalFx) || transitions.length > 0 || segments.some((s) => hasAnyEffect(s.effects) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
   const useGL = webglOk && compositionHasEffects
   useEffect(() => {
     const engine = useGL ? createGLPreview({ onPlayingChange: setPlaying }) : createRawPreview({ onPlayingChange: setPlaying })
@@ -361,7 +362,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (videoRef.current) engine.mount(videoRef.current)
     return () => engine.destroy()
   }, [useGL])
-  const startPreview = () => { if (!segments.length) return; setSel(null); engineRef.current?.play(segments, previewClips, globalFx) }
+  const startPreview = () => { if (!segments.length) return; setSel(null); engineRef.current?.play(segments, previewClips, globalFx, transitions) }
   const stopPreview = () => engineRef.current?.pause()
   const selSeg = segments.find((s) => s.uid === sel) ?? null
   useEffect(() => {
