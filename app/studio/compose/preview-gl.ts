@@ -8,84 +8,127 @@
 
 import type { PreviewEngine, PreviewClip, PreviewSegment } from './preview'
 import type { EffectParams } from '@/lib/effects'
-import { VERT, FRAG_COLOR_LUT, colorUniforms, activeLut, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
-
-function compile(gl: WebGLRenderingContext, type: number, src: string): WebGLShader {
-  const s = gl.createShader(type)!
-  gl.shaderSource(s, src)
-  gl.compileShader(s)
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('shader: ' + gl.getShaderInfoLog(s))
-  return s
-}
+import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, colorUniforms, activeLut, glowStages, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
 
 type TiledLut = { W: number; H: number; px: Uint8Array; N: number }
 
+// WebGL2 multipass: color+LUT -> FBO base; then, per glow stage, separable
+// gaussian + screen-blend (ping-pong FBOs); finally copy to the canvas. No glow
+// = color+LUT drawn straight to the canvas (fast path).
 export class GLProcessor {
-  private gl: WebGLRenderingContext
-  private loc: Record<string, WebGLUniformLocation | null> = {}
+  private gl: WebGL2RenderingContext
+  private progCL: WebGLProgram
+  private progBlur: WebGLProgram
+  private progScreen: WebGLProgram
+  private progCopy: WebGLProgram
   private tex: WebGLTexture
   private lutTex: WebGLTexture
   private lutN = 0
+  private fbos: { fb: WebGLFramebuffer; tex: WebGLTexture }[] = []
+  private fw = 0
+  private fh = 0
   constructor(public canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext('webgl', { premultipliedAlpha: false })
-    if (!gl) throw new Error('webgl unavailable')
+    const gl = canvas.getContext('webgl2', { premultipliedAlpha: false })
+    if (!gl) throw new Error('webgl2 unavailable')
     this.gl = gl
-    const p = gl.createProgram()!
-    gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, VERT))
-    gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, FRAG_COLOR_LUT))
-    gl.linkProgram(p)
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('link: ' + gl.getProgramInfoLog(p))
-    gl.useProgram(p)
-    const buf = gl.createBuffer()
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+    const compile = (type: number, src: string) => {
+      const s = gl.createShader(type)!; gl.shaderSource(s, src); gl.compileShader(s)
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('shader: ' + gl.getShaderInfoLog(s))
+      return s
+    }
+    const prog = (fs: string) => {
+      const p = gl.createProgram()!; gl.attachShader(p, compile(gl.VERTEX_SHADER, VERT)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p)
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('link: ' + gl.getProgramInfoLog(p))
+      return p
+    }
+    this.progCL = prog(FRAG_COLOR_LUT); this.progBlur = prog(FRAG_BLUR); this.progScreen = prog(FRAG_SCREEN); this.progCopy = prog(FRAG_COPY)
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf)
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
-    const a = gl.getAttribLocation(p, 'a_pos')
-    gl.enableVertexAttribArray(a)
-    gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0)
+    for (const p of [this.progCL, this.progBlur, this.progScreen, this.progCopy]) {
+      gl.useProgram(p); const a = gl.getAttribLocation(p, 'a_pos'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0)
+    }
     const mkTex = () => {
-      const t = gl.createTexture()!
-      gl.bindTexture(gl.TEXTURE_2D, t)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      const t = gl.createTexture()!; gl.bindTexture(gl.TEXTURE_2D, t)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
       return t
     }
-    gl.activeTexture(gl.TEXTURE0); this.tex = mkTex()
-    gl.activeTexture(gl.TEXTURE1); this.lutTex = mkTex()
-    for (const u of ['u_exposure', 'u_contrast', 'u_saturation', 'u_tempK', 'u_tint', 'u_vignette', 'u_hasLut', 'u_N', 'u_tex', 'u_lut']) {
-      this.loc[u] = gl.getUniformLocation(p, u)
+    this.tex = mkTex(); this.lutTex = mkTex()
+  }
+  private ensureFbos(w: number, h: number): void {
+    if (this.fw === w && this.fh === h && this.fbos.length) return
+    const gl = this.gl
+    for (const f of this.fbos) { gl.deleteFramebuffer(f.fb); gl.deleteTexture(f.tex) }
+    this.fbos = []
+    for (let i = 0; i < 4; i++) {
+      const t = gl.createTexture()!; gl.bindTexture(gl.TEXTURE_2D, t)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      const fb = gl.createFramebuffer()!; gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0)
+      this.fbos.push({ fb, tex: t })
     }
-    gl.uniform1i(this.loc.u_tex, 0)
-    gl.uniform1i(this.loc.u_lut, 1)
+    this.fw = w; this.fh = h
   }
   setLut(l: TiledLut | null): void {
     const gl = this.gl
     if (!l) { this.lutN = 0; return }
     this.lutN = l.N
-    gl.activeTexture(gl.TEXTURE1)
     gl.bindTexture(gl.TEXTURE_2D, this.lutTex)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, l.W, l.H, 0, gl.RGBA, gl.UNSIGNED_BYTE, l.px)
   }
-  // Draw source with color grade + (if a LUT is loaded) LUT into the canvas.
+  private uf(p: WebGLProgram, name: string, v: number) { this.gl.uniform1f(this.gl.getUniformLocation(p, name), v) }
   render(source: TexImageSource, w: number, h: number, seg?: EffectParams, global?: EffectParams, lutLoaded = false): void {
     const gl = this.gl
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h }
-    gl.viewport(0, 0, w, h)
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, this.tex)
+    // upload source
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
-    const u = colorUniforms(seg, global)
-    gl.uniform1f(this.loc.u_exposure, u.exposure)
-    gl.uniform1f(this.loc.u_contrast, u.contrast)
-    gl.uniform1f(this.loc.u_saturation, u.saturation)
-    gl.uniform1f(this.loc.u_tempK, u.tempK)
-    gl.uniform1f(this.loc.u_tint, u.tint)
-    gl.uniform1f(this.loc.u_vignette, u.vignette)
+    const stages = glowStages(seg, global)
     const useLut = lutLoaded && this.lutN > 0 && !!activeLut(seg, global)
-    gl.uniform1f(this.loc.u_hasLut, useLut ? 1 : 0)
-    gl.uniform1f(this.loc.u_N, this.lutN || 2)
+    const u = colorUniforms(seg, global)
+    // pass 1: color + LUT
+    gl.useProgram(this.progCL)
+    gl.uniform1i(gl.getUniformLocation(this.progCL, 'u_tex'), 0); gl.uniform1i(gl.getUniformLocation(this.progCL, 'u_lut'), 1)
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.lutTex)
+    this.uf(this.progCL, 'u_exposure', u.exposure); this.uf(this.progCL, 'u_contrast', u.contrast); this.uf(this.progCL, 'u_saturation', u.saturation)
+    this.uf(this.progCL, 'u_tempK', u.tempK); this.uf(this.progCL, 'u_tint', u.tint); this.uf(this.progCL, 'u_vignette', u.vignette)
+    this.uf(this.progCL, 'u_hasLut', useLut ? 1 : 0); this.uf(this.progCL, 'u_N', this.lutN || 2)
+    if (!stages.length) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h)
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+      return
+    }
+    this.ensureFbos(w, h)
+    let base = 0, blurA = 1, blurB = 2, out = 3
+    const drawTo = (fbIdx: number) => { gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbos[fbIdx].fb); gl.viewport(0, 0, w, h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4) }
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
+    drawTo(base)
+    // glow stages (per-seg then global): separable blur -> screen blend
+    for (const st of stages) {
+      // H blur base -> blurA
+      gl.useProgram(this.progBlur); gl.uniform1i(gl.getUniformLocation(this.progBlur, 'u'), 0)
+      this.uf(this.progBlur, 'u_sigma', st.sigma); gl.uniform2f(gl.getUniformLocation(this.progBlur, 'u_texel'), 1 / w, 1 / h)
+      gl.uniform2f(gl.getUniformLocation(this.progBlur, 'u_dir'), 1, 0)
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[base].tex); drawTo(blurA)
+      // V blur blurA -> blurB
+      gl.uniform2f(gl.getUniformLocation(this.progBlur, 'u_dir'), 0, 1)
+      gl.bindTexture(gl.TEXTURE_2D, this.fbos[blurA].tex); drawTo(blurB)
+      // screen(base, blurB, op) -> out
+      gl.useProgram(this.progScreen)
+      gl.uniform1i(gl.getUniformLocation(this.progScreen, 'u_base'), 0); gl.uniform1i(gl.getUniformLocation(this.progScreen, 'u_blur'), 1)
+      this.uf(this.progScreen, 'u_op', st.opacity)
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[base].tex)
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.fbos[blurB].tex)
+      drawTo(out)
+      ;[base, out] = [out, base] // ping-pong: result becomes the new base
+    }
+    // final copy base -> canvas
+    gl.useProgram(this.progCopy); gl.uniform1i(gl.getUniformLocation(this.progCopy, 'u'), 0)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h)
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[base].tex)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   }
 }

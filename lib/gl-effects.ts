@@ -6,16 +6,19 @@
 // eq(exposure/contrast/saturation) -> temperature -> tint -> LUT -> vignette.
 import type { EffectParams } from './effects'
 
-export const VERT = `
-attribute vec2 a_pos;
-varying vec2 v_uv;
+// WebGL2 / GLSL ES 3.00 (glow needs FBO multipass + a dynamic-loop gaussian, so
+// the whole engine is WebGL2). All programs share this vertex shader.
+export const VERT = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
 void main() { v_uv = vec2((a_pos.x + 1.0) * 0.5, (1.0 - a_pos.y) * 0.5); gl_Position = vec4(a_pos, 0.0, 1.0); }`
 
 // Color grade + optional LUT + vignette (render order). LUT is a 2D-tiled cube
 // (size N tiles laid horizontally), trilinear-sampled on blue.
-export const FRAG_COLOR_LUT = `
+export const FRAG_COLOR_LUT = `#version 300 es
 precision highp float;
-varying vec2 v_uv;
+in vec2 v_uv;
+out vec4 o;
 uniform sampler2D u_tex, u_lut;
 uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_vignette, u_hasLut, u_N;
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
@@ -25,18 +28,45 @@ vec3 lutSample(vec3 c) {
   float rx = c.r * (N - 1.0) + 0.5; float gy = c.g * (N - 1.0) + 0.5;
   vec2 t0 = vec2((b0 * N + rx) / (N * N), gy / N);
   vec2 t1 = vec2((b1 * N + rx) / (N * N), gy / N);
-  return mix(texture2D(u_lut, t0).rgb, texture2D(u_lut, t1).rgb, f);
+  return mix(texture(u_lut, t0).rgb, texture(u_lut, t1).rgb, f);
 }
 void main() {
-  vec3 c = texture2D(u_tex, v_uv).rgb;
+  vec3 c = texture(u_tex, v_uv).rgb;
   c = (c - 0.5) * u_contrast + 0.5 + u_exposure;
   float y = dot(c, LUMA); c = mix(vec3(y), c, u_saturation);
   float k = u_tempK / 3000.0; c.r -= k * 0.05; c.b += k * 0.05;
   c.g += u_tint * (1.0 - abs(2.0 * dot(c, LUMA) - 1.0));
   if (u_hasLut > 0.5) c = lutSample(clamp(c, 0.0, 1.0));
   if (u_vignette > 0.0) { float d = distance(v_uv, vec2(0.5)); c *= 1.0 - u_vignette * smoothstep(0.35, 0.75, d); }
-  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+  o = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`
+
+// Glow: separable gaussian (matches ffmpeg gblur=sigma=glow/8) then screen-blend
+// at opacity glow/100 (B2c). Direction u_dir = (1,0) then (0,1).
+export const FRAG_BLUR = `#version 300 es
+precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u; uniform vec2 u_dir, u_texel; uniform float u_sigma;
+void main() { float s = max(u_sigma, 0.001); int r = int(min(ceil(3.0 * s), 60.0)); float wsum = 0.0; vec3 acc = vec3(0.0);
+  for (int i = -60; i <= 60; i++) { if (i < -r || i > r) continue; float w = exp(-float(i * i) / (2.0 * s * s)); acc += texture(u, v_uv + u_dir * u_texel * float(i)).rgb * w; wsum += w; }
+  o = vec4(acc / wsum, 1.0); }`
+
+export const FRAG_SCREEN = `#version 300 es
+precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u_base, u_blur; uniform float u_op;
+void main() { vec3 b = texture(u_base, v_uv).rgb; vec3 g = texture(u_blur, v_uv).rgb; vec3 sc = 1.0 - (1.0 - b) * (1.0 - g); o = vec4(mix(b, sc, u_op), 1.0); }`
+
+// Passthrough (FBO -> canvas final copy).
+export const FRAG_COPY = `#version 300 es
+precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u; void main() { o = texture(u, v_uv); }`
+
+// glow -> { sigma, opacity }. 0 = no glow. Per-seg then global are applied as two
+// screen-blend stages (matches render.ts B2c).
+export function glowStages(seg?: EffectParams, global?: EffectParams): { sigma: number; opacity: number }[] {
+  const out: { sigma: number; opacity: number }[] = []
+  for (const e of [seg, global]) {
+    const g = iv(e?.glow)
+    if (g > 0) out.push({ sigma: g / 8, opacity: g / 100 })
+  }
+  return out
+}
 
 const iv = (v: number | undefined) => (typeof v === 'number' ? Math.round(v) : 0)
 

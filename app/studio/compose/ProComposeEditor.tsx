@@ -348,8 +348,10 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     [props.clips],
   )
   const webglOk = useMemo(() => {
+    // The GL engine is WebGL2 (glow needs FBO multipass + a dynamic-loop gaussian);
+    // no WebGL2 -> fall back to the raw preview.
     if (typeof document === 'undefined') return false
-    try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')) } catch { return false }
+    try { return !!document.createElement('canvas').getContext('webgl2') } catch { return false }
   }, [])
   const compositionHasEffects = hasAnyEffect(globalFx) || segments.some((s) => hasAnyEffect(s.effects) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
   const useGL = webglOk && compositionHasEffects
