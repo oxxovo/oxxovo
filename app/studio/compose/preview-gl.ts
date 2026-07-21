@@ -180,13 +180,31 @@ function makeLutLoader() {
   }
 }
 
-export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => void } = {}): PreviewEngine {
+export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => void; onDegrade?: (reason: string) => void } = {}): PreviewEngine {
   let video: HTMLVideoElement | null = null
   let videoB: HTMLVideoElement | null = null // incoming clip, only during a transition
   let canvas: HTMLCanvasElement | null = null
   let proc: GLProcessor | null = null
   let savedVideoStyle = ''
   let raf = 0
+  // ★ BLACK-SCREEN GUARD. The clips are cross-origin (R2). Uploading a
+  // cross-origin <video> to a texture throws SecurityError unless the bucket
+  // sends Access-Control-Allow-Origin AND the element carries crossOrigin --
+  // and the throw used to escape drawFrame, killing the rAF loop and leaving an
+  // undrawn (transparent -> black) canvas over bg-black with no recovery.
+  // Now ANY GL failure sets `dead` and reports up: the editor drops back to the
+  // raw engine, the <video> is unhidden, and the user sees the ORIGINAL footage
+  // with an honest "preview approximate" note. A black preview is never shown.
+  let dead = false
+  const degrade = (reason: string) => {
+    if (dead) return
+    dead = true
+    cancelAnimationFrame(raf)
+    canvas?.remove()
+    canvas = null
+    if (video) video.setAttribute('style', savedVideoStyle) // unhide immediately
+    opts.onDegrade?.(reason)
+  }
   let segs: PreviewSegment[] = []
   let clipMap: Map<string, PreviewClip> = new Map()
   let glob: EffectParams | undefined
@@ -213,7 +231,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     if (video) video.volume = 1
   }
 
-  const drawFrame = () => {
+  const drawFrameGL = () => {
     if (!video || !proc || video.readyState < 2 || !video.videoWidth) return
     const w = video.videoWidth, h = video.videoHeight
     const seg = segs[idx]
@@ -249,7 +267,14 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     const lut = applyLut(seg?.effects)
     proc.render(video, w, h, seg?.effects, glob, lut)
   }
-  const loop = () => { drawFrame(); if (playing) raf = requestAnimationFrame(loop) }
+  // Every GL call the preview makes goes through here. A throw (SecurityError on
+  // a tainted cross-origin video, shader/link failure, context loss) degrades to
+  // raw instead of escaping and freezing the loop on a black canvas.
+  const drawFrame = () => {
+    if (dead) return
+    try { drawFrameGL() } catch (e) { degrade(e instanceof Error ? `${e.name}: ${e.message}` : String(e)) }
+  }
+  const loop = () => { drawFrame(); if (playing && !dead) raf = requestAnimationFrame(loop) }
   const playAt = async (i: number, startOffsetMs = 0) => {
     if (!video || i >= segs.length) { setPlaying(false); return }
     releaseVideoB()
@@ -260,6 +285,10 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     video.volume = 1
     try { video.currentTime = segs[i].startMs / 1000 + startOffsetMs / 1000; await video.play() } catch { setPlaying(false) }
   }
+  // The media itself failed to load (most likely: this origin is not in the R2
+  // CORS policy, so the CORS-mode request is rejected). Raw playback does not
+  // need CORS, so degrading restores a working preview.
+  const onMediaError = () => degrade('media load failed (origin not allowed by bucket CORS?)')
   const onTimeUpdate = () => {
     if (!video || !playing) return
     const seg = segs[idx]
@@ -276,12 +305,23 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     approximate: () => false,
     mount(v) {
       video = v
-      canvas = document.createElement('canvas')
-      canvas.className = 'oxxovo-gl-preview max-h-full w-full max-w-2xl rounded-xl'
-      v.parentElement?.insertBefore(canvas, v)
       savedVideoStyle = v.getAttribute('style') ?? ''
+      // texImage2D refuses a cross-origin video element that did not opt into
+      // CORS. The crossOrigin opt-in is held back until verified end-to-end, so
+      // for now the upload throws SecurityError -> caught in drawFrame -> degrade()
+      // -> raw (original footage, never black). A media load error (e.g. the
+      // origin is not in the bucket CORS policy) also routes through degrade().
+      v.addEventListener('error', onMediaError)
+      try {
+        canvas = document.createElement('canvas')
+        canvas.className = 'oxxovo-gl-preview max-h-full w-full max-w-2xl rounded-xl'
+        v.parentElement?.insertBefore(canvas, v)
+        proc = new GLProcessor(canvas) // shader compile / link throws land here
+      } catch (e) {
+        degrade(e instanceof Error ? `${e.name}: ${e.message}` : String(e))
+        return
+      }
       v.style.position = 'absolute'; v.style.width = '1px'; v.style.height = '1px'; v.style.opacity = '0'; v.style.pointerEvents = 'none'
-      proc = new GLProcessor(canvas)
       v.addEventListener('timeupdate', onTimeUpdate)
       v.addEventListener('ended', () => setPlaying(false))
     },
@@ -300,15 +340,33 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     showFrame(seg, clips, global) {
       segs = [seg]; clipMap = clips; glob = global; idx = 0
       const clip = clips.get(seg.jobId)
-      if (!video || !clip) return
+      if (!video || !clip || dead) return
       if (video.src !== clip.url) video.src = clip.url
-      const seek = () => { try { video!.currentTime = seg.startMs / 1000 } catch { /* not ready */ }; requestAnimationFrame(() => { drawFrame(); requestAnimationFrame(drawFrame) }) }
+      // Setting currentTime drops readyState below HAVE_CURRENT_DATA until the
+      // new frame decodes, and drawFrame no-ops under that -- firing two rAFs
+      // blind used to leave the canvas undrawn (i.e. black) with no retry. Draw
+      // on 'seeked' (the frame IS decoded) and keep a short rAF retry for the
+      // no-op case where currentTime was already at the target.
+      const paint = () => { drawFrame(); requestAnimationFrame(drawFrame) }
+      const seek = () => {
+        if (!video || dead) return
+        video.addEventListener('seeked', paint, { once: true })
+        try { video.currentTime = seg.startMs / 1000 } catch { /* not ready */ }
+        let tries = 0
+        const retry = () => {
+          if (dead || !video) return
+          if (video.readyState >= 2) { drawFrame(); return }
+          if (tries++ < 60) requestAnimationFrame(retry)
+        }
+        requestAnimationFrame(retry)
+      }
       if (video.readyState >= 1) seek()
       else video.addEventListener('loadedmetadata', seek, { once: true })
     },
     destroy() {
       cancelAnimationFrame(raf)
       video?.removeEventListener('timeupdate', onTimeUpdate)
+      video?.removeEventListener('error', onMediaError)
       video?.pause()
       releaseVideoB(); videoB = null
       if (video) video.setAttribute('style', savedVideoStyle)

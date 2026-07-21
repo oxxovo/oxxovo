@@ -109,6 +109,7 @@ const DICT = {
     fx_between: (a: number, b: number) => `클립 ${a} → ${b}`,
     approx_badge: '근사',
     approx_note: '그레인 미리보기는 근사치입니다 — 최종본의 입자 패턴은 다릅니다(양은 동일).',
+    fx_preview_off: '이 브라우저에서는 효과 미리보기를 표시할 수 없어 원본 영상을 보여드립니다. 설정하신 효과는 그대로 저장되며 최종 렌더에는 정상 적용됩니다.',
   },
   en: {
     shell: 'PRO editor',
@@ -180,6 +181,7 @@ const DICT = {
     fx_between: (a: number, b: number) => `Clip ${a} → ${b}`,
     approx_badge: 'approx',
     approx_note: 'Grain preview is approximate — the final grain pattern differs (the amount matches).',
+    fx_preview_off: 'This browser cannot display the effect preview, so the original footage is shown. Your effects are saved and will be applied in full on the final render.',
   },
 } as const
 
@@ -379,13 +381,23 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     try { return !!document.createElement('canvas').getContext('webgl2') } catch { return false }
   }, [])
   const compositionHasEffects = hasAnyEffect(globalFx) || transitions.length > 0 || segments.some((s) => hasAnyEffect(s.effects) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
-  const useGL = webglOk && compositionHasEffects
+  // ★ NEVER SHOW A BLACK PREVIEW. If the GL engine cannot draw (cross-origin
+  // texture upload refused, shader/context failure), it reports up here and we
+  // stay on the raw engine for the rest of the session: the user sees the
+  // ORIGINAL footage plus an honest "effects not shown in preview" note rather
+  // than a dead black canvas. The render still applies every effect.
+  const [glBlocked, setGlBlocked] = useState(false)
+  const useGL = webglOk && compositionHasEffects && !glBlocked
   useEffect(() => {
-    const engine = useGL ? createGLPreview({ onPlayingChange: setPlaying }) : createRawPreview({ onPlayingChange: setPlaying })
+    const engine = useGL
+      ? createGLPreview({ onPlayingChange: setPlaying, onDegrade: () => setGlBlocked(true) })
+      : createRawPreview({ onPlayingChange: setPlaying })
     engineRef.current = engine
     if (videoRef.current) engine.mount(videoRef.current)
     return () => engine.destroy()
   }, [useGL])
+  // Effects are set but the preview cannot render them (no WebGL2, or GL degraded).
+  const fxPreviewUnavailable = compositionHasEffects && !useGL
   const startPreview = () => { if (!segments.length) return; setSel(null); engineRef.current?.play(segments, previewClips, globalFx, transitions) }
   const stopPreview = () => engineRef.current?.pause()
   const selSeg = segments.find((s) => s.uid === sel) ?? null
@@ -537,10 +549,20 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
             <span className="text-[11px] font-bold text-[#b66cff]">{t.total}: {totalSec.toFixed(1)}{t.sec} · {segments.length} {t.clip}</span>
           </div>
           <div className="flex min-h-[220px] flex-1 items-center justify-center bg-black p-3">
+            {/* Cross-origin (R2) clips taint the GL texture upload unless the element
+                opts into CORS. That crossOrigin route is not yet verified end-to-end,
+                so it is held back: the GL engine catches the SecurityError and degrades
+                to the raw engine (original footage + honest note) rather than showing a
+                black canvas. WYSIWYG revival via a CORS-clean source is tracked separately. */}
             <video ref={videoRef} playsInline
               className={`max-h-full w-full max-w-2xl rounded-xl ${segments.length ? '' : 'hidden'}`} />
             {segments.length === 0 && <span className="text-xs text-white/30">{t.empty_prev}</span>}
           </div>
+          {fxPreviewUnavailable && (
+            <p className="border-t border-amber-400/20 bg-amber-400/5 px-4 py-2 text-[10px] leading-relaxed text-amber-300/90">
+              ⚠ {t.fx_preview_off}
+            </p>
+          )}
           <div className="flex items-center gap-2 border-t border-white/8 px-4 py-2.5">
             <button onClick={playing ? stopPreview : startPreview} disabled={!segments.length}
               className="rounded-lg border border-[#8b22ff]/50 px-3 py-1 text-xs font-bold text-[#b66cff] transition hover:bg-[#8b22ff]/10 disabled:opacity-40">
