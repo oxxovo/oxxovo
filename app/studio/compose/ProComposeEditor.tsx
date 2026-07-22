@@ -549,11 +549,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
             <span className="text-[11px] font-bold text-[#b66cff]">{t.total}: {totalSec.toFixed(1)}{t.sec} · {segments.length} {t.clip}</span>
           </div>
           <div className="flex min-h-[220px] flex-1 items-center justify-center bg-black p-3">
-            {/* Cross-origin (R2) clips taint the GL texture upload unless the element
-                opts into CORS. That crossOrigin route is not yet verified end-to-end,
-                so it is held back: the GL engine catches the SecurityError and degrades
-                to the raw engine (original footage + honest note) rather than showing a
-                black canvas. WYSIWYG revival via a CORS-clean source is tracked separately. */}
+            {/* The GL engine manages crossOrigin on this element itself: it opts in
+                (crossOrigin='anonymous' + a ?gl=1 cache key) now that the R2 bucket
+                returns ACAO for our origins, so WYSIWYG effects preview live. The raw
+                engine clears crossOrigin (opaque playback). If the CORS upload still
+                fails on some browser, the GL engine degrades to raw + an honest note --
+                a black preview is never shown. */}
             <video ref={videoRef} playsInline
               className={`max-h-full w-full max-w-2xl rounded-xl ${segments.length ? '' : 'hidden'}`} />
             {segments.length === 0 && <span className="text-xs text-white/30">{t.empty_prev}</span>}

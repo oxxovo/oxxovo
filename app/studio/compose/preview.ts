@@ -75,6 +75,10 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
     approximate: (hasEffects: boolean) => hasEffects, // raw shows no effects
     mount(v) {
       video = v
+      // Raw playback needs no CORS; clear any crossOrigin left by a prior GL
+      // mount so this element reuses the media pool's opaque (no-cors) cache for
+      // the bare clip URL instead of forcing a separate CORS fetch.
+      v.removeAttribute('crossorigin')
       v.addEventListener('timeupdate', onTimeUpdate)
       v.addEventListener('ended', onEnded)
     },

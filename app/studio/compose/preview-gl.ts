@@ -180,6 +180,15 @@ function makeLutLoader() {
   }
 }
 
+// The GL preview uploads each frame to a WebGL texture, which requires the clip
+// to be fetched in CORS mode (crossOrigin) with the bucket returning ACAO. A
+// dedicated cache key (?gl=1) isolates that CORS fetch from the media-pool
+// thumbnails, which fetch the SAME R2 URL in no-cors mode -- reusing an opaque
+// cached response here would taint the texture (SecurityError). R2 CORS verified
+// 2026-07-21: GET/HEAD + www.oxxovo.ai / *.vercel.app / localhost, ACAO echoed
+// per Origin (Vary: Origin), content-range exposed.
+const glUrl = (u: string) => u + (u.includes('?') ? '&' : '?') + 'gl=1'
+
 export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => void; onDegrade?: (reason: string) => void } = {}): PreviewEngine {
   let video: HTMLVideoElement | null = null
   let videoB: HTMLVideoElement | null = null // incoming clip, only during a transition
@@ -244,7 +253,8 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
         const segB = segs[idx + 1], clipB = clipMap.get(segB.jobId)
         if (clipB) {
           if (!videoB) { videoB = document.createElement('video'); videoB.playsInline = true; videoB.crossOrigin = 'anonymous' }
-          if (videoB.src !== clipB.url) { videoB.src = clipB.url }
+          const bUrl = glUrl(clipB.url)
+          if (videoB.src !== bUrl) { videoB.src = bUrl }
           const bTime = transitionSample(p, t, endA, segB.startMs / 1000).bTime
           if (Math.abs(videoB.currentTime - bTime) > 0.08) { try { videoB.currentTime = bTime } catch { /* not ready */ } }
           if (videoB.paused) videoB.play().catch(() => {})
@@ -281,7 +291,8 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     idx = i
     const clip = clipMap.get(segs[i].jobId)
     if (!clip) { setPlaying(false); return }
-    if (video.src !== clip.url) video.src = clip.url
+    const url = glUrl(clip.url)
+    if (video.src !== url) video.src = url
     video.volume = 1
     try { video.currentTime = segs[i].startMs / 1000 + startOffsetMs / 1000; await video.play() } catch { setPlaying(false) }
   }
@@ -307,10 +318,13 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       video = v
       savedVideoStyle = v.getAttribute('style') ?? ''
       // texImage2D refuses a cross-origin video element that did not opt into
-      // CORS. The crossOrigin opt-in is held back until verified end-to-end, so
-      // for now the upload throws SecurityError -> caught in drawFrame -> degrade()
-      // -> raw (original footage, never black). A media load error (e.g. the
-      // origin is not in the bucket CORS policy) also routes through degrade().
+      // CORS. The R2 bucket now returns Access-Control-Allow-Origin for this
+      // app's origins (www.oxxovo.ai / *.vercel.app / localhost, verified), so
+      // the preview opts in: crossOrigin + a ?gl=1 cache key (see glUrl). The
+      // safety net stays -- if ANY origin/browser still fails the CORS upload or
+      // media load, drawFrame catches it -> degrade() -> raw (original footage +
+      // honest note), never a black canvas.
+      v.crossOrigin = 'anonymous'
       v.addEventListener('error', onMediaError)
       try {
         canvas = document.createElement('canvas')
@@ -341,7 +355,8 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       segs = [seg]; clipMap = clips; glob = global; idx = 0
       const clip = clips.get(seg.jobId)
       if (!video || !clip || dead) return
-      if (video.src !== clip.url) video.src = clip.url
+      const url = glUrl(clip.url)
+      if (video.src !== url) video.src = url
       // Setting currentTime drops readyState below HAVE_CURRENT_DATA until the
       // new frame decodes, and drawFrame no-ops under that -- firing two rAFs
       // blind used to leave the canvas undrawn (i.e. black) with no retry. Draw
