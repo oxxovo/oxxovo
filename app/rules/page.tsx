@@ -19,7 +19,7 @@ import {
 
 const STATEMENT_MIN = 150
 const STATEMENT_MAX = 250
-const SUPPORT_EMAIL = 'hello@oxxovo.com'
+const SUPPORT_EMAIL = 'info@oxxovo.ai'
 
 export default function RulesPage() {
   const [season, setSeason] = useState<Season | null>(null)

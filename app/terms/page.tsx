@@ -25,7 +25,7 @@ export default function TermsPage() {
 
         <div>
           <h2 className="text-xl font-bold text-white mb-3">4. User Accounts</h2>
-          <p>You are responsible for maintaining the confidentiality of your account credentials. You agree to notify us immediately of any unauthorized use of your account at oxxovolabs@gmail.com.</p>
+          <p>You are responsible for maintaining the confidentiality of your account credentials. You agree to notify us immediately of any unauthorized use of your account at info@oxxovo.ai.</p>
         </div>
 
         <div>
@@ -76,7 +76,7 @@ export default function TermsPage() {
             <li>
               <span className="text-white/90 font-semibold">Opt-out and help.</span> You can cancel the SMS program at any time by texting{' '}
               <span className="text-white font-bold">STOP</span>. After you send <span className="text-white font-bold">STOP</span>, we will send a confirmation message and then stop sending SMS messages. For help, text{' '}
-              <span className="text-white font-bold">HELP</span> or contact us at <a href="mailto:info@oxxovo.com" className="text-[#8b22ff] hover:underline">info@oxxovo.com</a>. You can also remove your number and withdraw consent at any time on your <a href="/profile" className="text-[#8b22ff] hover:underline">profile page</a>.
+              <span className="text-white font-bold">HELP</span> or contact us at <a href="mailto:info@oxxovo.ai" className="text-[#8b22ff] hover:underline">info@oxxovo.ai</a>. You can also remove your number and withdraw consent at any time on your <a href="/profile" className="text-[#8b22ff] hover:underline">profile page</a>.
             </li>
             <li><span className="text-white/90 font-semibold">Optional.</span> Participation is optional and is not a condition of using OXXOVO or of any purchase.</li>
             <li><span className="text-white/90 font-semibold">Carriers.</span> Mobile carriers are not liable for delayed or undelivered messages.</li>
@@ -86,7 +86,7 @@ export default function TermsPage() {
 
         <div>
           <h2 className="text-xl font-bold text-white mb-3">12. Contact</h2>
-          <p>For questions regarding these Terms, contact us at <a href="mailto:oxxovolabs@gmail.com" className="text-[#8b22ff] hover:underline">oxxovolabs@gmail.com</a></p>
+          <p>For questions regarding these Terms, contact us at <a href="mailto:info@oxxovo.ai" className="text-[#8b22ff] hover:underline">info@oxxovo.ai</a></p>
         </div>
 
       </section>

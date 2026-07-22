@@ -95,12 +95,12 @@ export function ChatWidget() {
           ? data.reply
           : res.status === 429
             ? 'Too many messages — please wait a moment and try again.'
-            : 'Sorry, I had trouble answering. Please contact info@oxxovo.com.'
+            : 'Sorry, I had trouble answering. Please contact info@oxxovo.ai.'
       setTurns((t) => [...t, { role: 'assistant', content: reply }])
     } catch {
       setTurns((t) => [
         ...t,
-        { role: 'assistant', content: 'Network error. Please contact info@oxxovo.com.' },
+        { role: 'assistant', content: 'Network error. Please contact info@oxxovo.ai.' },
       ])
     } finally {
       setSending(false)
@@ -123,7 +123,7 @@ export function ChatWidget() {
         <div className="fixed bottom-24 right-5 z-50 flex h-[min(70vh,520px)] w-[min(92vw,380px)] flex-col overflow-hidden rounded-2xl border border-[#8b22ff]/25 bg-[#0a0812]/95 backdrop-blur-xl shadow-2xl">
           <div className="border-b border-white/10 px-4 py-3">
             <p className="text-sm font-bold text-white">OXXOVO AI</p>
-            <p className="text-[11px] text-white/40">AI &amp; video assistant · info@oxxovo.com</p>
+            <p className="text-[11px] text-white/40">AI &amp; video assistant · info@oxxovo.ai</p>
           </div>
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">

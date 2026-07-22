@@ -39,7 +39,7 @@ export default async function MessagesPage() {
     <div className="p-8">
       <h1 className="text-2xl font-black text-white mb-1">Help Assistant — Out-of-scope</h1>
       <p className="text-sm text-white/40 mb-6">
-        Questions the chatbot could not answer from the knowledge base (pointed to info@oxxovo.com).
+        Questions the chatbot could not answer from the knowledge base (pointed to info@oxxovo.ai).
       </p>
 
       {tableMissing ? (
