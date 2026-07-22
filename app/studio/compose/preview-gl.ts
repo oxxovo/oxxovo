@@ -328,7 +328,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       v.addEventListener('error', onMediaError)
       try {
         canvas = document.createElement('canvas')
-        canvas.className = 'oxxovo-gl-preview max-h-full w-full max-w-2xl rounded-xl'
+        canvas.className = 'oxxovo-gl-preview max-h-full max-w-full rounded-xl'
         v.parentElement?.insertBefore(canvas, v)
         proc = new GLProcessor(canvas) // shader compile / link throws land here
       } catch (e) {

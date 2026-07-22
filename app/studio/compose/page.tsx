@@ -77,7 +77,7 @@ export default function ComposePage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-4xl px-6 py-8">
+      <div className="mx-auto max-w-[1600px] px-6 py-8">
         {loading ? (
           <p className="px-6 py-24 text-center text-white/40">{t.loading}</p>
         ) : !token ? (

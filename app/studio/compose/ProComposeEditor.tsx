@@ -496,7 +496,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   return (
     <div className="flex flex-col gap-3">
       {/* 3-PANE: mobile vertical; lg = pool | preview (top), timeline full-width bottom */}
-      <div className="flex flex-col gap-3 lg:grid lg:h-[calc(100vh-220px)] lg:min-h-[560px] lg:grid-cols-[340px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_280px] lg:gap-3 lg:overflow-hidden">
+      <div className="flex flex-col gap-3 lg:grid lg:h-[calc(100vh-220px)] lg:min-h-[560px] lg:grid-cols-[300px_minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)_280px] lg:gap-3 lg:overflow-hidden">
 
         {/* PANE 1 — MEDIA POOL */}
         <section className="flex flex-col rounded-xl border border-white/10 bg-[#08060f] lg:col-start-1 lg:row-start-1 lg:overflow-hidden">
@@ -556,7 +556,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                 fails on some browser, the GL engine degrades to raw + an honest note --
                 a black preview is never shown. */}
             <video ref={videoRef} playsInline
-              className={`max-h-full w-full max-w-2xl rounded-xl ${segments.length ? '' : 'hidden'}`} />
+              className={`max-h-full max-w-full rounded-xl ${segments.length ? '' : 'hidden'}`} />
             {segments.length === 0 && <span className="text-xs text-white/30">{t.empty_prev}</span>}
           </div>
           {fxPreviewUnavailable && (
@@ -580,7 +580,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
         </section>
 
         {/* PANE 3 — TIMELINE */}
-        <section className="flex flex-col rounded-xl border border-white/10 bg-[#08060f] lg:col-span-2 lg:col-start-1 lg:row-start-2 lg:overflow-hidden">
+        <section className="flex flex-col rounded-xl border border-white/10 bg-[#08060f] lg:col-span-3 lg:col-start-1 lg:row-start-2 lg:overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/8 px-3.5 py-2.5">
             <div className="flex items-center gap-3">
               <h2 className={paneHead}>{t.timeline}</h2>
@@ -647,6 +647,98 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
             <p className="mt-3 text-[10px] text-white/30">{t.tl_hint}</p>
           </div>
         </section>
+
+        {/* PANE 4 -- EFFECTS INSPECTOR. Right sidebar so the preview stays visible
+            while sliders are adjusted (the WYSIWYG loop); its own scroll means the
+            panel never pushes the preview off-screen. Timeline spans the row below. */}
+        <section className="flex flex-col rounded-xl border border-white/10 bg-[#08060f] lg:col-start-3 lg:row-start-1 lg:min-h-0 lg:overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-white/8 px-3.5 py-2.5">
+            <h2 className={paneHead}>{t.fx_title}</h2>
+            {segments.length > 0 && (
+              <div className="ml-auto inline-flex rounded-lg border border-white/10 bg-white/[.02] p-0.5">
+                {([['clip', t.fx_clip], ['global', t.fx_global]] as const).map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => setFxTab(id)}
+                    className={`rounded-md px-2.5 py-0.5 text-[10px] font-bold transition ${fxTab === id ? 'bg-[#8b22ff]/25 text-[#d9b8ff]' : 'text-white/45 hover:text-white/70'}`}>{label}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+            {segments.length === 0 ? (
+              <p className="py-8 text-center text-[11px] text-white/35">{t.empty_prev}</p>
+            ) : (
+              <>
+                {fxTab === 'clip' && !selSeg && <p className="py-4 text-center text-[11px] text-white/35">{t.fx_no_clip}</p>}
+
+                {(fxTab === 'global' || selSeg) && (() => {
+                  const fx: EffectParams = (fxTab === 'clip' ? selSeg!.effects : globalFx) ?? {}
+                  const setKey = (k: keyof EffectParams, v: number) => (fxTab === 'clip' ? setSegFx(selSeg!.uid, k, v) : setGlobalKey(k, v))
+                  const setLut = (l: string) => (fxTab === 'clip' ? setSegLut(selSeg!.uid, l) : setGlobalLut(l))
+                  const grainOn = (Number(fx.grain) || 0) > 0
+                  return (
+                    <div className="space-y-3">
+                      {/* LUT */}
+                      <label className="block">
+                        <span className="text-[11px] text-white/55">{t.fx_lut}</span>
+                        <select value={(fx.lut as string) || ''} onChange={(e) => setLut(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none">
+                          {LUT_OPTIONS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+                        </select>
+                      </label>
+                      {/* sliders */}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                        {EXPOSED_SLIDERS.map((spec) => {
+                          const val = Number(fx[spec.key]) || 0
+                          return (
+                            <label key={spec.key} className="block">
+                              <span className="flex items-center justify-between text-[11px] text-white/55">
+                                <span>{spec.label}{spec.parity === 'approximate' && <span className="ml-1 rounded bg-amber-400/20 px-1 py-0.5 text-[9px] font-bold text-amber-300">{t.approx_badge}</span>}</span>
+                                <span className="tabular-nums text-white/35">{val}</span>
+                              </span>
+                              <input type="range" min={spec.min} max={spec.max} value={val} onChange={(e) => setKey(spec.key, Number(e.target.value))} className="w-full accent-[#8b22ff]" />
+                            </label>
+                          )
+                        })}
+                        {/* per-clip speed */}
+                        {fxTab === 'clip' && (
+                          <label className="block">
+                            <span className="flex items-center justify-between text-[11px] text-white/55">
+                              <span>{t.fx_speed}</span><span className="tabular-nums text-white/35">{(selSeg!.speed ?? 1).toFixed(2)}x</span>
+                            </span>
+                            <input type="range" min={0.25} max={4} step={0.05} value={selSeg!.speed ?? 1} onChange={(e) => setSegSpeed(selSeg!.uid, Number(e.target.value))} className="w-full accent-[#8b22ff]" />
+                          </label>
+                        )}
+                      </div>
+                      {grainOn && <p className="text-[10px] text-amber-300/80">⚠ {t.approx_note}</p>}
+                    </div>
+                  )
+                })()}
+
+                {/* transitions between clips */}
+                {segments.length > 1 && (
+                  <div className="mt-4 border-t border-white/8 pt-3">
+                    <p className="mb-2 text-[11px] uppercase tracking-[0.15em] text-white/45">{t.fx_transitions}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {segments.slice(0, -1).map((_, i) => {
+                        const cur = transitions.find((x) => x.afterIndex === i)
+                        return (
+                          <label key={i} className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[.02] px-2 py-1">
+                            <span className="text-[10px] text-white/45">{t.fx_between(i + 1, i + 2)}</span>
+                            <select value={cur?.type ?? ''} onChange={(e) => setBoundaryTransition(i, e.target.value)}
+                              className="rounded border border-white/10 bg-[#070610] px-1.5 py-0.5 text-[11px] text-white focus:border-[#8b22ff] focus:outline-none">
+                              <option value="">{t.fx_no_trans}</option>
+                              {EXPOSED_TRANSITIONS.map((tr) => <option key={tr.id} value={tr.id}>{tr.label}</option>)}
+                            </select>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
       </div>
 
       {/* length warnings */}
@@ -654,90 +746,6 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
         <p className="text-[12px] text-[#ff8888]">
           {tooMany ? t.clip_over(props.maxClips) : over ? t.over(props.maxSeconds) : t.under(props.minSeconds)}
         </p>
-      )}
-
-      {/* EFFECTS (E): per-clip + global, neutral(0)=off. Slider edits flow to the
-          GL WYSIWYG engine live. Only parity-passed effects are exposed. */}
-      {segments.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-[#08060f] p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <h3 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold">{t.fx_title}</h3>
-            <div className="ml-auto inline-flex rounded-lg border border-white/10 bg-white/[.02] p-0.5">
-              {([['clip', t.fx_clip], ['global', t.fx_global]] as const).map(([id, label]) => (
-                <button key={id} type="button" onClick={() => setFxTab(id)}
-                  className={`rounded-md px-3 py-1 text-[11px] font-bold transition ${fxTab === id ? 'bg-[#8b22ff]/25 text-[#d9b8ff]' : 'text-white/45 hover:text-white/70'}`}>{label}</button>
-              ))}
-            </div>
-          </div>
-
-          {fxTab === 'clip' && !selSeg && <p className="py-4 text-center text-[11px] text-white/35">{t.fx_no_clip}</p>}
-
-          {(fxTab === 'global' || selSeg) && (() => {
-            const fx: EffectParams = (fxTab === 'clip' ? selSeg!.effects : globalFx) ?? {}
-            const setKey = (k: keyof EffectParams, v: number) => (fxTab === 'clip' ? setSegFx(selSeg!.uid, k, v) : setGlobalKey(k, v))
-            const setLut = (l: string) => (fxTab === 'clip' ? setSegLut(selSeg!.uid, l) : setGlobalLut(l))
-            const grainOn = (Number(fx.grain) || 0) > 0
-            return (
-              <div className="space-y-3">
-                {/* LUT */}
-                <label className="block">
-                  <span className="text-[11px] text-white/55">{t.fx_lut}</span>
-                  <select value={(fx.lut as string) || ''} onChange={(e) => setLut(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none">
-                    {LUT_OPTIONS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-                  </select>
-                </label>
-                {/* sliders */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                  {EXPOSED_SLIDERS.map((spec) => {
-                    const val = Number(fx[spec.key]) || 0
-                    return (
-                      <label key={spec.key} className="block">
-                        <span className="flex items-center justify-between text-[11px] text-white/55">
-                          <span>{spec.label}{spec.parity === 'approximate' && <span className="ml-1 rounded bg-amber-400/20 px-1 py-0.5 text-[9px] font-bold text-amber-300">{t.approx_badge}</span>}</span>
-                          <span className="tabular-nums text-white/35">{val}</span>
-                        </span>
-                        <input type="range" min={spec.min} max={spec.max} value={val} onChange={(e) => setKey(spec.key, Number(e.target.value))} className="w-full accent-[#8b22ff]" />
-                      </label>
-                    )
-                  })}
-                  {/* per-clip speed */}
-                  {fxTab === 'clip' && (
-                    <label className="block">
-                      <span className="flex items-center justify-between text-[11px] text-white/55">
-                        <span>{t.fx_speed}</span><span className="tabular-nums text-white/35">{(selSeg!.speed ?? 1).toFixed(2)}x</span>
-                      </span>
-                      <input type="range" min={0.25} max={4} step={0.05} value={selSeg!.speed ?? 1} onChange={(e) => setSegSpeed(selSeg!.uid, Number(e.target.value))} className="w-full accent-[#8b22ff]" />
-                    </label>
-                  )}
-                </div>
-                {grainOn && <p className="text-[10px] text-amber-300/80">⚠ {t.approx_note}</p>}
-              </div>
-            )
-          })()}
-
-          {/* transitions between clips */}
-          {segments.length > 1 && (
-            <div className="mt-4 border-t border-white/8 pt-3">
-              <p className="mb-2 text-[11px] uppercase tracking-[0.15em] text-white/45">{t.fx_transitions}</p>
-              <div className="flex flex-wrap gap-2">
-                {segments.slice(0, -1).map((_, i) => {
-                  const cur = transitions.find((x) => x.afterIndex === i)
-                  return (
-                    <label key={i} className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[.02] px-2 py-1">
-                      <span className="text-[10px] text-white/45">{t.fx_between(i + 1, i + 2)}</span>
-                      <select value={cur?.type ?? ''} onChange={(e) => setBoundaryTransition(i, e.target.value)}
-                        className="rounded border border-white/10 bg-[#070610] px-1.5 py-0.5 text-[11px] text-white focus:border-[#8b22ff] focus:outline-none">
-                        <option value="">{t.fx_no_trans}</option>
-                        {EXPOSED_TRANSITIONS.map((tr) => <option key={tr.id} value={tr.id}>{tr.label}</option>)}
-                      </select>
-                    </label>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </div>
       )}
 
       {/* RENDER + SUBMIT (reused backend flow) */}
