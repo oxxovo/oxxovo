@@ -89,17 +89,17 @@ Q. Can I apply multiple times in one season?
 
 ## B. Schedule (Season 0: THE LAST HOPE)
 Q. What is the Season 0 schedule?
-- KR: 신청 7/25 ~ 8/30 (마감 8/30 23:59 PT) / 예선 채점 8/31 ~ 9/1 / Finalist 발표 9/2 / 본선 9/3(목) ~ 9/5(토) 48시간 / 시상 9/6.
-- EN: Applications Jul 25 – Aug 30 (closes Aug 30, 11:59 PM PT) / Preliminary scoring Aug 31 – Sep 1 / Finalist announcement Sep 2 / Main round Sep 3 (Thu) – Sep 5 (Sat), 48 hours / Awards Sep 6.
+- KR: 홍보·응모 7/25 ~ 9/16 / 예선 9/17~18 / 예선 심사 9/19~21 / 본선 9/23~25 (48시간) / 본선 심사·관객 투표 9/26~28 / 우승 발표 9/29 오전 8시 (PT).
+- EN: Promotion & entry Jul 25 – Sep 16 / Preliminary round Sep 17–18 / Preliminary scoring Sep 19–21 / Main round Sep 23–25 (48 hours) / Main-round scoring & audience voting Sep 26–28 / Winners announced Sep 29, 8:00 AM PT.
 Q. When is the deadline?
-- KR: 8월 30일 23:59 (PT)입니다.
-- EN: August 30, 11:59 PM Pacific Time.
+- KR: 응모 마감은 9월 16일입니다. 예선 라운드는 9월 17~18일에 진행됩니다.
+- EN: The entry deadline is September 16. The preliminary round runs September 17–18.
 Q. How will I find out the results?
-- KR: Finalist는 9월 2일에 발표되고, 수상자는 9월 6일에 발표됩니다. 통보는 이메일로 안내됩니다.
-- EN: Finalists are announced on Sep 2 and winners on Sep 6. You will be notified by email.
+- KR: Finalist(본선 진출자)는 예선 심사가 끝난 뒤 본선(9/23) 시작 전에 발표되고, 우승자는 9월 29일에 발표됩니다. 통보는 모두 이메일로 안내됩니다.
+- EN: Finalists are announced after preliminary scoring, before the main round begins (Sep 23); winners are announced on September 29. All notifications are sent by email.
 Q. When does Season 1 start?
-- KR: 시즌1 GENESIS는 9월 28일 시작 예정입니다.
-- EN: Season 1 (GENESIS) is scheduled to begin on September 28.
+- KR: 시즌1 GENESIS 일정은 시즌0 우승 발표 이후 추후 공지됩니다.
+- EN: The Season 1 (GENESIS) schedule will be announced later, after the Season 0 winners are revealed.
 
 ## C. Tournament Structure
 Q. How does the tournament work?
@@ -112,8 +112,8 @@ Q. Is there a final round?
 - KR: 별도 결승 단계는 없습니다. 예선 → 본선 → 1·2·3등 구조입니다.
 - EN: There is no separate finals stage. The structure is preliminary → main round → 1st/2nd/3rd place.
 Q. Can I try again if I don't make it?
-- KR: 네. 시즌1 GENESIS가 9월 28일 시작하니 다시 도전하실 수 있습니다.
-- EN: Yes. Season 1 (GENESIS) begins September 28, so you can enter again.
+- KR: 네. 시즌0 다음에 시즌1 GENESIS가 열립니다(일정 추후 공지). 다시 도전하실 수 있습니다.
+- EN: Yes. Season 1 (GENESIS) follows Season 0 (schedule to be announced), so you can enter again.
 
 ## D. How Videos Are Made
 Q. Where do I create the video?

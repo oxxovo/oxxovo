@@ -42,7 +42,7 @@ export function ArenaFilterBar({
       <Separator />
 
       <Dropdown label="🏆 Champions" white>
-        <p className="px-3 py-2 text-[12px] leading-relaxed text-white/55">Season 0 Champions revealed Sep 8</p>
+        <p className="px-3 py-2 text-[12px] leading-relaxed text-white/55">Season 0 Champions revealed Sep 29</p>
         <div aria-disabled className="cursor-not-allowed px-3 py-2 text-[12px] text-white/30">
           All Champions
         </div>
