@@ -449,6 +449,8 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // ---- scrubber (progress bar): click / drag to seek, playing or paused ------
   const scrubRef = useRef<HTMLDivElement>(null)
   const scrubbing = useRef(false)
+  const scrubWasPlaying = useRef(false) // resume playback on release if it was playing
+  const scrubMs = useRef(0)
   const scrubRaf = useRef(0)
   const compFromX = (clientX: number) => {
     const el = scrubRef.current
@@ -459,20 +461,26 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const onScrubDown = (e: React.PointerEvent) => {
     if (!segments.length) return
     scrubbing.current = true
+    scrubWasPlaying.current = playing
+    if (playing) engineRef.current?.pause() // hold playback so the frame follows the drag
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    movePlayhead(compFromX(e.clientX))
+    const ms = compFromX(e.clientX); scrubMs.current = ms
+    movePlayhead(ms)
   }
   const onScrubMove = (e: React.PointerEvent) => {
     if (!scrubbing.current) return
-    const ms = compFromX(e.clientX)
+    const ms = compFromX(e.clientX); scrubMs.current = ms
     setPlayheadMs(ms) // responsive fill; the seek itself is throttled to rAF
     cancelAnimationFrame(scrubRaf.current)
     scrubRaf.current = requestAnimationFrame(() => engineRef.current?.seek(ms, segments, previewClips, globalFx, transitions))
   }
   const onScrubUp = (e: React.PointerEvent) => {
+    if (!scrubbing.current) return
     scrubbing.current = false
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+    if (scrubWasPlaying.current) engineRef.current?.play(segments, previewClips, globalFx, transitions, scrubMs.current)
   }
+  const togglePlay = () => { if (!segments.length) return; if (playing) stopPreview(); else startPreview() }
   const playPct = totalMs > 0 ? Math.min(100, (playheadMs / totalMs) * 100) : 0
 
   // ---- history: undo / redo -------------------------------------------------
@@ -529,12 +537,20 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // an effect, not during render).
   const undoFn = useRef(undo)
   const redoFn = useRef(redo)
-  useEffect(() => { undoFn.current = undo; redoFn.current = redo })
+  const togglePlayFn = useRef<() => void>(() => {})
+  useEffect(() => { undoFn.current = undo; redoFn.current = redo; togglePlayFn.current = togglePlay })
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return
       const el = e.target as HTMLElement | null
       const tag = el?.tagName
+      const onControl = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON'
+      // Space toggles play/pause (editor standard). Ignored while typing or on a
+      // focused control, so it never nudges a slider or re-clicks a button.
+      if ((e.key === ' ' || e.code === 'Space') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (onControl) return
+        e.preventDefault(); togglePlayFn.current(); return
+      }
+      if (!(e.ctrlKey || e.metaKey)) return
       if (tag === 'TEXTAREA' || tag === 'SELECT') return // preserve native editing
       if (tag === 'INPUT' && (el as HTMLInputElement).type !== 'range') return
       const k = e.key.toLowerCase()
@@ -701,7 +717,8 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
             <h2 className={paneHead}>{t.preview}</h2>
             <span className="text-[11px] font-bold text-[#b66cff]">{t.total}: {totalSec.toFixed(1)}{t.sec} · {segments.length} {t.clip}</span>
           </div>
-          <div className="flex min-h-[220px] flex-1 items-center justify-center bg-black p-3">
+          <div onClick={togglePlay} title={segments.length ? (playing ? t.stop : t.play) : undefined}
+            className={`flex min-h-[220px] flex-1 items-center justify-center bg-black p-3 ${segments.length ? 'cursor-pointer' : ''}`}>
             {/* The GL engine manages crossOrigin on this element itself: it opts in
                 (crossOrigin='anonymous' + a ?gl=1 cache key) now that the R2 bucket
                 returns ACAO for our origins, so WYSIWYG effects preview live. The raw
