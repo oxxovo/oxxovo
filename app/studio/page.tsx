@@ -1181,6 +1181,15 @@ function Generations({
   // don't drown the current work. Full history -> My Videos. (TK 2026-07-12)
   const [showOlder, setShowOlder] = useState(false)
   const RECENT_CLIPS = 8
+  // Click a card to play it in a single modal player -- only ONE full <video>
+  // loads at a time; the grid cards themselves are lightweight metadata thumbs.
+  const [preview, setPreview] = useState<StudioJob | null>(null)
+  useEffect(() => {
+    if (!preview) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreview(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [preview])
   return (
     <section className="mt-8">
       <h2 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold mb-3">{t.my_gens}</h2>
@@ -1203,33 +1212,47 @@ function Generations({
       {state.jobs.length === 0 ? (
         <p className="text-xs text-white/40 py-6 text-center">{t.empty_gens}</p>
       ) : (
-        <div className="space-y-4">
-          {(showOlder ? state.jobs : state.jobs.slice(0, RECENT_CLIPS)).map((job) => (
-            <JobCard
-              key={job.id}
-              t={t}
-              token={token}
-              job={job}
-              etaSeconds={state.modelEtas[job.model_id]}
-              // Single-path unification: in a compose season the per-clip "Submit
-              // this video" is hidden -- the only entry is the composed final
-              // (compose CTA above). The server enforces this too (compose_required).
-              canSubmit={!state.alreadySubmitted && !state.composeEnabled}
-              needsApplicantInfo={needsApplicantInfo}
-              applicant={applicant}
-              onPromote={onPromote}
-              onChanged={onChanged}
-            />
-          ))}
+        <>
+          {/* Responsive grid: 1 col mobile -> 2 -> 3 -> 4 as width allows. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {(showOlder ? state.jobs : state.jobs.slice(0, RECENT_CLIPS)).map((job) => (
+              <JobCard
+                key={job.id}
+                t={t}
+                token={token}
+                job={job}
+                etaSeconds={state.modelEtas[job.model_id]}
+                // Single-path unification: in a compose season the per-clip "Submit
+                // this video" is hidden -- the only entry is the composed final
+                // (compose CTA above). The server enforces this too (compose_required).
+                canSubmit={!state.alreadySubmitted && !state.composeEnabled}
+                needsApplicantInfo={needsApplicantInfo}
+                applicant={applicant}
+                onPromote={onPromote}
+                onPreview={setPreview}
+                onChanged={onChanged}
+              />
+            ))}
+          </div>
           {state.jobs.length > RECENT_CLIPS && (
             <button
               type="button"
               onClick={() => setShowOlder((v) => !v)}
-              className="w-full rounded-lg border border-white/10 py-2 text-xs text-white/50 transition hover:border-white/25 hover:text-white/75"
+              className="mt-4 w-full rounded-lg border border-white/10 py-2 text-xs text-white/50 transition hover:border-white/25 hover:text-white/75"
             >
               {showOlder ? t.clips_collapse : `${t.clips_show_older} (${state.jobs.length - RECENT_CLIPS})`}
             </button>
           )}
+        </>
+      )}
+      {preview && preview.video_url && (
+        <div onClick={() => setPreview(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-3xl">
+            <video src={preview.video_url} controls autoPlay playsInline className="max-h-[75vh] w-full rounded-lg border border-white/10 bg-black" />
+            <p className="mt-2 line-clamp-2 text-xs text-white/60">{preview.prompt}</p>
+            <button type="button" onClick={() => setPreview(null)} aria-label="Close"
+              className="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-lg font-bold text-black shadow">×</button>
+          </div>
         </div>
       )}
     </section>
@@ -1309,6 +1332,7 @@ function JobCard({
   needsApplicantInfo,
   applicant,
   onPromote,
+  onPreview,
   onChanged,
 }: {
   t: Dict
@@ -1319,6 +1343,7 @@ function JobCard({
   needsApplicantInfo: boolean
   applicant: ApplicantDraft
   onPromote: (job: StudioJob) => void
+  onPreview: (job: StudioJob) => void
   onChanged: () => void | Promise<void>
 }) {
   const [pending, startTransition] = useTransition()
@@ -1387,92 +1412,91 @@ function JobCard({
   }
 
   const isDraft = job.tier === 'draft'
+  const hasVideo = (job.status === 'ready' || job.status === 'submitted') && !!job.video_url
 
   return (
-    <div className={`rounded-lg border p-4 ${isDraft ? 'border-dashed border-[#8b22ff]/30 bg-[#8b22ff]/[.03]' : 'border-white/10 bg-white/[.02]'}`}>
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <span className="flex items-center gap-2">
-          <span
-            className={`inline-block px-2.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border ${
-              STATUS_STYLE[job.status] ?? STATUS_STYLE.queued
-            }`}
-          >
-            {statusLabel[job.status] ?? job.status}
+    <div className={`flex flex-col overflow-hidden rounded-lg border ${isDraft ? 'border-dashed border-[#8b22ff]/30 bg-[#8b22ff]/[.03]' : 'border-white/10 bg-white/[.02]'}`}>
+      {/* Media / status area (16:9). Thumbnails preload metadata only (first frame,
+          no controls) so a grid of clips stays light; the full player opens in a
+          single modal on click. */}
+      <div className="relative aspect-video w-full bg-black">
+        {hasVideo ? (
+          <button type="button" onClick={() => onPreview(job)} title={job.prompt} className="group block h-full w-full">
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video src={job.video_url!} preload="metadata" muted playsInline className="h-full w-full object-cover" />
+            <span className="absolute inset-0 flex items-center justify-center text-4xl text-white/0 transition group-hover:bg-black/30 group-hover:text-white/90">▶</span>
+          </button>
+        ) : job.status === 'failed' ? (
+          <div className="flex h-full w-full items-center justify-center p-3 text-center text-[11px] text-[#ff8888]">
+            {job.error_message || t.err_generic}
+          </div>
+        ) : (
+          // In-flight: spinner + status + rolling ETA (no samples -> no number).
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 p-3 text-center">
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-[#b66cff]" />
+            <span className="text-[10px] uppercase tracking-wider text-white/55">{statusLabel[job.status] ?? job.status}</span>
+            {ACTIVE_STATUSES.has(job.status) && etaSeconds !== undefined && (
+              <span className="text-[10px] text-white/35">⏱ {t.eta_value(etaSeconds)}</span>
+            )}
+          </div>
+        )}
+        <span className={`absolute left-1.5 top-1.5 rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider font-bold border ${STATUS_STYLE[job.status] ?? STATUS_STYLE.queued}`}>
+          {statusLabel[job.status] ?? job.status}
+        </span>
+        {isDraft && (
+          <span className="absolute right-1.5 top-1.5 rounded border border-[#8b22ff]/40 bg-[#8b22ff]/20 px-1.5 py-0.5 text-[9px] uppercase tracking-wider font-bold text-[#d9b8ff]">
+            {t.draft_badge}
           </span>
-          {isDraft && (
-            <span className="inline-block px-2.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border border-[#8b22ff]/40 bg-[#8b22ff]/10 text-[#d9b8ff]">
-              {t.draft_badge}
-            </span>
-          )}
-        </span>
-        <span className="text-[10px] text-white/35">
-          {new Date(job.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })} · {job.tier} · {job.duration_seconds}s
-        </span>
+        )}
+        {job.duration_seconds ? (
+          <span className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[9px] tabular-nums text-white/80">{job.duration_seconds}s</span>
+        ) : null}
       </div>
 
-      <p className="text-sm text-white/80 mb-3 line-clamp-3">{job.prompt}</p>
-
-      {/* Mid-flight: show the measured rolling ETA so a normal 3-7min wait
-          does not read as "stuck". No samples -> no number (honesty rule). */}
-      {ACTIVE_STATUSES.has(job.status) && etaSeconds !== undefined && (
-        <p className="mb-3 text-[11px] text-white/45">⏱ {t.eta_hint(t.eta_value(etaSeconds))}</p>
-      )}
-
-      {job.status === 'ready' && job.video_url && (
-        <video src={job.video_url} controls className="w-full rounded-lg border border-white/10 mb-3 bg-black" />
-      )}
-      {job.status === 'submitted' && (
-        <>
-          {job.video_url && (
-            <video src={job.video_url} controls className="w-full rounded-lg border border-white/10 mb-2 bg-black" />
-          )}
-          <span className="inline-block text-[11px] font-bold text-emerald-300">✓ {t.submitted_badge}</span>
-        </>
-      )}
-      {job.status === 'failed' && job.error_message && (
-        <p className="text-[11px] text-[#ff8888]">{job.error_message}</p>
-      )}
-
-      <div className="mt-1 flex items-center justify-between gap-3">
-        {job.status === 'ready' && isDraft ? (
-          // A draft can never be submitted (server enforces too). Its action is
-          // promotion: prefill the generator with this prompt on the
-          // competition sibling model -- nothing is charged until Generate.
-          <span className="flex items-center gap-3">
+      {/* Body: prompt summary + compact actions */}
+      <div className="flex flex-1 flex-col p-3">
+        <p className="line-clamp-2 text-xs text-white/75">{job.prompt}</p>
+        <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+          {job.status === 'ready' && isDraft ? (
+            // A draft can never be submitted (server enforces too). Its action is
+            // promotion: prefill the generator with this prompt on the competition
+            // sibling model -- nothing is charged until Generate.
             <button
               type="button"
               onClick={() => onPromote(job)}
-              className="px-4 py-2 rounded-lg bg-gradient-to-br from-[#7d23ff] to-[#6220dc] text-white text-xs font-bold uppercase tracking-wider hover:brightness-110 transition"
+              title={t.draft_no_submit}
+              className="rounded-md bg-gradient-to-br from-[#7d23ff] to-[#6220dc] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition hover:brightness-110"
             >
               {t.promote}
             </button>
-            <span className="text-[10px] text-white/40">{t.draft_no_submit}</span>
-          </span>
-        ) : job.status === 'ready' && canSubmit ? (
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={pending}
-            className="px-4 py-2 rounded-lg border border-[#8b22ff]/50 text-[#b66cff] text-xs font-bold uppercase tracking-wider hover:bg-[#8b22ff]/10 transition disabled:opacity-40"
-          >
-            {pending ? t.submitting : t.submit}
-          </button>
-        ) : (
-          <span />
-        )}
-        {/* A submitted clip is competition record -- no delete affordance. */}
-        {job.status !== 'submitted' && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={pending}
-            className="text-[11px] text-white/40 hover:text-[#ff8888] transition disabled:opacity-40"
-          >
-            {t.delete}
-          </button>
-        )}
+          ) : job.status === 'ready' && canSubmit ? (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={pending}
+              className="rounded-md border border-[#8b22ff]/50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#b66cff] transition hover:bg-[#8b22ff]/10 disabled:opacity-40"
+            >
+              {pending ? t.submitting : t.submit}
+            </button>
+          ) : job.status === 'submitted' ? (
+            <span className="text-[11px] font-bold text-emerald-300">✓ {t.submitted_badge}</span>
+          ) : (
+            <span />
+          )}
+          {/* A submitted clip is competition record -- no delete affordance. */}
+          {job.status !== 'submitted' && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={pending}
+              className="text-[11px] text-white/40 transition hover:text-[#ff8888] disabled:opacity-40"
+            >
+              {t.delete}
+            </button>
+          )}
+        </div>
+        {error && <p className="mt-2 text-[11px] text-[#ff8888]">{error}</p>}
       </div>
-      {error && <p className="mt-2 text-[11px] text-[#ff8888]">{error}</p>}
     </div>
   )
 }
