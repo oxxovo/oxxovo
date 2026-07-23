@@ -197,11 +197,33 @@ const EFFECT_KEYS: readonly (keyof EffectParams)[] = [
 
 export type SegmentEffect = EdlSegment & { speed?: number; effects?: EffectParams }
 export type Transition = { afterIndex: number; type: string; durationMs: number }
+
+// Text/title overlay layer (creator copy -- NOT an external asset, so Genesis-OK).
+// Coords/size are NORMALIZED (fraction of the render canvas) so they are aspect-
+// agnostic (9:16 / 16:9). Rendered authoritatively by the worker (skia canvas ->
+// ffmpeg overlay); the preview mirrors it with the SAME font + layout (parity).
+export type TextLayer = {
+  content: string        // the text; may be multi-line ('\n')
+  font: string           // allowlisted font id (e.g. 'pretendard')
+  sizePct: number        // font size as % of canvas height
+  color: string          // '#rrggbb'
+  strokeColor?: string   // '#rrggbb' outline for legibility over video
+  strokePct?: number     // outline width as % of font size
+  align: string          // 'left' | 'center' | 'right'
+  xNorm: number          // 0..1 anchor x (fraction of canvas width)
+  yNorm: number          // 0..1 anchor y (fraction of canvas height)
+  startMs: number        // shown from (composition-global ms)
+  endMs: number          // shown until
+  fadeInMs?: number
+  fadeOutMs?: number
+}
+
 export type ComposeEdl = {
   version: 2
   segments: SegmentEffect[]
   transitions?: Transition[]
   global?: EffectParams
+  texts?: TextLayer[]
 }
 
 // Canonical, minimal effect string: only non-neutral params, in EFFECT_KEYS order.
@@ -232,6 +254,36 @@ function segCanonical(s: SegmentEffect): string {
   return out
 }
 
+// Canonical text layer. Fixed field order (part of the signature -- APPEND-ONLY).
+// content is percent-encoded so it can never collide with the ':'/'|' separators
+// (and encodeURIComponent is byte-identical in both repos' JS). Numbers ride a
+// fixed grid (0.1% / 1‰) so preview/store/render never drift a float.
+function textCanonical(x: TextLayer): string {
+  return [
+    encodeURIComponent(x.content),
+    x.font,
+    Math.round(x.sizePct * 10),
+    x.color,
+    x.strokeColor ?? '',
+    Math.round((x.strokePct ?? 0) * 10),
+    x.align,
+    Math.round(x.xNorm * 1000),
+    Math.round(x.yNorm * 1000),
+    Math.round(x.startMs),
+    Math.round(x.endMs),
+    Math.round(x.fadeInMs ?? 0),
+    Math.round(x.fadeOutMs ?? 0),
+  ].join(':')
+}
+
+function textsCanonical(texts: TextLayer[]): string {
+  return texts
+    .slice()
+    .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs || a.content.localeCompare(b.content))
+    .map(textCanonical)
+    .join('|')
+}
+
 function edlCanonicalStringV2(edl: ComposeEdl): string {
   const segs = edl.segments.map(segCanonical).join('|')
   const trans = (edl.transitions ?? [])
@@ -239,7 +291,11 @@ function edlCanonicalStringV2(edl: ComposeEdl): string {
     .sort((a, b) => a.afterIndex - b.afterIndex || a.type.localeCompare(b.type))
     .map((tr) => `${tr.type}@${tr.afterIndex}:${Math.round(tr.durationMs)}`)
     .join('|')
-  return [EDL_VERSION_V2, segs, `T:${trans}`, `G:${effectsCanonical(edl.global)}`].join('||')
+  const base = [EDL_VERSION_V2, segs, `T:${trans}`, `G:${effectsCanonical(edl.global)}`]
+  // APPEND-ONLY: the TX section is added ONLY when texts exist, so every existing
+  // text-free v2 EDL keeps its exact canonical string + hash (KAT/signatures stay).
+  if (edl.texts && edl.texts.length) base.push(`TX:${textsCanonical(edl.texts)}`)
+  return base.join('||')
 }
 
 // Canonical EDL string. Order IS the sequence; startMs/endMs encode trim + cut;

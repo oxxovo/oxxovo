@@ -79,6 +79,51 @@ test('TAMPER: adding a transition changes the hash', () => {
   assert.notEqual(computeEdlHash(tampered), GOLDEN_HASH)
 })
 
+// ---- text overlay KAT (append-only TX section) ----------------------------
+const GOLDEN_TEXT_CANON =
+  'edl2||clipA:0:5000||T:||G:||TX:Bloom%20Beauty:pretendard:80:#ffffff::0:center:500:800:0:3000:300:300|%EC%A7%80%EA%B8%88%20%EB%A7%8C%EB%82%98%EB%B3%B4%EC%84%B8%EC%9A%94:noto-serif-kr:50:#ff88cc:#000000:60:center:500:900:3000:6000:0:0'
+const GOLDEN_TEXT_HASH = '5e45a1ceeec0c2908019a9e415081348e10c82e31c544e22f84a34539effea0f'
+
+const textSample: ComposeEdl = {
+  version: 2,
+  segments: [{ jobId: 'clipA', startMs: 0, endMs: 5000 }],
+  texts: [
+    { content: 'Bloom Beauty', font: 'pretendard', sizePct: 8, color: '#ffffff', align: 'center', xNorm: 0.5, yNorm: 0.8, startMs: 0, endMs: 3000, fadeInMs: 300, fadeOutMs: 300 },
+    { content: '지금 만나보세요', font: 'noto-serif-kr', sizePct: 5, color: '#ff88cc', strokeColor: '#000000', strokePct: 6, align: 'center', xNorm: 0.5, yNorm: 0.9, startMs: 3000, endMs: 6000 },
+  ],
+}
+
+test('KAT: text overlay canonical string is stable (cross-repo byte-mirror)', () => {
+  assert.equal(edlCanonicalString(textSample), GOLDEN_TEXT_CANON)
+})
+
+test('KAT: text overlay hash is stable (cross-repo byte-mirror)', () => {
+  assert.equal(computeEdlHash(textSample), GOLDEN_TEXT_HASH)
+})
+
+test('append-only: adding texts does NOT change a text-free EDL hash', () => {
+  // The same `sample` (no texts) must still hash to the original GOLDEN_HASH --
+  // proves the TX section is emitted ONLY when texts exist (no signature drift).
+  assert.equal(computeEdlHash(sample), GOLDEN_HASH)
+})
+
+test('text layers are order-independent (sorted by startMs)', () => {
+  const reversed: ComposeEdl = { ...textSample, texts: [textSample.texts![1], textSample.texts![0]] }
+  assert.equal(computeEdlHash(reversed), GOLDEN_TEXT_HASH)
+})
+
+test('TAMPER: editing text content changes the hash', () => {
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(textSample))
+  tampered.texts![0].content = 'Bloom Beautx'
+  assert.notEqual(computeEdlHash(tampered), GOLDEN_TEXT_HASH)
+})
+
+test('TAMPER: moving a text position changes the hash', () => {
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(textSample))
+  tampered.texts![0].xNorm = 0.51
+  assert.notEqual(computeEdlHash(tampered), GOLDEN_TEXT_HASH)
+})
+
 test('backward compat: v1 array still uses the edl1 prefix', () => {
   const v1 = edlCanonicalString([{ jobId: 'clipA', startMs: 0, endMs: 5000 }])
   assert.ok(v1.startsWith('edl1|'))
