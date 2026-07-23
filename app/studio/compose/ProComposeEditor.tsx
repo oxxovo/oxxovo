@@ -381,6 +381,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // truth; the preview follows). Falls back to raw if WebGL is unavailable.
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(false)
+  const [playheadMs, setPlayheadMs] = useState(0) // composition-global playhead (scrub / seek / live playback)
   const [globalFx, setGlobalFx] = useState<EffectParams>({}) // whole-timeline grade (E)
   const [transitions, setTransitions] = useState<PreviewTransition[]>([]) // clip-boundary transitions (E)
   const engineRef = useRef<PreviewEngine | null>(null)
@@ -404,20 +405,75 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const useGL = webglOk && compositionHasEffects && !glBlocked
   useEffect(() => {
     const engine = useGL
-      ? createGLPreview({ onPlayingChange: setPlaying, onDegrade: () => setGlBlocked(true) })
-      : createRawPreview({ onPlayingChange: setPlaying })
+      ? createGLPreview({ onPlayingChange: setPlaying, onDegrade: () => setGlBlocked(true), onProgress: setPlayheadMs })
+      : createRawPreview({ onPlayingChange: setPlaying, onProgress: setPlayheadMs })
     engineRef.current = engine
     if (videoRef.current) engine.mount(videoRef.current)
     return () => engine.destroy()
   }, [useGL])
   // Effects are set but the preview cannot render them (no WebGL2, or GL degraded).
   const fxPreviewUnavailable = compositionHasEffects && !useGL
-  const startPreview = () => { if (!segments.length) return; setSel(null); engineRef.current?.play(segments, previewClips, globalFx, transitions) }
+  // composition-global start (ms) of each segment -- for clip-click seek + spans.
+  const segStarts = useMemo(() => {
+    const arr: number[] = []; let a = 0
+    for (const s of segments) { arr.push(a); a += Math.max(0, s.endMs - s.startMs) }
+    return arr
+  }, [segments])
+  const movePlayhead = (compMs: number) => {
+    const clamped = Math.max(0, Math.min(compMs, totalMs))
+    setPlayheadMs(clamped)
+    engineRef.current?.seek(clamped, segments, previewClips, globalFx, transitions)
+  }
+  const startPreview = () => {
+    if (!segments.length) return
+    setSel(null)
+    const atEnd = playheadMs >= totalMs - 10 // at the tail -> restart from the top
+    const from = atEnd ? 0 : playheadMs
+    if (atEnd) setPlayheadMs(0)
+    engineRef.current?.play(segments, previewClips, globalFx, transitions, from)
+  }
   const stopPreview = () => engineRef.current?.pause()
   const selSeg = segments.find((s) => s.uid === sel) ?? null
+  // Idle preview = the frame at the playhead. Fires on composition/engine changes
+  // so adding/replacing a clip repaints immediately (no stale prior clip) and
+  // paused slider edits update WYSIWYG. Playback drives its own per-frame draw.
+  const playheadRef = useRef(0)
+  useEffect(() => { playheadRef.current = playheadMs })
   useEffect(() => {
-    if (!playing && selSeg) engineRef.current?.showFrame(selSeg, previewClips, globalFx)
-  }, [sel, playing, selSeg, previewClips, globalFx])
+    if (playing) return
+    const eng = engineRef.current; if (!eng) return
+    if (!segments.length) { eng.clear(); return }
+    eng.seek(Math.max(0, Math.min(playheadRef.current, totalMs)), segments, previewClips, globalFx, transitions)
+  }, [playing, segments, globalFx, transitions, previewClips, useGL, totalMs])
+
+  // ---- scrubber (progress bar): click / drag to seek, playing or paused ------
+  const scrubRef = useRef<HTMLDivElement>(null)
+  const scrubbing = useRef(false)
+  const scrubRaf = useRef(0)
+  const compFromX = (clientX: number) => {
+    const el = scrubRef.current
+    if (!el || totalMs <= 0) return 0
+    const r = el.getBoundingClientRect()
+    return Math.round(Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * totalMs)
+  }
+  const onScrubDown = (e: React.PointerEvent) => {
+    if (!segments.length) return
+    scrubbing.current = true
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    movePlayhead(compFromX(e.clientX))
+  }
+  const onScrubMove = (e: React.PointerEvent) => {
+    if (!scrubbing.current) return
+    const ms = compFromX(e.clientX)
+    setPlayheadMs(ms) // responsive fill; the seek itself is throttled to rAF
+    cancelAnimationFrame(scrubRaf.current)
+    scrubRaf.current = requestAnimationFrame(() => engineRef.current?.seek(ms, segments, previewClips, globalFx, transitions))
+  }
+  const onScrubUp = (e: React.PointerEvent) => {
+    scrubbing.current = false
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+  }
+  const playPct = totalMs > 0 ? Math.min(100, (playheadMs / totalMs) * 100) : 0
 
   // ---- history: undo / redo -------------------------------------------------
   // Covers effects/speed/LUT/transitions/global grade (Phase 1) AND structural
@@ -429,19 +485,23 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   type Doc = { segments: Segment[]; globalFx: EffectParams; transitions: PreviewTransition[] }
   const undoRef = useRef<Doc[]>([])
   const redoRef = useRef<Doc[]>([])
-  const [, setHistTick] = useState(0) // re-render so undo/redo button state tracks the refs
+  // Availability is STATE (not read off the refs during render) so the buttons
+  // re-render correctly; the ref arrays hold the actual snapshots.
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
   const lastCommit = useRef<{ key: string; t: number }>({ key: '', t: 0 })
   const HIST_MAX = 100
   const COALESCE_MS = 400
   const commit = (key: string, coalesce = false) => {
+    // eslint-disable-next-line react-hooks/purity -- commit() only runs from event handlers, never during render
     const now = Date.now()
     const merged = coalesce && key === lastCommit.current.key && now - lastCommit.current.t < COALESCE_MS
     lastCommit.current = { key, t: now }
     if (merged) return
     undoRef.current.push({ segments, globalFx, transitions })
     if (undoRef.current.length > HIST_MAX) undoRef.current.shift()
-    if (redoRef.current.length) redoRef.current = []
-    setHistTick((x) => x + 1)
+    redoRef.current = []
+    setCanUndo(true); setCanRedo(false)
   }
   const applyDoc = (d: Doc) => {
     setSegments(d.segments)
@@ -455,7 +515,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     redoRef.current.push({ segments, globalFx, transitions })
     applyDoc(prev)
     lastCommit.current = { key: '', t: 0 } // a fresh edit after undo starts a new step
-    setHistTick((x) => x + 1)
+    setCanUndo(undoRef.current.length > 0); setCanRedo(true)
   }
   const redo = () => {
     const next = redoRef.current.pop()
@@ -463,13 +523,13 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     undoRef.current.push({ segments, globalFx, transitions })
     applyDoc(next)
     lastCommit.current = { key: '', t: 0 }
-    setHistTick((x) => x + 1)
+    setCanUndo(true); setCanRedo(redoRef.current.length > 0)
   }
-  const canUndo = undoRef.current.length > 0
-  const canRedo = redoRef.current.length > 0
-  // one-time keydown listener reaches the latest undo/redo via refs
-  const undoFn = useRef(undo); undoFn.current = undo
-  const redoFn = useRef(redo); redoFn.current = redo
+  // one-time keydown listener reaches the latest undo/redo via refs (assigned in
+  // an effect, not during render).
+  const undoFn = useRef(undo)
+  const redoFn = useRef(redo)
+  useEffect(() => { undoFn.current = undo; redoFn.current = redo })
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return
@@ -662,12 +722,18 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
               className="rounded-lg border border-[#8b22ff]/50 px-3 py-1 text-xs font-bold text-[#b66cff] transition hover:bg-[#8b22ff]/10 disabled:opacity-40">
               {playing ? `■ ${t.stop}` : `▶ ${t.play}`}
             </button>
-            <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-              <div className={`h-full transition-all ${over ? 'bg-[#ff6b6b]' : 'bg-[#8b22ff]'}`}
-                style={{ width: `${Math.min(100, (totalSec / (props.maxSeconds || 40)) * 100)}%` }} />
+            <span className="w-[74px] shrink-0 text-[10px] tabular-nums text-white/45">{(playheadMs / 1000).toFixed(1)} / {totalSec.toFixed(1)}{t.sec}</span>
+            <div ref={scrubRef} onPointerDown={onScrubDown} onPointerMove={onScrubMove} onPointerUp={onScrubUp}
+              className={`relative h-2 flex-1 rounded-full bg-white/10 ${segments.length ? 'cursor-pointer' : ''}`}>
+              <div className={`pointer-events-none absolute inset-y-0 left-0 rounded-full ${over ? 'bg-[#ff6b6b]' : 'bg-[#8b22ff]'}`}
+                style={{ width: `${playPct}%` }} />
+              {segments.length > 0 && (
+                <div className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_6px_rgba(0,0,0,0.6)]"
+                  style={{ left: `${playPct}%` }} />
+              )}
             </div>
             {segments.length > 0 && (
-              <button onClick={() => { commit('clear'); setSegments([]); setSel(null); stopPreview() }} className="text-[10px] text-white/35 transition hover:text-[#ff8888]">{t.reset}</button>
+              <button onClick={() => { commit('clear'); setSegments([]); setSel(null); setPlayheadMs(0); stopPreview() }} className="text-[10px] text-white/35 transition hover:text-[#ff8888]">{t.reset}</button>
             )}
           </div>
         </section>
@@ -720,7 +786,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                       onDragStart={(e) => { if (trim.current) { e.preventDefault(); return } setDragUid(s.uid) }}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => { e.stopPropagation(); if (dragUid && !dragUid.startsWith('pool_')) reorderTo(dragUid, s.uid); setDragUid(null) }}
-                      onClick={() => setSel(s.uid)}
+                      onClick={() => { setSel(s.uid); movePlayhead(segStarts[i]) }}
                       style={{ width: Math.max(20, (segMs / 1000) * pxPerSec) }}
                       className={`group relative flex shrink-0 cursor-grab items-center justify-center overflow-hidden rounded-lg border bg-[#141021] text-[10px] transition ${
                         sel === s.uid ? 'border-[#b66cff] ring-1 ring-[#8b22ff]' : dragUid === s.uid ? 'border-[#8b22ff]' : 'border-[#8b22ff]/25 hover:border-[#8b22ff]/70'

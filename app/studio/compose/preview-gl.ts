@@ -7,6 +7,7 @@
 // Ported so far: color grade + LUT (this file). Glow / transitions land next.
 
 import type { PreviewEngine, PreviewClip, PreviewSegment, PreviewTransition } from './preview'
+import { locateComposition } from './preview'
 import type { EffectParams } from '@/lib/effects'
 import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, glowStages, grainAmount, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
 
@@ -189,7 +190,7 @@ function makeLutLoader() {
 // per Origin (Vary: Origin), content-range exposed.
 const glUrl = (u: string) => u + (u.includes('?') ? '&' : '?') + 'gl=1'
 
-export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => void; onDegrade?: (reason: string) => void } = {}): PreviewEngine {
+export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => void; onDegrade?: (reason: string) => void; onProgress?: (compMs: number) => void } = {}): PreviewEngine {
   let video: HTMLVideoElement | null = null
   let videoB: HTMLVideoElement | null = null // incoming clip, only during a transition
   let canvas: HTMLCanvasElement | null = null
@@ -221,7 +222,21 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
   let idx = 0
   let playing = false
   const luts = makeLutLoader()
+  let lastReport = 0
   const setPlaying = (p: boolean) => { playing = p; opts.onPlayingChange?.(p) }
+  const showCanvas = () => { if (canvas) canvas.style.display = '' }
+  const compStart = (i: number) => { let a = 0; for (let k = 0; k < i; k++) a += Math.max(0, segs[k].endMs - segs[k].startMs); return a }
+  const report = () => {
+    if (!video || !opts.onProgress) return
+    const seg = segs[idx]; if (!seg) return
+    const now = performance.now()
+    if (now - lastReport < 50) return // ~20fps; avoids a setState storm per rAF
+    lastReport = now
+    opts.onProgress(compStart(idx) + Math.max(0, video.currentTime * 1000 - seg.startMs))
+  }
+  // Persistent seek handler: when paused, repaint once the seek settles (scrub).
+  // A persistent listener avoids per-seek once-listeners piling up during a drag.
+  const onSeeked = () => { if (!playing) drawFrame() }
 
   // Ensure the LUT for these effects is loaded + bound on the processor. Returns
   // whether a LUT is in play (drives u_hasLut). Applied before EACH render so A/B
@@ -284,7 +299,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     if (dead) return
     try { drawFrameGL() } catch (e) { degrade(e instanceof Error ? `${e.name}: ${e.message}` : String(e)) }
   }
-  const loop = () => { drawFrame(); if (playing && !dead) raf = requestAnimationFrame(loop) }
+  const loop = () => { drawFrame(); report(); if (playing && !dead) raf = requestAnimationFrame(loop) }
   const playAt = async (i: number, startOffsetMs = 0) => {
     if (!video || i >= segs.length) { setPlaying(false); return }
     releaseVideoB()
@@ -326,6 +341,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       // honest note), never a black canvas.
       v.crossOrigin = 'anonymous'
       v.addEventListener('error', onMediaError)
+      v.addEventListener('seeked', onSeeked)
       try {
         canvas = document.createElement('canvas')
         canvas.className = 'oxxovo-gl-preview max-h-full max-w-full rounded-xl'
@@ -339,16 +355,57 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       v.addEventListener('timeupdate', onTimeUpdate)
       v.addEventListener('ended', () => setPlaying(false))
     },
-    play(segments, clips, global, transitions) {
+    play(segments, clips, global, transitions, startCompMs = 0) {
       segs = segments; clipMap = clips; glob = global
       trans = new Map((transitions ?? []).map((tr) => [tr.afterIndex, tr]))
       if (!segments.length) return
-      setPlaying(true); void playAt(0)
+      showCanvas()
+      setPlaying(true)
+      const { idx: si, videoTimeMs } = locateComposition(segs, startCompMs)
+      void playAt(si, videoTimeMs - segs[si].startMs)
       cancelAnimationFrame(raf); raf = requestAnimationFrame(loop)
     },
     update(segments, clips, global, transitions) {
       segs = segments; clipMap = clips; glob = global
       trans = new Map((transitions ?? []).map((tr) => [tr.afterIndex, tr]))
+    },
+    // Move the playhead to a composition-global time. During a transition window
+    // the normal drawFrame path re-derives the A/B blend from video.currentTime
+    // (transitionSample), so positioning the outgoing clip is enough.
+    seek(compMs, segments, clips, global, transitions) {
+      segs = segments; clipMap = clips; glob = global
+      trans = new Map((transitions ?? []).map((tr) => [tr.afterIndex, tr]))
+      if (!segs.length || !video || dead) return
+      showCanvas()
+      releaseVideoB() // drawFrame re-acquires videoB if the target lands in a transition
+      const { idx: ni, videoTimeMs } = locateComposition(segs, compMs)
+      idx = ni
+      const clip = clipMap.get(segs[ni].jobId)
+      if (!clip) return
+      const url = glUrl(clip.url)
+      const srcChanged = video.src !== url
+      if (srcChanged) video.src = url
+      video.volume = 1
+      const target = videoTimeMs / 1000
+      const apply = () => {
+        if (!video || dead) return
+        try { video.currentTime = target } catch { /* not ready */ }
+        if (playing) { video.play().catch(() => {}); return }
+        // paused scrub: onSeeked repaints when the seek settles; this rAF retry
+        // covers the "already at target" no-op (no seeked fires) and not-yet-ready.
+        let tries = 0
+        const retry = () => { if (dead || !video) return; if (video.readyState >= 2) drawFrame(); else if (tries++ < 60) requestAnimationFrame(retry) }
+        requestAnimationFrame(retry)
+      }
+      if (srcChanged && video.readyState < 1) video.addEventListener('loadedmetadata', apply, { once: true })
+      else apply()
+    },
+    clear() {
+      setPlaying(false)
+      cancelAnimationFrame(raf)
+      video?.pause()
+      releaseVideoB()
+      if (canvas) canvas.style.display = 'none'
     },
     pause() { setPlaying(false); video?.pause(); cancelAnimationFrame(raf) },
     showFrame(seg, clips, global) {
@@ -382,6 +439,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       cancelAnimationFrame(raf)
       video?.removeEventListener('timeupdate', onTimeUpdate)
       video?.removeEventListener('error', onMediaError)
+      video?.removeEventListener('seeked', onSeeked)
       video?.pause()
       releaseVideoB(); videoB = null
       if (video) video.setAttribute('style', savedVideoStyle)
