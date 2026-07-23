@@ -298,12 +298,14 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // ---- sequence ops (order / trim / cut) ------------------------------------
   const addClip = (clip: SourceClip) => {
     if (segments.length >= props.maxClips) return
+    commit('add')
     setSegments((s) => [...s, { uid: nextUid(), jobId: clip.id, startMs: 0, endMs: Math.round(clip.durationSeconds * 1000) }])
   }
-  const removeSeg = (uid: string) => { setSegments((s) => s.filter((x) => x.uid !== uid)); if (sel === uid) setSel(null) }
-  const reorderTo = (fromUid: string, toUid: string) =>
+  const removeSeg = (uid: string) => { commit('rm'); setSegments((s) => s.filter((x) => x.uid !== uid)); if (sel === uid) setSel(null) }
+  const reorderTo = (fromUid: string, toUid: string) => {
+    if (fromUid === toUid) return
+    commit('reorder')
     setSegments((s) => {
-      if (fromUid === toUid) return s
       const from = s.findIndex((x) => x.uid === fromUid)
       const to = s.findIndex((x) => x.uid === toUid)
       if (from < 0 || to < 0) return s
@@ -312,11 +314,13 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
       copy.splice(to, 0, moved)
       return copy
     })
+  }
 
   // Edge trim via pointer drag; px delta -> ms using the live zoom (exact at any zoom).
   const trim = useRef<{ uid: string; edge: 'start' | 'end'; x0: number; orig: number } | null>(null)
   const onTrimDown = (e: React.PointerEvent, s: Segment, edge: 'start' | 'end') => {
     e.preventDefault(); e.stopPropagation()
+    commit(`trim:${s.uid}:${edge}`) // one undo step per trim gesture (snapshot before drag)
     trim.current = { uid: s.uid, edge, x0: e.clientX, orig: edge === 'start' ? s.startMs : s.endMs }
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
@@ -416,7 +420,8 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   }, [sel, playing, selSeg, previewClips, globalFx])
 
   // ---- history: undo / redo -------------------------------------------------
-  // Phase 1 scope: effects/speed/LUT/transitions/global grade. The doc is captured
+  // Covers effects/speed/LUT/transitions/global grade (Phase 1) AND structural
+  // ops -- add / remove / reorder / trim / clear (Phase 2). The doc is captured
   // as {segments, globalFx, transitions}; every mutation is already immutable
   // (spread/map/filter), so storing the *references* is a safe frozen snapshot.
   // Continuous edits (slider drags) coalesce by key+time into ONE undo step;
@@ -662,7 +667,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                 style={{ width: `${Math.min(100, (totalSec / (props.maxSeconds || 40)) * 100)}%` }} />
             </div>
             {segments.length > 0 && (
-              <button onClick={() => { setSegments([]); setSel(null); stopPreview() }} className="text-[10px] text-white/35 transition hover:text-[#ff8888]">{t.reset}</button>
+              <button onClick={() => { commit('clear'); setSegments([]); setSel(null); stopPreview() }} className="text-[10px] text-white/35 transition hover:text-[#ff8888]">{t.reset}</button>
             )}
           </div>
         </section>
