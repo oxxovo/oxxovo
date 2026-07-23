@@ -104,6 +104,11 @@ const DICT = {
     fx_lut: 'LUT (룩)',
     fx_speed: '속도',
     fx_reset: '초기화',
+    fx_reset_clip: '클립 효과 초기화',
+    fx_reset_global: '전체 그레이드 초기화',
+    undo: '실행 취소',
+    redo: '다시 실행',
+    dbl_default: '더블클릭: 기본값으로',
     fx_transitions: '전환',
     fx_no_trans: '없음',
     fx_between: (a: number, b: number) => `클립 ${a} → ${b}`,
@@ -176,6 +181,11 @@ const DICT = {
     fx_lut: 'LUT (look)',
     fx_speed: 'Speed',
     fx_reset: 'Reset',
+    fx_reset_clip: 'Reset clip effects',
+    fx_reset_global: 'Reset grade',
+    undo: 'Undo',
+    redo: 'Redo',
+    dbl_default: 'Double-click: reset to default',
     fx_transitions: 'Transitions',
     fx_no_trans: 'None',
     fx_between: (a: number, b: number) => `Clip ${a} → ${b}`,
@@ -405,21 +415,99 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (!playing && selSeg) engineRef.current?.showFrame(selSeg, previewClips, globalFx)
   }, [sel, playing, selSeg, previewClips, globalFx])
 
+  // ---- history: undo / redo -------------------------------------------------
+  // Phase 1 scope: effects/speed/LUT/transitions/global grade. The doc is captured
+  // as {segments, globalFx, transitions}; every mutation is already immutable
+  // (spread/map/filter), so storing the *references* is a safe frozen snapshot.
+  // Continuous edits (slider drags) coalesce by key+time into ONE undo step;
+  // discrete edits (LUT/transition/reset/dbl-click) each push their own step.
+  type Doc = { segments: Segment[]; globalFx: EffectParams; transitions: PreviewTransition[] }
+  const undoRef = useRef<Doc[]>([])
+  const redoRef = useRef<Doc[]>([])
+  const [, setHistTick] = useState(0) // re-render so undo/redo button state tracks the refs
+  const lastCommit = useRef<{ key: string; t: number }>({ key: '', t: 0 })
+  const HIST_MAX = 100
+  const COALESCE_MS = 400
+  const commit = (key: string, coalesce = false) => {
+    const now = Date.now()
+    const merged = coalesce && key === lastCommit.current.key && now - lastCommit.current.t < COALESCE_MS
+    lastCommit.current = { key, t: now }
+    if (merged) return
+    undoRef.current.push({ segments, globalFx, transitions })
+    if (undoRef.current.length > HIST_MAX) undoRef.current.shift()
+    if (redoRef.current.length) redoRef.current = []
+    setHistTick((x) => x + 1)
+  }
+  const applyDoc = (d: Doc) => {
+    setSegments(d.segments)
+    setGlobalFx(d.globalFx)
+    setTransitions(d.transitions)
+    setSel((cur) => (cur && d.segments.some((s) => s.uid === cur) ? cur : null))
+  }
+  const undo = () => {
+    const prev = undoRef.current.pop()
+    if (!prev) return
+    redoRef.current.push({ segments, globalFx, transitions })
+    applyDoc(prev)
+    lastCommit.current = { key: '', t: 0 } // a fresh edit after undo starts a new step
+    setHistTick((x) => x + 1)
+  }
+  const redo = () => {
+    const next = redoRef.current.pop()
+    if (!next) return
+    undoRef.current.push({ segments, globalFx, transitions })
+    applyDoc(next)
+    lastCommit.current = { key: '', t: 0 }
+    setHistTick((x) => x + 1)
+  }
+  const canUndo = undoRef.current.length > 0
+  const canRedo = redoRef.current.length > 0
+  // one-time keydown listener reaches the latest undo/redo via refs
+  const undoFn = useRef(undo); undoFn.current = undo
+  const redoFn = useRef(redo); redoFn.current = redo
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const el = e.target as HTMLElement | null
+      const tag = el?.tagName
+      if (tag === 'TEXTAREA' || tag === 'SELECT') return // preserve native editing
+      if (tag === 'INPUT' && (el as HTMLInputElement).type !== 'range') return
+      const k = e.key.toLowerCase()
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); undoFn.current() }
+      else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redoFn.current() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   // ---- effect UI (E): per-clip + global, neutral(0) default -----------------
   const [fxTab, setFxTab] = useState<'clip' | 'global'>('clip')
-  const setSegFx = (uid: string, key: keyof EffectParams, val: number) =>
+  const setSegFx = (uid: string, key: keyof EffectParams, val: number) => {
+    commit(`fx:${uid}:${key}`, true)
     setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, effects: { ...x.effects, [key]: val } } : x)))
-  const setSegLut = (uid: string, lut: string) =>
+  }
+  const setSegLut = (uid: string, lut: string) => {
+    commit(`lut:${uid}`)
     setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, effects: { ...x.effects, lut } } : x)))
-  const setSegSpeed = (uid: string, speed: number) =>
+  }
+  const setSegSpeed = (uid: string, speed: number) => {
+    commit(`spd:${uid}`, true)
     setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, speed } : x)))
-  const setGlobalKey = (key: keyof EffectParams, val: number) => setGlobalFx((g) => ({ ...g, [key]: val }))
-  const setGlobalLut = (lut: string) => setGlobalFx((g) => ({ ...g, lut }))
-  const setBoundaryTransition = (afterIndex: number, type: string) =>
+  }
+  const setGlobalKey = (key: keyof EffectParams, val: number) => { commit(`gfx:${key}`, true); setGlobalFx((g) => ({ ...g, [key]: val })) }
+  const setGlobalLut = (lut: string) => { commit('glut'); setGlobalFx((g) => ({ ...g, lut })) }
+  const setBoundaryTransition = (afterIndex: number, type: string) => {
+    commit(`tr:${afterIndex}`)
     setTransitions((tr) => {
       const rest = tr.filter((x) => x.afterIndex !== afterIndex)
       return type ? [...rest, { afterIndex, type, durationMs: 500 }].sort((a, b) => a.afterIndex - b.afterIndex) : rest
     })
+  }
+  const resetClipFx = (uid: string) => {
+    commit(`rcf:${uid}`)
+    setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, effects: undefined, speed: undefined } : x)))
+  }
+  const resetGlobalFx = () => { commit('rgf'); setGlobalFx({}) }
   // live-apply while a preview is playing so sliders update WYSIWYG immediately
   // (update refs in place -- do NOT restart playback).
   useEffect(() => {
@@ -587,6 +675,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
               <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/40">{t.single_track}</span>
             </div>
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-0.5 rounded-lg border border-white/10 p-0.5">
+                <button onClick={undo} disabled={!canUndo} title={`${t.undo} (Ctrl+Z)`}
+                  className="flex h-6 w-6 items-center justify-center rounded text-[14px] text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-30">↶</button>
+                <button onClick={redo} disabled={!canRedo} title={`${t.redo} (Ctrl+Shift+Z)`}
+                  className="flex h-6 w-6 items-center justify-center rounded text-[14px] text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-30">↷</button>
+              </div>
               <div className="flex items-center gap-0.5 rounded-lg border border-white/10 p-0.5" title={t.zoom_hint}>
                 <button onClick={() => zoomBy(1 / 1.4)} disabled={pxPerSec <= ZOOM_MIN} title={t.zoom_out}
                   className="flex h-6 w-6 items-center justify-center rounded text-[15px] text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-30">−</button>
@@ -695,7 +789,9 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                                 <span>{spec.label}{spec.parity === 'approximate' && <span className="ml-1 rounded bg-amber-400/20 px-1 py-0.5 text-[9px] font-bold text-amber-300">{t.approx_badge}</span>}</span>
                                 <span className="tabular-nums text-white/35">{val}</span>
                               </span>
-                              <input type="range" min={spec.min} max={spec.max} value={val} onChange={(e) => setKey(spec.key, Number(e.target.value))} className="w-full accent-[#8b22ff]" />
+                              <input type="range" min={spec.min} max={spec.max} value={val} onChange={(e) => setKey(spec.key, Number(e.target.value))}
+                                onDoubleClick={() => { lastCommit.current = { key: '', t: 0 }; setKey(spec.key, 0) }} title={t.dbl_default}
+                                className="w-full accent-[#8b22ff]" />
                             </label>
                           )
                         })}
@@ -705,11 +801,23 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                             <span className="flex items-center justify-between text-[11px] text-white/55">
                               <span>{t.fx_speed}</span><span className="tabular-nums text-white/35">{(selSeg!.speed ?? 1).toFixed(2)}x</span>
                             </span>
-                            <input type="range" min={0.25} max={4} step={0.05} value={selSeg!.speed ?? 1} onChange={(e) => setSegSpeed(selSeg!.uid, Number(e.target.value))} className="w-full accent-[#8b22ff]" />
+                            <input type="range" min={0.25} max={4} step={0.05} value={selSeg!.speed ?? 1} onChange={(e) => setSegSpeed(selSeg!.uid, Number(e.target.value))}
+                              onDoubleClick={() => { lastCommit.current = { key: '', t: 0 }; setSegSpeed(selSeg!.uid, 1) }} title={t.dbl_default}
+                              className="w-full accent-[#8b22ff]" />
                           </label>
                         )}
                       </div>
                       {grainOn && <p className="text-[10px] text-amber-300/80">⚠ {t.approx_note}</p>}
+                      <div className="flex justify-end pt-1">
+                        <button type="button"
+                          onClick={() => (fxTab === 'clip' ? resetClipFx(selSeg!.uid) : resetGlobalFx())}
+                          disabled={fxTab === 'clip'
+                            ? !hasAnyEffect(selSeg!.effects) && (selSeg!.speed === undefined || Math.round(selSeg!.speed * 1000) === 1000)
+                            : !hasAnyEffect(globalFx)}
+                          className="text-[10px] text-white/40 transition hover:text-[#ff8888] disabled:opacity-30">
+                          ↺ {fxTab === 'clip' ? t.fx_reset_clip : t.fx_reset_global}
+                        </button>
+                      </div>
                     </div>
                   )
                 })()}
