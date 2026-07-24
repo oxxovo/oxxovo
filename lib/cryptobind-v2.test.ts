@@ -10,7 +10,15 @@ process.env.STUDIO_CRYPTOBIND_SECRET = 'kat-secret'
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { edlCanonicalString, computeEdlHash, type ComposeEdl } from './cryptobind.ts'
+import {
+  edlCanonicalString,
+  computeEdlHash,
+  computeSourceBundle,
+  buildMusicAssetBind,
+  verifyMusicAssetBind,
+  musicAssetCanonicalString,
+  type ComposeEdl,
+} from './cryptobind.ts'
 
 // ---- GOLDEN (must match oxxovo-studio/src/cryptobind KAT) ------------------
 const GOLDEN_CANON =
@@ -157,6 +165,79 @@ test('TAMPER: swapping the music asset changes the hash', () => {
   const tampered: ComposeEdl = JSON.parse(JSON.stringify(musicSample))
   tampered.music!.assetId = 'lib_elegant_02'
   assert.notEqual(computeEdlHash(tampered), GOLDEN_MUSIC_HASH)
+})
+
+// ---- music ASSET binding KAT (v1m) + anti-swap bundle fold-in --------------
+// The asset signature is content-hash based and MUST be byte-identical across
+// repos (worker seeds/signs, main app verifies). Golden: sign('kat-secret',
+// 'v1m|lib_elegant_01|library|' + 'ab'.repeat(32)).
+const GOLDEN_V1M_CANON = 'v1m|lib_elegant_01|library|' + 'ab'.repeat(32)
+const GOLDEN_V1M_SIG = '3e95a4ab57fbbb5611f6c3a81ea6859b1732ac6ed7901f175e60dfacdb995b73'
+const CH = 'ab'.repeat(32)
+
+test('KAT: v1m canonical string is stable (cross-repo byte-mirror)', () => {
+  assert.equal(musicAssetCanonicalString({ assetId: 'lib_elegant_01', source: 'library', contentHash: CH }), GOLDEN_V1M_CANON)
+})
+
+test('KAT: v1m signature is stable (cross-repo byte-mirror)', () => {
+  const b = buildMusicAssetBind({ assetId: 'lib_elegant_01', source: 'library', contentHash: CH, generatedAt: new Date('2026-01-01T00:00:00.000Z') })
+  assert.equal(b.cryptobind_signature, GOLDEN_V1M_SIG)
+})
+
+test('v1m: genuine asset verifies (request time: stored hash)', () => {
+  const b = buildMusicAssetBind({ assetId: 'lib_elegant_01', source: 'library', contentHash: CH, generatedAt: new Date() })
+  const row = { id: 'lib_elegant_01', source: 'library', cryptobind_content_hash: CH, cryptobind_signature: b.cryptobind_signature, cryptobind_algo: b.cryptobind_algo }
+  assert.deepEqual(verifyMusicAssetBind(row), { ok: true })
+})
+
+test('v1m: worker re-hash of intact bytes verifies', () => {
+  const b = buildMusicAssetBind({ assetId: 'lib_elegant_01', source: 'library', contentHash: CH, generatedAt: new Date() })
+  const row = { id: 'lib_elegant_01', source: 'library', cryptobind_content_hash: CH, cryptobind_signature: b.cryptobind_signature, cryptobind_algo: b.cryptobind_algo }
+  // fresh hash of the downloaded bytes == stored hash -> ok
+  assert.deepEqual(verifyMusicAssetBind(row, CH), { ok: true })
+})
+
+test('v1m TAMPER: repointed r2_key (different audio bytes) rejects at the worker', () => {
+  const b = buildMusicAssetBind({ assetId: 'lib_elegant_01', source: 'library', contentHash: CH, generatedAt: new Date() })
+  const row = { id: 'lib_elegant_01', source: 'library', cryptobind_content_hash: CH, cryptobind_signature: b.cryptobind_signature, cryptobind_algo: b.cryptobind_algo }
+  const differentBytesHash = 'cd'.repeat(32)
+  const r = verifyMusicAssetBind(row, differentBytesHash)
+  assert.equal(r.ok, false)
+  assert.equal((r as { reason: string }).reason, 'signature_mismatch')
+})
+
+test('v1m TAMPER: swapped assetId (forged row) fails the signature', () => {
+  const b = buildMusicAssetBind({ assetId: 'lib_elegant_01', source: 'library', contentHash: CH, generatedAt: new Date() })
+  // attacker points the EDL at a different id but keeps the old signature
+  const row = { id: 'lib_elegant_99', source: 'library', cryptobind_content_hash: CH, cryptobind_signature: b.cryptobind_signature, cryptobind_algo: b.cryptobind_algo }
+  const r = verifyMusicAssetBind(row)
+  assert.equal(r.ok, false)
+  assert.equal((r as { reason: string }).reason, 'signature_mismatch')
+})
+
+test('v1m TAMPER: unsupported algo rejects', () => {
+  const b = buildMusicAssetBind({ assetId: 'lib_elegant_01', source: 'library', contentHash: CH, generatedAt: new Date() })
+  const r = verifyMusicAssetBind({ id: 'lib_elegant_01', source: 'library', cryptobind_content_hash: CH, cryptobind_signature: b.cryptobind_signature, cryptobind_algo: 'MD5' })
+  assert.equal(r.ok, false)
+  assert.equal((r as { reason: string }).reason, 'unsupported_algo')
+})
+
+test('v1m: missing hash/signature rejects (content_missing)', () => {
+  const r = verifyMusicAssetBind({ id: 'lib_elegant_01', source: 'library', cryptobind_content_hash: null, cryptobind_signature: null, cryptobind_algo: 'HMAC-SHA256' })
+  assert.equal(r.ok, false)
+  assert.equal((r as { reason: string }).reason, 'content_missing')
+})
+
+test('anti-swap: folding the music sig into the source bundle changes it (append-only)', () => {
+  const clipSigs = ['sigA', 'sigB']
+  const bundleNoMusic = computeSourceBundle(clipSigs)
+  const b = buildMusicAssetBind({ assetId: 'lib_elegant_01', source: 'library', contentHash: CH, generatedAt: new Date() })
+  const bundleWithMusic = computeSourceBundle([...clipSigs, b.cryptobind_signature])
+  assert.notEqual(bundleNoMusic, bundleWithMusic)
+  // swapping to a different bed yields a different bundle -> render_sig_mismatch
+  const b2 = buildMusicAssetBind({ assetId: 'lib_elegant_02', source: 'library', contentHash: CH, generatedAt: new Date() })
+  const bundleSwapped = computeSourceBundle([...clipSigs, b2.cryptobind_signature])
+  assert.notEqual(bundleWithMusic, bundleSwapped)
 })
 
 test('backward compat: v1 array still uses the edl1 prefix', () => {

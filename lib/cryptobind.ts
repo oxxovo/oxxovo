@@ -476,6 +476,79 @@ export function verifyComposeBind(
 }
 
 // ===========================================================================
+// Music-asset binding (v1m) -- a music bed (platform library track OR in-platform
+// AI generation, NEVER an upload) is signed like a source clip so the EDL's
+// music.assetId cannot be repointed to different audio after signing. Content-hash
+// based (like v1c): binds assetId + source to the EXACT audio bytes. Stamped when
+// the asset's audio exists (library seed / AI worker download); the asset's
+// signature is folded into the compose-request SOURCE BUNDLE (computeSourceBundle)
+// so swapping the bed breaks the render signature (render_sig_mismatch). No tid/pid
+// in the canonical -- library beds are cross-season/platform-owned; the anti-swap
+// binding is assetId <-> content only. Mirrors oxxovo-studio/src/cryptobind.ts.
+// ===========================================================================
+const MUSIC_ASSET_VERSION = 'v1m'
+
+export function musicAssetCanonicalString(i: { assetId: string; source: string; contentHash: string }): string {
+  return [MUSIC_ASSET_VERSION, i.assetId, i.source, i.contentHash].join('|')
+}
+
+// sha256 over the audio bytes -- identical to the worker copy.
+export function hashMusicAsset(buffer: Buffer | Uint8Array): string {
+  return createHash('sha256').update(buffer).digest('hex')
+}
+
+export interface MusicAssetBindFields {
+  cryptobind_content_hash: string
+  cryptobind_signature: string
+  cryptobind_generated_at: string
+  cryptobind_algo: string
+}
+
+// Build the signing columns for a music asset (library seed / AI worker download).
+export function buildMusicAssetBind(i: {
+  assetId: string
+  source: string
+  contentHash: string
+  generatedAt: Date
+}): MusicAssetBindFields {
+  return {
+    cryptobind_content_hash: i.contentHash,
+    cryptobind_signature: sign(
+      musicAssetCanonicalString({ assetId: i.assetId, source: i.source, contentHash: i.contentHash }),
+    ),
+    cryptobind_generated_at: i.generatedAt.toISOString(),
+    cryptobind_algo: CRYPTOBIND_ALGO,
+  }
+}
+
+export type MusicAssetVerifyResult =
+  | { ok: true }
+  | { ok: false; reason: 'unsupported_algo' | 'signature_mismatch' | 'content_missing' }
+
+// Verify a music asset's v1m signature. Pass a freshly-computed `contentHash`
+// (worker, from the downloaded bytes) to ALSO prove the audio is intact: a
+// repointed r2_key or tampered bytes change the hash, so the recomputed signature
+// no longer matches the stored one. The app (request time, no bytes) omits it and
+// only checks the row is self-consistent.
+export function verifyMusicAssetBind(
+  row: {
+    id: string
+    source: string
+    cryptobind_content_hash?: string | null
+    cryptobind_signature?: string | null
+    cryptobind_algo?: string | null
+  },
+  contentHash?: string,
+): MusicAssetVerifyResult {
+  if (row.cryptobind_algo !== CRYPTOBIND_ALGO) return { ok: false, reason: 'unsupported_algo' }
+  const hash = contentHash ?? row.cryptobind_content_hash
+  if (!hash || !row.cryptobind_signature) return { ok: false, reason: 'content_missing' }
+  const expected = sign(musicAssetCanonicalString({ assetId: row.id, source: row.source, contentHash: hash }))
+  if (!safeEqualHex(expected, row.cryptobind_signature)) return { ok: false, reason: 'signature_mismatch' }
+  return { ok: true }
+}
+
+// ===========================================================================
 // Image / i2v bindings (v1i / v1ic / v1v) -- Stage 3 AI-actor extension.
 // Mirrors oxxovo-studio/src/cryptobind.ts byte-for-byte in the CANONICAL / HASH
 // / BUILD region (only the secret injection differs: here sign() reads the

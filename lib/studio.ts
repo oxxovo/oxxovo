@@ -19,12 +19,15 @@ import {
   buildImageBind,
   buildI2vBind,
   computeSourceBundle,
+  verifyMusicAssetBind,
   CRYPTOBIND_ALGO,
   type EdlSegment,
   type ComposeEdl,
+  type MusicBed,
 } from '@/lib/cryptobind'
 import { verifySourceClipCrypto } from '@/lib/studio-verify'
 import { validateTexts, parseTrademarkBlocklist, findBlockedTrademark, type TextReason } from '@/lib/text-limits'
+import { validateMusicBed, type MusicReason } from '@/lib/music-limits'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -1245,8 +1248,46 @@ export type CreateRenderResult =
         | 'bad_aspect'
         | 'failed'
         | TextReason
+        | MusicReason
       detail?: string
     }
+
+// Resolve + verify the music bed asset for a render, and return the asset's v1m
+// signature to fold into the compose-request source bundle (anti-swap). SHARED by
+// createRender (request) and submitRender (verify) so the bundle is byte-identical
+// on both sides. Returns { ok:true, signature:null } when the EDL has no music
+// (music-free renders keep their exact bundle -- append-only). Season gate is
+// checked by the caller (it holds the season row) via `musicEnabled`.
+async function resolveMusicSignature(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  music: MusicBed | undefined,
+  userId: string,
+  musicEnabled: boolean,
+): Promise<{ ok: true; signature: string | null } | { ok: false; reason: MusicReason; detail?: string }> {
+  if (!music) return { ok: true, signature: null }
+  if (!musicEnabled) return { ok: false, reason: 'music_disabled' }
+  const { data: asset, error } = await admin
+    .from('studio_music_assets')
+    .select('id, source, status, active, user_id, cryptobind_content_hash, cryptobind_signature, cryptobind_algo')
+    .eq('id', music.assetId)
+    .maybeSingle()
+  if (error) return { ok: false, reason: 'music_not_found', detail: error.message }
+  if (!asset) return { ok: false, reason: 'music_not_found', detail: music.assetId }
+  if (asset.source !== music.source) return { ok: false, reason: 'music_not_found', detail: 'source mismatch' }
+  if (asset.status !== 'ready') return { ok: false, reason: 'music_not_ready', detail: String(asset.status) }
+  // library beds must be curation-active; AI beds must belong to this participant.
+  if (asset.source === 'library' && !asset.active) return { ok: false, reason: 'music_not_found', detail: 'inactive' }
+  if (asset.source === 'ai' && asset.user_id !== userId) return { ok: false, reason: 'music_not_owned' }
+  const av = verifyMusicAssetBind({
+    id: String(asset.id),
+    source: String(asset.source),
+    cryptobind_content_hash: asset.cryptobind_content_hash as string | null,
+    cryptobind_signature: asset.cryptobind_signature as string | null,
+    cryptobind_algo: asset.cryptobind_algo as string | null,
+  })
+  if (!av.ok) return { ok: false, reason: 'music_cryptobind_failed', detail: av.reason }
+  return { ok: true, signature: String(asset.cryptobind_signature) }
+}
 
 export async function createRender(args: {
   userId: string
@@ -1263,7 +1304,7 @@ export async function createRender(args: {
   // 1. Season compose config (caps are season-variable).
   const { data: seasonRow, error: sErr } = await admin
     .from('seasons')
-    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips')
+    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips, studio_music_enabled')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
@@ -1317,6 +1358,13 @@ export async function createRender(args: {
     }
   }
 
+  // 2c. Music bed (EDL v2). Shape/bounds validated here (client mirrors); asset
+  //     existence + signature are resolved at step 4 (needs the DB). Gated by the
+  //     season's studio_music_enabled (music stays OFF until the library is ready).
+  const music = Array.isArray(args.edl) ? undefined : args.edl.music
+  const mv = validateMusicBed(music, totalMs)
+  if (!mv.ok) return { ok: false, reason: mv.reason }
+
   // 3. Load distinct sources; each must be the participant's own, same-season,
   //    ready clip with a valid CryptoBind, and each trim must fit the clip.
   const ids = [...new Set(segments.map((s) => s.jobId))]
@@ -1362,6 +1410,11 @@ export async function createRender(args: {
   const renderId = randomUUID()
   const generatedAt = new Date()
   const sourceSignatures = ids.map((id) => String(byId.get(id)!.cryptobind_signature))
+  // Fold the music asset's v1m signature into the bundle so the bed can't be
+  // swapped after signing (append-only: music-free renders push nothing).
+  const ms = await resolveMusicSignature(admin, music, args.userId, !!seasonRow.studio_music_enabled)
+  if (!ms.ok) return { ok: false, reason: ms.reason, detail: ms.detail }
+  if (ms.signature) sourceSignatures.push(ms.signature)
   const cb = buildComposeRequestBind({
     pid: args.userId,
     tid: args.seasonId,
@@ -1511,6 +1564,7 @@ export type SubmitRenderResult =
         | 'source_not_found'
         | 'source_cryptobind_failed'
         | 'compose_cryptobind_failed'
+        | MusicReason
         | 'no_application'
         | 'already_submitted'
         | 'application_info_required'
@@ -1549,7 +1603,7 @@ export async function submitRender(args: {
   // 2. Season compose gate + cap (defense; caps are season-variable).
   const { data: seasonRow, error: sErr } = await admin
     .from('seasons')
-    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
+    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_music_enabled')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
@@ -1589,6 +1643,14 @@ export async function submitRender(args: {
     if (!sv.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${sv.detail}` }
     sourceSignatures.push(String(row.cryptobind_signature))
   }
+
+  // 3b. Fold the music asset's v1m signature into the bundle EXACTLY as createRender
+  //     did (append-only), so the recomputed v1sr matches. A swapped/removed bed
+  //     changes the bundle -> render_sig_mismatch.
+  const submitMusic = Array.isArray(render.edl) ? undefined : (render.edl as ComposeEdl).music
+  const ms = await resolveMusicSignature(admin, submitMusic, args.userId, !!seasonRow.studio_music_enabled)
+  if (!ms.ok) return { ok: false, reason: ms.reason, detail: ms.detail }
+  if (ms.signature) sourceSignatures.push(ms.signature)
 
   // 4. Verify the composition itself: v1sr (EDL + source bundle) then v1sc (final).
   const cv = verifyComposeBind(

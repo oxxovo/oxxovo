@@ -40,6 +40,7 @@ import {
   type ComposeEdl,
   type EffectiveRound,
 } from '@/lib/studio'
+import type { MusicReason } from '@/lib/music-limits'
 import { getBalance, getStudioPricing, getStudioPurchaseConfig } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
 import { getCreatorProfile } from '@/lib/profile'
@@ -652,6 +653,7 @@ export type SubmitRenderActionResult =
         | 'source_not_found'
         | 'source_cryptobind_failed'
         | 'compose_cryptobind_failed'
+        | MusicReason
         | 'no_application'
         | 'already_submitted'
         | 'application_info_required'
