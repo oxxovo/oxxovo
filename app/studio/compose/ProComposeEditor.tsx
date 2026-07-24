@@ -337,6 +337,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const [selText, setSelText] = useState<number | null>(null) // selected text layer index
   const [aspect, setAspect] = useState<Aspect>('16:9') // output aspect (letterbox/crop per clip)
   const [music, setMusic] = useState<MusicBed | null>(null) // music bed (null = clip audio only)
+  const musicEnabled = props.musicEnabled ?? false
   const musicAssets = props.musicAssets ?? []
   const musicUrl = music ? (musicAssets.find((a) => a.id === music.assetId)?.url ?? null) : null
   const [dragUid, setDragUid] = useState<string | null>(null)
@@ -1388,7 +1389,8 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                   )}
                 </div>
 
-                {/* music bed */}
+                {/* music bed (allowlist-gated: only when the season enables music) */}
+                {musicEnabled && (
                 <div className="mt-4 border-t border-white/8 pt-3">
                   <p className="mb-2 text-[11px] uppercase tracking-[0.15em] text-white/45">{t.music_title}</p>
                   {musicAssets.length === 0 ? (
@@ -1431,6 +1433,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                     )
                   })()}
                 </div>
+                )}
               </>
             )}
           </div>

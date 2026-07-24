@@ -39,6 +39,8 @@ export default function ComposePage() {
     submit: ComposeSubmitCtx
     resumeRender: ResumeRender | null
     nickname: string
+    musicEnabled: boolean
+    musicAssets: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -100,6 +102,8 @@ export default function ComposePage() {
             submitCtx={data.submit}
             resumeRender={data.resumeRender}
             nickname={data.nickname}
+            musicEnabled={data.musicEnabled}
+            musicAssets={data.musicAssets}
             onRender={(edl) => createRenderAction(token, edl)}
             pollRender={(renderId: string) => pollRenderAction(token, renderId)}
             onSubmit={(renderId: string, applicant?: ComposeApplicant) =>

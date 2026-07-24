@@ -26,6 +26,7 @@ import {
   submitGeneration,
   createRender,
   listUserRenders,
+  listMusicAssets,
   submitRender,
   deleteClip,
   deleteRender,
@@ -498,6 +499,10 @@ export type LoadComposeResult =
         // Account nickname the entry will publish as (option A: the compose form
         // no longer asks for a name; identity is the account, editable in /profile).
         nickname: string
+        // Music bed: allowlist gate (season studio_music_enabled) + the pickable
+        // library / own-AI tracks. enabled=false -> editor hides the music panel.
+        musicEnabled: boolean
+        musicAssets: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
       }
     }
   | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
@@ -563,6 +568,10 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     // re-arranging + re-rendering. listUserRenders is ordered newest-first.
     const renders = await listUserRenders(auth.userId, season.id)
     const resumable = renders.find((r) => r.status !== 'submitted' && r.status !== 'failed')
+
+    // Music beds (allowlist-gated by the season). Empty + disabled until the
+    // library is seeded and studio_music_enabled is turned on.
+    const { enabled: musicEnabled, assets: musicAssets } = await listMusicAssets(season.id, auth.userId)
     const resumeRender = resumable
       ? {
           id: resumable.id,
@@ -592,6 +601,8 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         },
         nickname,
         resumeRender,
+        musicEnabled,
+        musicAssets,
       },
     }
   } catch (e) {

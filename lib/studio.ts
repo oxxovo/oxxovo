@@ -1229,6 +1229,44 @@ export async function submitGeneration(args: {
 // (a later step) verifies the full v1s chain. The render is the SCORED artifact.
 // ===========================================================================
 
+export type MusicAsset = { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }
+
+// List the music beds a participant can pick for a season: the platform library
+// (active, ready, SIGNED) + the participant's own ready AI tracks. `enabled=false`
+// when the season's studio_music_enabled gate is off (allowlist) -> the editor
+// hides the music panel. Unsigned / not-ready assets are never offered, so a bed
+// the render couldn't verify is never selectable.
+export async function listMusicAssets(
+  seasonId: string,
+  userId: string,
+): Promise<{ enabled: boolean; assets: MusicAsset[] }> {
+  const admin = createSupabaseAdmin()
+  const { data: s } = await admin.from('seasons').select('studio_music_enabled').eq('id', seasonId).single()
+  if (!s?.studio_music_enabled) return { enabled: false, assets: [] }
+  const { data, error } = await admin
+    .from('studio_music_assets')
+    .select('id, url, title, mood, source, user_id, active, cryptobind_signature')
+    .eq('status', 'ready')
+    .not('url', 'is', null)
+    .order('source', { ascending: true })
+    .order('mood', { ascending: true })
+  if (error || !data) return { enabled: true, assets: [] }
+  const assets: MusicAsset[] = data
+    .filter(
+      (a) =>
+        a.cryptobind_signature &&
+        ((a.source === 'library' && a.active) || (a.source === 'ai' && a.user_id === userId)),
+    )
+    .map((a) => ({
+      id: String(a.id),
+      url: String(a.url),
+      title: String(a.title ?? ''),
+      mood: String(a.mood ?? ''),
+      source: a.source as 'library' | 'ai',
+    }))
+  return { enabled: true, assets }
+}
+
 export type CreateRenderResult =
   | { ok: true; renderId: string; totalDurationSeconds: number }
   | {
