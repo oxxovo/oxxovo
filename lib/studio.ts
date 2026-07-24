@@ -24,6 +24,7 @@ import {
   type ComposeEdl,
 } from '@/lib/cryptobind'
 import { verifySourceClipCrypto } from '@/lib/studio-verify'
+import { validateTexts, type TextReason } from '@/lib/text-limits'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -1242,6 +1243,7 @@ export type CreateRenderResult =
         | 'source_not_ready'
         | 'source_cryptobind_failed'
         | 'failed'
+        | TextReason
       detail?: string
     }
 
@@ -1288,6 +1290,12 @@ export async function createRender(args: {
   if (totalMs <= 0) return { ok: false, reason: 'empty_edl' }
   if (minSeconds > 0 && totalMs < minSeconds * 1000) return { ok: false, reason: 'too_short' }
   if (totalMs > maxSeconds * 1000) return { ok: false, reason: 'too_long' }
+
+  // 2b. Text/title overlays (EDL v2). Server is authority for the shape + the 5%
+  //     size floor (client mirrors both). Content moderation is a later step.
+  const texts = Array.isArray(args.edl) ? [] : (args.edl.texts ?? [])
+  const tv = validateTexts(texts, totalMs)
+  if (!tv.ok) return { ok: false, reason: tv.reason, detail: tv.index >= 0 ? `text#${tv.index + 1}` : undefined }
 
   // 3. Load distinct sources; each must be the participant's own, same-season,
   //    ready clip with a valid CryptoBind, and each trim must fit the clip.

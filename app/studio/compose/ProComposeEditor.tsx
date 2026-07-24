@@ -29,6 +29,9 @@ import type {
 import { createRawPreview, type PreviewEngine, type PreviewTransition } from './preview'
 import { createGLPreview } from './preview-gl'
 import { hasAnyEffect, EXPOSED_SLIDERS, LUT_OPTIONS, EXPOSED_TRANSITIONS, type EffectParams } from '@/lib/effects'
+import { FONT_SPECS, type TextLayer } from '@/lib/text-render'
+import { TEXT_LIMITS, validateTexts, type TextReason } from '@/lib/text-limits'
+import { TextOverlay } from './TextOverlay'
 
 // effects/speed are populated by the effect UI (E); undefined in C (no effect UI
 // yet), which keeps the composition effect-free -> the raw preview stays accurate.
@@ -115,6 +118,44 @@ const DICT = {
     approx_badge: '근사',
     approx_note: '그레인 미리보기는 근사치입니다 — 최종본의 입자 패턴은 다릅니다(양은 동일).',
     fx_preview_off: '이 브라우저에서는 효과 미리보기를 표시할 수 없어 원본 영상을 보여드립니다. 설정하신 효과는 그대로 저장되며 최종 렌더에는 정상 적용됩니다.',
+    // --- text/title overlay ---
+    text_title: '텍스트',
+    text_default: '텍스트',
+    text_add: '+ 텍스트 추가',
+    text_max: (n: number) => `텍스트는 최대 ${n}개까지 추가할 수 있어요.`,
+    text_none: '텍스트를 추가하면 여기서 편집할 수 있어요.',
+    text_need_clip: '먼저 타임라인에 클립을 올리세요.',
+    text_layer_n: (n: number) => `텍스트 ${n}`,
+    text_content: '문구',
+    text_content_ph: '표시할 문구 (Enter로 줄바꿈)',
+    text_font: '글꼴',
+    text_size: '크기',
+    text_size_floor: (n: number) => `최소 ${n}%까지 — 그보다 작으면 화면에서 읽기 어렵고 최종본과 어긋날 수 있어요.`,
+    text_color: '색상',
+    text_stroke: '외곽선',
+    text_stroke_w: '두께',
+    text_align: '정렬',
+    text_align_l: '왼쪽', text_align_c: '가운데', text_align_r: '오른쪽',
+    text_pos: '위치',
+    text_pos_hint: '미리보기에서 드래그하거나 9칸으로 배치하세요.',
+    text_window: '표시 구간',
+    text_from: '시작', text_to: '끝',
+    text_fade: '페이드',
+    text_fade_in: '들어옴', text_fade_out: '나감',
+    text_delete: '삭제',
+    text_drag: '드래그해서 위치 이동',
+    text_reason: (r: TextReason) => ({
+      too_many_texts: `텍스트가 너무 많아요 (최대 ${TEXT_LIMITS.MAX_TEXTS}개).`,
+      text_content: `문구를 입력하세요 (최대 ${TEXT_LIMITS.MAX_CONTENT_LEN}자, ${TEXT_LIMITS.MAX_LINES}줄).`,
+      text_font: '허용되지 않은 글꼴이에요.',
+      text_size: `글자 크기는 ${TEXT_LIMITS.MIN_SIZE_PCT}%~${TEXT_LIMITS.MAX_SIZE_PCT}% 사이여야 해요.`,
+      text_color: '색상 형식이 올바르지 않아요.',
+      text_stroke: '외곽선 설정이 올바르지 않아요.',
+      text_align: '정렬 값이 올바르지 않아요.',
+      text_pos: '위치가 화면을 벗어났어요.',
+      text_window: '표시 구간이 영상 길이를 벗어났어요.',
+      text_fade: '페이드가 표시 구간보다 길어요.',
+    }[r]),
   },
   en: {
     shell: 'PRO editor',
@@ -192,6 +233,44 @@ const DICT = {
     approx_badge: 'approx',
     approx_note: 'Grain preview is approximate — the final grain pattern differs (the amount matches).',
     fx_preview_off: 'This browser cannot display the effect preview, so the original footage is shown. Your effects are saved and will be applied in full on the final render.',
+    // --- text/title overlay ---
+    text_title: 'Text',
+    text_default: 'Text',
+    text_add: '+ Add text',
+    text_max: (n: number) => `Up to ${n} text layers.`,
+    text_none: 'Add a text layer to edit it here.',
+    text_need_clip: 'Add a clip to the timeline first.',
+    text_layer_n: (n: number) => `Text ${n}`,
+    text_content: 'Content',
+    text_content_ph: 'Text to show (Enter for a new line)',
+    text_font: 'Font',
+    text_size: 'Size',
+    text_size_floor: (n: number) => `Minimum ${n}% — smaller text is hard to read and may not match the final.`,
+    text_color: 'Color',
+    text_stroke: 'Outline',
+    text_stroke_w: 'Width',
+    text_align: 'Align',
+    text_align_l: 'Left', text_align_c: 'Center', text_align_r: 'Right',
+    text_pos: 'Position',
+    text_pos_hint: 'Drag on the preview, or use the 9-grid.',
+    text_window: 'Show from/to',
+    text_from: 'From', text_to: 'To',
+    text_fade: 'Fade',
+    text_fade_in: 'In', text_fade_out: 'Out',
+    text_delete: 'Delete',
+    text_drag: 'Drag to move',
+    text_reason: (r: TextReason) => ({
+      too_many_texts: `Too many text layers (max ${TEXT_LIMITS.MAX_TEXTS}).`,
+      text_content: `Enter some text (max ${TEXT_LIMITS.MAX_CONTENT_LEN} chars, ${TEXT_LIMITS.MAX_LINES} lines).`,
+      text_font: 'That font is not allowed.',
+      text_size: `Size must be ${TEXT_LIMITS.MIN_SIZE_PCT}%–${TEXT_LIMITS.MAX_SIZE_PCT}%.`,
+      text_color: 'Invalid color format.',
+      text_stroke: 'Invalid outline settings.',
+      text_align: 'Invalid alignment.',
+      text_pos: 'Position is off-screen.',
+      text_window: 'The show window is outside the video length.',
+      text_fade: 'Fade is longer than the show window.',
+    }[r]),
   },
 } as const
 
@@ -208,6 +287,8 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const clipById = useMemo(() => new Map(props.clips.map((c) => [c.id, c])), [props.clips])
 
   const [segments, setSegments] = useState<Segment[]>([])
+  const [texts, setTexts] = useState<TextLayer[]>([]) // text/title overlays (stage 5 renders, stage 6 edits)
+  const [selText, setSelText] = useState<number | null>(null) // selected text layer index
   const [dragUid, setDragUid] = useState<string | null>(null)
   const [sel, setSel] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -241,12 +322,14 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
       a.length === b.length && a.every((s, i) => s.jobId === b[i].jobId && s.startMs === b[i].startMs && s.endMs === b[i].endMs)
     let draftSegs: Edl[] | null = null
     let draftAp: Partial<ComposeApplicant> | null = null
+    let draftTexts: TextLayer[] | null = null
     if (draftKey && typeof window !== 'undefined') {
       try {
         const raw = window.localStorage.getItem(draftKey)
         if (raw) {
-          const d = JSON.parse(raw) as { segments?: Edl[]; ap?: Partial<ComposeApplicant> }
+          const d = JSON.parse(raw) as { segments?: Edl[]; texts?: TextLayer[]; ap?: Partial<ComposeApplicant> }
           draftSegs = Array.isArray(d.segments) ? d.segments : null
+          draftTexts = Array.isArray(d.texts) ? d.texts : null
           draftAp = d.ap ?? null
         }
       } catch { /* malformed -- ignore */ }
@@ -257,6 +340,9 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
       .filter((e) => clipById.has(e.jobId))
       .map((e) => ({ uid: nextUid(), jobId: e.jobId, startMs: e.startMs, endMs: e.endMs }))
     if (rebuilt.length) setSegments(rebuilt)
+    // Only restore texts alongside a restored composition (they reference its
+    // timeline). The server re-validates on render regardless.
+    if (rebuilt.length && draftTexts && draftTexts.length) setTexts(draftTexts)
     if (rr && rr.status === 'ready' && rr.videoUrl) {
       const chosen = rebuilt.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
       if (edlEq(chosen, rr.edl)) {
@@ -275,10 +361,11 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     try {
       window.localStorage.setItem(draftKey, JSON.stringify({
         segments: segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs })),
+        texts,
         ap: { creatorStatement: ap.creatorStatement },
       }))
     } catch { /* quota -- non-fatal */ }
-  }, [segments, ap, submitDone, draftKey])
+  }, [segments, texts, ap, submitDone, draftKey])
 
   useEffect(() => {
     if (submitDone && draftKey && typeof window !== 'undefined') {
@@ -481,6 +568,31 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (scrubWasPlaying.current) engineRef.current?.play(segments, previewClips, globalFx, transitions, scrubMs.current)
   }
   const togglePlay = () => { if (!segments.length) return; if (playing) stopPreview(); else startPreview() }
+
+  // Drag the SELECTED text layer directly on the preview to set its anchor. A
+  // press that doesn't move is a normal play/pause click; a drag repositions and
+  // suppresses the click. Coords are normalized to the video's displayed box.
+  const textDrag = useRef<{ down: boolean; moved: boolean }>({ down: false, moved: false })
+  const onPreviewPointerDown = () => {
+    if (selText === null || !segments.length) return
+    textDrag.current = { down: true, moved: false }
+  }
+  const onPreviewPointerMove = (e: React.PointerEvent) => {
+    if (!textDrag.current.down || selText === null) return
+    const video = videoRef.current
+    if (!video) return
+    const vr = video.getBoundingClientRect()
+    if (vr.width < 2 || vr.height < 2) return
+    const x = Math.max(0, Math.min(1, (e.clientX - vr.left) / vr.width))
+    const y = Math.max(0, Math.min(1, (e.clientY - vr.top) / vr.height))
+    textDrag.current.moved = true
+    updateText(selText, { xNorm: Number(x.toFixed(4)), yNorm: Number(y.toFixed(4)) }, 'text-pos')
+  }
+  const onPreviewPointerUp = () => { textDrag.current.down = false }
+  const onPreviewClick = () => {
+    if (textDrag.current.moved) { textDrag.current.moved = false; return } // was a drag, not a click
+    togglePlay()
+  }
   const playPct = totalMs > 0 ? Math.min(100, (playheadMs / totalMs) * 100) : 0
 
   // ---- history: undo / redo -------------------------------------------------
@@ -490,7 +602,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // (spread/map/filter), so storing the *references* is a safe frozen snapshot.
   // Continuous edits (slider drags) coalesce by key+time into ONE undo step;
   // discrete edits (LUT/transition/reset/dbl-click) each push their own step.
-  type Doc = { segments: Segment[]; globalFx: EffectParams; transitions: PreviewTransition[] }
+  type Doc = { segments: Segment[]; globalFx: EffectParams; transitions: PreviewTransition[]; texts: TextLayer[] }
   const undoRef = useRef<Doc[]>([])
   const redoRef = useRef<Doc[]>([])
   // Availability is STATE (not read off the refs during render) so the buttons
@@ -506,7 +618,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     const merged = coalesce && key === lastCommit.current.key && now - lastCommit.current.t < COALESCE_MS
     lastCommit.current = { key, t: now }
     if (merged) return
-    undoRef.current.push({ segments, globalFx, transitions })
+    undoRef.current.push({ segments, globalFx, transitions, texts })
     if (undoRef.current.length > HIST_MAX) undoRef.current.shift()
     redoRef.current = []
     setCanUndo(true); setCanRedo(false)
@@ -515,12 +627,14 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     setSegments(d.segments)
     setGlobalFx(d.globalFx)
     setTransitions(d.transitions)
+    setTexts(d.texts)
     setSel((cur) => (cur && d.segments.some((s) => s.uid === cur) ? cur : null))
+    setSelText((cur) => (cur !== null && cur < d.texts.length ? cur : null))
   }
   const undo = () => {
     const prev = undoRef.current.pop()
     if (!prev) return
-    redoRef.current.push({ segments, globalFx, transitions })
+    redoRef.current.push({ segments, globalFx, transitions, texts })
     applyDoc(prev)
     lastCommit.current = { key: '', t: 0 } // a fresh edit after undo starts a new step
     setCanUndo(undoRef.current.length > 0); setCanRedo(true)
@@ -528,11 +642,35 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const redo = () => {
     const next = redoRef.current.pop()
     if (!next) return
-    undoRef.current.push({ segments, globalFx, transitions })
+    undoRef.current.push({ segments, globalFx, transitions, texts })
     applyDoc(next)
     lastCommit.current = { key: '', t: 0 }
     setCanUndo(true); setCanRedo(redoRef.current.length > 0)
   }
+  // ---- text/title overlay helpers -------------------------------------------
+  const addText = () => {
+    if (texts.length >= TEXT_LIMITS.MAX_TEXTS || totalMs <= 0) return
+    const end = Math.min(totalMs, 4000)
+    const layer: TextLayer = {
+      content: t.text_default, font: 'pretendard', sizePct: 8, color: '#ffffff',
+      align: 'center', xNorm: 0.5, yNorm: 0.8, startMs: 0, endMs: end, fadeInMs: 300, fadeOutMs: 300,
+    }
+    commit('text-add')
+    setTexts((ts) => [...ts, layer])
+    setSelText(texts.length)
+  }
+  // patch a layer; pass coalesceKey (e.g. 'text-size') for continuous drags so a
+  // slide collapses into one undo step (mirrors the effect sliders).
+  const updateText = (i: number, patch: Partial<TextLayer>, coalesceKey?: string) => {
+    commit(coalesceKey ?? 'text-edit', !!coalesceKey)
+    setTexts((ts) => ts.map((l, k) => (k === i ? { ...l, ...patch } : l)))
+  }
+  const removeText = (i: number) => {
+    commit('text-remove')
+    setTexts((ts) => ts.filter((_, k) => k !== i))
+    setSelText((cur) => (cur === i ? null : cur !== null && cur > i ? cur - 1 : cur))
+  }
+
   // one-time keydown listener reaches the latest undo/redo via refs (assigned in
   // an effect, not during render).
   const undoFn = useRef(undo)
@@ -603,7 +741,18 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     // Send EDL v2 (effects/transitions/global) so the worker applies them and the
     // composed final matches the WYSIWYG preview. No effects -> bare v1 array (keeps
     // the edl1 hash + the existing effect-free render path).
-    const edl = compositionHasEffects
+    // Pre-validate text layers with the SAME rules the server enforces, so a bad
+    // layer (e.g. size < 5%) is explained inline before a round-trip.
+    const tv = validateTexts(texts, totalMs)
+    if (!tv.ok) {
+      setErr(tv.index >= 0 ? `${t.text_reason(tv.reason)} (${t.text_layer_n(tv.index + 1)})` : t.text_reason(tv.reason))
+      setRenderState(null); setBusy(false); return
+    }
+    // EDL v2 when the composition carries effects OR text; else a bare v1 array
+    // (keeps the edl1 hash + effect-free render path). Text is signed via the TX
+    // section of the v2 canonical (append-only -> text-free hashes unchanged).
+    const isV2 = compositionHasEffects || texts.length > 0
+    const edl = isV2
       ? {
           version: 2 as const,
           segments: segments.map((s) => ({
@@ -613,10 +762,16 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
           })),
           ...(transitions.length ? { transitions: transitions.map((tr) => ({ afterIndex: tr.afterIndex, type: tr.type, durationMs: tr.durationMs })) } : {}),
           ...(hasAnyEffect(globalFx) ? { global: globalFx } : {}),
+          ...(texts.length ? { texts } : {}),
         }
       : segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
     const res = await props.onRender(edl)
-    if (!res.ok) { setErr(res.error); setRenderState(null); setBusy(false); return }
+    if (!res.ok) {
+      // Map a server text-reason to a friendly message; other reasons pass through.
+      const textReasons = ['too_many_texts', 'text_content', 'text_font', 'text_size', 'text_color', 'text_stroke', 'text_align', 'text_pos', 'text_window', 'text_fade']
+      setErr(textReasons.includes(res.error) ? t.text_reason(res.error as TextReason) : res.error)
+      setRenderState(null); setBusy(false); return
+    }
     setRenderId(res.renderId)
     for (let i = 0; i < 60; i++) {
       await new Promise((r) => setTimeout(r, props.demo ? 600 : 2500))
@@ -717,8 +872,10 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
             <h2 className={paneHead}>{t.preview}</h2>
             <span className="text-[11px] font-bold text-[#b66cff]">{t.total}: {totalSec.toFixed(1)}{t.sec} · {segments.length} {t.clip}</span>
           </div>
-          <div onClick={togglePlay} title={segments.length ? (playing ? t.stop : t.play) : undefined}
-            className={`flex min-h-[220px] flex-1 items-center justify-center bg-black p-3 ${segments.length ? 'cursor-pointer' : ''}`}>
+          <div onClick={onPreviewClick} onPointerDown={onPreviewPointerDown} onPointerMove={onPreviewPointerMove} onPointerUp={onPreviewPointerUp}
+            title={segments.length ? (playing ? t.stop : t.play) : undefined}
+            style={{ touchAction: selText !== null && segments.length ? 'none' : undefined }}
+            className={`relative flex min-h-[220px] flex-1 items-center justify-center bg-black p-3 ${segments.length ? (selText !== null ? 'cursor-move' : 'cursor-pointer') : ''}`}>
             {/* The GL engine manages crossOrigin on this element itself: it opts in
                 (crossOrigin='anonymous' + a ?gl=1 cache key) now that the R2 bucket
                 returns ACAO for our origins, so WYSIWYG effects preview live. The raw
@@ -727,6 +884,10 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                 a black preview is never shown. */}
             <video ref={videoRef} playsInline
               className={`max-h-full max-w-full rounded-xl ${segments.length ? '' : 'hidden'}`} />
+            {/* Text/title overlay: WYSIWYG with the render (shared drawTextLayer +
+                globalAlpha fade from textAlphaAt). Sits above the video, below the
+                click-to-play surface (pointer-events-none). */}
+            <TextOverlay videoRef={videoRef} texts={texts} playheadMs={playheadMs} visible={segments.length > 0} editingIndex={selText} />
             {segments.length === 0 && <span className="text-xs text-white/30">{t.empty_prev}</span>}
           </div>
           {fxPreviewUnavailable && (
@@ -931,6 +1092,162 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                     </div>
                   </div>
                 )}
+
+                {/* text/title overlays */}
+                <div className="mt-4 border-t border-white/8 pt-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-[11px] uppercase tracking-[0.15em] text-white/45">{t.text_title}</p>
+                    <button type="button" onClick={addText} disabled={texts.length >= TEXT_LIMITS.MAX_TEXTS}
+                      className="rounded-md border border-[#8b22ff]/50 px-2 py-0.5 text-[10px] font-bold text-[#b66cff] transition hover:bg-[#8b22ff]/10 disabled:opacity-30">{t.text_add}</button>
+                  </div>
+                  {texts.length >= TEXT_LIMITS.MAX_TEXTS && <p className="mb-1 text-[10px] text-amber-300/70">{t.text_max(TEXT_LIMITS.MAX_TEXTS)}</p>}
+                  {texts.length === 0 ? (
+                    <p className="py-2 text-[11px] text-white/35">{t.text_none}</p>
+                  ) : (
+                    <>
+                      <div className="mb-2 flex flex-wrap gap-1.5">
+                        {texts.map((l, i) => (
+                          <button key={i} type="button" onClick={() => setSelText(i === selText ? null : i)} title={l.content}
+                            className={`max-w-[130px] truncate rounded-md border px-2 py-1 text-[10px] transition ${i === selText ? 'border-[#b66cff] bg-[#8b22ff]/15 text-[#d9b8ff]' : 'border-white/10 text-white/55 hover:border-[#8b22ff]/50'}`}>
+                            {l.content.split('\n')[0] || t.text_layer_n(i + 1)}
+                          </button>
+                        ))}
+                      </div>
+                      {selText !== null && texts[selText] && (() => {
+                        const l = texts[selText]
+                        const up = (patch: Partial<TextLayer>, key?: string) => updateText(selText, patch, key)
+                        const span = l.endMs - l.startMs
+                        const strokeOn = !!l.strokeColor && (l.strokePct ?? 0) > 0
+                        const GRID_X: [number, TextLayer['align']][] = [[0.06, 'left'], [0.5, 'center'], [0.94, 'right']]
+                        const GRID_Y = [0.1, 0.45, 0.82]
+                        return (
+                          <div className="space-y-2.5 rounded-lg border border-white/10 bg-white/[.02] p-2.5">
+                            {/* content */}
+                            <label className="block">
+                              <span className="text-[11px] text-white/55">{t.text_content}</span>
+                              <textarea value={l.content} rows={2} maxLength={TEXT_LIMITS.MAX_CONTENT_LEN} placeholder={t.text_content_ph}
+                                onChange={(e) => up({ content: e.target.value }, 'text-content')}
+                                className="mt-1 w-full resize-none rounded-lg border border-white/10 bg-[#070610] px-2.5 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none" />
+                            </label>
+                            {/* font */}
+                            <div>
+                              <span className="text-[11px] text-white/55">{t.text_font}</span>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {FONT_SPECS.map((f) => (
+                                  <button key={f.id} type="button" onClick={() => up({ font: f.id })}
+                                    style={{ fontFamily: `"${f.family}"` }}
+                                    className={`rounded-md border px-2.5 py-1 text-[12px] transition ${l.font === f.id ? 'border-[#b66cff] bg-[#8b22ff]/15 text-white' : 'border-white/10 text-white/55 hover:border-[#8b22ff]/50'}`}>
+                                    {f.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            {/* size + color */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <label className="block">
+                                <span className="flex items-center justify-between text-[11px] text-white/55">
+                                  <span>{t.text_size}</span><span className="tabular-nums text-white/35">{Math.round(l.sizePct)}%</span>
+                                </span>
+                                <input type="range" min={TEXT_LIMITS.MIN_SIZE_PCT} max={TEXT_LIMITS.MAX_SIZE_PCT} value={l.sizePct}
+                                  onChange={(e) => up({ sizePct: Number(e.target.value) }, 'text-size')}
+                                  className="w-full accent-[#8b22ff]" />
+                              </label>
+                              <label className="block">
+                                <span className="text-[11px] text-white/55">{t.text_color}</span>
+                                <input type="color" value={l.color} onChange={(e) => up({ color: e.target.value }, 'text-color')}
+                                  className="mt-1 h-7 w-full cursor-pointer rounded border border-white/10 bg-transparent" />
+                              </label>
+                            </div>
+                            <p className="text-[9px] leading-tight text-white/35">{t.text_size_floor(TEXT_LIMITS.MIN_SIZE_PCT)}</p>
+                            {/* stroke */}
+                            <div className="grid grid-cols-2 items-end gap-3">
+                              <label className="block">
+                                <span className="flex items-center gap-1.5 text-[11px] text-white/55">
+                                  <input type="checkbox" checked={strokeOn}
+                                    onChange={(e) => up(e.target.checked ? { strokeColor: l.strokeColor || '#000000', strokePct: l.strokePct || 6 } : { strokePct: 0 })} />
+                                  {t.text_stroke}
+                                </span>
+                                <input type="color" disabled={!strokeOn} value={l.strokeColor || '#000000'} onChange={(e) => up({ strokeColor: e.target.value }, 'text-stroke')}
+                                  className="mt-1 h-7 w-full cursor-pointer rounded border border-white/10 bg-transparent disabled:opacity-30" />
+                              </label>
+                              <label className="block">
+                                <span className="flex items-center justify-between text-[11px] text-white/55">
+                                  <span>{t.text_stroke_w}</span><span className="tabular-nums text-white/35">{l.strokePct ?? 0}</span>
+                                </span>
+                                <input type="range" min={0} max={TEXT_LIMITS.MAX_STROKE_PCT} value={l.strokePct ?? 0} disabled={!strokeOn}
+                                  onChange={(e) => up({ strokePct: Number(e.target.value) }, 'text-stroke')}
+                                  className="w-full accent-[#8b22ff] disabled:opacity-30" />
+                              </label>
+                            </div>
+                            {/* align */}
+                            <div>
+                              <span className="text-[11px] text-white/55">{t.text_align}</span>
+                              <div className="mt-1 inline-flex rounded-lg border border-white/10 p-0.5">
+                                {([['left', t.text_align_l], ['center', t.text_align_c], ['right', t.text_align_r]] as const).map(([a, lbl]) => (
+                                  <button key={a} type="button" onClick={() => up({ align: a })}
+                                    className={`rounded-md px-2.5 py-0.5 text-[10px] font-bold transition ${l.align === a ? 'bg-[#8b22ff]/25 text-[#d9b8ff]' : 'text-white/45 hover:text-white/70'}`}>{lbl}</button>
+                                ))}
+                              </div>
+                            </div>
+                            {/* position: 9-grid */}
+                            <div>
+                              <span className="text-[11px] text-white/55">{t.text_pos}</span>
+                              <div className="mt-1 grid w-[84px] grid-cols-3 gap-0.5">
+                                {GRID_Y.map((yy) => GRID_X.map(([xx, al]) => {
+                                  const active = Math.abs(l.xNorm - xx) < 0.02 && Math.abs(l.yNorm - yy) < 0.02
+                                  return (
+                                    <button key={`${xx}-${yy}`} type="button" title={t.text_drag}
+                                      onClick={() => up({ xNorm: xx, yNorm: yy, align: al })}
+                                      className={`h-6 rounded-sm border transition ${active ? 'border-[#b66cff] bg-[#8b22ff]/30' : 'border-white/10 bg-white/[.03] hover:border-[#8b22ff]/50'}`} />
+                                  )
+                                }))}
+                              </div>
+                              <p className="mt-1 text-[9px] text-white/35">{t.text_pos_hint}</p>
+                            </div>
+                            {/* show window */}
+                            <div>
+                              <span className="flex items-center justify-between text-[11px] text-white/55">
+                                <span>{t.text_window}</span>
+                                <span className="tabular-nums text-white/35">{(l.startMs / 1000).toFixed(1)}–{(l.endMs / 1000).toFixed(1)}{t.sec}</span>
+                              </span>
+                              <div className="mt-1 space-y-1">
+                                <input type="range" min={0} max={totalMs} step={100} value={l.startMs}
+                                  onChange={(e) => up({ startMs: Math.min(Number(e.target.value), l.endMs - 100) }, 'text-start')}
+                                  className="w-full accent-[#8b22ff]" />
+                                <input type="range" min={0} max={totalMs} step={100} value={l.endMs}
+                                  onChange={(e) => up({ endMs: Math.max(Number(e.target.value), l.startMs + 100) }, 'text-end')}
+                                  className="w-full accent-[#8b22ff]" />
+                              </div>
+                            </div>
+                            {/* fade */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <label className="block">
+                                <span className="flex items-center justify-between text-[11px] text-white/55">
+                                  <span>{t.text_fade} {t.text_fade_in}</span><span className="tabular-nums text-white/35">{((l.fadeInMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
+                                </span>
+                                <input type="range" min={0} max={span} step={50} value={l.fadeInMs ?? 0}
+                                  onChange={(e) => up({ fadeInMs: Math.min(Number(e.target.value), span - (l.fadeOutMs ?? 0)) }, 'text-fadein')}
+                                  className="w-full accent-[#8b22ff]" />
+                              </label>
+                              <label className="block">
+                                <span className="flex items-center justify-between text-[11px] text-white/55">
+                                  <span>{t.text_fade} {t.text_fade_out}</span><span className="tabular-nums text-white/35">{((l.fadeOutMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
+                                </span>
+                                <input type="range" min={0} max={span} step={50} value={l.fadeOutMs ?? 0}
+                                  onChange={(e) => up({ fadeOutMs: Math.min(Number(e.target.value), span - (l.fadeInMs ?? 0)) }, 'text-fadeout')}
+                                  className="w-full accent-[#8b22ff]" />
+                              </label>
+                            </div>
+                            <div className="flex justify-end pt-1">
+                              <button type="button" onClick={() => removeText(selText)}
+                                className="text-[10px] text-white/40 transition hover:text-[#ff8888]">✕ {t.text_delete}</button>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </>
+                  )}
+                </div>
               </>
             )}
           </div>
