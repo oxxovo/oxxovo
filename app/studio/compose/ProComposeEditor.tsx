@@ -32,6 +32,7 @@ import { hasAnyEffect, EXPOSED_SLIDERS, LUT_OPTIONS, EXPOSED_TRANSITIONS, type E
 import { FONT_SPECS, type TextLayer } from '@/lib/text-render'
 import { TEXT_LIMITS, validateTexts, type TextReason } from '@/lib/text-limits'
 import { TextOverlay } from './TextOverlay'
+import { createMusicPreview, type MusicPreview, type MusicBed } from './music-preview'
 
 // effects/speed are populated by the effect UI (E); undefined in C (no effect UI
 // yet), which keeps the composition effect-free -> the raw preview stays accurate.
@@ -153,6 +154,19 @@ const DICT = {
     fit_cover: '크롭',
     fit_contain_hint: '비율이 다르면 검은 여백 (원본 전체 보존).',
     fit_cover_hint: '⚠ 화면을 꽉 채우되 가장자리가 잘립니다 (중앙 기준). 미리보기에서 잘린 결과를 확인하세요.',
+    // --- music bed ---
+    music_title: '음악',
+    music_none_assets: '음악 라이브러리 준비 중입니다.',
+    music_need_clip: '먼저 타임라인에 클립을 올리세요.',
+    music_pick: '음악 선택',
+    music_change: '변경',
+    music_volume: '음악 볼륨',
+    music_balance: '원본 소리',
+    music_fade: '페이드',
+    music_fade_in: '들어옴',
+    music_fade_out: '나감',
+    music_remove: '음악 제거',
+    music_wysiwyg: '미리보기에서 들리는 그대로 최종본에 들어갑니다.',
     text_reason: (r: TextReason) => ({
       too_many_texts: `텍스트가 너무 많아요 (최대 ${TEXT_LIMITS.MAX_TEXTS}개).`,
       text_content: `문구를 입력하세요 (최대 ${TEXT_LIMITS.MAX_CONTENT_LEN}자, ${TEXT_LIMITS.MAX_LINES}줄).`,
@@ -277,6 +291,19 @@ const DICT = {
     fit_cover: 'Crop',
     fit_contain_hint: 'Black bars when the aspect differs (keeps the whole frame).',
     fit_cover_hint: '⚠ Fills the frame but the edges are cropped (from center). Check the cropped result in the preview.',
+    // --- music bed ---
+    music_title: 'Music',
+    music_none_assets: 'Music library coming soon.',
+    music_need_clip: 'Add a clip to the timeline first.',
+    music_pick: 'Pick music',
+    music_change: 'Change',
+    music_volume: 'Music volume',
+    music_balance: 'Original audio',
+    music_fade: 'Fade',
+    music_fade_in: 'In',
+    music_fade_out: 'Out',
+    music_remove: 'Remove music',
+    music_wysiwyg: 'What you hear in the preview is what ships in the final.',
     text_reason: (r: TextReason) => ({
       too_many_texts: `Too many text layers (max ${TEXT_LIMITS.MAX_TEXTS}).`,
       text_content: `Enter some text (max ${TEXT_LIMITS.MAX_CONTENT_LEN} chars, ${TEXT_LIMITS.MAX_LINES} lines).`,
@@ -309,6 +336,9 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const [texts, setTexts] = useState<TextLayer[]>([]) // text/title overlays (stage 5 renders, stage 6 edits)
   const [selText, setSelText] = useState<number | null>(null) // selected text layer index
   const [aspect, setAspect] = useState<Aspect>('16:9') // output aspect (letterbox/crop per clip)
+  const [music, setMusic] = useState<MusicBed | null>(null) // music bed (null = clip audio only)
+  const musicAssets = props.musicAssets ?? []
+  const musicUrl = music ? (musicAssets.find((a) => a.id === music.assetId)?.url ?? null) : null
   const [dragUid, setDragUid] = useState<string | null>(null)
   const [sel, setSel] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -344,14 +374,16 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     let draftAp: Partial<ComposeApplicant> | null = null
     let draftTexts: TextLayer[] | null = null
     let draftAspect: Aspect | null = null
+    let draftMusic: MusicBed | null = null
     if (draftKey && typeof window !== 'undefined') {
       try {
         const raw = window.localStorage.getItem(draftKey)
         if (raw) {
-          const d = JSON.parse(raw) as { segments?: Edl[]; texts?: TextLayer[]; aspect?: Aspect; ap?: Partial<ComposeApplicant> }
+          const d = JSON.parse(raw) as { segments?: Edl[]; texts?: TextLayer[]; aspect?: Aspect; music?: MusicBed | null; ap?: Partial<ComposeApplicant> }
           draftSegs = Array.isArray(d.segments) ? d.segments : null
           draftTexts = Array.isArray(d.texts) ? d.texts : null
           draftAspect = d.aspect === '9:16' || d.aspect === '16:9' ? d.aspect : null
+          draftMusic = d.music && typeof d.music.assetId === 'string' ? d.music : null
           draftAp = d.ap ?? null
         }
       } catch { /* malformed -- ignore */ }
@@ -366,6 +398,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     // timeline). The server re-validates on render regardless.
     if (rebuilt.length && draftTexts && draftTexts.length) setTexts(draftTexts)
     if (rebuilt.length && draftAspect) setAspect(draftAspect)
+    if (rebuilt.length && draftMusic) setMusic(draftMusic)
     if (rr && rr.status === 'ready' && rr.videoUrl) {
       const chosen = rebuilt.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
       if (edlEq(chosen, rr.edl)) {
@@ -386,10 +419,11 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
         segments: segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs, fit: s.fit })),
         texts,
         aspect,
+        music,
         ap: { creatorStatement: ap.creatorStatement },
       }))
     } catch { /* quota -- non-fatal */ }
-  }, [segments, texts, aspect, ap, submitDone, draftKey])
+  }, [segments, texts, aspect, music, ap, submitDone, draftKey])
 
   useEffect(() => {
     if (submitDone && draftKey && typeof window !== 'undefined') {
@@ -522,6 +556,22 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (videoRef.current) engine.mount(videoRef.current)
     return () => engine.destroy()
   }, [useGL])
+
+  // ---- music bed preview (standalone <audio>, driven by the composition clock) --
+  const musicRef = useRef<MusicPreview | null>(null)
+  useEffect(() => {
+    musicRef.current = createMusicPreview()
+    return () => { musicRef.current?.destroy(); musicRef.current = null }
+  }, [])
+  // Load/clear the bed when the selected music or its resolved URL changes.
+  useEffect(() => { musicRef.current?.setBed(music, musicUrl) }, [music, musicUrl])
+  // Follow the master clock: gain envelope + drift guard while playing, and set the
+  // clip <video> volume to the balance (original clip audio ducked under the bed).
+  useEffect(() => {
+    musicRef.current?.tick(playheadMs)
+    const v = videoRef.current
+    if (v) v.volume = music ? Math.max(0, Math.min(1, music.clipVolume / 100)) : 1
+  }, [playheadMs, playing, music])
   // Effects are set but the preview cannot render them (no WebGL2, or GL degraded).
   const fxPreviewUnavailable = compositionHasEffects && !useGL
   // composition-global start (ms) of each segment -- for clip-click seek + spans.
@@ -534,6 +584,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     const clamped = Math.max(0, Math.min(compMs, totalMs))
     setPlayheadMs(clamped)
     engineRef.current?.seek(clamped, segments, previewClips, globalFx, transitions)
+    musicRef.current?.seek(clamped)
   }
   const startPreview = () => {
     if (!segments.length) return
@@ -542,8 +593,9 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     const from = atEnd ? 0 : playheadMs
     if (atEnd) setPlayheadMs(0)
     engineRef.current?.play(segments, previewClips, globalFx, transitions, from)
+    musicRef.current?.play(from)
   }
-  const stopPreview = () => engineRef.current?.pause()
+  const stopPreview = () => { engineRef.current?.pause(); musicRef.current?.pause() }
   const selSeg = segments.find((s) => s.uid === sel) ?? null
   // Idle preview = the frame at the playhead. Fires on composition/engine changes
   // so adding/replacing a clip repaints immediately (no stale prior clip) and
@@ -573,7 +625,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (!segments.length) return
     scrubbing.current = true
     scrubWasPlaying.current = playing
-    if (playing) engineRef.current?.pause() // hold playback so the frame follows the drag
+    if (playing) { engineRef.current?.pause(); musicRef.current?.pause() } // hold A/V so both follow the drag
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     const ms = compFromX(e.clientX); scrubMs.current = ms
     movePlayhead(ms)
@@ -584,12 +636,16 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     setPlayheadMs(ms) // responsive fill; the seek itself is throttled to rAF
     cancelAnimationFrame(scrubRaf.current)
     scrubRaf.current = requestAnimationFrame(() => engineRef.current?.seek(ms, segments, previewClips, globalFx, transitions))
+    musicRef.current?.seek(ms) // reposition the (held) bed to the drag point
   }
   const onScrubUp = (e: React.PointerEvent) => {
     if (!scrubbing.current) return
     scrubbing.current = false
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch { /* ignore */ }
-    if (scrubWasPlaying.current) engineRef.current?.play(segments, previewClips, globalFx, transitions, scrubMs.current)
+    if (scrubWasPlaying.current) {
+      engineRef.current?.play(segments, previewClips, globalFx, transitions, scrubMs.current)
+      musicRef.current?.play(scrubMs.current)
+    }
   }
   const togglePlay = () => { if (!segments.length) return; if (playing) stopPreview(); else startPreview() }
 
@@ -633,7 +689,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // (spread/map/filter), so storing the *references* is a safe frozen snapshot.
   // Continuous edits (slider drags) coalesce by key+time into ONE undo step;
   // discrete edits (LUT/transition/reset/dbl-click) each push their own step.
-  type Doc = { segments: Segment[]; globalFx: EffectParams; transitions: PreviewTransition[]; texts: TextLayer[]; aspect: Aspect }
+  type Doc = { segments: Segment[]; globalFx: EffectParams; transitions: PreviewTransition[]; texts: TextLayer[]; aspect: Aspect; music: MusicBed | null }
   const undoRef = useRef<Doc[]>([])
   const redoRef = useRef<Doc[]>([])
   // Availability is STATE (not read off the refs during render) so the buttons
@@ -649,7 +705,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     const merged = coalesce && key === lastCommit.current.key && now - lastCommit.current.t < COALESCE_MS
     lastCommit.current = { key, t: now }
     if (merged) return
-    undoRef.current.push({ segments, globalFx, transitions, texts, aspect })
+    undoRef.current.push({ segments, globalFx, transitions, texts, aspect, music })
     if (undoRef.current.length > HIST_MAX) undoRef.current.shift()
     redoRef.current = []
     setCanUndo(true); setCanRedo(false)
@@ -660,13 +716,14 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     setTransitions(d.transitions)
     setTexts(d.texts)
     setAspect(d.aspect)
+    setMusic(d.music)
     setSel((cur) => (cur && d.segments.some((s) => s.uid === cur) ? cur : null))
     setSelText((cur) => (cur !== null && cur < d.texts.length ? cur : null))
   }
   const undo = () => {
     const prev = undoRef.current.pop()
     if (!prev) return
-    redoRef.current.push({ segments, globalFx, transitions, texts, aspect })
+    redoRef.current.push({ segments, globalFx, transitions, texts, aspect, music })
     applyDoc(prev)
     lastCommit.current = { key: '', t: 0 } // a fresh edit after undo starts a new step
     setCanUndo(undoRef.current.length > 0); setCanRedo(true)
@@ -674,7 +731,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const redo = () => {
     const next = redoRef.current.pop()
     if (!next) return
-    undoRef.current.push({ segments, globalFx, transitions, texts, aspect })
+    undoRef.current.push({ segments, globalFx, transitions, texts, aspect, music })
     applyDoc(next)
     lastCommit.current = { key: '', t: 0 }
     setCanUndo(true); setCanRedo(redoRef.current.length > 0)
@@ -750,6 +807,17 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     commit(`fit:${uid}`)
     setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, fit } : x)))
   }
+  // ---- music bed helpers ----------------------------------------------------
+  const pickMusic = (assetId: string, source: 'library' | 'ai') => {
+    commit('music-pick')
+    setMusic({ assetId, source, volume: 70, clipVolume: 40, startMs: 0, endMs: totalMs || undefined, fadeInMs: 500, fadeOutMs: 500 })
+  }
+  const updateMusic = (patch: Partial<MusicBed>, coalesceKey?: string) => {
+    if (!music) return
+    commit(coalesceKey ?? 'music-edit', !!coalesceKey)
+    setMusic({ ...music, ...patch })
+  }
+  const removeMusic = () => { commit('music-remove'); setMusic(null) }
   const setGlobalKey = (key: keyof EffectParams, val: number) => { commit(`gfx:${key}`, true); setGlobalFx((g) => ({ ...g, [key]: val })) }
   const setGlobalLut = (lut: string) => { commit('glut'); setGlobalFx((g) => ({ ...g, lut })) }
   const setBoundaryTransition = (afterIndex: number, type: string) => {
@@ -788,7 +856,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     // EDL v2 when the composition carries effects OR text; else a bare v1 array
     // (keeps the edl1 hash + effect-free render path). Text is signed via the TX
     // section of the v2 canonical (append-only -> text-free hashes unchanged).
-    const isV2 = compositionHasEffects || texts.length > 0 || !!aspect
+    const isV2 = compositionHasEffects || texts.length > 0 || !!aspect || !!music
     const edl = isV2
       ? {
           version: 2 as const,
@@ -802,6 +870,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
           ...(hasAnyEffect(globalFx) ? { global: globalFx } : {}),
           ...(texts.length ? { texts } : {}),
           ...(aspect ? { aspect } : {}),
+          ...(music ? { music } : {}),
         }
       : segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
     const res = await props.onRender(edl)
@@ -1317,6 +1386,50 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                       })()}
                     </>
                   )}
+                </div>
+
+                {/* music bed */}
+                <div className="mt-4 border-t border-white/8 pt-3">
+                  <p className="mb-2 text-[11px] uppercase tracking-[0.15em] text-white/45">{t.music_title}</p>
+                  {musicAssets.length === 0 ? (
+                    <p className="py-2 text-[11px] text-white/35">{t.music_none_assets}</p>
+                  ) : !music ? (
+                    <select value="" onChange={(e) => { const a = musicAssets.find((x) => x.id === e.target.value); if (a) pickMusic(a.id, a.source) }}
+                      className="w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none">
+                      <option value="">{t.music_pick}…</option>
+                      {musicAssets.map((a) => <option key={a.id} value={a.id}>{a.mood} — {a.title}</option>)}
+                    </select>
+                  ) : (() => {
+                    const selm = musicAssets.find((a) => a.id === music.assetId)
+                    const span = (music.endMs ?? totalMs) - (music.startMs ?? 0)
+                    return (
+                      <div className="space-y-2.5 rounded-lg border border-white/10 bg-white/[.02] p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-[12px] text-white">{selm ? `${selm.mood} — ${selm.title}` : music.assetId}</span>
+                          <button type="button" onClick={removeMusic} className="shrink-0 text-[10px] text-white/40 transition hover:text-[#ff8888]">✕ {t.music_remove}</button>
+                        </div>
+                        <label className="block">
+                          <span className="flex items-center justify-between text-[11px] text-white/55"><span>{t.music_volume}</span><span className="tabular-nums text-white/35">{Math.round(music.volume)}%</span></span>
+                          <input type="range" min={0} max={100} value={music.volume} onChange={(e) => updateMusic({ volume: Number(e.target.value) }, 'music-vol')} className="w-full accent-[#8b22ff]" />
+                        </label>
+                        <label className="block">
+                          <span className="flex items-center justify-between text-[11px] text-white/55"><span>{t.music_balance}</span><span className="tabular-nums text-white/35">{Math.round(music.clipVolume)}%</span></span>
+                          <input type="range" min={0} max={100} value={music.clipVolume} onChange={(e) => updateMusic({ clipVolume: Number(e.target.value) }, 'music-bal')} className="w-full accent-[#8b22ff]" />
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="block">
+                            <span className="flex items-center justify-between text-[11px] text-white/55"><span>{t.music_fade} {t.music_fade_in}</span><span className="tabular-nums text-white/35">{((music.fadeInMs ?? 0) / 1000).toFixed(1)}{t.sec}</span></span>
+                            <input type="range" min={0} max={Math.max(0, span)} step={50} value={music.fadeInMs ?? 0} onChange={(e) => updateMusic({ fadeInMs: Math.min(Number(e.target.value), span - (music.fadeOutMs ?? 0)) }, 'music-fin')} className="w-full accent-[#8b22ff]" />
+                          </label>
+                          <label className="block">
+                            <span className="flex items-center justify-between text-[11px] text-white/55"><span>{t.music_fade} {t.music_fade_out}</span><span className="tabular-nums text-white/35">{((music.fadeOutMs ?? 0) / 1000).toFixed(1)}{t.sec}</span></span>
+                            <input type="range" min={0} max={Math.max(0, span)} step={50} value={music.fadeOutMs ?? 0} onChange={(e) => updateMusic({ fadeOutMs: Math.min(Number(e.target.value), span - (music.fadeInMs ?? 0)) }, 'music-fout')} className="w-full accent-[#8b22ff]" />
+                          </label>
+                        </div>
+                        <p className="text-[9px] leading-tight text-white/35">{t.music_wysiwyg}</p>
+                      </div>
+                    )
+                  })()}
                 </div>
               </>
             )}

@@ -69,6 +69,9 @@ export type ComposeEditorProps = {
   // Account nickname the entry publishes as (option A: no name/country fields;
   // identity is the account, shown as a notice and editable in /profile).
   nickname?: string
+  // Music bed assets available to the participant (platform library + their own
+  // AI-generated tracks), mood-grouped. Omitted in the demo / when music is off.
+  musicAssets?: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
   onRender: (
     edl: ComposeEdl | { jobId: string; startMs: number; endMs: number }[],
   ) => Promise<{ ok: true; renderId: string } | { ok: false; error: string }>
