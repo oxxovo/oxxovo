@@ -20,7 +20,11 @@ import { dirname, join } from 'node:path'
 import esbuild from 'esbuild'
 import { chromium } from 'playwright-core'
 import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
-import * as OT from '../lib/text-render.ts' // node (worker-proxy) side uses the exact spec
+// The worker(napi-rs) side imports the WORKER'S ACTUAL file -- so this harness
+// proves the file the render worker ships is byte-parity with the browser preview
+// (bundled from lib/text-render.ts below). If the worker mirror drifts, parity
+// FAILS here instead of shipping a mis-rendered video.
+import * as OT from '../../oxxovo-studio/src/text-render.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
