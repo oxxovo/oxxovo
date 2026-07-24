@@ -60,6 +60,11 @@ const CASES = [
   mk('small-caption', { content: 'made with oxxovo', font: 'pretendard', sizePct: MIN_SIZE_PCT }), // at the enforced UI floor
   mk('stroke-on', { content: '눈부신 광채', font: 'black-han-sans', sizePct: 10, strokeColor: '#000000', strokePct: 7 }),
   mk('stroke-color', { content: 'LIMITED 한정', font: 'pretendard', sizePct: 7, color: '#ff77bb', strokeColor: '#3a0033', strokePct: 6 }),
+  // Noto Serif KR (stage 7): browser woff2 vs worker ttf, same subset outlines.
+  mk('serif-KO', { content: '고요한 아침', font: 'noto-serif-kr', sizePct: 10 }),
+  mk('serif-KO-multiline', { content: '순간의\n아름다움', font: 'noto-serif-kr', sizePct: 9 }),
+  mk('serif-mixed', { content: 'OXXOVO 옥소보', font: 'noto-serif-kr', sizePct: 8 }),
+  mk('serif-stroke', { content: '눈부신 광채', font: 'noto-serif-kr', sizePct: 9, strokeColor: '#101010', strokePct: 6 }),
   // 9-grid positions (short KO+EN mix)
   ...Object.entries(P).map(([k, [x, y, a]]) => mk(`grid-${k}`, { content: 'OXXOVO 옥소보', font: 'pretendard', sizePct: 6, xNorm: x, yNorm: y, align: a })),
 ]

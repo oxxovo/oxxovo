@@ -36,6 +36,7 @@ export type FontSpec = { id: string; label: string; family: string; web: string;
 export const FONT_SPECS: readonly FontSpec[] = [
   { id: 'pretendard', label: 'Pretendard', family: 'OxxovoPretendard', web: '/fonts/Pretendard-Regular.woff2', file: 'Pretendard-Regular.ttf' },
   { id: 'black-han-sans', label: 'Black Han Sans', family: 'OxxovoBlackHanSans', web: '/fonts/BlackHanSans-Regular.ttf', file: 'BlackHanSans-Regular.ttf' },
+  { id: 'noto-serif-kr', label: 'Noto Serif KR', family: 'OxxovoNotoSerifKR', web: '/fonts/NotoSerifKR-Regular.woff2', file: 'NotoSerifKR-Regular.ttf' },
 ]
 export function fontSpec(id: string): FontSpec {
   return FONT_SPECS.find((f) => f.id === id) ?? FONT_SPECS[0]

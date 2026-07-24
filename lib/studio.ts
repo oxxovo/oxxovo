@@ -24,7 +24,7 @@ import {
   type ComposeEdl,
 } from '@/lib/cryptobind'
 import { verifySourceClipCrypto } from '@/lib/studio-verify'
-import { validateTexts, type TextReason } from '@/lib/text-limits'
+import { validateTexts, parseTrademarkBlocklist, findBlockedTrademark, type TextReason } from '@/lib/text-limits'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -1296,6 +1296,18 @@ export async function createRender(args: {
   const texts = Array.isArray(args.edl) ? [] : (args.edl.texts ?? [])
   const tv = validateTexts(texts, totalMs)
   if (!tv.ok) return { ok: false, reason: tv.reason, detail: tv.index >= 0 ? `text#${tv.index + 1}` : undefined }
+  // Trademark blocklist (no-deploy tunable). Cheap local check; the AI content
+  // scan runs at submit (the public gate). Absent list -> no block.
+  if (texts.length) {
+    const { data: cfg } = await admin.from('platform_config').select('value').eq('key', 'text_trademark_blocklist').maybeSingle()
+    const blocklist = parseTrademarkBlocklist(cfg?.value as string | undefined)
+    if (blocklist.length) {
+      for (let i = 0; i < texts.length; i++) {
+        const hit = findBlockedTrademark(texts[i].content, blocklist)
+        if (hit) return { ok: false, reason: 'text_trademark', detail: `text#${i + 1}: ${hit}` }
+      }
+    }
+  }
 
   // 3. Load distinct sources; each must be the participant's own, same-season,
   //    ready clip with a valid CryptoBind, and each trim must fit the clip.
@@ -1645,11 +1657,14 @@ export async function submitRender(args: {
       ? 'waitlist'
       : 'pending'
 
-    // Content safety (Patent 3): scan the creator statement before the composed
+    // Content safety (Patent 3): scan the creator statement AND any burned-in
+    // text overlays (both are public-facing text on the entry) before the composed
     // final can go public on /watch. Mirrors POST /api/apply policy. The composed
     // video's frame scan is phase C2 (worker). No key or an API error ->
     // moderateSubmission returns 'pending' (fail-safe: not public, admin queue).
-    const mod = await moderateSubmission({ text: statement })
+    const edlTexts = Array.isArray(render.edl) ? [] : (((render.edl as ComposeEdl).texts) ?? [])
+    const overlayText = edlTexts.map((tx) => tx.content).join('\n')
+    const mod = await moderateSubmission({ text: [statement, overlayText].filter((s) => s.trim()).join('\n') })
 
     const { error: insErr } = await admin.from('genesis_applications').insert({
       season_id: args.seasonId,

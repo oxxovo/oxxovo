@@ -25,7 +25,7 @@ const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 export type TextReason =
   | 'too_many_texts' | 'text_content' | 'text_font' | 'text_size'
   | 'text_color' | 'text_stroke' | 'text_align' | 'text_pos'
-  | 'text_window' | 'text_fade'
+  | 'text_window' | 'text_fade' | 'text_trademark'
 
 // Validate ONE layer against the composition duration (ms). Pure; no i18n.
 export function validateTextLayer(x: unknown, totalMs: number): TextReason | null {
@@ -48,6 +48,34 @@ export function validateTextLayer(x: unknown, totalMs: number): TextReason | nul
   const fin = l.fadeInMs ?? 0
   const fout = l.fadeOutMs ?? 0
   if (fin < 0 || fout < 0 || fin + fout > l.endMs - l.startMs) return 'text_fade'
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Trademark blocklist (server-side, NO-DEPLOY tunable via platform_config key
+// `text_trademark_blocklist`). Kept NARROW on purpose (clear big-brand names);
+// anything ambiguous is caught by the AI moderation + admin queue, not here.
+// Value is a JSON array of strings, or a comma/newline-separated list.
+export function parseTrademarkBlocklist(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const j = JSON.parse(raw)
+    if (Array.isArray(j)) return j.map((x) => String(x))
+  } catch {
+    /* not JSON -- fall through to delimiter split */
+  }
+  return raw.split(/[,\n]/).map((s) => s.trim()).filter(Boolean)
+}
+
+// Return the FIRST blocked term found in `content` (case-insensitive substring),
+// or null. Substring (not word-boundary) so it works for CJK brand names too;
+// the list stays narrow to avoid false positives.
+export function findBlockedTrademark(content: string, blocklist: string[]): string | null {
+  const hay = content.toLowerCase()
+  for (const term of blocklist) {
+    const t = term.trim().toLowerCase()
+    if (t && hay.includes(t)) return term
+  }
   return null
 }
 

@@ -155,6 +155,7 @@ const DICT = {
       text_pos: '위치가 화면을 벗어났어요.',
       text_window: '표시 구간이 영상 길이를 벗어났어요.',
       text_fade: '페이드가 표시 구간보다 길어요.',
+      text_trademark: '상표·브랜드명은 사용할 수 없어요. 문구를 수정해 주세요.',
     }[r]),
   },
   en: {
@@ -270,6 +271,7 @@ const DICT = {
       text_pos: 'Position is off-screen.',
       text_window: 'The show window is outside the video length.',
       text_fade: 'Fade is longer than the show window.',
+      text_trademark: 'Trademarks / brand names are not allowed. Please edit the text.',
     }[r]),
   },
 } as const
@@ -768,7 +770,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     const res = await props.onRender(edl)
     if (!res.ok) {
       // Map a server text-reason to a friendly message; other reasons pass through.
-      const textReasons = ['too_many_texts', 'text_content', 'text_font', 'text_size', 'text_color', 'text_stroke', 'text_align', 'text_pos', 'text_window', 'text_fade']
+      const textReasons = ['too_many_texts', 'text_content', 'text_font', 'text_size', 'text_color', 'text_stroke', 'text_align', 'text_pos', 'text_window', 'text_fade', 'text_trademark']
       setErr(textReasons.includes(res.error) ? t.text_reason(res.error as TextReason) : res.error)
       setRenderState(null); setBusy(false); return
     }
