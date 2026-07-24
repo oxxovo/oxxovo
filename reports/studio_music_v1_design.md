@@ -107,7 +107,11 @@ cryptobind_signature, cryptobind_generated_at, active, created_at`.
   clean tracks (Beatoven) → upload → sign → `active=true`. Admin-listable.
 - **AI generation** (reuses the clip-generation machinery):
   - **Prompt moderation**: `moderateSubmission({text: prompt})` before the API call
-    (fail-safe pending → not usable, admin queue).
+    (fail-safe pending → not usable, admin queue). ★PLUS an **imitation block**:
+    reject "in the style of <artist>", named songs/artists, and a curated
+    artist/track blocklist (platform_config, no-deploy, like the trademark list) —
+    copyright-mimicry requests are refused with a clear reason before spending a
+    credit. Instruct participants to describe MOOD, not reference works.
   - **Credits**: charge like a generation via `platform_config` pricing
     (`studio_music_credit_*`), refund on failure (existing credit/refund path).
   - **Failure refund**: Beatoven job fails/times out → refund credits, mark asset
@@ -134,18 +138,30 @@ cutoff), instrumental, 48kHz stereo. Mood taxonomy tuned to beauty/cosmetic ads:
 TK curates final selections; I prep candidates via Beatoven for approval.
 
 ## 6. Parity gate — audio isn't pixels, so decompose (like text pos/SSIM)
-Preview can't be sample-identical to the render, but WYSIWYG = **same track, same
-timing, same balance, same fades**. Gate the RENDER against the deterministic mix
-spec (both sides compute identical gains from the EDL), then argue preview parity
-from "same spec + same track" (final sign-off by TK's ear, like motion for text).
-Harness (`scripts/music-parity` — decode rendered PCM, RMS per 100 ms window):
+WYSIWYG = **same track, same timing, same balance, same fades**.
+### 6a. Render vs spec (`scripts/music-parity` — decode rendered PCM, 100 ms RMS)
 - **Timing**: music energy present only within `[start,end]` (clip-only outside);
   onset/offset within ±1 window of spec.
 - **Balance**: music-band vs clip-band dB ratio matches `musicVol/clipVol` within
-  **±3 dB** (measured on a known music-only vs clip-only reference render).
-- **Fades**: RMS ramps up over `fadeIn` and down over `fadeOut` (monotonic, slope
-  within tolerance) — the audio analog of the text alpha 0.50/1.00/0.50 check.
-- **Negative controls**: a wrong-volume / shifted-window render must FAIL the gate.
+  **±3 dB** (measured on a music-only vs clip-only reference render).
+- **Fades**: RMS ramps up over `fadeIn` / down over `fadeOut` (monotonic) — the
+  audio analog of the text alpha 0.50/1.00/0.50 check.
+- **Negative controls**: a wrong-volume / shifted-window render must FAIL.
+### 6b. ★Preview vs render — MEASURED, not argued (TK 2026-07-23)
+"Logically the same" has burned us twice (text baseline 33px, CORS black
+screen). So preview parity is measured, and the MEASUREMENT comes first — we
+can't know if the light preview path fails until we compare it:
+- Play the preview headless (Playwright), tap the audio through a **WebAudio
+  AnalyserNode** and sample RMS over the composition timeline → the preview RMS
+  curve. (The bed `<audio>` + clip `<video>` route through one AudioContext.)
+- Compare that curve to the render's PCM RMS curve (6a): **onset/offset timing**
+  and **fade ramp shape** must align (music start/end within ±1 window; fade slope
+  matches). Balance compared where both are measurable.
+- If fully-headless audio capture proves flaky, fall back to semi-auto: capture
+  the preview RMS curve + render RMS curve and diff them offline (still a real
+  measurement, not prose).
+- Only AFTER this measurement shows a real gap do we escalate to a sample-accurate
+  WebAudio gain graph. Measurement is the gate that decides, not an assumption.
 
 ## 7. UI (same discipline as effects/text — expose only the verified)
 Inspector "음악" panel: pick from library (mood-grouped) OR "AI 생성"(prompt +
@@ -158,7 +174,8 @@ live (§3). Allowlist-gated like the rest of compose. Text/aspect unaffected.
 2. Worker `mixMusic` pass — real-render E2E (both join paths, edge cases).
 3. Asset table + R2 `music/` + library seed (a few real tracks) + signing.
 4. Preview master-clock bed controller — WYSIWYG by ear + drift guard.
-5. Parity harness (RMS/timing/balance/fade) — gate green.
+5. Parity harness — render-vs-spec (6a) AND ★preview-capture-vs-render (6b,
+   measured before any WebAudio-graph decision) — gate green.
 6. AI generation (moderation + credits + refund) — E2E incl. failure refund.
 7. UI + allowlist → deploy → TK eyeball/ear.
 

@@ -124,6 +124,41 @@ test('TAMPER: moving a text position changes the hash', () => {
   assert.notEqual(computeEdlHash(tampered), GOLDEN_TEXT_HASH)
 })
 
+// ---- music bed KAT (append-only MU section) -------------------------------
+const GOLDEN_MUSIC_CANON =
+  'edl2||clipA:0:5000||T:||G:||MU:lib_elegant_01:library:70:40:0:5000:500:800'
+const GOLDEN_MUSIC_HASH = '94ed3ca926c848d849c7ac9debc6a586ec04ed98c7bd7ea4263517bf049d60ca'
+
+const musicSample: ComposeEdl = {
+  version: 2,
+  segments: [{ jobId: 'clipA', startMs: 0, endMs: 5000 }],
+  music: { assetId: 'lib_elegant_01', source: 'library', volume: 70, clipVolume: 40, startMs: 0, endMs: 5000, fadeInMs: 500, fadeOutMs: 800 },
+}
+
+test('KAT: music canonical string is stable (cross-repo byte-mirror)', () => {
+  assert.equal(edlCanonicalString(musicSample), GOLDEN_MUSIC_CANON)
+})
+
+test('KAT: music hash is stable (cross-repo byte-mirror)', () => {
+  assert.equal(computeEdlHash(musicSample), GOLDEN_MUSIC_HASH)
+})
+
+test('append-only: adding music does NOT change a music-free EDL hash', () => {
+  assert.equal(computeEdlHash(sample), GOLDEN_HASH)
+})
+
+test('TAMPER: changing music volume changes the hash', () => {
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(musicSample))
+  tampered.music!.volume = 71
+  assert.notEqual(computeEdlHash(tampered), GOLDEN_MUSIC_HASH)
+})
+
+test('TAMPER: swapping the music asset changes the hash', () => {
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(musicSample))
+  tampered.music!.assetId = 'lib_elegant_02'
+  assert.notEqual(computeEdlHash(tampered), GOLDEN_MUSIC_HASH)
+})
+
 test('backward compat: v1 array still uses the edl1 prefix', () => {
   const v1 = edlCanonicalString([{ jobId: 'clipA', startMs: 0, endMs: 5000 }])
   assert.ok(v1.startsWith('edl1|'))

@@ -221,6 +221,20 @@ export type TextLayer = {
   fadeOutMs?: number
 }
 
+// Music bed (platform library track or in-platform AI generation -- NEVER an
+// upload). `assetId` -> studio_music_assets (signed like a source clip, so the bed
+// can't be swapped after signing). volume/clipVolume are the balance (0..100%).
+export type MusicBed = {
+  assetId: string
+  source: 'library' | 'ai'
+  volume: number      // bed gain, 0..100 (%)
+  clipVolume: number  // original clip-audio gain, 0..100 (%)
+  startMs?: number    // bed starts at this composition time (default 0)
+  endMs?: number      // bed ends (default = composition end)
+  fadeInMs?: number
+  fadeOutMs?: number
+}
+
 export type ComposeEdl = {
   version: 2
   segments: SegmentEffect[]
@@ -229,6 +243,8 @@ export type ComposeEdl = {
   texts?: TextLayer[]
   // Output aspect ratio. Absent = legacy (canvas follows the smallest source).
   aspect?: '16:9' | '9:16'
+  // Music bed. Absent = clip audio only (unchanged).
+  music?: MusicBed
 }
 
 // Canonical, minimal effect string: only non-neutral params, in EFFECT_KEYS order.
@@ -292,6 +308,22 @@ function textsCanonical(texts: TextLayer[]): string {
     .join('|')
 }
 
+// Canonical music bed. Fixed field order (part of the signature -- APPEND-ONLY).
+// assetId percent-encoded (never collides with ':'); volumes/times on the integer
+// grid so preview/store/render never drift.
+function musicCanonical(m: MusicBed): string {
+  return [
+    encodeURIComponent(m.assetId),
+    m.source,
+    Math.round(m.volume),
+    Math.round(m.clipVolume),
+    Math.round(m.startMs ?? 0),
+    Math.round(m.endMs ?? 0),
+    Math.round(m.fadeInMs ?? 0),
+    Math.round(m.fadeOutMs ?? 0),
+  ].join(':')
+}
+
 function edlCanonicalStringV2(edl: ComposeEdl): string {
   const segs = edl.segments.map(segCanonical).join('|')
   const trans = (edl.transitions ?? [])
@@ -306,6 +338,9 @@ function edlCanonicalStringV2(edl: ComposeEdl): string {
   // APPEND-ONLY: AR section only when an output aspect is chosen, so aspect-free
   // EDLs keep their exact canonical + hash.
   if (edl.aspect) base.push(`AR:${edl.aspect}`)
+  // APPEND-ONLY: MU section only when a music bed is set, so music-free EDLs keep
+  // their exact canonical + hash.
+  if (edl.music) base.push(`MU:${musicCanonical(edl.music)}`)
   return base.join('||')
 }
 
