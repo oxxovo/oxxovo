@@ -24,6 +24,14 @@ export type PreviewSegment = {
   endMs: number
   speed?: number
   effects?: EffectParams
+  // How this clip fills the output aspect box: 'cover' = crop-fill, else letterbox.
+  fit?: 'contain' | 'cover'
+}
+
+// The clip's fill mode as a CSS object-fit -- the preview surface mirrors the
+// worker's letterbox (contain) / center-crop (cover) so framing is WYSIWYG.
+export function fitObjectFit(seg: PreviewSegment | undefined): 'contain' | 'cover' {
+  return seg?.fit === 'cover' ? 'cover' : 'contain'
 }
 export type PreviewTransition = { afterIndex: number; type: string; durationMs: number }
 
@@ -82,12 +90,15 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
     opts.onProgress(compStart(idx) + Math.max(0, video.currentTime * 1000 - seg.startMs))
   }
 
+  const applyFit = (seg: PreviewSegment | undefined) => { if (video) video.style.objectFit = fitObjectFit(seg) }
+
   const playAt = async (i: number, startOffsetMs = 0) => {
     if (!video || i >= segs.length) { setPlaying(false); return }
     idx = i
     const seg = segs[i]
     const clip = clipMap.get(seg.jobId)
     if (!clip) { setPlaying(false); return }
+    applyFit(seg)
     if (video.src !== clip.url) video.src = clip.url
     try {
       video.currentTime = seg.startMs / 1000 + startOffsetMs / 1000
@@ -131,6 +142,7 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
       idx = ni
       const clip = clipMap.get(segs[ni].jobId)
       if (!clip) return
+      applyFit(segs[ni])
       if (video.src !== clip.url) video.src = clip.url
       const target = videoTimeMs / 1000
       const doSeek = () => { if (!video) return; try { video.currentTime = target } catch { /* not ready */ } if (playing) video.play().catch(() => {}) }
@@ -143,6 +155,7 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
       if (playing || !video) return
       const clip = clips.get(seg.jobId)
       if (!clip) return
+      applyFit(seg)
       if (video.src !== clip.url) video.src = clip.url
       const seek = () => { try { video!.currentTime = seg.startMs / 1000 } catch { /* not ready */ } }
       if (video.readyState >= 1) seek()

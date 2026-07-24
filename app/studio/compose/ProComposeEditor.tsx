@@ -35,7 +35,8 @@ import { TextOverlay } from './TextOverlay'
 
 // effects/speed are populated by the effect UI (E); undefined in C (no effect UI
 // yet), which keeps the composition effect-free -> the raw preview stays accurate.
-type Segment = { uid: string; jobId: string; startMs: number; endMs: number; speed?: number; effects?: EffectParams }
+type Segment = { uid: string; jobId: string; startMs: number; endMs: number; speed?: number; effects?: EffectParams; fit?: 'contain' | 'cover' }
+type Aspect = '16:9' | '9:16'
 
 let uidSeq = 0
 const nextUid = () => `pseg_${++uidSeq}`
@@ -144,6 +145,14 @@ const DICT = {
     text_fade_in: '들어옴', text_fade_out: '나감',
     text_delete: '삭제',
     text_drag: '드래그해서 위치 이동',
+    // --- output aspect / per-clip fit ---
+    aspect_hint: '출력 비율 — 미리보기가 즉시 바뀝니다',
+    crop_badge: '크롭됨',
+    fit_label: '채우기',
+    fit_contain: '여백',
+    fit_cover: '크롭',
+    fit_contain_hint: '비율이 다르면 검은 여백 (원본 전체 보존).',
+    fit_cover_hint: '⚠ 화면을 꽉 채우되 가장자리가 잘립니다 (중앙 기준). 미리보기에서 잘린 결과를 확인하세요.',
     text_reason: (r: TextReason) => ({
       too_many_texts: `텍스트가 너무 많아요 (최대 ${TEXT_LIMITS.MAX_TEXTS}개).`,
       text_content: `문구를 입력하세요 (최대 ${TEXT_LIMITS.MAX_CONTENT_LEN}자, ${TEXT_LIMITS.MAX_LINES}줄).`,
@@ -260,6 +269,14 @@ const DICT = {
     text_fade_in: 'In', text_fade_out: 'Out',
     text_delete: 'Delete',
     text_drag: 'Drag to move',
+    // --- output aspect / per-clip fit ---
+    aspect_hint: 'Output aspect — the preview reframes instantly',
+    crop_badge: 'CROPPED',
+    fit_label: 'Fill',
+    fit_contain: 'Fit',
+    fit_cover: 'Crop',
+    fit_contain_hint: 'Black bars when the aspect differs (keeps the whole frame).',
+    fit_cover_hint: '⚠ Fills the frame but the edges are cropped (from center). Check the cropped result in the preview.',
     text_reason: (r: TextReason) => ({
       too_many_texts: `Too many text layers (max ${TEXT_LIMITS.MAX_TEXTS}).`,
       text_content: `Enter some text (max ${TEXT_LIMITS.MAX_CONTENT_LEN} chars, ${TEXT_LIMITS.MAX_LINES} lines).`,
@@ -291,6 +308,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const [segments, setSegments] = useState<Segment[]>([])
   const [texts, setTexts] = useState<TextLayer[]>([]) // text/title overlays (stage 5 renders, stage 6 edits)
   const [selText, setSelText] = useState<number | null>(null) // selected text layer index
+  const [aspect, setAspect] = useState<Aspect>('16:9') // output aspect (letterbox/crop per clip)
   const [dragUid, setDragUid] = useState<string | null>(null)
   const [sel, setSel] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -319,19 +337,21 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   useEffect(() => {
     if (restored.current) return
     restored.current = true
-    type Edl = { jobId: string; startMs: number; endMs: number }
+    type Edl = { jobId: string; startMs: number; endMs: number; fit?: 'contain' | 'cover' }
     const edlEq = (a: Edl[], b: Edl[]) =>
       a.length === b.length && a.every((s, i) => s.jobId === b[i].jobId && s.startMs === b[i].startMs && s.endMs === b[i].endMs)
     let draftSegs: Edl[] | null = null
     let draftAp: Partial<ComposeApplicant> | null = null
     let draftTexts: TextLayer[] | null = null
+    let draftAspect: Aspect | null = null
     if (draftKey && typeof window !== 'undefined') {
       try {
         const raw = window.localStorage.getItem(draftKey)
         if (raw) {
-          const d = JSON.parse(raw) as { segments?: Edl[]; texts?: TextLayer[]; ap?: Partial<ComposeApplicant> }
+          const d = JSON.parse(raw) as { segments?: Edl[]; texts?: TextLayer[]; aspect?: Aspect; ap?: Partial<ComposeApplicant> }
           draftSegs = Array.isArray(d.segments) ? d.segments : null
           draftTexts = Array.isArray(d.texts) ? d.texts : null
+          draftAspect = d.aspect === '9:16' || d.aspect === '16:9' ? d.aspect : null
           draftAp = d.ap ?? null
         }
       } catch { /* malformed -- ignore */ }
@@ -340,11 +360,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     const sourceEdl: Edl[] = draftSegs && draftSegs.length ? draftSegs : rr?.edl ?? []
     const rebuilt = sourceEdl
       .filter((e) => clipById.has(e.jobId))
-      .map((e) => ({ uid: nextUid(), jobId: e.jobId, startMs: e.startMs, endMs: e.endMs }))
+      .map((e) => ({ uid: nextUid(), jobId: e.jobId, startMs: e.startMs, endMs: e.endMs, fit: e.fit }))
     if (rebuilt.length) setSegments(rebuilt)
     // Only restore texts alongside a restored composition (they reference its
     // timeline). The server re-validates on render regardless.
     if (rebuilt.length && draftTexts && draftTexts.length) setTexts(draftTexts)
+    if (rebuilt.length && draftAspect) setAspect(draftAspect)
     if (rr && rr.status === 'ready' && rr.videoUrl) {
       const chosen = rebuilt.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
       if (edlEq(chosen, rr.edl)) {
@@ -362,12 +383,13 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (empty) return
     try {
       window.localStorage.setItem(draftKey, JSON.stringify({
-        segments: segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs })),
+        segments: segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs, fit: s.fit })),
         texts,
+        aspect,
         ap: { creatorStatement: ap.creatorStatement },
       }))
     } catch { /* quota -- non-fatal */ }
-  }, [segments, texts, ap, submitDone, draftKey])
+  }, [segments, texts, aspect, ap, submitDone, draftKey])
 
   useEffect(() => {
     if (submitDone && draftKey && typeof window !== 'undefined') {
@@ -596,6 +618,13 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     togglePlay()
   }
   const playPct = totalMs > 0 ? Math.min(100, (playheadMs / totalMs) * 100) : 0
+  // Segment currently under the playhead (for the crop badge -- mirrors the raw
+  // engine's locateComposition span math).
+  const curSeg = useMemo(() => {
+    let acc = 0
+    for (const s of segments) { const span = Math.max(0, s.endMs - s.startMs); if (playheadMs < acc + span) return s; acc += span }
+    return segments[segments.length - 1] as Segment | undefined
+  }, [segments, playheadMs])
 
   // ---- history: undo / redo -------------------------------------------------
   // Covers effects/speed/LUT/transitions/global grade (Phase 1) AND structural
@@ -604,7 +633,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // (spread/map/filter), so storing the *references* is a safe frozen snapshot.
   // Continuous edits (slider drags) coalesce by key+time into ONE undo step;
   // discrete edits (LUT/transition/reset/dbl-click) each push their own step.
-  type Doc = { segments: Segment[]; globalFx: EffectParams; transitions: PreviewTransition[]; texts: TextLayer[] }
+  type Doc = { segments: Segment[]; globalFx: EffectParams; transitions: PreviewTransition[]; texts: TextLayer[]; aspect: Aspect }
   const undoRef = useRef<Doc[]>([])
   const redoRef = useRef<Doc[]>([])
   // Availability is STATE (not read off the refs during render) so the buttons
@@ -620,7 +649,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     const merged = coalesce && key === lastCommit.current.key && now - lastCommit.current.t < COALESCE_MS
     lastCommit.current = { key, t: now }
     if (merged) return
-    undoRef.current.push({ segments, globalFx, transitions, texts })
+    undoRef.current.push({ segments, globalFx, transitions, texts, aspect })
     if (undoRef.current.length > HIST_MAX) undoRef.current.shift()
     redoRef.current = []
     setCanUndo(true); setCanRedo(false)
@@ -630,13 +659,14 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     setGlobalFx(d.globalFx)
     setTransitions(d.transitions)
     setTexts(d.texts)
+    setAspect(d.aspect)
     setSel((cur) => (cur && d.segments.some((s) => s.uid === cur) ? cur : null))
     setSelText((cur) => (cur !== null && cur < d.texts.length ? cur : null))
   }
   const undo = () => {
     const prev = undoRef.current.pop()
     if (!prev) return
-    redoRef.current.push({ segments, globalFx, transitions, texts })
+    redoRef.current.push({ segments, globalFx, transitions, texts, aspect })
     applyDoc(prev)
     lastCommit.current = { key: '', t: 0 } // a fresh edit after undo starts a new step
     setCanUndo(undoRef.current.length > 0); setCanRedo(true)
@@ -644,7 +674,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const redo = () => {
     const next = redoRef.current.pop()
     if (!next) return
-    undoRef.current.push({ segments, globalFx, transitions, texts })
+    undoRef.current.push({ segments, globalFx, transitions, texts, aspect })
     applyDoc(next)
     lastCommit.current = { key: '', t: 0 }
     setCanUndo(true); setCanRedo(redoRef.current.length > 0)
@@ -715,6 +745,11 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     commit(`spd:${uid}`, true)
     setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, speed } : x)))
   }
+  // Per-clip fill mode for the output aspect: cover = crop-fill, contain = letterbox.
+  const setSegFit = (uid: string, fit: 'contain' | 'cover') => {
+    commit(`fit:${uid}`)
+    setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, fit } : x)))
+  }
   const setGlobalKey = (key: keyof EffectParams, val: number) => { commit(`gfx:${key}`, true); setGlobalFx((g) => ({ ...g, [key]: val })) }
   const setGlobalLut = (lut: string) => { commit('glut'); setGlobalFx((g) => ({ ...g, lut })) }
   const setBoundaryTransition = (afterIndex: number, type: string) => {
@@ -753,7 +788,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     // EDL v2 when the composition carries effects OR text; else a bare v1 array
     // (keeps the edl1 hash + effect-free render path). Text is signed via the TX
     // section of the v2 canonical (append-only -> text-free hashes unchanged).
-    const isV2 = compositionHasEffects || texts.length > 0
+    const isV2 = compositionHasEffects || texts.length > 0 || !!aspect
     const edl = isV2
       ? {
           version: 2 as const,
@@ -761,10 +796,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
             jobId: s.jobId, startMs: s.startMs, endMs: s.endMs,
             ...(s.speed !== undefined && Math.round(s.speed * 1000) !== 1000 ? { speed: s.speed } : {}),
             ...(hasAnyEffect(s.effects) ? { effects: s.effects } : {}),
+            ...(s.fit === 'cover' ? { fit: 'cover' as const } : {}),
           })),
           ...(transitions.length ? { transitions: transitions.map((tr) => ({ afterIndex: tr.afterIndex, type: tr.type, durationMs: tr.durationMs })) } : {}),
           ...(hasAnyEffect(globalFx) ? { global: globalFx } : {}),
           ...(texts.length ? { texts } : {}),
+          ...(aspect ? { aspect } : {}),
         }
       : segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
     const res = await props.onRender(edl)
@@ -872,24 +909,40 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
         <section className="flex flex-col rounded-xl border border-white/10 bg-[#08060f] lg:col-start-2 lg:row-start-1 lg:overflow-hidden">
           <div className="flex items-center justify-between gap-2 border-b border-white/8 px-3.5 py-2.5">
             <h2 className={paneHead}>{t.preview}</h2>
-            <span className="text-[11px] font-bold text-[#b66cff]">{t.total}: {totalSec.toFixed(1)}{t.sec} · {segments.length} {t.clip}</span>
+            <div className="flex items-center gap-2">
+              {/* output aspect selector -- the preview reframes immediately */}
+              <div className="inline-flex rounded-lg border border-white/10 bg-white/[.02] p-0.5" title={t.aspect_hint}>
+                {(['16:9', '9:16'] as const).map((a) => (
+                  <button key={a} type="button" onClick={() => { if (aspect !== a) { commit('aspect'); setAspect(a) } }}
+                    className={`rounded-md px-2 py-0.5 text-[10px] font-bold transition ${aspect === a ? 'bg-[#8b22ff]/25 text-[#d9b8ff]' : 'text-white/45 hover:text-white/70'}`}>{a}</button>
+                ))}
+              </div>
+              <span className="text-[11px] font-bold text-[#b66cff]">{totalSec.toFixed(1)}{t.sec} · {segments.length} {t.clip}</span>
+            </div>
           </div>
           <div onClick={onPreviewClick} onPointerDown={onPreviewPointerDown} onPointerMove={onPreviewPointerMove} onPointerUp={onPreviewPointerUp}
             title={segments.length ? (playing ? t.stop : t.play) : undefined}
             style={{ touchAction: selText !== null && segments.length ? 'none' : undefined }}
             className={`relative flex min-h-[220px] flex-1 items-center justify-center bg-black p-3 ${segments.length ? (selText !== null ? 'cursor-move' : 'cursor-pointer') : ''}`}>
-            {/* The GL engine manages crossOrigin on this element itself: it opts in
-                (crossOrigin='anonymous' + a ?gl=1 cache key) now that the R2 bucket
-                returns ACAO for our origins, so WYSIWYG effects preview live. The raw
-                engine clears crossOrigin (opaque playback). If the CORS upload still
-                fails on some browser, the GL engine degrades to raw + an honest note --
-                a black preview is never shown. */}
-            <video ref={videoRef} playsInline
-              className={`max-h-full max-w-full rounded-xl ${segments.length ? '' : 'hidden'}`} />
-            {/* Text/title overlay: WYSIWYG with the render (shared drawTextLayer +
-                globalAlpha fade from textAlphaAt). Sits above the video, below the
-                click-to-play surface (pointer-events-none). */}
-            <TextOverlay videoRef={videoRef} texts={texts} playheadMs={playheadMs} visible={segments.length > 0} editingIndex={selText} />
+            {/* Aspect box = the OUTPUT canvas. The video + GL canvas fill it and are
+                letterboxed/cropped by object-fit (set per current clip by the engine),
+                so the framing matches the worker render. The <video> stays mounted
+                even when empty so the engine keeps its element ref. */}
+            <div className={`absolute inset-0 m-auto overflow-hidden rounded-xl bg-black ${segments.length ? '' : 'hidden'}`}
+              style={{ aspectRatio: aspect === '9:16' ? '9 / 16' : '16 / 9', maxWidth: '100%', maxHeight: '100%' }}>
+              {/* GL engine opts into crossOrigin on this element itself (?gl=1 cache
+                  key; R2 returns ACAO). It degrades to raw + an honest note on any
+                  CORS/media failure -- a black preview is never shown. object-fit is
+                  owned by the engine (per current clip) -- NOT set here, so a React
+                  re-render never clobbers it. */}
+              <video ref={videoRef} playsInline className="absolute inset-0 h-full w-full rounded-xl" />
+              {/* Text overlay draws on the OUTPUT canvas (this box) -- over bars / crop
+                  exactly as the render does. */}
+              <TextOverlay texts={texts} playheadMs={playheadMs} visible={segments.length > 0} editingIndex={selText} />
+              {curSeg?.fit === 'cover' && (
+                <span className="pointer-events-none absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-bold text-amber-300">{t.crop_badge}</span>
+              )}
+            </div>
             {segments.length === 0 && <span className="text-xs text-white/30">{t.empty_prev}</span>}
           </div>
           {fxPreviewUnavailable && (
@@ -1058,6 +1111,21 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                           </label>
                         )}
                       </div>
+                      {/* per-clip fill mode for the output aspect (letterbox / crop) */}
+                      {fxTab === 'clip' && (
+                        <div className="rounded-lg border border-white/10 bg-white/[.02] px-2.5 py-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-white/55">{t.fit_label} <span className="text-white/30">({aspect})</span></span>
+                            <div className="inline-flex rounded-lg border border-white/10 p-0.5">
+                              {([['contain', t.fit_contain], ['cover', t.fit_cover]] as const).map(([f, lbl]) => (
+                                <button key={f} type="button" onClick={() => setSegFit(selSeg!.uid, f)}
+                                  className={`rounded-md px-2 py-0.5 text-[10px] font-bold transition ${(selSeg!.fit ?? 'contain') === f ? 'bg-[#8b22ff]/25 text-[#d9b8ff]' : 'text-white/45 hover:text-white/70'}`}>{lbl}</button>
+                              ))}
+                            </div>
+                          </div>
+                          <p className="mt-1 text-[9px] leading-tight text-white/35">{selSeg!.fit === 'cover' ? t.fit_cover_hint : t.fit_contain_hint}</p>
+                        </div>
+                      )}
                       {grainOn && <p className="text-[10px] text-amber-300/80">⚠ {t.approx_note}</p>}
                       <div className="flex justify-end pt-1">
                         <button type="button"

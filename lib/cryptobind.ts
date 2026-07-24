@@ -195,7 +195,10 @@ const EFFECT_KEYS: readonly (keyof EffectParams)[] = [
   'lut', 'lutIntensity', 'grain', 'vignette', 'glow', 'motionBlur', 'sharpen', 'chromatic',
 ]
 
-export type SegmentEffect = EdlSegment & { speed?: number; effects?: EffectParams }
+// `fit` = how the clip fills the output canvas when its aspect differs from the
+// chosen output aspect. 'contain' (default/absent) = letterbox (no loss);
+// 'cover' = center-crop to fill. Per-clip (TK 2026-07-23).
+export type SegmentEffect = EdlSegment & { speed?: number; effects?: EffectParams; fit?: 'contain' | 'cover' }
 export type Transition = { afterIndex: number; type: string; durationMs: number }
 
 // Text/title overlay layer (creator copy -- NOT an external asset, so Genesis-OK).
@@ -224,6 +227,8 @@ export type ComposeEdl = {
   transitions?: Transition[]
   global?: EffectParams
   texts?: TextLayer[]
+  // Output aspect ratio. Absent = legacy (canvas follows the smallest source).
+  aspect?: '16:9' | '9:16'
 }
 
 // Canonical, minimal effect string: only non-neutral params, in EFFECT_KEYS order.
@@ -251,6 +256,9 @@ function segCanonical(s: SegmentEffect): string {
   if (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000) out += `;spd=${Math.round(s.speed * 1000)}`
   const fx = effectsCanonical(s.effects)
   if (fx) out += `;fx=${fx}`
+  // APPEND-ONLY: only the non-default 'cover' is signature-visible, so every
+  // existing segment (contain/absent) keeps its exact canonical + hash.
+  if (s.fit === 'cover') out += ';fit=cover'
   return out
 }
 
@@ -295,6 +303,9 @@ function edlCanonicalStringV2(edl: ComposeEdl): string {
   // APPEND-ONLY: the TX section is added ONLY when texts exist, so every existing
   // text-free v2 EDL keeps its exact canonical string + hash (KAT/signatures stay).
   if (edl.texts && edl.texts.length) base.push(`TX:${textsCanonical(edl.texts)}`)
+  // APPEND-ONLY: AR section only when an output aspect is chosen, so aspect-free
+  // EDLs keep their exact canonical + hash.
+  if (edl.aspect) base.push(`AR:${edl.aspect}`)
   return base.join('||')
 }
 

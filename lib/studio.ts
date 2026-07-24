@@ -1242,6 +1242,7 @@ export type CreateRenderResult =
         | 'source_draft'
         | 'source_not_ready'
         | 'source_cryptobind_failed'
+        | 'bad_aspect'
         | 'failed'
         | TextReason
       detail?: string
@@ -1285,11 +1286,18 @@ export async function createRender(args: {
       return { ok: false, reason: 'bad_segment' }
     }
     if (seg.startMs < 0 || seg.endMs <= seg.startMs) return { ok: false, reason: 'bad_segment' }
+    // per-clip fit (aspect fill mode): only the two enums, else reject.
+    const fit = (seg as { fit?: unknown }).fit
+    if (fit !== undefined && fit !== 'contain' && fit !== 'cover') return { ok: false, reason: 'bad_segment', detail: 'fit' }
     totalMs += seg.endMs - seg.startMs
   }
   if (totalMs <= 0) return { ok: false, reason: 'empty_edl' }
   if (minSeconds > 0 && totalMs < minSeconds * 1000) return { ok: false, reason: 'too_short' }
   if (totalMs > maxSeconds * 1000) return { ok: false, reason: 'too_long' }
+
+  // 2a. Output aspect (EDL v2): only the two enums.
+  const aspect = Array.isArray(args.edl) ? undefined : args.edl.aspect
+  if (aspect !== undefined && aspect !== '16:9' && aspect !== '9:16') return { ok: false, reason: 'bad_aspect' }
 
   // 2b. Text/title overlays (EDL v2). Server is authority for the shape + the 5%
   //     size floor (client mirrors both). Content moderation is a later step.

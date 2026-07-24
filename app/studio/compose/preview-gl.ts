@@ -7,7 +7,7 @@
 // Ported so far: color grade + LUT (this file). Glow / transitions land next.
 
 import type { PreviewEngine, PreviewClip, PreviewSegment, PreviewTransition } from './preview'
-import { locateComposition } from './preview'
+import { locateComposition, fitObjectFit } from './preview'
 import type { EffectParams } from '@/lib/effects'
 import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, glowStages, grainAmount, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
 
@@ -259,6 +259,8 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     if (!video || !proc || video.readyState < 2 || !video.videoWidth) return
     const w = video.videoWidth, h = video.videoHeight
     const seg = segs[idx]
+    if (canvas) canvas.style.objectFit = fitObjectFit(seg) // letterbox/crop per clip
+
     const tr = trans.get(idx)
     // --- transition window: blend outgoing (video) + incoming (videoB) ---
     if (tr && idx + 1 < segs.length) {
@@ -344,7 +346,9 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       v.addEventListener('seeked', onSeeked)
       try {
         canvas = document.createElement('canvas')
-        canvas.className = 'oxxovo-gl-preview max-h-full max-w-full rounded-xl'
+        // Fill the aspect box; object-fit (set per current segment in drawFrameGL)
+        // letterboxes/crops the native-aspect bitmap exactly like the worker.
+        canvas.className = 'oxxovo-gl-preview absolute inset-0 h-full w-full rounded-xl'
         v.parentElement?.insertBefore(canvas, v)
         proc = new GLProcessor(canvas) // shader compile / link throws land here
       } catch (e) {
