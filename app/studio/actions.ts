@@ -42,6 +42,7 @@ import {
   type EffectiveRound,
 } from '@/lib/studio'
 import type { MusicReason } from '@/lib/music-limits'
+import { createMusicGeneration } from '@/lib/music-gen'
 import { getBalance, getStudioPricing, getStudioPurchaseConfig } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
 import { getCreatorProfile } from '@/lib/profile'
@@ -254,6 +255,36 @@ export async function createGenerationAction(
   })
   if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
   return { ok: true, jobId: res.jobId, credits: res.credits }
+}
+
+// --- Stage 6: AI music generation (moderation + imitation block + credits) ---
+
+export type CreateMusicGenResult =
+  | { ok: true; assetId: string; credits: number }
+  | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | MusicReason; detail?: string }
+
+// Enqueue an AI music bed. Gate + prompt guard + imitation block + moderation +
+// credit charge all live in createMusicGeneration; the worker (oxxovo-studio)
+// generates via the provider and finalizes/refunds. Provider is stubbed until
+// Beatoven is confirmed, so this returns music_ai_disabled while the config
+// switch stays off.
+export async function generateMusicAction(
+  token: string,
+  input: { prompt: string; durationSeconds: number },
+): Promise<CreateMusicGenResult> {
+  if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
+  const auth = await verifyToken(token)
+  if (!auth) return { ok: false, error: 'invalid_token' }
+  const season = await getCurrentSeason()
+  if (!season) return { ok: false, error: 'no_season' }
+  const res = await createMusicGeneration({
+    userId: auth.userId,
+    seasonId: season.id,
+    prompt: input.prompt,
+    durationSeconds: input.durationSeconds,
+  })
+  if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
+  return { ok: true, assetId: res.assetId, credits: res.credits }
 }
 
 // --- Stage 3: image (t2i character sheet) + character library + i2v ---
