@@ -78,9 +78,13 @@ const HIDDEN_STATUSES = new Set(['flagged'])
 // start moderation_status='pending' (not public) until the scan passes -- the
 // content-safety gate (TK 2026-06-28, Patent 3). Existing rows default
 // 'approved' so nothing already present disappears.
-function isPublicRow(row: Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'>): boolean {
+function isPublicRow(row: Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status' | 'watch_hold'>): boolean {
   if (HIDDEN_STATUSES.has(row.status)) return false
   if (row.watch_hidden) return false
+  // Fairness hold (anti-copy): held prelim entries are invisible to EVERYONE until
+  // the cohort is released (manual admin or scheduled auto). Orthogonal to the
+  // bad-content hide (watch_hidden) and the safety scan (moderation_status).
+  if (row.watch_hold) return false
   if (row.moderation_status !== 'approved') return false
   return true
 }
@@ -90,6 +94,7 @@ type AppRow = {
   season_id: string
   status: string
   watch_hidden: boolean | null
+  watch_hold: boolean | null
   moderation_status: string
   user_id: string | null
   creator_name: string | null
@@ -257,7 +262,7 @@ export async function getWatchVideos(
   let q = admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, studio_application_render_id, studio_main_render_id, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
+      'id, season_id, status, watch_hidden, watch_hold, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, studio_application_render_id, studio_main_render_id, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
   if (opt.seasonId) q = q.eq('season_id', opt.seasonId)
 
@@ -340,7 +345,7 @@ export async function getCurrentCompetitionStats(seasonId: string): Promise<Comp
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('genesis_applications')
-    .select('status, watch_hidden, moderation_status, user_id, creator_name, country, free_entry_url, main_round_video_url')
+    .select('status, watch_hidden, watch_hold, moderation_status, user_id, creator_name, country, free_entry_url, main_round_video_url')
     .eq('season_id', seasonId)
 
   if (error || !data) {
@@ -351,7 +356,7 @@ export async function getCurrentCompetitionStats(seasonId: string): Promise<Comp
   const creators = new Set<string>()
   const countries = new Set<string>()
   let entries = 0
-  for (const row of data as (Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'> & {
+  for (const row of data as (Pick<AppRow, 'status' | 'watch_hidden' | 'watch_hold' | 'moderation_status'> & {
     user_id: string | null
     creator_name: string | null
     country: string | null
@@ -387,7 +392,7 @@ export async function getJudgingProgress(
   const [{ data: apps }, { data: scores }] = await Promise.all([
     admin
       .from('genesis_applications')
-      .select('id, status, watch_hidden, moderation_status, free_entry_url, main_round_video_url')
+      .select('id, status, watch_hidden, watch_hold, moderation_status, free_entry_url, main_round_video_url')
       .eq('season_id', seasonId),
     admin
       .from('scoring_results')
@@ -398,7 +403,7 @@ export async function getJudgingProgress(
   ])
 
   const pool = new Set<string>()
-  for (const row of (apps ?? []) as (Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'> & {
+  for (const row of (apps ?? []) as (Pick<AppRow, 'status' | 'watch_hidden' | 'watch_hold' | 'moderation_status'> & {
     id: string; free_entry_url: string | null; main_round_video_url: string | null
   })[]) {
     if (!isPublicRow(row)) continue
@@ -732,7 +737,7 @@ export async function getWatchVideo(
   const { data, error } = await admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, studio_application_render_id, studio_main_render_id, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
+      'id, season_id, status, watch_hidden, watch_hold, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, studio_application_render_id, studio_main_render_id, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
     .eq('id', applicationId)
     .maybeSingle()

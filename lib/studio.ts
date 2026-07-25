@@ -155,6 +155,9 @@ export type SeasonStudioConfig = {
   // the UI can STATE the rule without hardcoding it. 0 = unset -> caller decides.
   studioComposeMinSeconds: number
   studioComposeMaxSeconds: number
+  // Fairness hold: when true, a prelim submission is held off /watch until the
+  // cohort is released together (anti-copy). Visibility only -- never scoring.
+  prelimHoldEnabled: boolean
 }
 
 // Per-round video-length bounds, resolved from the season config. Application
@@ -337,7 +340,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
+    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_prelim_hold_enabled')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -356,6 +359,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     studioComposeEnabled: Boolean(data.studio_compose_enabled),
     studioComposeMinSeconds: Number(data.studio_compose_min_seconds ?? 0),
     studioComposeMaxSeconds: Number(data.studio_compose_max_seconds ?? 0),
+    prelimHoldEnabled: Boolean(data.studio_prelim_hold_enabled),
   }
 }
 
@@ -1149,6 +1153,8 @@ export async function submitGeneration(args: {
       moderation_status: mod.status,
       moderation_flags: mod.categories.length ? mod.categories : null,
       moderation_checked_at: now,
+      // Fairness hold (anti-copy), prelim only -- see submitRender. Visibility only.
+      watch_hold: cfg.prelimHoldEnabled,
       studio_application_job_id: job.id,
       studio_application_signature: job.cryptobind_signature,
       studio_application_submitted_at: now,
@@ -1641,7 +1647,7 @@ export async function submitRender(args: {
   // 2. Season compose gate + cap (defense; caps are season-variable).
   const { data: seasonRow, error: sErr } = await admin
     .from('seasons')
-    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_music_enabled')
+    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_music_enabled, studio_prelim_hold_enabled')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
@@ -1793,6 +1799,10 @@ export async function submitRender(args: {
       moderation_status: mod.status,
       moderation_flags: mod.categories.length ? mod.categories : null,
       moderation_checked_at: now,
+      // Fairness hold (anti-copy): when the season enables it, the prelim entry is
+      // held off /watch until the cohort is released together (manual/auto). Never
+      // blocks scoring -- only public visibility (isPublicRow). Prelim only.
+      watch_hold: !!seasonRow.studio_prelim_hold_enabled,
       studio_application_render_id: render.id,
       studio_application_submitted_at: now,
     })

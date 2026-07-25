@@ -416,6 +416,44 @@ export async function approveModeration(applicationId: string): Promise<HideResu
   return { ok: true, hidden: false }
 }
 
+// ─── Prelim fairness release (anti-copy hold) ────────────────────────────────
+// Held prelim entries (watch_hold=true) are invisible to everyone until the whole
+// cohort is released together, so an early submitter's video can't be copied by a
+// later entrant. Two release paths share this one mutation:
+//   MANUAL: admin clicks "예선 전체 공개" (this action).
+//   AUTO:   the season cron calls releasePrelimHold when studio_prelim_auto_publish
+//           is on and now >= application_close_at (OFF until the schedule is final).
+// Visibility only -- never touches status/scoring. Prelim only (main uses the
+// main_round_start_at reveal).
+
+export type PublishResult = { ok: true; released: number } | { ok: false; error: 'forbidden' | 'failed' }
+
+// Core release: clear watch_hold for every held entry in the season. `actor` is
+// 'admin:<id>' (manual) or 'auto' (cron). Returns how many were released.
+export async function releasePrelimHold(seasonId: string): Promise<{ released: number; error?: string }> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('genesis_applications')
+    .update({ watch_hold: false, watch_hold_released_at: new Date().toISOString() })
+    .eq('season_id', seasonId)
+    .eq('watch_hold', true)
+    .select('id')
+  if (error) return { released: 0, error: error.message }
+  revalidatePath('/watch')
+  revalidatePath('/admin/watch-videos')
+  return { released: data?.length ?? 0 }
+}
+
+// MANUAL admin trigger. Admin-gated; delegates to the shared release.
+export async function publishPrelim(seasonId: string): Promise<PublishResult> {
+  const adminUser = await getAdminOrNull()
+  if (!adminUser) return { ok: false, error: 'forbidden' }
+  if (!seasonId?.trim()) return { ok: false, error: 'failed' }
+  const r = await releasePrelimHold(seasonId.trim())
+  if (r.error) return { ok: false, error: 'failed' }
+  return { ok: true, released: r.released }
+}
+
 // ─── Staff Pick ──────────────────────────────────────────────────────────────
 // Editorial curation, independent of AI score ([[project-scoring-integrity-rules]]
 // -- never touches score columns). Admin only. Per application (round-agnostic).
