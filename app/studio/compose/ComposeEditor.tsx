@@ -75,6 +75,20 @@ export type ComposeEditorProps = {
   // Allowlist gate: the season's studio_music_enabled. When false the editor hides
   // the music panel entirely (createRender also rejects music with music_disabled).
   musicEnabled?: boolean
+  // AI music generation (Stage 6). aiEnabled=false -> the editor shows the library
+  // picker only (no generate UI), so a half-wired button never appears while
+  // Beatoven is not live. creditCost = whole credits per generation; promptMax =
+  // the prompt char cap. onGenerateMusic/pollMusic are omitted in the demo.
+  musicAiEnabled?: boolean
+  musicCreditCost?: number
+  musicPromptMax?: number
+  onGenerateMusic?: (
+    prompt: string,
+    durationSeconds: number,
+  ) => Promise<{ ok: true; assetId: string; credits: number } | { ok: false; error: string; detail?: string }>
+  pollMusic?: (
+    assetId: string,
+  ) => Promise<{ status: 'queued' | 'generating' | 'ready' | 'failed'; url: string | null; title: string; mood: string; error: string | null } | null>
   onRender: (
     edl: ComposeEdl | { jobId: string; startMs: number; endMs: number }[],
   ) => Promise<{ ok: true; renderId: string } | { ok: false; error: string }>

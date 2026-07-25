@@ -16,6 +16,8 @@ import {
   pollRenderAction,
   submitRenderAction,
   deleteRenderAction,
+  generateMusicAction,
+  pollMusicAction,
   type ComposeClip,
   type ResumeRender,
 } from '../actions'
@@ -41,6 +43,9 @@ export default function ComposePage() {
     nickname: string
     musicEnabled: boolean
     musicAssets: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
+    musicAiEnabled: boolean
+    musicCreditCost: number
+    musicPromptMax: number
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -104,6 +109,13 @@ export default function ComposePage() {
             nickname={data.nickname}
             musicEnabled={data.musicEnabled}
             musicAssets={data.musicAssets}
+            musicAiEnabled={data.musicAiEnabled}
+            musicCreditCost={data.musicCreditCost}
+            musicPromptMax={data.musicPromptMax}
+            onGenerateMusic={(prompt: string, durationSeconds: number) =>
+              generateMusicAction(token, { prompt, durationSeconds })
+            }
+            pollMusic={(assetId: string) => pollMusicAction(token, assetId)}
             onRender={(edl) => createRenderAction(token, edl)}
             pollRender={(renderId: string) => pollRenderAction(token, renderId)}
             onSubmit={(renderId: string, applicant?: ComposeApplicant) =>

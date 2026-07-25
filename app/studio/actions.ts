@@ -41,9 +41,9 @@ import {
   type ComposeEdl,
   type EffectiveRound,
 } from '@/lib/studio'
-import type { MusicReason } from '@/lib/music-limits'
-import { createMusicGeneration } from '@/lib/music-gen'
-import { getBalance, getStudioPricing, getStudioPurchaseConfig } from '@/lib/credits'
+import { MAX_MUSIC_PROMPT, type MusicReason } from '@/lib/music-limits'
+import { createMusicGeneration, getMusicGenConfig, getMusicAssetStatus, type MusicAssetStatusDTO } from '@/lib/music-gen'
+import { getBalance, getStudioPricing, getStudioPurchaseConfig, creditsForCost } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
 import { getCreatorProfile } from '@/lib/profile'
 import { getDisplayName } from '@/lib/nickname'
@@ -534,6 +534,12 @@ export type LoadComposeResult =
         // library / own-AI tracks. enabled=false -> editor hides the music panel.
         musicEnabled: boolean
         musicAssets: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
+        // AI music generation (Stage 6). aiEnabled=false -> the editor shows the
+        // library picker only (no half-wired generate button). creditCost is the
+        // whole-credit price of one AI generation (config cost x pricing).
+        musicAiEnabled: boolean
+        musicCreditCost: number
+        musicPromptMax: number
       }
     }
   | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
@@ -601,8 +607,17 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     const resumable = renders.find((r) => r.status !== 'submitted' && r.status !== 'failed')
 
     // Music beds (allowlist-gated by the season). Empty + disabled until the
-    // library is seeded and studio_music_enabled is turned on.
+    // library is seeded and studio_music_enabled is turned on. When music is on,
+    // read the AI-gen switch + per-generation credit cost (both dynamic) so the
+    // editor can show the AI panel only when it will actually work.
     const { enabled: musicEnabled, assets: musicAssets } = await listMusicAssets(season.id, auth.userId)
+    let musicAiEnabled = false
+    let musicCreditCost = 0
+    if (musicEnabled) {
+      const [mcfg, pricing] = await Promise.all([getMusicGenConfig(), getStudioPricing()])
+      musicAiEnabled = mcfg.aiEnabled
+      musicCreditCost = creditsForCost(mcfg.genCostUsd, pricing)
+    }
     const resumeRender = resumable
       ? {
           id: resumable.id,
@@ -634,11 +649,24 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         resumeRender,
         musicEnabled,
         musicAssets,
+        musicAiEnabled,
+        musicCreditCost,
+        musicPromptMax: MAX_MUSIC_PROMPT,
       },
     }
   } catch (e) {
     return { ok: false, error: 'load_failed', detail: e instanceof Error ? e.message : String(e) }
   }
+}
+
+// Owner-scoped poll for the AI-music panel: the editor calls this after
+// generateMusicAction to watch the queued track through to ready/failed. Returns
+// url/title/mood once ready so the editor can add it to the picker.
+export async function pollMusicAction(token: string, assetId: string): Promise<MusicAssetStatusDTO> {
+  if (!(await isSession6Enabled())) return null
+  const auth = await verifyToken(token)
+  if (!auth) return null
+  return getMusicAssetStatus(auth.userId, assetId)
 }
 
 export type CreateRenderActionResult = { ok: true; renderId: string } | { ok: false; error: string }

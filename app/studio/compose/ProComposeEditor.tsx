@@ -167,6 +167,26 @@ const DICT = {
     music_fade_out: '나감',
     music_remove: '음악 제거',
     music_wysiwyg: '미리보기에서 들리는 그대로 최종본에 들어갑니다.',
+    // --- AI music generation (Stage 6) ---
+    music_ai_title: 'AI로 음악 생성',
+    music_ai_ph: '분위기를 설명하세요 (예: 밝고 경쾌한 일렉트로팝, 화장품 광고). 특정 가수·곡을 흉내내는 요청은 거절됩니다.',
+    music_ai_generate: '생성',
+    music_ai_generating: '생성 중… 잠시 기다려 주세요.',
+    music_ai_cost: (n: number) => `${n} 크레딧`,
+    music_ai_default_title: 'AI 음악',
+    music_ai_refund_note: '생성에 실패하면 크레딧은 자동으로 환불됩니다.',
+    music_ai_reason: (r: string) =>
+      (({
+        music_imitation: '특정 가수·곡을 흉내내는 요청은 허용되지 않습니다. 분위기를 묘사해 주세요.',
+        music_moderation: '프롬프트가 콘텐츠 정책에 맞지 않습니다. 다시 작성해 주세요.',
+        music_insufficient_credits: '크레딧이 부족합니다.',
+        music_prompt_too_long: '프롬프트가 너무 깁니다.',
+        music_prompt_empty: '프롬프트를 입력해 주세요.',
+        music_duration: '요청한 길이가 허용 범위를 벗어났습니다.',
+        music_cap_reached: '생성 한도에 도달했습니다.',
+        music_ai_disabled: 'AI 음악 생성이 아직 활성화되지 않았습니다.',
+        music_disabled: '이 시즌에는 음악을 사용할 수 없습니다.',
+      } as Record<string, string>)[r] ?? '음악 생성에 실패했습니다. 다시 시도해 주세요.'),
     text_reason: (r: TextReason) => ({
       too_many_texts: `텍스트가 너무 많아요 (최대 ${TEXT_LIMITS.MAX_TEXTS}개).`,
       text_content: `문구를 입력하세요 (최대 ${TEXT_LIMITS.MAX_CONTENT_LEN}자, ${TEXT_LIMITS.MAX_LINES}줄).`,
@@ -304,6 +324,26 @@ const DICT = {
     music_fade_out: 'Out',
     music_remove: 'Remove music',
     music_wysiwyg: 'What you hear in the preview is what ships in the final.',
+    // --- AI music generation (Stage 6) ---
+    music_ai_title: 'Generate music with AI',
+    music_ai_ph: 'Describe the mood (e.g. bright upbeat electro-pop for a skincare ad). Requests that imitate a specific artist or song are refused.',
+    music_ai_generate: 'Generate',
+    music_ai_generating: 'Generating… please wait.',
+    music_ai_cost: (n: number) => `${n} credits`,
+    music_ai_default_title: 'AI music',
+    music_ai_refund_note: 'Credits are automatically refunded if generation fails.',
+    music_ai_reason: (r: string) =>
+      (({
+        music_imitation: 'Imitating a specific artist or song is not allowed. Please describe the mood instead.',
+        music_moderation: 'The prompt does not meet the content policy. Please rewrite it.',
+        music_insufficient_credits: 'Not enough credits.',
+        music_prompt_too_long: 'The prompt is too long.',
+        music_prompt_empty: 'Please enter a prompt.',
+        music_duration: 'The requested length is out of range.',
+        music_cap_reached: 'You have reached the generation limit.',
+        music_ai_disabled: 'AI music generation is not enabled yet.',
+        music_disabled: 'Music is not available this season.',
+      } as Record<string, string>)[r] ?? 'Music generation failed. Please try again.'),
     text_reason: (r: TextReason) => ({
       too_many_texts: `Too many text layers (max ${TEXT_LIMITS.MAX_TEXTS}).`,
       text_content: `Enter some text (max ${TEXT_LIMITS.MAX_CONTENT_LEN} chars, ${TEXT_LIMITS.MAX_LINES} lines).`,
@@ -338,8 +378,21 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const [aspect, setAspect] = useState<Aspect>('16:9') // output aspect (letterbox/crop per clip)
   const [music, setMusic] = useState<MusicBed | null>(null) // music bed (null = clip audio only)
   const musicEnabled = props.musicEnabled ?? false
-  const musicAssets = props.musicAssets ?? []
+  // Freshly-generated AI tracks (this session) merged into the picker so a
+  // just-finished generation is immediately selectable without a full reload.
+  type PickAsset = { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }
+  const [extraMusic, setExtraMusic] = useState<PickAsset[]>([])
+  const musicAssets = useMemo<PickAsset[]>(() => {
+    const base = props.musicAssets ?? []
+    const seen = new Set(base.map((a) => a.id))
+    return [...base, ...extraMusic.filter((a) => !seen.has(a.id))]
+  }, [props.musicAssets, extraMusic])
   const musicUrl = music ? (musicAssets.find((a) => a.id === music.assetId)?.url ?? null) : null
+  // AI music-gen panel state (Stage 6). Gated on props.musicAiEnabled.
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiState, setAiState] = useState<'idle' | 'generating' | 'error'>('idle')
+  const [aiError, setAiError] = useState<string | null>(null)
+  const aiPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [dragUid, setDragUid] = useState<string | null>(null)
   const [sel, setSel] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -566,6 +619,8 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   }, [])
   // Load/clear the bed when the selected music or its resolved URL changes.
   useEffect(() => { musicRef.current?.setBed(music, musicUrl) }, [music, musicUrl])
+  // Stop the AI-gen poll on unmount so it never fires into a dead component.
+  useEffect(() => () => { if (aiPollRef.current) clearTimeout(aiPollRef.current) }, [])
   // Follow the master clock: gain envelope + drift guard while playing, and set the
   // clip <video> volume to the balance (original clip audio ducked under the bed).
   useEffect(() => {
@@ -819,6 +874,37 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     setMusic({ ...music, ...patch })
   }
   const removeMusic = () => { commit('music-remove'); setMusic(null) }
+  // AI music generation (Stage 6). Enqueue -> poll the asset to ready/failed;
+  // on ready, merge it into the picker + auto-select. Refund on failure is
+  // server-side (refundMusicGeneration) -- the UI just surfaces the outcome.
+  const genMusic = async () => {
+    if (!props.onGenerateMusic || !props.pollMusic || aiState === 'generating') return
+    const prompt = aiPrompt.trim()
+    if (!prompt) { setAiState('error'); setAiError(t.music_ai_reason('music_prompt_empty')); return }
+    setAiState('generating'); setAiError(null)
+    // Request a track that covers the composition (server caps via config).
+    const reqDur = Math.max(1, Math.ceil((totalMs || props.maxSeconds * 1000) / 1000))
+    const res = await props.onGenerateMusic(prompt, reqDur)
+    if (!res.ok) { setAiState('error'); setAiError(t.music_ai_reason(res.error)); return }
+    const assetId = res.assetId
+    const poll = async () => {
+      const st = await props.pollMusic!(assetId)
+      if (!st) { setAiState('error'); setAiError(t.music_ai_reason('failed')); return }
+      if (st.status === 'ready' && st.url) {
+        setExtraMusic((prev) =>
+          prev.some((a) => a.id === assetId)
+            ? prev
+            : [...prev, { id: assetId, url: st.url as string, title: st.title || t.music_ai_default_title, mood: st.mood || 'AI', source: 'ai' }],
+        )
+        pickMusic(assetId, 'ai')
+        setAiState('idle'); setAiPrompt('')
+        return
+      }
+      if (st.status === 'failed') { setAiState('error'); setAiError(t.music_ai_reason(st.error || 'failed')); return }
+      aiPollRef.current = setTimeout(() => { void poll() }, 3000) // still queued/generating
+    }
+    aiPollRef.current = setTimeout(() => { void poll() }, 3000)
+  }
   const setGlobalKey = (key: keyof EffectParams, val: number) => { commit(`gfx:${key}`, true); setGlobalFx((g) => ({ ...g, [key]: val })) }
   const setGlobalLut = (lut: string) => { commit('glut'); setGlobalFx((g) => ({ ...g, lut })) }
   const setBoundaryTransition = (afterIndex: number, type: string) => {
@@ -1432,6 +1518,35 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                       </div>
                     )
                   })()}
+                  {/* AI generation (Stage 6) -- shown only when the season's AI-music
+                      switch is on, so no half-wired generate UI appears before Beatoven. */}
+                  {props.musicAiEnabled && props.onGenerateMusic && (
+                    <div className="mt-3 space-y-2 rounded-lg border border-[#8b22ff]/20 bg-[#8b22ff]/[.04] p-2.5">
+                      <p className="text-[11px] font-semibold text-[#b66cff]">{t.music_ai_title}</p>
+                      <textarea
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        maxLength={props.musicPromptMax ?? 500}
+                        rows={2}
+                        placeholder={t.music_ai_ph}
+                        disabled={aiState === 'generating'}
+                        className="w-full resize-none rounded-lg border border-white/10 bg-[#070610] px-3 py-2 text-[11px] text-white placeholder:text-white/25 focus:border-[#8b22ff] focus:outline-none disabled:opacity-50"
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-white/40">{t.music_ai_cost(props.musicCreditCost ?? 0)}</span>
+                        <button
+                          type="button"
+                          onClick={genMusic}
+                          disabled={aiState === 'generating' || !aiPrompt.trim()}
+                          className="rounded-lg bg-gradient-to-br from-[#7d23ff] to-[#6220dc] px-3 py-1.5 text-[11px] font-bold text-white transition hover:brightness-110 disabled:opacity-40"
+                        >
+                          {aiState === 'generating' ? t.music_ai_generating : t.music_ai_generate}
+                        </button>
+                      </div>
+                      {aiState === 'error' && aiError && <p className="text-[10px] text-[#ff8888]">{aiError}</p>}
+                      <p className="text-[9px] leading-tight text-white/30">{t.music_ai_refund_note}</p>
+                    </div>
+                  )}
                 </div>
                 )}
               </>

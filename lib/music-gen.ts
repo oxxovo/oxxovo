@@ -228,6 +228,41 @@ export async function createMusicGeneration(args: {
   return { ok: true, assetId, credits }
 }
 
+// Owner-scoped status poll for the editor's AI-gen panel: given the caller's own
+// AI asset id, return its lifecycle status (+ url/title/mood once ready, so the
+// UI can add it to the picker). Returns null if the id is not the caller's own AI
+// asset. RLS-locked table -> admin client, scoped by user_id + source='ai'.
+export type MusicAssetStatusDTO =
+  | { status: 'queued' | 'generating' | 'ready' | 'failed'; url: string | null; title: string; mood: string; error: string | null }
+  | null
+
+export async function getMusicAssetStatus(userId: string, assetId: string): Promise<MusicAssetStatusDTO> {
+  const admin = createSupabaseAdmin()
+  const { data, error } = await admin
+    .from('studio_music_assets')
+    .select('status, url, title, mood, error_message, cryptobind_signature')
+    .eq('id', assetId)
+    .eq('user_id', userId)
+    .eq('source', 'ai')
+    .maybeSingle()
+  if (error || !data) return null
+  // A track is only 'ready' to the picker once it is BOTH ready and signed (v1m);
+  // an unsigned row could never pass verifyMusicAssetBind at render, so never offer it.
+  const ready = data.status === 'ready' && !!data.cryptobind_signature && !!data.url
+  const status = (ready ? 'ready' : data.status === 'ready' ? 'generating' : data.status) as
+    | 'queued'
+    | 'generating'
+    | 'ready'
+    | 'failed'
+  return {
+    status,
+    url: (data.url as string | null) ?? null,
+    title: String(data.title ?? ''),
+    mood: String(data.mood ?? ''),
+    error: (data.error_message as string | null) ?? null,
+  }
+}
+
 // ===========================================================================
 // Lifecycle transitions (worker-driven; shared here so the signing stays in one
 // place and the app can also drive an API-route path if we choose one).
