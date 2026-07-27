@@ -18,6 +18,7 @@ import { parseVideoUrl } from './video-url'
 import { getDisplayName, getDisplayNames } from './nickname'
 import { formatDeadlinePT } from './seasons'
 import { WATCH_LIST_TAG, WATCH_LIST_TTL } from './watch-cache'
+import { publicScoreSeasons, areScoresPublic } from './watch-scores'
 
 export type WatchRound = 'application' | 'main'
 export type WatchSort = 'trending' | 'latest' | 'award'
@@ -297,8 +298,12 @@ async function loadWatchVideos(
     comments: comments.get(`${id}:${round}`) ?? 0,
   })
 
-  // Per-(app,round) Triple-AI state for the card badges. scored = judging done;
-  // verified score is exposed for BOTH rounds (scores are public -- TK 2026-07-10).
+  // Per-(app,round) Triple-AI state for the card badges. scored = judging done
+  // (a progress signal, always shown). The verified SCORE is disclosed only for
+  // seasons whose watch_scores_public switch is on -- off until the Defect 1
+  // rubric fix ships (lib/watch-scores). Cards fall back to "심사 대기" / season
+  // name and drop the ✓ Verified badge on their own when publicScore is null.
+  const scoreOpenSeasons = await publicScoreSeasons()
   const scoredKeys = new Set<string>()
   const scoreByKey = new Map<string, number>()
   for (const s of (scoreAgg.data ?? []) as {
@@ -319,19 +324,21 @@ async function loadWatchVideos(
   const videos: WatchVideo[] = []
   for (const row of rows) {
     if (!isPublicRow(row)) continue
+    const scoresOpen = scoreOpenSeasons.has(row.season_id)
+    const scoreFor = (key: string) => (scoresOpen ? scoreByKey.get(key) ?? null : null)
     const displayName = row.user_id ? names.get(row.user_id) : undefined
     if (row.free_entry_url?.trim()) {
       // Prelim: scored flips the 심사중 badge to the public verified score.
       videos.push(toWatchVideo(row, 'application', row.free_entry_url.trim(), countsFor(row.id, 'application'), displayName, {
         scored: scoredKeys.has(`${row.id}:application`),
-        publicScore: scoreByKey.get(`${row.id}:application`) ?? null,
+        publicScore: scoreFor(`${row.id}:application`),
         thumbnailUrl: roundThumb(renderThumbs, row.studio_application_render_id),
       }))
     }
     if (row.main_round_video_url?.trim()) {
       videos.push(toWatchVideo(row, 'main', row.main_round_video_url.trim(), countsFor(row.id, 'main'), displayName, {
         scored: scoredKeys.has(`${row.id}:main`),
-        publicScore: scoreByKey.get(`${row.id}:main`) ?? null,
+        publicScore: scoreFor(`${row.id}:main`),
         voteCount: votes.get(`${row.id}:main`) ?? 0,
         thumbnailUrl: roundThumb(renderThumbs, row.studio_main_render_id),
       }))
@@ -610,14 +617,19 @@ export async function getFinalists(seasonId: string): Promise<Finalist[]> {
   const admin = createSupabaseAdmin()
   const { data: apps } = await admin
     .from('genesis_applications')
-    .select('id, creator_name, video_title, thumbnail_url, main_round_video_url, award_rank')
+    .select('id, creator_name, video_title, thumbnail_url, main_round_video_url, award_rank, created_at')
     .eq('season_id', seasonId)
     .in('status', ['selected', 'main_round_submitted', 'awarded'])
   const rows = (apps ?? []) as {
     id: string; creator_name: string; video_title: string | null
     thumbnail_url: string | null; main_round_video_url: string | null; award_rank: number | null
+    created_at: string | null
   }[]
   if (rows.length === 0) return []
+
+  // With disclosure off we withhold BOTH the number and the score ordering --
+  // ranking finalists by score is itself a disclosure. Fall back to entry order.
+  const scoresOpen = await areScoresPublic(seasonId)
   const { data: scores } = await admin
     .from('scoring_results')
     .select('application_id, verified_score')
@@ -638,10 +650,12 @@ export async function getFinalists(seasonId: string): Promise<Finalist[]> {
       videoTitle: r.video_title,
       thumbnailUrl: r.thumbnail_url,
       mainVideoUrl: r.main_round_video_url,
-      verifiedScore: scoreMap.get(r.id) ?? null,
+      verifiedScore: scoresOpen ? scoreMap.get(r.id) ?? null : null,
       awardRank: r.award_rank,
+      sortKey: scoresOpen ? -(scoreMap.get(r.id) ?? 0) : Date.parse(r.created_at ?? '') || 0,
     }))
-    .sort((a, b) => (b.verifiedScore ?? 0) - (a.verifiedScore ?? 0))
+    .sort((a, b) => a.sortKey - b.sortKey)
+    .map(({ sortKey: _sortKey, ...f }) => f)
 }
 
 // True when this application advanced to the Main Round but hasn't submitted the
@@ -708,15 +722,25 @@ function parseAiOutputs(raw: unknown): AiCritique[] {
   return out
 }
 
-// Public Triple-AI score for a video, for EITHER round (scores are public --
-// TK 2026-07-10). Returns null unless judging is completed. Integrity fields are
-// never included here ([[project-scoring-integrity-rules]] -- integrity stays
-// internal; the verified score/critique are public).
+// Public Triple-AI score for a video, for EITHER round. Returns null unless
+// judging is completed AND the entry's season has score disclosure switched on
+// (off until the Defect 1 rubric fix -- lib/watch-scores). The detail page
+// renders the panel only when this is non-null, so the gate needs no UI change.
+// Integrity fields are never included here ([[project-scoring-integrity-rules]]
+// -- integrity stays internal; the verified score/critique are what go public).
 export async function getPublicScore(
   applicationId: string,
   round: WatchRound = 'main',
 ): Promise<PublicScore | null> {
   const admin = createSupabaseAdmin()
+
+  const { data: app } = await admin
+    .from('genesis_applications')
+    .select('season_id')
+    .eq('id', applicationId)
+    .maybeSingle()
+  if (!(await areScoresPublic((app as { season_id: string | null } | null)?.season_id))) return null
+
   const { data } = await admin
     .from('scoring_results')
     .select(
