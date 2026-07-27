@@ -1,8 +1,163 @@
-# Studio 음악 v1 — 라이선스 조사 (2026-07-27, 지수2) · **개정 3판**
+# Studio 음악 v1 — 라이선스 조사 (2026-07-27, 지수2) · **개정 4판**
 
-> **★3판 = 결론 확정. ElevenLabs Music 채택 가능. 단 fal 아니라 ElevenLabs 직접 API.**
-> 상세는 바로 아래 **§0-A**. 2판까지의 조사 이력은 그 아래 그대로 보존.
+> **★4판 = Lyria 3 Pro 재조사 + fal 인벤토리 정본화. 결론 불변: ElevenLabs 직접 API.**
+> 상세는 **§0-B**(4판, Lyria) → **§0-A**(3판, ElevenLabs) 순. 2판 이력은 그 아래 보존.
 
+---
+
+# §0-B. Lyria 3 Pro 재조사 + fal 경유 최종 판정 (4판)
+
+## 먼저 — ①은 정정할 게 없습니다
+
+3판에서 저는 **"fal에 있습니다(`fal-ai/elevenlabs/music`, $0.80/분)"** 라고 명시했습니다.
+직접 API를 권한 이유는 "fal에 없어서"가 아니라 **⑴권리 근거 ⑵비용** 둘이었습니다. 그 판단은 유지되며,
+아래에서 **Lyria에도 똑같은 구조적 공백**이 있음을 확인했습니다.
+
+## fal 음악 모델 인벤토리 — 정본 (fal 공개 모델 API 직접 조회)
+
+fal 웹은 오늘 내내 **Vercel Security Checkpoint(429)** 로 봇을 차단해서, **fal의 공개 모델 API**
+(`https://fal.ai/api/models?categories=text-to-audio`)를 직접 호출해 확보했습니다. 음악 관련 발췌:
+
+| fal model id | 제공자 | hostingType |
+|---|---|---|
+| `fal-ai/lyria3/pro` | Google | **proxy** |
+| `fal-ai/lyria3` | Google | proxy |
+| `fal-ai/lyria2` | Google | proxy |
+| `fal-ai/elevenlabs/music` | ElevenLabs | **proxy** |
+| `sonilo/v1.1/text-to-music` | Sonilo | proxy |
+| `fal-ai/minimax-music/v2.6` ·`/v2.5` ·`/v2` ·`/v1.5` | Minimax | proxy |
+| `fal-ai/stable-audio-3/medium/text-to-audio` 외 3종 | Stability AI | serverless |
+| `fal-ai/stable-audio-25/text-to-audio` · `fal-ai/stable-audio` | Stability AI | serverless |
+| `cassetteai/music-generator` | Cassette AI | serverless |
+| `fal-ai/ace-step` · `fal-ai/diffrhythm` | (오픈웨이트) | serverless |
+
+**★확인 1 — Lyria 3 Pro는 fal에 실재합니다.** 대표님 말씀이 맞습니다.
+**★확인 2 — 단가는 $0.04가 아니라 $0.08입니다.** $0.04는 **Lyria 3 Clip**(30초) 요금이고,
+**Lyria 3 Pro는 $0.08/audio**입니다. (fal 요금 페이지는 429로 직접 확인 불가 — **2차 출처**.)
+우리 베드는 30~40초라 Clip($0.04)으로도 충분합니다.
+
+**★확인 3 — fal의 `licenseType: "commercial"` 태그는 권리 보증이 아닙니다.**
+fal API는 **위 40개 모델 전부**를 `commercial`로 표시합니다. ACE-Step·DiffRhythm 같은
+학습데이터 미보증 오픈웨이트까지 포함해서요. **fal의 카탈로그 분류일 뿐, 제공자가 우리에게
+상업권을 준다는 뜻이 아닙니다.** 이 태그를 근거로 쓰면 안 됩니다.
+
+---
+
+## Lyria 3 Pro — Google 약관 원문 4건
+
+### ⓵ 상업 사용·제3자 배포 = **허용됨** (Pre-GA 제한의 면제 대상)
+
+Google Cloud *Supplementary Terms for Generative AI Preview Products* 원문:
+
+> *"Unless permitted by Google in writing…, Customer will ensure that Customer and its End Users
+> will only use a Generative AI Preview Product for evaluation and testing purposes, and will not:
+> **use a Generative AI Preview Product for commercial or production purposes; or disclose Generated
+> Output to a third party.**"*
+
+기본값은 **상업 사용 금지 + 제3자 공개 금지**입니다. 그런데 바로 아래에 면제 목록이 있고,
+**Lyria가 거기 들어 있습니다**:
+
+> *"The Additional Use Restrictions above **do not apply to Gemini Enterprise Agent Platform
+> (formerly Vertex AI) when used with these Pre-GA Offerings**: … Imagen 4.0 upscale,
+> **Lyria 3 Clip**, **Lyria 3 Pro**, Veo 3.1 Lite, WeatherNext"*
+
+→ **상업 사용 OK, 참가자(제3자)에게 제공 OK.** 요건 ①③④ 충족.
+**★단 면제의 범위가 "Gemini Enterprise Agent Platform(구 Vertex AI)에서 사용할 때"로 명시 한정됩니다.**
+
+### ⓶ 매출조건 = **없음**
+
+Google 약관 어디에도 매출 캡·기업규모 임계가 없습니다. 대표님 판단대로입니다. (요건 ③ 충족)
+
+### ⓷ ★**Google 면책(indemnity) 없음** — 두 겹으로
+
+- Google Cloud *Service Specific Terms* §5 원문:
+  > *"Pre-GA Offerings (i) may be changed, suspended or discontinued at any time without prior notice
+  > to Customer and (ii) **are not covered by any SLA or Google indemnity**."*
+  Lyria 3 Pro는 `lyria-3-pro-preview` = **public preview(Pre-GA)** → **면책 제외.**
+- *Generative AI Indemnified Services* 목록 (2026-07-20 최종 수정) 원문:
+  > *"Gemini Enterprise Agent Platform API (formerly Vertex AI API) used with **generally available
+  > versions** of these foundation models: - Codey - Gemini - Imagen - PaLM - **Veo**"*
+  **Lyria는 목록에 아예 없습니다**(Veo는 있는데 Lyria는 없음). 페이지 전문 검색 결과 "Lyria" 0건.
+
+→ **Google이 자랑하는 저작권 면책이 Lyria에는 적용되지 않습니다.** ElevenLabs와 가장 크게 갈리는 지점.
+
+### ⓸ 학습데이터 = "라이선스 학습"이라 부르기엔 약함
+
+Google Cloud 블로그 원문:
+> *"…using materials that **YouTube and Google has a right to use under our terms of service,
+> partner agreements, and applicable law**."*
+
+이건 Merlin/Kobalt처럼 **권리자가 opt-in하고 로열티를 받는 구조가 아니라**, "YouTube 이용약관상
+우리에게 사용할 권리가 있다"는 주장입니다. **그리고 바로 그 지점을 두고 인디 아티스트들이
+"YouTube 카탈로그로 Lyria 3를 학습시켰다"며 Google을 제소해 계류 중**입니다.
+→ 요건 ②(진짜 라이선스 클린)는 **ElevenLabs보다 명백히 약합니다.**
+
+부수: 모든 Lyria 출력에 **SynthID 워터마크 + C2PA** 삽입 (*"All Lyria 3 and Lyria 3 Pro outputs are
+embedded with SynthID watermarking and support C2PA."*).
+
+---
+
+## ★fal 경유 판정 — 두 모델 다 **미문서**. 구조가 똑같습니다.
+
+| | 상업권 조항이 누구에게 쓰였나 | fal 경유 승계 |
+|---|---|---|
+| ElevenLabs | *"If **Customer is on a Starter, Creator, Pro, Scale, or Business Plan**…"* → **플랜 보유 전제** | **미문서** |
+| Lyria 3 | 면제가 *"**Gemini Enterprise Agent Platform (formerly Vertex AI)** when used with…"* → **Vertex 사용 전제** | **미문서** |
+
+**둘 다 "제공자의 직접 고객"을 전제로 쓰인 조항입니다.** fal은 `hostingType: proxy` — 제공자 API로
+중계할 뿐이고, **양쪽 약관 어디에도 "제3자 플랫폼 경유 시에도 동일 권리"라는 문구가 없습니다.**
+
+**→ 대표님 질문에 대한 정직한 답: "매출조건 없이 상업 클린 + fal 경유"를 실제 약관 근거로
+증명할 수 있는 모델은 — 현재 문서상 없습니다.** fal 문의로 서면을 받거나, **제공자 직접 계약으로
+공백을 닫는 것** 둘 중 하나입니다.
+
+### 공백을 닫는 비용이 갈립니다
+
+| | 직접 경로 | 가능 여부 | 단가 | 면책 | provenance |
+|---|---|---|---|---|---|
+| **ElevenLabs** | 계정+플랜 구독 | **즉시 가능** | **$0.15/분 공개** | — | **Merlin+Kobalt opt-in·50/50** |
+| **Lyria 3** | Google Cloud 계정 + Vertex AI | 가능하나 무거움 | **미공개**(엔터프라이즈 협의) | **없음(Pre-GA)** | YouTube ToS 근거 + **소송 계류** |
+
+---
+
+## ★단가 20배 차이 — 비교 기준이 잘못됐습니다
+
+대표님이 말씀하신 20배는 **fal 경유 ElevenLabs($0.80/분)** 기준입니다.
+그런데 우리가 채택하기로 한 건 **직접 API($0.15/분)** 입니다. 같은 기준(40초 베드 1개)으로:
+
+| 경로 | 40초 베드 1개 | 최악 5,000건 |
+|---|---|---|
+| fal ElevenLabs | $0.80 (분 올림) | $4,000 |
+| **ElevenLabs 직접** | **$0.10** | **$500** |
+| fal Lyria 3 Clip(30초) | $0.04 | $200 |
+| fal Lyria 3 Pro | $0.08 | $400 |
+
+**실제 격차는 20배가 아니라 2.5배이고, 시즌 전체로는 $300 차이입니다.**
+상금 풀 $3,000 대비 10%, 참가자 크레딧으로 환산하면 1인당 **$0.60** 수준입니다.
+**그 $300을 아끼려고 면책 없음 + 소송 계류 중인 provenance를 사는 건 수지가 안 맞습니다.**
+
+## 후보 3개 최종 비교 (요구하신 형식)
+
+| | ①t2m | ②출력 상업권 근거 | ③매출조건 | ④fal 경유 | 면책 | 학습데이터 | 단가(40초) |
+|---|---|---|---|---|---|---|---|
+| **Lyria 3 Pro** `fal-ai/lyria3/pro` | ✅ | ✅ **명시 허용**(Pre-GA 면제) — **단 Vertex 한정** | ✅ **없음** | ⚠️ **미문서** | ❌ **없음**(Pre-GA·목록 미포함) | ⚠️ YouTube ToS 근거·**소송 계류** | $0.08 (Clip $0.04) |
+| **ElevenLabs Music** | ✅ | ✅ **플랜 결속**(Starter+) | ✅ **없음** | ⚠️ **미문서** | — | ✅ **Merlin+Kobalt opt-in·50/50** | **$0.10**(직접) / $0.80(fal) |
+| Stable Audio | ✅ | ⚠️ Community License | ❌ **>$1M Enterprise** | serverless | — | ✅ 정식 데이터셋 | $0.20 |
+
+## 결론 — **ElevenLabs 직접 API 유지 (변경 없음)**
+
+- **Lyria가 이긴 축**: 단가(2.5배 싸다), 매출조건 없음(동률).
+- **Lyria가 진 축**: **면책 없음**(ElevenLabs는 계약된 권리자 풀), **provenance 소송 계류**,
+  **fal 경유 승계 미문서**(동률), **직접 경로의 가격이 미공개**.
+- 우리 사업은 **상금 대회 + 참가자 수익화 + $1M+ 목표**입니다. 여기서 **$300을 아끼려고
+  저작권 리스크를 사는 선택**은 권하지 않습니다.
+- **Lyria를 쓰려면** 조건은 하나입니다 — **fal이 아니라 Vertex AI 직접**(면제 조항이 그렇게 쓰여 있음).
+  그런데 그 경로는 가격 미공개 + Google Cloud 계정 + 여전히 면책 없음이라, ElevenLabs 직접보다
+  **더 무겁고 덜 안전**합니다.
+
+**→ §0-A(ElevenLabs 직접 API, Scale $299/월) 그대로 진행 권고. provider 착수 준비 완료.**
+
+---
 ---
 
 # §0-A. ElevenLabs Music 확정 결과 (TK 지시 2문항 답변)
