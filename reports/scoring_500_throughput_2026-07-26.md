@@ -143,12 +143,18 @@ Railway scheduled job이다. 따라서 처리량 = f(cron 주기, BATCH_SIZE).
   `advance_season_finalists` 실행. 최대 1시간 추가.
 - `advance_season_finalists`는 **flagged 0건**을 self-gate로 요구한다. 무결성 플래그 건이 나오면
   사람이 해소해야 진출이 확정된다 — 72h 창 안의 유일한 수동 의존성.
-- **★Defect 1(Integrity가 사실성을 처벌)이 이 게이트와 직결된다.** flag 조건 = `claude integrity < 50`
-  (`scorer.ts` `INTEGRITY_REVIEW_THRESHOLD`)이고, 프롬프트 line 92가 여전히 "depth of field / real shadows /
-  physical hand interactions = NOT AI-generated의 STRONG 신호"라고 지시한다(src 마지막 커밋 7/14, 미수정).
-  즉 **사실적으로 잘 만든 작품일수록 flag**된다. 41편 규모에서는 수작업으로 넘겼지만 500편에서는
-  수동 해소 건수가 72h 창의 실질 병목이 될 수 있다. Defect 1 수정은 점수공개 선결조건이자 **일정 리스크**다.
-  (본체 큐 — reports/scoring_track_handoff_2026-07-14.md, scoring_gemini_face_repeat_2026-07-15.md)
+- **Defect 1과의 연결 — 실측 결과 일정 리스크는 아니다(2026-07-26 정정).** 처음엔 flag 조건을
+  `scorer.ts`의 `INTEGRITY_REVIEW_THRESHOLD = 50`으로 봤으나, 그 상수는 콘솔 로그용
+  `integrityReview.flagged`만 세팅한다. **status='flagged' 전이를 결정하는 실제 게이트는
+  `deriveConfidence`가 쓰는 시즌 파라미터 `seasons.flag_integrity_high_threshold`이고, season_0 값은 15다**
+  (medium 30 / low 50, season_test 동일).
+  실주행 51편(completed) 분포: consensus integrity **min 35 / p10 70 / p50 85 / max 92**,
+  confidence none 48 · low 3, **`integrity_flag=true` 0건, <15 0건**.
+  → 사실적으로 잘 만든 작품(Defect 1 피해자)은 35~45대에 앉으므로 'low' 경고에 그치고 **flag되지 않는다**.
+  진출 게이트를 막을 만큼의 수동 해소는 실측상 발생하지 않았다.
+- 다만 Defect 1 자체는 유효한 **순위 결함**이다(Integrity 10% 축이 사실성을 역으로 처벌 → 본선에서
+  더 잘 만든 작품이 #7, 얼굴 뭉개지는 작품이 #1). 일정이 아니라 **상금 배분의 공정성 + 점수공개 선결조건**으로
+  다뤄야 한다. (본체 큐 — reports/scoring_track_handoff_2026-07-14.md, scoring_gemini_face_repeat_2026-07-15.md)
 
 ## 재현 방법
 
