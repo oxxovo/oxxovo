@@ -17,8 +17,9 @@ Lyria 관련 큐(정체확인·provider·SynthID·Pre-GA 방어·fal 서면문�
 - **service_role GRANT 세트 포함** — `REVOKE FROM PUBLIC/anon/authenticated` + `GRANT ALL TO service_role`.
   DROP TABLE로 기존 GRANT가 같이 날아가므로 전 세트를 다시 세웁니다.
 - **STEP 0 안전장치**: `count(*)` 단독 실행 → **0이 아니면 중단**. 0행 실측했지만 드롭 전 재확인.
-- **STEP 4 검증 6종**: 컬럼 18개 / GRANT가 service_role뿐 / 전 시즌 false / ON된 시즌 0 /
-  **컬럼명 공백 오염 가드**(`column_name !~ '\s'`) / **앱이 실제 쓰는 select 재현**(42703 해소 확인)
+- **STEP 4 검증 6종**: 테이블 21컬럼(`season_id`/`round`/`kind` 포함) / GRANT가 service_role뿐 /
+  **스위치 2개 전 시즌 false + 캡 2개 = 15** / ON된 시즌 0 /
+  **컬럼명 공백 오염 가드**(`column_name !~ '\s'`, 4개) / **앱이 실제 쓰는 select 재현**(42703 해소 확인)
 - **ON 문장은 주석 처리**해 두었습니다. 실수로 켜지지 않습니다.
 
 **★순서 규칙**: TK님 Run → STEP 4 전부 통과 → **그다음에** 제가 스위치 리팩터 코드를 올립니다.
@@ -78,9 +79,10 @@ export async function isMusicAiEnabled(seasonId?: string|null): Promise<boolean>
 | 3 | `lib/studio.ts:1459` `createRender` | `!!seasonRow.studio_music_enabled` 전달 | `await isMusicEnabled(seasonId)` 전달 | 서명 폴딩이 게이트를 따라야 함 |
 | 4 | `lib/studio.ts:1695` `submitRender` | 위와 동일 | 동일 | 동일 |
 | 5 | `lib/studio.ts:1250` `listMusicAssets` | `.single()` 직접 조회 | `isMusicEnabled()` | 판정 일원화 |
-| 6 | `lib/music-gen.ts:142~150` `createMusicGeneration` | 시즌 조회 + `cfg.aiEnabled` **2중** | `isMusicEnabled()` **단일** | 이름 일원화 |
-| 7 | `app/studio/actions.ts:614~652` | `musicAiEnabled` 계산·반환 | 제거, `musicEnabled` 단일값 | UI가 볼 값도 하나 |
-| 8 | `ComposeEditor.tsx:82` / `page.tsx:46,112` / `ProComposeEditor.tsx:1523` | `musicAiEnabled` prop | `musicEnabled` | 이름 통일 |
+| 6 | `lib/music-gen.ts:142~150` `createMusicGeneration` | 시즌 조회 + `cfg.aiEnabled`(config 키) | **`isMusicAiEnabled()`**(= master AND ai) | 계층 통일 |
+| 7 | `lib/music-gen.ts:182~189` 캡 집계 | season/round/kind 없이 **플랫폼 전체** COUNT | `season_id`+`round`+`kind` 축으로 COUNT | 영상 캡과 동일 축 |
+| 8 | `app/studio/actions.ts:614~652` | `musicAiEnabled` = config 값 | `musicEnabled` + `musicAiEnabled` **둘 다 게이트에서** | 값 출처만 교체(이름 유지) |
+| 9 | `ComposeEditor.tsx:82` / `page.tsx:46,112` / `ProComposeEditor.tsx:1523` | `musicAiEnabled` prop | 유지 + `musicEnabled` 추가 | 라이브러리/AI 분리 노출 |
 
 **1·2번이 마이그 복구와 맞물립니다.** 통합 select에서 빼면 컬럼이 없어도 compose가 안 깨집니다 —
 즉 이 리팩터 자체가 같은 사고의 재발 방지책입니다.
@@ -91,7 +93,7 @@ export async function isMusicAiEnabled(seasonId?: string|null): Promise<boolean>
 
 | 서버 경로 | 게이트 | OFF일 때 |
 |---|---|---|
-| `generateMusicAction` → `createMusicGeneration` | `isMusicEnabled` (첫 관문) | `music_disabled` 반환, **크레딧 미차감** |
+| `generateMusicAction` → `createMusicGeneration` | **`isMusicAiEnabled`** (첫 관문) | `music_disabled` / `music_ai_disabled`, **크레딧 미차감** |
 | `pollMusicAction` / `getMusicAssetStatus` | `isMusicEnabled` | 상태 미노출 |
 | `listMusicAssets` (피커 목록) | `isMusicEnabled` | `{enabled:false, assets:[]}` |
 | `createRender` (렌더 요청에 music 포함) | `resolveMusicSignature`가 게이트값 수신 | music bed 거부 |
@@ -101,8 +103,9 @@ UI 숨김(`ProComposeEditor` 패널)은 **그대로 두되 유일한 방어선�
 
 ## 1-5. ★크레딧 경로도 같은 게이트 뒤
 
-현재 `createMusicGeneration`의 순서는 **게이트(1) → 프롬프트 검증 → 흉내차단 → 모더레이션 →
-캡 → 과금(4) → asset insert(5)** 입니다. 즉 **과금이 이미 게이트 뒤**입니다.
+현재 `createMusicGeneration`의 순서는 **게이트 → 프롬프트 검증 → 흉내차단 → 모더레이션 →
+★캡(횟수) → 과금·잔액 → asset insert** 입니다. 즉 **캡이 잔액보다 앞이고 과금은 게이트 뒤**로,
+영상 경로(`studio.ts:550~562`)와 이미 같은 순서입니다.
 리팩터 후에도 이 순서를 유지하고, **게이트를 함수 최상단 첫 문장**으로 고정합니다.
 추가로 회귀 테스트를 하나 넣겠습니다: *"OFF 상태에서 generateMusicAction 호출 →
 `music_disabled` + `getBalance` 변화 0"*.
@@ -136,8 +139,11 @@ UI 숨김(`ProComposeEditor` 패널)은 **그대로 두되 유일한 방어선�
 
 > **ON = ElevenLabs 서면 회신 + TK님 판단.** 둘 다 나오기 전엔 켜지 않습니다.
 > **ON 신호는 TK님한테서만 옵니다. 제가 판단하지 않습니다.**
-> 켜는 방법은 배포가 아니라 SQL 한 줄입니다:
-> `UPDATE seasons SET studio_music_enabled = true WHERE id = 'season_0';`
+> 켜는 방법은 배포가 아니라 SQL입니다. **두 단계로 나뉩니다**:
+> - **라이브러리만 (3.A 폴백, 회신이 부정적일 때)**
+>   `UPDATE seasons SET studio_music_enabled = true WHERE id = 'season_0';`
+> - **AI 생성까지 (3.A 회신이 긍정적일 때만)**
+>   `UPDATE seasons SET studio_music_enabled = true, studio_music_ai_enabled = true WHERE id = 'season_0';`
 
 ---
 
