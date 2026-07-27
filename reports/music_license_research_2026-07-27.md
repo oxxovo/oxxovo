@@ -1,4 +1,145 @@
-# Studio 음악 v1 — 라이선스 조사 (2026-07-27, 지수2) · **개정 2판**
+# Studio 음악 v1 — 라이선스 조사 (2026-07-27, 지수2) · **개정 3판**
+
+> **★3판 = 결론 확정. ElevenLabs Music 채택 가능. 단 fal 아니라 ElevenLabs 직접 API.**
+> 상세는 바로 아래 **§0-A**. 2판까지의 조사 이력은 그 아래 그대로 보존.
+
+---
+
+# §0-A. ElevenLabs Music 확정 결과 (TK 지시 2문항 답변)
+
+## 먼저 — 제 2판 판정 정정
+
+2판에서 저는 ElevenLabs를 "**100 outputs / 재배포 조항으로 구조 충돌 → 부적합**"으로 판정했습니다.
+**이 판정은 틀렸습니다.** 아카이브 요약본만 보고 **"offline" 한정어를 놓쳤습니다.** 현행 약관 원문:
+
+> *"offline (i.e., not on the internet or a mobile app) television or radio programs, films, other
+> visual media, live broadcasts, or advertisements."*
+
+괄호의 **"(i.e., not on the internet or a mobile app)"가 목록 전체를 한정**합니다. 즉 금지 대상은
+**오프라인** 배포이고, **우리처럼 웹사이트에 공개하는 온라인 영상은 여기에 해당하지 않습니다.**
+대표님/제니2 판단이 맞았습니다.
+
+---
+
+## Q1. 어느 티어부터 상업 사용 가능한가 / 우리가 쓸 티어와 비용
+
+**A. 상업 라이선스는 `Starter`($6/월)부터. Free는 상업 사용 불가.**
+공식 API 요금 페이지 문구: **"Commercial use licensing on Starter+ plans"**.
+
+**★중요: Starter~Business는 상업 권리가 전부 동일합니다.** 티어가 올라가도 권리가 늘지 않고
+**포함 분량(minutes)만 늘어납니다.** 그래서 **티어 선택은 라이선스가 아니라 물량 문제**입니다.
+
+**Starter / Creator / Pro / Scale / Business 공통 금지 3종** (현행 Model-Specific Terms 원문):
+1. **오프라인** TV·라디오 프로그램, 영화, 기타 시각매체, 생방송, **광고** — *(온라인은 해당 없음)*
+2. 컨퍼런스·엑스포·콘서트 등 **high-traffic public events**
+3. **100개 초과 Output의 music library/repository를 만들어 제3자에게 라이선스·배포**하는 것
+
+**Enterprise만 다른 점**: 1·2번 금지가 **없어지고**, 3번(100개 초과 라이브러리)과
+**스트리밍 플랫폼 배포**(Spotify/Apple Music/Amazon Music/Pandora)만 금지됩니다.
+
+**→ 우리 판정**: 우리 용도(웹 공개 영상의 사운드트랙)는 **Starter+ 로 충분**. Enterprise 불필요.
+
+**매출조건**: **없습니다.** Starter~Business 어디에도 매출 임계·기업규모 조건 조항이 없습니다.
+(Stable Audio의 $1M 같은 게이트가 없음 — 요건 ③ 충족 확정.)
+
+**학습데이터**: **Merlin**(독립 레이블 라이선싱 연합) + **Kobalt**(세계 최대 독립 퍼블리셔) 정식 계약.
+**권리자 opt-in 방식**, 학습 기여도·인기도 비례 로열티, **50/50 분배**. Suno/Udio의 무단학습 소송과
+대조되는 licensing-first 구조 — 요건 ② 충족. (2025-08-05 ElevenLabs 공식 발표)
+
+### 우리가 쓸 티어 — 물량 기준 산정
+
+실측 파라미터: `season_0.max_applicants = 500`, `studio_compose_max_seconds = 40`.
+음악 생성 캡(`studio_music_gen_max_per_user`)은 **아직 platform_config에 미설정** — 10 가정.
+
+| 시나리오 | 생성 건수 | 총 분량 | **직접 API 비용** | 권장 플랜 |
+|---|---|---|---|---|
+| 보수 (1인 평균 3회) | 1,500 | 1,000분 | **$150** | Creator $22 (147분 포함) + 초과분 |
+| 중간 (1인 평균 5회) | 2,500 | 1,667분 | **$250** | Scale $299 (1,993분 포함) |
+| 최악 (캡 10 전원 소진) | 5,000 | 3,333분 | **$500** | Scale $299 + 초과 or Business $990 |
+
+직접 API 단가 **$0.15/분**. 플랜별 포함 분량: Starter $6=40분 / Creator $22=147분 /
+Pro $99=660분 / Scale $299=1,993분 / Business $990=6,600분.
+**권장: Scale($299/월)로 시작.** 시즌 실사용 보고 조정.
+
+---
+
+## Q2. fal 경유해도 상업 권리가 유지되나? — **★직접 API를 권합니다**
+
+**fal에 있습니다**: `fal-ai/elevenlabs/music`. 하지만 **직접 API가 두 가지 이유로 명백히 낫습니다.**
+
+### 이유 1 — 라이선스 근거가 직접 API에만 확실히 존재
+
+ElevenLabs의 상업 권리 체계는 **전부 "Customer의 플랜"에 결속**돼 있습니다
+("If Customer is on a Starter, Creator, Pro, Scale, or Business Plan…"). **fal 경유로는 우리가
+ElevenLabs의 Customer가 아니고 플랜도 없습니다.** 어느 플랜의 권리가 우리에게 붙는지 규정이 없습니다.
+
+게다가 ElevenLabs 약관의 **Reseller 정의**가 fal을 정면으로 가리킵니다:
+> *"…acts as a **model aggregator** by offering ElevenLabs' Models alongside third-party models with
+> minimal or no modification, enhancement, or integration, essentially providing a marketplace or
+> directory of AI models."*
+
+fal이 정확히 그것입니다. Reseller 경로에는 별도의 co-branding 의무(*"powered by ElevenLabs"*)와
+OEM 조건이 붙습니다 — **우리에게 어디까지 전가되는지 공개 문서에 없습니다.**
+
+**→ 직접 API를 쓰면 우리가 명시적으로 "Starter+ 플랜의 Customer"가 되어 이 불확실성이 통째로 사라집니다.**
+대표님이 짚으신 *"직접 API를 써야 상업 권리가 확실한가"* — **네, 그렇습니다.**
+
+### 이유 2 — 비용이 5배 이상 차이
+
+| 경로 | 단가 | 과금 방식 | 최악 시나리오(5,000건×40초) |
+|---|---|---|---|
+| fal `fal-ai/elevenlabs/music` | **$0.80 / 분** | **분 단위 올림**(30초도 1분) | **$4,000** |
+| **ElevenLabs 직접 API** | **$0.15 / 분** | 실사용 분 | **$500** |
+
+단가 5.3배 + fal은 **분 단위 올림**이라 40초 클립이 1분으로 과금됩니다. 실질 격차는 **약 8배**.
+
+### 결론
+
+**ElevenLabs 직접 API 채택.** 라이선스가 확실하고 비용도 8배 싸므로 fal을 경유할 이유가 없습니다.
+(영상 생성은 fal 유지 — 음악만 별도 경로.)
+
+---
+
+## ★TK님 손이 필요한 것 (직접 API라서)
+
+1. **ElevenLabs 계정 생성** — 회사 명의(OXXOVO Labs Inc.) 권장. 개인 계정이면 나중에 이관 번거롭습니다.
+2. **플랜 구독** — **Scale $299/월 권장** (보수적으로 가려면 Creator $22로 시작해 초과분 과금도 가능).
+   ★**Free는 상업 사용 불가**이므로 반드시 유료 플랜.
+3. **API 키 발급** → 저에게 값 전달 금지. **Vercel env + Railway 워커 env에 직접 입력**해 주세요
+   (키 이름은 제가 확정해서 안내드리겠습니다). 화면 출력 금지 규칙 유지.
+4. **금지 업종 확인** — 총기·담배·의약품·성인물·종교단체·정치 6개 업종은 서비스 이용 자체가 금지입니다.
+   우리(화장품 CF 대회)는 해당 없음. 단 **향후 시즌 주제가 이 업종에 걸리면 사용 불가**입니다.
+
+## ★운영상 짚어둘 것 2건 (블로커 아님, 정책 결정 필요)
+
+1. **수상작을 오프라인 광고/TV에 쓰면 위반입니다.** Starter~Business는 *오프라인* TV·영화·광고 배포가
+   금지입니다. 시즌0 주제가 **화장품 CF**라 수상작을 실제 TV 광고로 집행하는 시나리오가 생길 수 있는데,
+   그 경우 **Enterprise 플랜이 필요**합니다. → 대회 규정/수상자 이용약관에 **"온라인 공개 한정"**을
+   명시하거나, 오프라인 집행 계획이 있으면 Enterprise로 올려야 합니다.
+2. **"100개 초과 Output 라이브러리" 조항.** 정의는 *"library, catalogue, database, or other repository
+   of Output **with the intent of licensing it or otherwise making it available to third parties**"*.
+   - 참가자 개인 생성물(생성자 본인만 사용) → 제3자 제공 아님, 해당 없음.
+   - **우리가 만들려던 "플랫폼 라이브러리 8곡"** → 참가자(제3자)에게 제공하는 repository가 맞지만
+     **8개라 100 미만**이므로 현재 계획은 안전.
+   - **→ 라이브러리 곡 수를 100개 미만으로 유지**하는 것을 설계 제약으로 못박습니다.
+
+## 요건 대조 최종
+
+| 요건 | ElevenLabs Music (직접 API, Starter+) |
+|---|---|
+| ① text-to-music | ✅ 장르·템포·악기·언어·구간별 스타일 지정 |
+| ② 출력물 상업 사용 클린 | ✅ Merlin+Kobalt 정식 라이선스·opt-in·로열티 50/50 |
+| ③ 매출조건 없음 | ✅ **조항 없음** |
+| ④ 재배포(참가자 제공) | ✅ 온라인 한정이면 허용 (오프라인 광고·TV만 Enterprise) |
+| 단가 | $0.15/분 (fal 경유 $0.80/분 대비 5.3배 저렴) |
+
+**→ 4개 요건 전부 충족. 채택 확정 가능. provider 구현 착수 가능합니다**(계정·키 확보 후).
+
+---
+---
+
+# (이하 2판 조사 이력 — 보존)
+
 
 요건 (TK 확정): **① text-to-music ② 출력물 상업사용 클린 ③ 매출조건(revenue cap) 없음**
 우리 구조: 플랫폼 계정이 fal 키 보유 → 서버사이드 생성 → R2 저장 → 참가자 영상에 믹싱 →
