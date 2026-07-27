@@ -53,6 +53,28 @@ FROM seasons
 WHERE watch_scores_public IS TRUE;
 -- expect: 0
 
+-- 5) paste-corruption guard: the column name must be exactly this, no stray
+--    whitespace/newline picked up on the way through chat.
+SELECT count(*) AS exact_name_ok
+FROM information_schema.columns
+WHERE table_name = 'seasons'
+  AND column_name = 'watch_scores_public'
+  AND column_name !~ '\s';
+-- expect: 1
+
+-- 6) GRANT check. Adding a column to an existing table inherits that table's
+--    TABLE-level privileges, so no new GRANT is needed. This only matters if
+--    someone had granted COLUMN-level privileges on seasons -- then the new
+--    column would be excluded. Expect zero rows.
+SELECT grantee, privilege_type, column_name
+FROM information_schema.column_privileges
+WHERE table_name = 'seasons'
+  AND grantee IN ('anon', 'authenticated', 'service_role');
+-- expect: 0 rows (privileges are table-level, not column-level)
+-- The app reads this column with the service role on the BASE table only; it is
+-- deliberately NOT added to the public seasons_public view
+-- ([[feedback_seasons_public_view]]), so anon gains nothing.
+
 -- ===========================================================================
 -- LATER -- how to turn it ON (do NOT run now; only on the head-office signal)
 -- ===========================================================================
