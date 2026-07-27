@@ -102,6 +102,14 @@ export type Season = {
   studio_round: 'application' | 'main' | 'both'
   studio_max_generations_per_round: number
 
+  // Prelim fairness hold ([[project-prelim-load-structure]]). _hold_enabled makes
+  // a prelim submission land held (invisible) so it cannot be copied by a later
+  // entrant; _auto_publish lets season-tick release the whole cohort at
+  // application_close_at instead of an admin clicking. Both default false and
+  // are base-table only (never on seasons_public).
+  studio_prelim_hold_enabled: boolean
+  studio_prelim_auto_publish: boolean
+
   application_open_at: string | null
   application_close_at: string | null
   scoring_complete_at: string | null

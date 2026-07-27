@@ -6,6 +6,7 @@ import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getDisplayNames } from '@/lib/nickname'
 import { WatchVideoModRow, type ModVideo } from './WatchVideoModRow'
+import { PrelimHoldPanel, type HeldSeason } from './PrelimHoldPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,9 +29,62 @@ function flagsToList(raw: unknown): string[] {
   return []
 }
 
+// Seasons that still have prelim entries under the anti-copy hold, newest
+// first. Held rows are invisible on /watch, so this panel is the only place the
+// cohort is visible to an operator before release.
+async function loadHeldSeasons(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+): Promise<HeldSeason[]> {
+  const { data: held, error } = await admin
+    .from('genesis_applications')
+    .select('season_id')
+    .eq('watch_hold', true)
+  if (error || !held || held.length === 0) return []
+
+  const counts = new Map<string, number>()
+  for (const r of held as { season_id: string | null }[]) {
+    if (!r.season_id) continue
+    counts.set(r.season_id, (counts.get(r.season_id) ?? 0) + 1)
+  }
+  if (counts.size === 0) return []
+
+  const { data: seasons } = await admin
+    .from('seasons')
+    .select('id, display_name, name, season_number, application_close_at, studio_prelim_hold_enabled, studio_prelim_auto_publish')
+    .in('id', [...counts.keys()])
+
+  const bySeason = new Map(
+    ((seasons ?? []) as {
+      id: string
+      display_name: string | null
+      name: string | null
+      season_number: number | null
+      application_close_at: string | null
+      studio_prelim_hold_enabled: boolean | null
+      studio_prelim_auto_publish: boolean | null
+    }[]).map((s) => [s.id, s]),
+  )
+
+  return [...counts.entries()]
+    .map(([seasonId, heldCount]) => {
+      const s = bySeason.get(seasonId)
+      return {
+        seasonId,
+        displayName: s?.display_name?.trim() || s?.name?.trim() || seasonId,
+        heldCount,
+        holdEnabled: !!s?.studio_prelim_hold_enabled,
+        autoPublish: !!s?.studio_prelim_auto_publish,
+        closeAt: s?.application_close_at ?? null,
+      }
+    })
+    .sort((a, b) => b.heldCount - a.heldCount)
+}
+
 export default async function AdminWatchVideosPage() {
   await requireAdmin()
   const admin = createSupabaseAdmin()
+
+  const heldSeasons = await loadHeldSeasons(admin)
 
   const [reportsRes, flagHiddenRes] = await Promise.all([
     admin.from('watch_video_reports').select('application_id'),
@@ -88,6 +142,8 @@ export default async function AdminWatchVideosPage() {
           Reported, AI-flagged, or hidden videos. Hide removes a video from Watch without changing
           its competition status (scoring/awards are unaffected).
         </p>
+
+        <PrelimHoldPanel seasons={heldSeasons} />
 
         {rows.length === 0 ? (
           <p className="mt-10 text-sm text-white/40">Nothing to review. 🎉</p>

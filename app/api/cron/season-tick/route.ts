@@ -28,6 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { buildNextSeasonRow } from '@/lib/season-schedule'
+import { releasePrelimHoldCore } from '@/lib/watch-hold'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
 import type { Season } from '@/lib/seasons'
 
@@ -69,6 +70,7 @@ type SeasonTickReport = {
   created: { id: string; season_number: number; application_open_at: string | null } | null
   transitions: { id: string; from: string; to: string }[]
   deferrals: { id: string; newClose: string | null; deferCount: number }[]
+  prelimReleases: { id: string; released: number }[]
   advancements: { id: string; advanced: number; rejected: number; nTarget: number }[]
   skippedCreation?: string
   errors: string[]
@@ -207,6 +209,31 @@ async function handle(request: NextRequest) {
     }
   }
 
+  // ── 1.6. PRELIM HOLD RELEASE ─────────────────────────────────────────────
+  // A season running the anti-copy hold keeps every prelim entry invisible until
+  // the whole cohort is released together. This is the AUTO path: once the
+  // application window has closed, release them all at once. Opt-in per season
+  // (studio_prelim_auto_publish, default false) -- while it is off the release
+  // is the admin's button on /admin/watch-videos, which is where season_0 stands
+  // until the schedule is final. Idempotent: the release matches only still-held
+  // rows, so later ticks release 0 and touch nothing.
+  //
+  // Runs AFTER deferral for the same reason transitions do: a season deferred
+  // this tick has a shifted (future) close date, so releasing on its stale
+  // in-memory date would publish the cohort while the window is still open.
+  const prelimReleases: SeasonTickReport['prelimReleases'] = []
+  for (const s of seasons) {
+    if (deferredThisTick.has(s.id)) continue
+    if (!s.studio_prelim_auto_publish) continue
+    if (!s.application_close_at || nowMs < new Date(s.application_close_at).getTime()) continue
+    const { released, error } = await releasePrelimHoldCore(s.id)
+    if (error) {
+      errors.push(`season-tick: prelim hold release ${s.id} failed: ${error}`)
+      continue
+    }
+    if (released > 0) prelimReleases.push({ id: s.id, released })
+  }
+
   // ── 2. STATUS TRANSITIONS ────────────────────────────────────────────────
   const transitions: SeasonTickReport['transitions'] = []
   for (const s of seasons) {
@@ -279,6 +306,19 @@ async function handle(request: NextRequest) {
       ),
     )
   }
+  for (const p of prelimReleases) {
+    alerts.push(
+      sendAdminAlert(
+        `[OXXOVO] ${p.id}: ${p.released} prelim entries published`,
+        `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
+          <h2 style="color: #8B22FF;">Preliminary cohort released</h2>
+          <p>The application window for <strong>${p.id}</strong> closed, so the
+             anti-copy hold was lifted on <strong>${p.released}</strong> entries.
+             They are now visible on <a href="https://www.oxxovo.ai/watch">/watch</a>.</p>
+        </div>`,
+      ),
+    )
+  }
   for (const a of advancements) {
     alerts.push(
       sendAdminAlert(
@@ -342,6 +382,7 @@ async function handle(request: NextRequest) {
     created,
     transitions,
     deferrals,
+    prelimReleases,
     advancements,
     ...(skippedCreation ? { skippedCreation } : {}),
     errors,

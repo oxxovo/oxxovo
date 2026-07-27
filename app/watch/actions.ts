@@ -12,6 +12,8 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { getDisplayName } from '@/lib/nickname'
+import { revalidateWatchList } from '@/lib/watch-cache'
+import { releasePrelimHoldCore, type PrelimHoldRelease } from '@/lib/watch-hold'
 import { COMMENT_MAX } from './constants'
 import type { WatchRound } from '@/lib/watch'
 
@@ -391,6 +393,7 @@ export async function setWatchHidden(
     .eq('id', applicationId)
   if (error) return { ok: false, error: 'failed' }
 
+  revalidateWatchList()
   revalidatePath(`/watch/${applicationId}`)
   revalidatePath('/watch')
   revalidatePath('/admin/watch-videos')
@@ -410,6 +413,7 @@ export async function approveModeration(applicationId: string): Promise<HideResu
     .eq('id', applicationId)
   if (error) return { ok: false, error: 'failed' }
 
+  revalidateWatchList()
   revalidatePath(`/watch/${applicationId}`)
   revalidatePath('/watch')
   revalidatePath('/admin/watch-videos')
@@ -428,20 +432,11 @@ export async function approveModeration(applicationId: string): Promise<HideResu
 
 export type PublishResult = { ok: true; released: number } | { ok: false; error: 'forbidden' | 'failed' }
 
-// Core release: clear watch_hold for every held entry in the season. `actor` is
-// 'admin:<id>' (manual) or 'auto' (cron). Returns how many were released.
-export async function releasePrelimHold(seasonId: string): Promise<{ released: number; error?: string }> {
-  const admin = createSupabaseAdmin()
-  const { data, error } = await admin
-    .from('genesis_applications')
-    .update({ watch_hold: false, watch_hold_released_at: new Date().toISOString() })
-    .eq('season_id', seasonId)
-    .eq('watch_hold', true)
-    .select('id')
-  if (error) return { released: 0, error: error.message }
-  revalidatePath('/watch')
-  revalidatePath('/admin/watch-videos')
-  return { released: data?.length ?? 0 }
+// The mutation itself lives in lib/watch-hold so the season-tick cron can share
+// it (a cron route cannot import a 'use server' module's actions as plain
+// functions). Re-exported here for the callers that already import it.
+export async function releasePrelimHold(seasonId: string): Promise<PrelimHoldRelease> {
+  return releasePrelimHoldCore(seasonId)
 }
 
 // MANUAL admin trigger. Admin-gated; delegates to the shared release.
@@ -473,6 +468,7 @@ export async function setStaffPick(applicationId: string, on: boolean): Promise<
     .eq('id', applicationId)
   if (error) return { ok: false, error: 'failed' }
 
+  revalidateWatchList()
   revalidatePath(`/watch/${applicationId}`)
   revalidatePath('/watch')
   return { ok: true, staffPick: on }

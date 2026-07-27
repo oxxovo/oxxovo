@@ -12,10 +12,12 @@
 // public view to leak through.
 
 import 'server-only'
+import { unstable_cache } from 'next/cache'
 import { createSupabaseAdmin } from './supabase-admin'
 import { parseVideoUrl } from './video-url'
 import { getDisplayName, getDisplayNames } from './nickname'
 import { formatDeadlinePT } from './seasons'
+import { WATCH_LIST_TAG, WATCH_LIST_TTL } from './watch-cache'
 
 export type WatchRound = 'application' | 'main'
 export type WatchSort = 'trending' | 'latest' | 'award'
@@ -253,7 +255,12 @@ function sortVideos(videos: WatchVideo[], sort: WatchSort): WatchVideo[] {
 
 // Loads every publicly visible video as a flat, sorted list. opt.seasonId
 // filters to one season; opt.sort picks the ordering (default 'latest').
-export async function getWatchVideos(
+//
+// Six full-table selects per call, and /watch calls it twice per render
+// (getWatchSeasonGroups reuses it). Exported through unstable_cache below so a
+// release-moment herd collapses onto one execution per TTL window -- callers
+// keep using getWatchVideos and get the cached path for free.
+async function loadWatchVideos(
   opt: { seasonId?: string; sort?: WatchSort } = {},
 ): Promise<WatchVideo[]> {
   const sort = opt.sort ?? 'latest'
@@ -334,6 +341,15 @@ export async function getWatchVideos(
   return sortVideos(videos, sort)
 }
 
+// Cached public entry point. Invalidated on release / hide / moderation / staff
+// pick via revalidateWatchList(); otherwise refreshed every WATCH_LIST_TTL
+// seconds, so like/view counts may lag by that much (deliberate -- see
+// lib/watch-cache).
+export const getWatchVideos = unstable_cache(loadWatchVideos, ['watch-videos'], {
+  tags: [WATCH_LIST_TAG],
+  revalidate: WATCH_LIST_TTL,
+})
+
 // Live stats for the "Current Competition" Hero panel. All derived from the DB
 // (never hardcoded): ENTRIES = public applications in the season that have a
 // video, CREATORS = distinct owners of those, COUNTRIES = distinct declared
@@ -341,7 +357,7 @@ export async function getWatchVideos(
 // placeholder.
 export type CompetitionStats = { entries: number; creators: number; countries: number }
 
-export async function getCurrentCompetitionStats(seasonId: string): Promise<CompetitionStats> {
+async function loadCurrentCompetitionStats(seasonId: string): Promise<CompetitionStats> {
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('genesis_applications')
@@ -372,6 +388,15 @@ export async function getCurrentCompetitionStats(seasonId: string): Promise<Comp
   }
   return { entries, creators: creators.size, countries: countries.size }
 }
+
+// Cached for the same reason as the list: the Hero panel and /api/watch/stats
+// both hit this on every /watch view. Same tag, so a hold release refreshes the
+// ENTRIES counter at the same instant the videos appear.
+export const getCurrentCompetitionStats = unstable_cache(
+  loadCurrentCompetitionStats,
+  ['watch-competition-stats'],
+  { tags: [WATCH_LIST_TAG], revalidate: WATCH_LIST_TTL },
+)
 
 // Triple-AI preliminary-judging progress for the Hero "⚡ 심사 중 {scored}/{total}"
 // bar. total = public prelim entries (the pool being judged); scored = those whose
