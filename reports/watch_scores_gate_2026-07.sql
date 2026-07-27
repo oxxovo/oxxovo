@@ -16,7 +16,7 @@
 --   therefore changes NOTHING visible -- it only creates the switch.
 --
 -- WHAT IS GATED (app side)
---   1. /watch grid card         -- "Triple-AI NN.NN점" footer + green Verified badge
+--   1. /watch grid card         -- "Triple-AI NN.NN" score footer + Verified badge
 --   2. /watch/[id] ScorePanel   -- verified score, grade, per-axis, AI critiques
 --   3. Finalist list            -- verifiedScore field AND score-descending order
 --   NOT gated: the "AI judging N/M" progress bar (a count, not a score) and the
