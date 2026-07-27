@@ -143,6 +143,12 @@ Railway scheduled job이다. 따라서 처리량 = f(cron 주기, BATCH_SIZE).
   `advance_season_finalists` 실행. 최대 1시간 추가.
 - `advance_season_finalists`는 **flagged 0건**을 self-gate로 요구한다. 무결성 플래그 건이 나오면
   사람이 해소해야 진출이 확정된다 — 72h 창 안의 유일한 수동 의존성.
+- **★Defect 1(Integrity가 사실성을 처벌)이 이 게이트와 직결된다.** flag 조건 = `claude integrity < 50`
+  (`scorer.ts` `INTEGRITY_REVIEW_THRESHOLD`)이고, 프롬프트 line 92가 여전히 "depth of field / real shadows /
+  physical hand interactions = NOT AI-generated의 STRONG 신호"라고 지시한다(src 마지막 커밋 7/14, 미수정).
+  즉 **사실적으로 잘 만든 작품일수록 flag**된다. 41편 규모에서는 수작업으로 넘겼지만 500편에서는
+  수동 해소 건수가 72h 창의 실질 병목이 될 수 있다. Defect 1 수정은 점수공개 선결조건이자 **일정 리스크**다.
+  (본체 큐 — reports/scoring_track_handoff_2026-07-14.md, scoring_gemini_face_repeat_2026-07-15.md)
 
 ## 재현 방법
 
