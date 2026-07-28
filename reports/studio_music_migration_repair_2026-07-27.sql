@@ -42,10 +42,12 @@
 --     is exactly "master ON / ai OFF".
 --   * studio_music_assets gains season_id + round so the per-user cap can be
 --     scoped per round, the same axis the video caps already use.
---   * seasons gains TWO music caps (competition + draft, default 15 each,
---     TK-confirmed) so they are config values changeable by one UPDATE.
---     The caps exist for FAIRNESS, not budget -- participants fund their own
---     generations, so uncapped would mean the wealthier entrant buys attempts.
+--   * seasons gains ONE music cap (default 15, TK-confirmed), a config value
+--     changeable by one UPDATE. The cap exists for FAIRNESS, not budget --
+--     participants fund their own generations, so uncapped would mean the
+--     wealthier entrant buys attempts. Single pool: music has no draft artefact
+--     (verified: no tier/draft/kind anywhere in the music path), so a split
+--     would only make a participant buy the same audio twice.
 -- =========================================================================
 
 -- -------------------------------------------------------------------------
@@ -77,10 +79,6 @@ CREATE TABLE public.studio_music_assets (
   -- platform assets: both NULL.
   season_id               text REFERENCES public.seasons(id) ON DELETE SET NULL,
   round                   text,                          -- 'application' | 'main' | NULL
-  -- Draft (Sandbox) vs competition, mirroring generation_jobs.tier. Draft beds
-  -- are blocked from every submission path, so draft slots cannot be farmed to
-  -- obtain competition beds. Library rows: 'competition'.
-  kind                    text NOT NULL DEFAULT 'competition',
 
   title                   text NOT NULL DEFAULT '',
   mood                    text NOT NULL DEFAULT '',      -- library grouping label
@@ -105,9 +103,7 @@ CREATE TABLE public.studio_music_assets (
   CONSTRAINT studio_music_assets_status_check
     CHECK (status IN ('queued', 'generating', 'ready', 'failed')),
   CONSTRAINT studio_music_assets_round_check
-    CHECK (round IS NULL OR round IN ('application', 'main')),
-  CONSTRAINT studio_music_assets_kind_check
-    CHECK (kind IN ('draft', 'competition'))
+    CHECK (round IS NULL OR round IN ('application', 'main'))
 );
 
 CREATE INDEX studio_music_assets_library_idx
@@ -116,9 +112,9 @@ CREATE INDEX studio_music_assets_status_idx
   ON public.studio_music_assets (status, created_at);
 CREATE INDEX studio_music_assets_user_idx
   ON public.studio_music_assets (user_id);
--- The cap query: count a user's AI beds in one season+round+kind.
+-- The cap query: count a user's AI beds in one season+round.
 CREATE INDEX studio_music_assets_cap_idx
-  ON public.studio_music_assets (user_id, season_id, round, kind, source, status);
+  ON public.studio_music_assets (user_id, season_id, round, source, status);
 
 -- 1c. Lock the table to the service role (mirror generation_jobs / render_jobs).
 --     The client never reads it directly; a server action returns the picker
@@ -149,9 +145,13 @@ ALTER TABLE public.seasons
 COMMENT ON COLUMN public.seasons.studio_music_ai_enabled IS
   'Participant-facing AI music generation. Requires studio_music_enabled too (AND). false + master true = pre-generated library only, which is the fallback if ElevenLabs Music API Terms 3.A blocks passing generation through to participants. Replaces the retired platform_config key of the same name.';
 
--- 1f. Per-user music generation caps, per season+round, mirroring the video
---     caps exactly (studio_max_generations_per_round / _draft_). Draft and
---     competition are INDEPENDENT budgets; one never consumes the other's slots.
+-- 1f. Per-user music generation cap, per season+round. ONE pool: there is no
+--     draft/competition split for music, because there is no draft music. The
+--     video split exists because a draft clip is a genuinely different artefact
+--     (low-res, watermarked, promotes to a competition sibling). Music has a
+--     single provider, single parameter set, single price and byte-identical
+--     output, so splitting the pool would only make a participant buy the same
+--     audio twice.
 --
 --     WHY A CAP AT ALL: fairness, not budget. Participants pay for their own
 --     generations (credits = cost x 1.25), so an uncapped model would let a
@@ -160,18 +160,12 @@ COMMENT ON COLUMN public.seasons.studio_music_ai_enabled IS
 --     behind the video cap of 30. 15 is half of 30 because music is a
 --     supporting element, not the primary artefact.
 --
---     Changing either value is one UPDATE, no deploy. 0 = unlimited.
+--     Changing the value is one UPDATE, no deploy. 0 = unlimited.
 ALTER TABLE public.seasons
   ADD COLUMN IF NOT EXISTS studio_music_max_generations_per_round integer NOT NULL DEFAULT 15;
 
-ALTER TABLE public.seasons
-  ADD COLUMN IF NOT EXISTS studio_music_max_draft_generations_per_round integer NOT NULL DEFAULT 15;
-
 COMMENT ON COLUMN public.seasons.studio_music_max_generations_per_round IS
-  'Per-user competition AI music generations per season+round. Fairness ceiling (participants fund their own generations); half the video cap because music is a supporting element. 0 = unlimited.';
-
-COMMENT ON COLUMN public.seasons.studio_music_max_draft_generations_per_round IS
-  'Per-user Sandbox(draft) AI music generations per season+round. Independent of the competition cap. Draft beds are blocked from every submission path. 0 = unlimited.';
+  'Per-user AI music generations per season+round. Single pool (no draft split -- music has no draft artefact). Fairness ceiling: participants fund their own generations, so uncapped would let spend decide. 0 = unlimited.';
 
 COMMIT;
 
@@ -179,7 +173,7 @@ COMMIT;
 -- STEP 4 -- VERIFICATION. Run after STEP 1. All six must pass.
 -- =========================================================================
 
--- 4a) Table shape. Expect 21 rows, including source / season_id / round / kind / url /
+-- 4a) Table shape. Expect 20 rows, including source / season_id / round / url /
 --     duration_seconds / cryptobind_signature / cryptobind_content_hash /
 --     active / updated_at.
 SELECT column_name, data_type
@@ -195,10 +189,9 @@ ORDER BY grantee, privilege_type;
 
 -- 4c) Both switches present and OFF on every season, cap present.
 --     Expect studio_music_enabled = false AND studio_music_ai_enabled = false
---     on every row, and both caps = 15.
+--     on every row, and the cap = 15.
 SELECT id, status, studio_music_enabled, studio_music_ai_enabled,
-       studio_music_max_generations_per_round,
-       studio_music_max_draft_generations_per_round
+       studio_music_max_generations_per_round
 FROM public.seasons
 ORDER BY id;
 
@@ -208,15 +201,14 @@ SELECT count(*) FILTER (WHERE studio_music_enabled IS TRUE)    AS master_on,
 FROM public.seasons;
 
 -- 4e) Paste-corruption guard: both column names must be exactly these, with no
---     stray whitespace or newline picked up on the way through chat. Expect 4.
+--     stray whitespace or newline picked up on the way through chat. Expect 3.
 SELECT count(*) AS exact_names_ok
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name = 'seasons'
   AND column_name IN ('studio_music_enabled',
                       'studio_music_ai_enabled',
-                      'studio_music_max_generations_per_round',
-                      'studio_music_max_draft_generations_per_round')
+                      'studio_music_max_generations_per_round')
   AND column_name !~ '\s';
 
 -- 4f) The exact select the app makes today. Expect one row, no 42703.
@@ -233,7 +225,6 @@ WHERE id = 'season_0';
 -- RETIRED platform_config KEYS -- do NOT re-add. The code no longer reads them.
 --   studio_music_ai_enabled     -> seasons.studio_music_ai_enabled
 --   studio_music_gen_max_per_user -> seasons.studio_music_max_generations_per_round
---                                    + seasons.studio_music_max_draft_generations_per_round
 -- Still live in platform_config (not gates, global by design):
 --   studio_music_gen_cost_usd, studio_music_gen_max_seconds,
 --   studio_music_artist_blocklist
@@ -256,9 +247,8 @@ WHERE id = 'season_0';
 --        SET studio_music_enabled = true, studio_music_ai_enabled = true
 --      WHERE id = 'season_0';
 --
---   change the caps:
+--   change the cap:
 --     UPDATE public.seasons
---        SET studio_music_max_generations_per_round = 15,
---            studio_music_max_draft_generations_per_round = 15
+--        SET studio_music_max_generations_per_round = 15
 --      WHERE id = 'season_0';
 -- =========================================================================
