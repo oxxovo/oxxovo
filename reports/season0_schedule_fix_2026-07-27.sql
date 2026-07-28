@@ -100,6 +100,16 @@ WHERE id = 'season_0';
 --            Timestamps are written as PT wall-clock and converted by Postgres,
 --            so this stays correct across the 11/1 DST switch.
 -- Expect: "UPDATE 1".
+--
+-- ROLLBACK (paste this if BLOCK 3 fails -- these are the exact pre-change values
+-- measured 2026-07-27):
+--   UPDATE public.seasons
+--      SET main_round_start_at  = TIMESTAMP '2026-09-03 00:00' AT TIME ZONE 'America/Los_Angeles',
+--          main_round_end_at    = TIMESTAMP '2026-09-05 00:00' AT TIME ZONE 'America/Los_Angeles',
+--          submission_hours     = 48,
+--          application_close_at = TIMESTAMP '2026-08-30 23:59' AT TIME ZONE 'America/Los_Angeles',
+--          scoring_start_at     = TIMESTAMP '2026-08-31 00:00' AT TIME ZONE 'America/Los_Angeles'
+--    WHERE id = 'season_0';
 -- -------------------------------------------------------------------------
 BEGIN;
 
@@ -207,6 +217,12 @@ FROM (VALUES
 -- then have to move. NULL promises nothing.
 --
 -- Expect: "UPDATE 1", then the verify returns open_pt = NULL, status 'upcoming'.
+--
+-- ROLLBACK (exact pre-change values for season_1):
+--   UPDATE public.seasons
+--      SET application_open_at  = TIMESTAMP '2026-09-28 00:00' AT TIME ZONE 'America/Los_Angeles',
+--          application_close_at = TIMESTAMP '2026-10-04 23:59' AT TIME ZONE 'America/Los_Angeles'
+--    WHERE id = 'season_1';
 -- -------------------------------------------------------------------------
 BEGIN;
 
