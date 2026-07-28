@@ -42,7 +42,14 @@ import {
   type EffectiveRound,
 } from '@/lib/studio'
 import { MAX_MUSIC_PROMPT, type MusicReason } from '@/lib/music-limits'
-import { createMusicGeneration, getMusicGenConfig, getMusicAssetStatus, type MusicAssetStatusDTO } from '@/lib/music-gen'
+import {
+  createMusicGeneration,
+  getMusicGenConfig,
+  getMusicAssetStatus,
+  countMusicGenerationsForRound,
+  type MusicAssetStatusDTO,
+} from '@/lib/music-gen'
+import { getMusicGate } from '@/lib/music-gate'
 import { getBalance, getStudioPricing, getStudioPurchaseConfig, creditsForCost } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
 import { getCreatorProfile } from '@/lib/profile'
@@ -277,9 +284,13 @@ export async function generateMusicAction(
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
+  // The cap axis is season+round, so the round has to be resolved server-side
+  // (never taken from the client) exactly as the clip path does.
+  const mcfg = await getSeasonStudioConfig(season.id)
   const res = await createMusicGeneration({
     userId: auth.userId,
     seasonId: season.id,
+    round: resolveEffectiveRound(mcfg),
     prompt: input.prompt,
     durationSeconds: input.durationSeconds,
   })
@@ -540,6 +551,10 @@ export type LoadComposeResult =
         musicAiEnabled: boolean
         musicCreditCost: number
         musicPromptMax: number
+        // Per-round AI-music ceiling and what the participant has already spent
+        // of it. cap 0 = unlimited (season opt-in) -> the editor hides the counter.
+        musicCap: number
+        musicUsed: number
       }
     }
   | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
@@ -610,13 +625,25 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     // library is seeded and studio_music_enabled is turned on. When music is on,
     // read the AI-gen switch + per-generation credit cost (both dynamic) so the
     // editor can show the AI panel only when it will actually work.
+    const gate = await getMusicGate(season.id)
     const { enabled: musicEnabled, assets: musicAssets } = await listMusicAssets(season.id, auth.userId)
-    let musicAiEnabled = false
+    const musicAiEnabled = gate.aiEnabled
     let musicCreditCost = 0
-    if (musicEnabled) {
-      const [mcfg, pricing] = await Promise.all([getMusicGenConfig(), getStudioPricing()])
-      musicAiEnabled = mcfg.aiEnabled
+    let musicCap = 0
+    let musicUsed = 0
+    if (musicAiEnabled) {
+      const [mcfg, pricing, used] = await Promise.all([
+        getMusicGenConfig(),
+        getStudioPricing(),
+        countMusicGenerationsForRound(auth.userId, season.id, effectiveRound),
+      ])
       musicCreditCost = creditsForCost(mcfg.genCostUsd, pricing)
+      // Surfaced so the participant can see the ceiling BEFORE spending. Music
+      // beds are the same artefact whether made while practising or for the
+      // entry, so a silent counter would let someone burn the round's budget
+      // without ever being told there was one.
+      musicCap = gate.cap
+      musicUsed = used
     }
     const resumeRender = resumable
       ? {
@@ -652,6 +679,8 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         musicAiEnabled,
         musicCreditCost,
         musicPromptMax: MAX_MUSIC_PROMPT,
+        musicCap,
+        musicUsed,
       },
     }
   } catch (e) {

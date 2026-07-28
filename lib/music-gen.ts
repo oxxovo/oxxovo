@@ -2,7 +2,8 @@
 //
 // In-platform AI music beds (Genesis Rule: generated inside OXXOVO, NEVER an
 // upload). Mirrors the clip-generation discipline (lib/studio.ts createGeneration):
-//   1. gate  -- season studio_music_enabled AND config studio_music_ai_enabled
+//   1. gate  -- seasons.studio_music_enabled AND seasons.studio_music_ai_enabled
+//              (lib/music-gate, fail-closed) + the per-round generation cap
 //   2. guard -- prompt bounds + imitation block + AI moderation, BEFORE any credit
 //   3. charge -- credits from platform_config pricing, rolled back if the row/charge fails
 //   4. enqueue -- insert a studio_music_assets row status='queued' for the worker
@@ -31,6 +32,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
 import { moderateSubmission } from '@/lib/moderation'
 import { buildMusicAssetBind, hashMusicAsset } from '@/lib/cryptobind'
+import { getMusicGate } from '@/lib/music-gate'
 import {
   validateMusicPrompt,
   findImitation,
@@ -84,11 +86,16 @@ export function getMusicProvider(): MusicProvider {
 // parameters live here so they can move per season without a deploy.
 // ===========================================================================
 
+// NOTE on what is NOT here any more. Two keys were retired when the gate moved
+// into seasons columns (lib/music-gate.ts):
+//   studio_music_ai_enabled       -> seasons.studio_music_ai_enabled
+//   studio_music_gen_max_per_user -> seasons.studio_music_max_generations_per_round
+// A gate that lives in a different storage layer from its sibling is how the UI
+// and the server came to disagree. What stays here is genuinely global and not
+// a gate: price, length bound, blocklist.
 export interface MusicGenConfig {
-  aiEnabled: boolean // studio_music_ai_enabled -- AI gen on/off (library can be on while this is off)
   genCostUsd: number // studio_music_gen_cost_usd -- raw provider cost per generation
   maxSeconds: number // studio_music_gen_max_seconds -- 0 => no explicit cap here
-  maxPerUser: number // studio_music_gen_max_per_user -- 0 => unlimited (see note below)
   artistBlocklist: string[] // studio_music_artist_blocklist
 }
 
@@ -98,10 +105,8 @@ export async function getMusicGenConfig(): Promise<MusicGenConfig> {
     .from('platform_config')
     .select('key, value')
     .in('key', [
-      'studio_music_ai_enabled',
       'studio_music_gen_cost_usd',
       'studio_music_gen_max_seconds',
-      'studio_music_gen_max_per_user',
       'studio_music_artist_blocklist',
     ])
   if (error) throw new Error('getMusicGenConfig: ' + error.message)
@@ -112,12 +117,33 @@ export async function getMusicGenConfig(): Promise<MusicGenConfig> {
     return Number.isFinite(n) && n >= 0 ? n : 0
   }
   return {
-    aiEnabled: String(map.get('studio_music_ai_enabled')).toLowerCase() === 'true',
     genCostUsd: num('studio_music_gen_cost_usd'),
     maxSeconds: num('studio_music_gen_max_seconds'),
-    maxPerUser: num('studio_music_gen_max_per_user'),
     artistBlocklist: parseArtistBlocklist(map.get('studio_music_artist_blocklist')),
   }
+}
+
+// Per-user AI beds already spent in one season+round. Counts ROWS, exactly like
+// countGenerationsForRound does for clips -- never credit balance. A balance
+// based cap would let a participant buy extra attempts, which is the one thing
+// the cap exists to prevent.
+export async function countMusicGenerationsForRound(
+  userId: string,
+  seasonId: string,
+  round: 'application' | 'main',
+): Promise<number> {
+  const admin = createSupabaseAdmin()
+  const { count, error } = await admin
+    .from('studio_music_assets')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('season_id', seasonId)
+    .eq('round', round)
+    .eq('source', 'ai')
+    // queued/generating/ready all occupy a slot; only a refunded 'failed' frees one.
+    .in('status', ['queued', 'generating', 'ready'])
+  if (error) throw new Error('countMusicGenerationsForRound: ' + error.message)
+  return count ?? 0
 }
 
 // ===========================================================================
@@ -132,22 +158,22 @@ export type CreateMusicResult =
 export async function createMusicGeneration(args: {
   userId: string
   seasonId: string
+  /** Effective round the generation belongs to -- the cap axis (resolveEffectiveRound). */
+  round: 'application' | 'main'
   prompt: string
   durationSeconds: number
 }): Promise<CreateMusicResult> {
   const admin = createSupabaseAdmin()
 
-  // 1. Season allowlist gate (studio_music_enabled) + the AI-gen switch. Music
-  //    can ship library-only (aiEnabled off) while Beatoven is still being 실측.
-  const { data: season } = await admin
-    .from('seasons')
-    .select('studio_music_enabled')
-    .eq('id', args.seasonId)
-    .maybeSingle()
-  if (!season?.studio_music_enabled) return { ok: false, reason: 'music_disabled' }
+  // 1. THE gate, first statement in the function. Both switches live in seasons
+  //    (lib/music-gate.ts) and both fail closed: master OFF -> music_disabled,
+  //    master ON + ai OFF -> library-only, so generation is music_ai_disabled.
+  //    Nothing below this line runs -- and no credit moves -- unless it passes.
+  const gate = await getMusicGate(args.seasonId)
+  if (!gate.enabled) return { ok: false, reason: 'music_disabled' }
+  if (!gate.aiEnabled) return { ok: false, reason: 'music_ai_disabled' }
 
   const cfg = await getMusicGenConfig()
-  if (!cfg.aiEnabled) return { ok: false, reason: 'music_ai_disabled' }
 
   // 2a. Prompt bounds (pure).
   const pv = validateMusicPrompt(args.prompt)
@@ -175,18 +201,15 @@ export async function createMusicGeneration(args: {
     return { ok: false, reason: 'music_moderation', detail: mod.categories.join(',') || mod.status }
   }
 
-  // 3. Per-user cap (optional, config). NOTE: studio_music_assets has no season_id,
-  //    so this counts the user's live AI beds platform-wide (queued/generating/
-  //    ready), not per-round. Round-scoping would need a season_id column (deferred
-  //    -- do not amend the base migration TK is running). 0 => unlimited.
-  if (cfg.maxPerUser > 0) {
-    const { count } = await admin
-      .from('studio_music_assets')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', args.userId)
-      .eq('source', 'ai')
-      .in('status', ['queued', 'generating', 'ready'])
-    if ((count ?? 0) >= cfg.maxPerUser) return { ok: false, reason: 'music_cap_reached' }
+  // 3. ★Per-user cap, per season+round -- the same axis the clip caps use.
+  //    Counted in ROWS, and checked BEFORE the price/balance step below, so the
+  //    ceiling cannot be bought past. Single pool: there is no draft music (one
+  //    provider, one parameter set, one price, byte-identical output), so a
+  //    draft/competition split would only make a participant buy the same audio
+  //    twice. gate.cap 0 = explicit season opt-in to unlimited.
+  if (gate.cap > 0) {
+    const used = await countMusicGenerationsForRound(args.userId, args.seasonId, args.round)
+    if (used >= gate.cap) return { ok: false, reason: 'music_cap_reached', detail: `${used}/${gate.cap}` }
   }
 
   // 4. Price + balance (platform_config pricing, like a clip generation).
@@ -201,6 +224,10 @@ export async function createMusicGeneration(args: {
     id: assetId,
     source: 'ai',
     user_id: args.userId,
+    // Cap axis. Stamped at creation so the count is stable even if the season
+    // schedule moves later (a bed keeps the round it was generated in).
+    season_id: args.seasonId,
+    round: args.round,
     title: '',
     mood: '',
     prompt,

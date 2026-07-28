@@ -46,6 +46,8 @@ export default function ComposePage() {
     musicAiEnabled: boolean
     musicCreditCost: number
     musicPromptMax: number
+    musicCap: number
+    musicUsed: number
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -112,6 +114,8 @@ export default function ComposePage() {
             musicAiEnabled={data.musicAiEnabled}
             musicCreditCost={data.musicCreditCost}
             musicPromptMax={data.musicPromptMax}
+            musicCap={data.musicCap}
+            musicUsed={data.musicUsed}
             onGenerateMusic={(prompt: string, durationSeconds: number) =>
               generateMusicAction(token, { prompt, durationSeconds })
             }

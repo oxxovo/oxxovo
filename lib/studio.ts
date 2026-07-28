@@ -28,6 +28,7 @@ import {
 import { verifySourceClipCrypto } from '@/lib/studio-verify'
 import { validateTexts, parseTrademarkBlocklist, findBlockedTrademark, type TextReason } from '@/lib/text-limits'
 import { validateMusicBed, type MusicReason } from '@/lib/music-limits'
+import { isMusicEnabled } from '@/lib/music-gate'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -1247,8 +1248,7 @@ export async function listMusicAssets(
   userId: string,
 ): Promise<{ enabled: boolean; assets: MusicAsset[] }> {
   const admin = createSupabaseAdmin()
-  const { data: s } = await admin.from('seasons').select('studio_music_enabled').eq('id', seasonId).single()
-  if (!s?.studio_music_enabled) return { enabled: false, assets: [] }
+  if (!(await isMusicEnabled(seasonId))) return { enabled: false, assets: [] }
   const { data, error } = await admin
     .from('studio_music_assets')
     .select('id, url, title, mood, source, user_id, active, cryptobind_signature')
@@ -1348,7 +1348,11 @@ export async function createRender(args: {
   // 1. Season compose config (caps are season-variable).
   const { data: seasonRow, error: sErr } = await admin
     .from('seasons')
-    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips, studio_music_enabled')
+    // The music gate is deliberately NOT in this column list. Folding it in is
+    // what broke compose: one un-migrated column fails the WHOLE PostgREST
+    // select (42703) and takes the compose config down with it. It is read
+    // separately, fail-closed, via lib/music-gate.
+    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
@@ -1456,7 +1460,7 @@ export async function createRender(args: {
   const sourceSignatures = ids.map((id) => String(byId.get(id)!.cryptobind_signature))
   // Fold the music asset's v1m signature into the bundle so the bed can't be
   // swapped after signing (append-only: music-free renders push nothing).
-  const ms = await resolveMusicSignature(admin, music, args.userId, !!seasonRow.studio_music_enabled)
+  const ms = await resolveMusicSignature(admin, music, args.userId, await isMusicEnabled(args.seasonId))
   if (!ms.ok) return { ok: false, reason: ms.reason, detail: ms.detail }
   if (ms.signature) sourceSignatures.push(ms.signature)
   const cb = buildComposeRequestBind({
@@ -1647,7 +1651,8 @@ export async function submitRender(args: {
   // 2. Season compose gate + cap (defense; caps are season-variable).
   const { data: seasonRow, error: sErr } = await admin
     .from('seasons')
-    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_music_enabled, studio_prelim_hold_enabled')
+    // Music gate read separately (fail-closed) -- see the note in createRender.
+    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_prelim_hold_enabled')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
@@ -1692,7 +1697,7 @@ export async function submitRender(args: {
   //     did (append-only), so the recomputed v1sr matches. A swapped/removed bed
   //     changes the bundle -> render_sig_mismatch.
   const submitMusic = Array.isArray(render.edl) ? undefined : (render.edl as ComposeEdl).music
-  const ms = await resolveMusicSignature(admin, submitMusic, args.userId, !!seasonRow.studio_music_enabled)
+  const ms = await resolveMusicSignature(admin, submitMusic, args.userId, await isMusicEnabled(args.seasonId))
   if (!ms.ok) return { ok: false, reason: ms.reason, detail: ms.detail }
   if (ms.signature) sourceSignatures.push(ms.signature)
 

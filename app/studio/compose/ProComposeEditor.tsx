@@ -173,6 +173,8 @@ const DICT = {
     music_ai_generate: '생성',
     music_ai_generating: '생성 중… 잠시 기다려 주세요.',
     music_ai_cost: (n: number) => `${n} 크레딧`,
+    music_ai_remaining: (left: number, cap: number) => `이번 라운드 ${left}/${cap}회 남음`,
+    music_ai_cap_reached: '이번 라운드 생성 횟수를 모두 사용했습니다',
     music_ai_default_title: 'AI 음악',
     music_ai_refund_note: '생성에 실패하면 크레딧은 자동으로 환불됩니다.',
     music_ai_reason: (r: string) =>
@@ -330,6 +332,8 @@ const DICT = {
     music_ai_generate: 'Generate',
     music_ai_generating: 'Generating… please wait.',
     music_ai_cost: (n: number) => `${n} credits`,
+    music_ai_remaining: (left: number, cap: number) => `${left}/${cap} left this round`,
+    music_ai_cap_reached: 'No generations left this round',
     music_ai_default_title: 'AI music',
     music_ai_refund_note: 'Credits are automatically refunded if generation fails.',
     music_ai_reason: (r: string) =>
@@ -393,6 +397,14 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const [aiState, setAiState] = useState<'idle' | 'generating' | 'error'>('idle')
   const [aiError, setAiError] = useState<string | null>(null)
   const aiPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Per-round AI-music ceiling. `aiGenerated` counts what this session added on
+  // top of the server's figure, so the counter moves as soon as a generation is
+  // enqueued rather than only after a reload. The server re-checks the cap on
+  // every call -- this is display, never the enforcement.
+  const [aiGenerated, setAiGenerated] = useState(0)
+  const musicCap = props.musicCap ?? 0
+  const musicLeft = Math.max(0, musicCap - ((props.musicUsed ?? 0) + aiGenerated))
+  const musicCapReached = musicCap > 0 && musicLeft <= 0
   const [dragUid, setDragUid] = useState<string | null>(null)
   const [sel, setSel] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -879,6 +891,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // server-side (refundMusicGeneration) -- the UI just surfaces the outcome.
   const genMusic = async () => {
     if (!props.onGenerateMusic || !props.pollMusic || aiState === 'generating') return
+    if (musicCapReached) { setAiState('error'); setAiError(t.music_ai_cap_reached); return }
     const prompt = aiPrompt.trim()
     if (!prompt) { setAiState('error'); setAiError(t.music_ai_reason('music_prompt_empty')); return }
     setAiState('generating'); setAiError(null)
@@ -886,6 +899,10 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     const reqDur = Math.max(1, Math.ceil((totalMs || props.maxSeconds * 1000) / 1000))
     const res = await props.onGenerateMusic(prompt, reqDur)
     if (!res.ok) { setAiState('error'); setAiError(t.music_ai_reason(res.error)); return }
+    // A slot is consumed the moment the row is enqueued -- a queued/generating
+    // bed occupies the cap server-side too, so the counter must not wait for
+    // 'ready'. A failed generation is refunded AND frees its slot on reload.
+    setAiGenerated((n) => n + 1)
     const assetId = res.assetId
     const poll = async () => {
       const st = await props.pollMusic!(assetId)
@@ -1533,16 +1550,29 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                         className="w-full resize-none rounded-lg border border-white/10 bg-[#070610] px-3 py-2 text-[11px] text-white placeholder:text-white/25 focus:border-[#8b22ff] focus:outline-none disabled:opacity-50"
                       />
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] text-white/40">{t.music_ai_cost(props.musicCreditCost ?? 0)}</span>
+                        <span className="text-[10px] text-white/40">
+                          {t.music_ai_cost(props.musicCreditCost ?? 0)}
+                          {/* Per-round ceiling. A music bed is the same artefact whether it
+                              was made while practising or for the entry, so the participant
+                              has to SEE the budget draining -- a silent counter would let
+                              someone spend the round's allowance without knowing it existed.
+                              cap 0 = unlimited (season opt-in) -> no counter. */}
+                          {musicCap > 0 && (
+                            <span className={musicLeft > 0 ? 'ml-2 text-white/30' : 'ml-2 text-[#ffb27a]'}>
+                              {t.music_ai_remaining(musicLeft, musicCap)}
+                            </span>
+                          )}
+                        </span>
                         <button
                           type="button"
                           onClick={genMusic}
-                          disabled={aiState === 'generating' || !aiPrompt.trim()}
+                          disabled={aiState === 'generating' || !aiPrompt.trim() || musicCapReached}
                           className="rounded-lg bg-gradient-to-br from-[#7d23ff] to-[#6220dc] px-3 py-1.5 text-[11px] font-bold text-white transition hover:brightness-110 disabled:opacity-40"
                         >
                           {aiState === 'generating' ? t.music_ai_generating : t.music_ai_generate}
                         </button>
                       </div>
+                      {musicCapReached && <p className="text-[10px] text-[#ffb27a]">{t.music_ai_cap_reached}</p>}
                       {aiState === 'error' && aiError && <p className="text-[10px] text-[#ff8888]">{aiError}</p>}
                       <p className="text-[9px] leading-tight text-white/30">{t.music_ai_refund_note}</p>
                     </div>

@@ -82,6 +82,9 @@ export type ComposeEditorProps = {
   musicAiEnabled?: boolean
   musicCreditCost?: number
   musicPromptMax?: number
+  // Per-round AI-music ceiling + spend so far. cap 0 = unlimited -> no counter.
+  musicCap?: number
+  musicUsed?: number
   onGenerateMusic?: (
     prompt: string,
     durationSeconds: number,
