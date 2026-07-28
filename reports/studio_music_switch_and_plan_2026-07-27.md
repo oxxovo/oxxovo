@@ -228,6 +228,46 @@ Scale $299는 선불일 뿐 할인이 아니므로 철회 유지.
 2. ★**PAYG 자동충전 + 잔액 이월** — 72h 창 도중 소진 = 대회 사고. **최우선.**
 3. **Music이 PAYG 크레딧으로 커버되는지.**
 
+## 2-7. ★draft 음악이 다른 산출물인가 — 전수 확인 결과 **전부 동일**
+
+TK 확인 요청 1)에 대한 답. `lib/music-gen.ts` 전문에 **`tier`/`draft`/`kind` 문자열이 0건**입니다.
+음악에는 draft 개념이 **존재한 적이 없습니다.**
+
+| 축 | 영상 | 음악 |
+|---|---|---|
+| 모델 | `StudioModel.tier` = draft/budget/standard/premium, 모델 선택 UI | `getMusicProvider()` **단일**, 선택 UI 없음 |
+| 파라미터 | 모델별 `paramWhitelist` | `MusicGenParams = {prompt, durationSeconds, assetId}` — 품질/tier 인자 **없음** |
+| 길이 | 라운드별 min/max | `studio_music_gen_max_seconds` **단일 상한** |
+| 가격 | 모델별 `cost_per_second_usd` | `studio_music_gen_cost_usd` **단일 원가** → 동일 마진 |
+| 산출물 | draft = 저해상도 + **워커 워터마크** + `promotesTo` 승격 경로 | 구분 없음. **같은 파일** |
+| 액션 | tier 인자 | `generateMusicAction(token, {prompt, durationSeconds})` — kind 인자 **없음** |
+
+**즉 "draft 음악"은 제가 만든 구분입니다.** TK 지적대로 차단하면 **참가자가 같은 오디오를 두 번 삽니다.**
+
+### 2) 단일 풀 통합안 — **채택 권고**
+
+**라운드당 음악 15회 하나. draft든 competition이든 같은 풀에서 사용.**
+
+**구현 난이도: 순감소.** `kind` 컬럼 제거, draft 캡 컬럼 제거, 카운트 조건 1개 감소,
+**"draft 베드 제출 차단" 로직 자체가 불필요** → 구현 항목 7개 중 1개가 사라집니다.
+
+**부작용 평가**
+
+| | 평가 |
+|---|---|
+| 이중 과금 | **소멸.** 같은 오디오를 두 번 사는 일이 없어짐 (최대 이득) |
+| 우회 | **원천 불가.** 태울 다른 풀이 없음 |
+| ★연습이 경쟁 슬롯을 먹음 | 영상은 draft 30이 따로라 안 겪는 압박. **다만 음악은 산출물이 동일**해서 "태웠다"가 아니라 "그 라운드 베드를 이미 만들어 뒀다"임 — 만든 걸 그대로 쓰면 되므로 손실이 아님. **단 UI 잔여 카운트 표시가 필수**가 됨 |
+| ★라운드 경계 | season_0은 `studio_round='both'`, `main_round_start_at`=9/3(PT) → **8/5~9/2 연습과 예선 제출이 같은 application 풀**. 7주 연습 + 예선이 15개 공유 |
+| 되돌리기 | 쉬움. 나중에 음악 저가 tier가 생기면 `kind`+draft 캡을 additive하게 재추가 |
+
+**→ 권고: 단일 풀 채택.** 다만 위 "라운드 경계" 때문에 **15가 충분한지는 재검토 여지**가 있습니다
+(연습 공유분 감안해 상향할지는 대표님 판단, UPDATE 한 줄). 근거는 여전히 공정성이지 비용이 아닙니다.
+
+**★SQL에 미치는 영향**: Run 자체를 막지는 않지만, **현재 파일을 Run한 뒤 통합하면 ALTER가 한 번 더**
+필요합니다(`kind` DROP + draft 캡 DROP). 결정만 주시면 **Run 전에 2줄 수정해 재제출**하겠습니다.
+그대로 가신다면 현재 설계(draft 캡 별도 + 제출 차단)로 구현합니다.
+
 # 보고 순서 준수
 
 - **①** 이 문서 §1 + `studio_music_migration_repair_2026-07-27.sql` → **승인 요청**
