@@ -51,6 +51,28 @@
 --
 --   submission_hours is MAIN-ROUND ONLY -- the prelim deadline is
 --   application_close_at alone, so the prelim window was never computed from it.
+--
+-- WARNING -- scoring_start_at IS NOT A GATE (measured 2026-07-27):
+--   App repo: written by lib/season-schedule.ts only. NOTHING reads it to decide
+--             anything. Scoring repo: ZERO references.
+--   The prelim scoring gate is application_close_at ALONE
+--   (oxxovo-scoring/src/batch.ts scoringGateReason + gateCloseField).
+--   So scoring actually opens at 2026-09-30 00:00 PT -- the 24h processing
+--   buffer is NOT enforced by this column, whatever value it holds. It is set
+--   to 10/1 here so the row matches the official plan (and so a future gate
+--   reads the right instant), not because it changes behaviour today.
+--
+--   Mitigation already in place: pickPending requires free_entry_url IS NOT
+--   NULL, so an entry whose render has not finished is skipped and picked up on
+--   a later 5-minute pass. Unfinished videos are never scored.
+--
+--   Residual risk to close separately (NOT a schedule value):
+--     maybeFinalizeSeason writes the Top-N recommendation + scoring_complete_at
+--     once the queue looks empty. During the buffer the queue can LOOK empty
+--     while renders are still landing, so Top N could be finalised on a partial
+--     cohort. Fix = teach scoringGateReason to also respect scoring_start_at
+--     (one condition; the column already exists, no migration). Scoring-repo
+--     work, separate from Defect 1 (that is scorer.ts/rubric).
 -- =========================================================================
 
 
@@ -90,7 +112,9 @@ UPDATE public.seasons
        -- (lib/studio.ts:1126 / :1773), not just the apply-form window, so an
        -- earlier value would refuse every entry made during the window.
        application_close_at = TIMESTAMP '2026-09-30 00:00' AT TIME ZONE 'America/Los_Angeles',
-       scoring_start_at     = TIMESTAMP '2026-09-30 00:00' AT TIME ZONE 'America/Los_Angeles'
+       -- 9/30 is the 24h processing buffer; judging runs 10/1-10/3. See the
+       -- WARNING below: this column is documentation today, not a gate.
+       scoring_start_at     = TIMESTAMP '2026-10-01 00:00' AT TIME ZONE 'America/Los_Angeles'
  WHERE id = 'season_0';
 
 COMMIT;
@@ -100,7 +124,8 @@ COMMIT;
 -- BLOCK 3 -- AFTER. Run alone.
 -- Expect: main_start_pt = 2026-10-05 00:00, main_end_pt = 2026-10-08 00:00,
 --         end_after_start = true, boundary_now = 'application',
---         deadlines_agree = true, close_pt = 2026-09-30 00:00.
+--         deadlines_agree = true, close_pt = 2026-09-30 00:00,
+--         scoring_start_pt = 2026-10-01 00:00 (documentation only -- see WARNING).
 -- -------------------------------------------------------------------------
 SELECT main_round_start_at AT TIME ZONE 'America/Los_Angeles' AS main_start_pt,
        main_round_end_at   AT TIME ZONE 'America/Los_Angeles' AS main_end_pt,
@@ -108,6 +133,7 @@ SELECT main_round_start_at AT TIME ZONE 'America/Los_Angeles' AS main_start_pt,
        CASE WHEN now() >= main_round_start_at THEN 'main' ELSE 'application' END
                                                               AS boundary_now,
        application_close_at AT TIME ZONE 'America/Los_Angeles' AS close_pt,
+       scoring_start_at     AT TIME ZONE 'America/Los_Angeles' AS scoring_start_pt,
        submission_hours,
        -- The two calculators must land on the same instant.
        (main_round_end_at = main_round_start_at + make_interval(hours => submission_hours))
