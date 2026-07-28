@@ -33,8 +33,24 @@
 --   moving start to 10/5 while end stays 2026-09-05 makes end < start. The
 --   main-round scoring gate keys on main_round_end_at, so a past value reads as
 --   "main round already closed". The two must move together.
---   end = start + submission_hours (48) = 2026-10-07 00:00 PT, which is the
---   same rule computeSeasonSchedule() uses (lib/season-schedule.ts).
+--   TWO DIFFERENT DEADLINE CALCULATORS EXIST and must agree:
+--     lib/studio.ts:182  mainRoundDeadlineMs = main_round_start_at + submission_hours
+--                        -> the STUDIO SUBMISSION gate
+--     lib/seasons.ts canSubmitMainRound + the scoring worker -> main_round_end_at
+--   If they disagree the participant loses the difference. submission_hours is
+--   therefore updated in the same statement, not just the end timestamp.
+--
+--   submission_hours = 48 was never a season_0 decision: it is the weekly-season
+--   template default (lib/season-schema.ts:163; the schedule comment reads
+--   "week2 Wed 21:00 + submission_hours (48h default -> Fri 21:00)"). season_0 is
+--   a hand-seeded row, so it inherited a value meant for a different format.
+--   Head office writes the prelim as 9/27-9/29 = 72h (ending 9/30 00:00) and the
+--   main round as 10/5-10/7 in the SAME notation, so the parallel reading is 72h
+--   ending 2026-10-08 00:00 PT. submission_hours moves to 72 with it.
+--   Side effect, intended: the MainRoundStart email renders "72 hours" by itself.
+--
+--   submission_hours is MAIN-ROUND ONLY -- the prelim deadline is
+--   application_close_at alone, so the prelim window was never computed from it.
 -- =========================================================================
 
 
@@ -67,7 +83,14 @@ BEGIN;
 
 UPDATE public.seasons
    SET main_round_start_at = TIMESTAMP '2026-10-05 00:00' AT TIME ZONE 'America/Los_Angeles',
-       main_round_end_at   = TIMESTAMP '2026-10-07 00:00' AT TIME ZONE 'America/Los_Angeles'
+       main_round_end_at   = TIMESTAMP '2026-10-08 00:00' AT TIME ZONE 'America/Los_Angeles',
+       submission_hours    = 72,
+       -- Prelim: 9/27-9/29 is the 72h make-and-submit window, so the cut is the
+       -- 72h mark itself. This column is the SUBMISSION hard cut
+       -- (lib/studio.ts:1126 / :1773), not just the apply-form window, so an
+       -- earlier value would refuse every entry made during the window.
+       application_close_at = TIMESTAMP '2026-09-30 00:00' AT TIME ZONE 'America/Los_Angeles',
+       scoring_start_at     = TIMESTAMP '2026-09-30 00:00' AT TIME ZONE 'America/Los_Angeles'
  WHERE id = 'season_0';
 
 COMMIT;
@@ -75,14 +98,20 @@ COMMIT;
 
 -- -------------------------------------------------------------------------
 -- BLOCK 3 -- AFTER. Run alone.
--- Expect: main_start_pt = 2026-10-05 00:00, main_end_pt = 2026-10-07 00:00,
---         end_after_start = true, boundary_now = 'application'.
+-- Expect: main_start_pt = 2026-10-05 00:00, main_end_pt = 2026-10-08 00:00,
+--         end_after_start = true, boundary_now = 'application',
+--         deadlines_agree = true, close_pt = 2026-09-30 00:00.
 -- -------------------------------------------------------------------------
 SELECT main_round_start_at AT TIME ZONE 'America/Los_Angeles' AS main_start_pt,
        main_round_end_at   AT TIME ZONE 'America/Los_Angeles' AS main_end_pt,
        (main_round_end_at > main_round_start_at)              AS end_after_start,
        CASE WHEN now() >= main_round_start_at THEN 'main' ELSE 'application' END
-                                                              AS boundary_now
+                                                              AS boundary_now,
+       application_close_at AT TIME ZONE 'America/Los_Angeles' AS close_pt,
+       submission_hours,
+       -- The two calculators must land on the same instant.
+       (main_round_end_at = main_round_start_at + make_interval(hours => submission_hours))
+                                                              AS deadlines_agree
 FROM public.seasons
 WHERE id = 'season_0';
 
@@ -100,37 +129,20 @@ FROM (VALUES
 
 
 -- =========================================================================
--- BLOCK 4 -- application_close_at. NOT INCLUDED ABOVE ON PURPOSE.
+-- BLOCK 4 -- RESOLVED. application_close_at is folded into BLOCK 2 above.
+-- Head office confirmed 9/27-9/29 is the make-and-submit window, so the cut is
+-- 2026-09-30 00:00 PT (the 72h mark, not 9/29 23:59 -- someone always submits
+-- in the last minute). Nothing to run here.
 --
--- This column is not just the apply-form window. isApplicationClosed() is the
--- SUBMISSION hard cut: lib/studio.ts:1126 (submitGeneration) and :1773
--- (submitRender) both refuse with 'application_closed' once now > this value.
--- It is also the prelim scoring gate in the scoring worker.
---
--- So the two statements below are NOT interchangeable:
---
---   (a) 2026-09-26 23:59 PT  -- as instructed. Correct ONLY if 9/27-29 is a
---       post-deadline processing window with no participant submissions.
---       If participants submit on 9/27-29, every submission is REFUSED.
---
---   (b) 2026-09-29 23:59 PT  -- correct if 9/27-29 is the 72h make-and-submit
---       window. Submissions stay open through it; prelim scoring opens after.
---
--- Pick one and run only that statement, then re-run BLOCK 1 to confirm.
+-- STRUCTURAL NOTE, no code change proposed: there is no separate
+-- "registration closes" column, and for season_0 that is correct. A studio
+-- submission MINTS the application row itself (lib/studio.ts:1122-1131 inserts
+-- pending/waitlist with the capacity check), so registering and submitting are
+-- the same event. /api/apply (:113,:116), /apply and both studio submit paths
+-- all read this one column. A separate submission_close_at would only be needed
+-- if head office wants "registration shuts 9/26, then only existing entrants
+-- may submit 9/27-29" -- that is a policy change plus a code change, not a value.
 -- =========================================================================
-
--- (a) close BEFORE the 9/27-29 window
--- UPDATE public.seasons
---    SET application_close_at = TIMESTAMP '2026-09-26 23:59' AT TIME ZONE 'America/Los_Angeles',
---        scoring_start_at     = TIMESTAMP '2026-09-27 00:00' AT TIME ZONE 'America/Los_Angeles'
---  WHERE id = 'season_0';
-
--- (b) close AT THE END of the 9/27-29 window
--- UPDATE public.seasons
---    SET application_close_at = TIMESTAMP '2026-09-29 23:59' AT TIME ZONE 'America/Los_Angeles',
---        scoring_start_at     = TIMESTAMP '2026-09-30 00:00' AT TIME ZONE 'America/Los_Angeles'
---  WHERE id = 'season_0';
-
 
 -- =========================================================================
 -- BLOCK 5 -- STILL STALE AFTER THE ABOVE. Reported, not changed: no confirmed
@@ -149,3 +161,40 @@ FROM (VALUES
 --     SELECT id, status, application_open_at AT TIME ZONE 'America/Los_Angeles'
 --     FROM public.seasons WHERE id IN ('season_0','season_1');
 -- =========================================================================
+
+-- =========================================================================
+-- BLOCK 6 -- season_1 overlap. Run alone, AFTER block 3 passes.
+--
+-- season_1.application_open_at = 2026-09-28 00:00 PT and getCurrentSeason()
+-- returns the most recently OPENED season, so on 9/28 -- day two of season_0's
+-- prelim window -- the whole platform would switch to season_1.
+--
+-- NULL is the safe value, and it is the path the code already designs for:
+--   getCurrentSeason: .lte('application_open_at', now) excludes NULL, so
+--     season_1 can never become current. The "soonest upcoming" fallback only
+--     runs when NOTHING has opened, which is not the case while season_0 is open.
+--   deriveLobbyMode (lib/lobby.ts): `open == null -> 'upcoming'`, commented as
+--     the teaser state ("announced, open date not set yet").
+--   season-tick (route.ts:120): explicitly skips next-season creation with a
+--     logged reason when the latest season has no open date. No throw.
+-- A far-future placeholder would instead publish a countdown to a date we would
+-- then have to move. NULL promises nothing.
+--
+-- Expect: "UPDATE 1", then the verify returns open_pt = NULL, status 'upcoming'.
+-- -------------------------------------------------------------------------
+BEGIN;
+
+UPDATE public.seasons
+   SET application_open_at  = NULL,
+       application_close_at = NULL
+ WHERE id = 'season_1';
+
+COMMIT;
+
+-- verify
+SELECT id, status,
+       application_open_at  AT TIME ZONE 'America/Los_Angeles' AS open_pt,
+       application_close_at AT TIME ZONE 'America/Los_Angeles' AS close_pt
+FROM public.seasons
+WHERE id IN ('season_0', 'season_1')
+ORDER BY id;
