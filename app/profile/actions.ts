@@ -295,7 +295,7 @@ export async function loadMyScores(): Promise<MyRoundScore[]> {
 export async function loadDisplayName(): Promise<string | null> {
   const user = await getUserOrNull()
   if (!user) return null
-  return getDisplayName(user.id)
+  return getDisplayName(user.id, user.email)
 }
 
 export type SaveNicknameResult =
@@ -308,9 +308,12 @@ export async function saveDisplayName(value: string): Promise<SaveNicknameResult
   const v = validateNickname(value)
   if (!v.ok) return { ok: false, error: v.error }
   try {
-    await setDisplayName(user.id, v.value)
+    await setDisplayName(user.id, user.email, v.value)
     return { ok: true, value: v.value }
-  } catch {
+  } catch (e) {
+    // setDisplayName now throws instead of silently doing nothing, so this
+    // branch is reachable and the user sees a real failure.
+    console.error('[profile] nickname save failed', { userId: user.id, error: String(e) })
     return { ok: false, error: 'failed' }
   }
 }

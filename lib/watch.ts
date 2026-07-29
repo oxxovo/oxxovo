@@ -14,7 +14,7 @@
 import 'server-only'
 import { createSupabaseAdmin } from './supabase-admin'
 import { parseVideoUrl } from './video-url'
-import { getDisplayName, getDisplayNames } from './nickname'
+import { getDisplayNameReadOnly, getDisplayNames } from './nickname'
 
 export type WatchRound = 'application' | 'main'
 export type WatchSort = 'trending' | 'latest' | 'award'
@@ -448,7 +448,9 @@ export async function getWatchVideo(
   const url = (round === 'application' ? row.free_entry_url : row.main_round_video_url)?.trim()
   if (!url) return null
 
-  const displayName = row.user_id ? await getDisplayName(row.user_id) : undefined
+  // Read-only: this renders SOMEONE ELSE's entry on a public page, so it must
+  // never create a profiles row. See lib/nickname.ts getDisplayNameReadOnly.
+  const displayName = row.user_id ? await getDisplayNameReadOnly(row.user_id) : undefined
 
   const [likeAgg, viewAgg, commentAgg] = await Promise.all([
     admin

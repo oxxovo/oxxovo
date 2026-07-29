@@ -2,11 +2,25 @@
 //
 // One nickname per account (profiles.display_name), shown identically on
 // submissions, comments, and likes -- never the email (YouTube-style, TK
-// 2026-06-28). Auto-generated on first use (there is no handle_new_user
-// trigger, so we ensure the profile row via upsert), editable in /profile.
+// 2026-06-28). Auto-generated on first use, editable in /profile.
+//
+// CORRECTION (2026-07-28): this header used to state "there is no
+// handle_new_user trigger". That was wrong. The trigger existed and had been
+// creating profiles rows in production since at least 2026-06-20 -- it was
+// created in the Supabase dashboard, so nothing in the repo mentioned it. The
+// stale comment was then read as evidence that the trigger never existed, and a
+// live signup trigger was dropped on the strength of it. Definition now lives in
+// reports/auth_handle_new_user_2026-07-28.sql. Do not treat a comment as proof of
+// DB state.
+//
+// Self vs read paths: getDisplayName/setDisplayName are SELF ONLY and take the
+// caller's session email so they can create the profiles row when it is missing
+// (profiles.email is NOT NULL). getDisplayNameReadOnly/getDisplayNames are for
+// OTHER accounts and never write.
 
 import 'server-only'
 import { createSupabaseAdmin } from './supabase-admin'
+import { ensureProfileRow } from './profile-row'
 
 export const NICKNAME_MIN = 2
 export const NICKNAME_MAX = 30
@@ -31,13 +45,16 @@ export function validateNickname(
   return { ok: true, value: v }
 }
 
-// Returns the account's nickname, creating one (and ensuring the profile row)
-// on first use. Use this on write paths or single-record reads.
-export async function getDisplayName(userId: string): Promise<string> {
+// Returns the SIGNED-IN account's nickname, creating one (and the profiles row
+// itself, if the signup trigger did not) on first use. `email` is required and
+// must be the caller's own session email -- see lib/profile-row.ts.
+export async function getDisplayName(userId: string, email: string): Promise<string> {
   const admin = createSupabaseAdmin()
+  // `id` is selected as well so a MISSING ROW is distinguishable from a present
+  // row with a null display_name -- that difference decides whether we insert.
   const { data } = await admin
     .from('profiles')
-    .select('display_name')
+    .select('id, display_name')
     .eq('id', userId)
     .maybeSingle()
 
@@ -45,8 +62,44 @@ export async function getDisplayName(userId: string): Promise<string> {
   if (existing) return existing
 
   const auto = autoNickname(userId)
-  await admin.from('profiles').upsert({ id: userId, display_name: auto }, { onConflict: 'id' })
+
+  if (!data) {
+    // No row at all: the signup trigger did not fire for this account. Loud,
+    // because it means the trigger is missing or the account predates it.
+    console.error('[nickname] profiles row missing -- creating it app-side', { userId })
+    if (!(await ensureProfileRow(userId, email))) return auto
+  }
+
+  const { error } = await admin.from('profiles').update({ display_name: auto }).eq('id', userId)
+  // Non-fatal: the caller still gets a usable name, so rendering never breaks on
+  // this. But it must leave a trace -- a swallowed write is what made the
+  // 2026-07-28 profile outage invisible.
+  if (error) {
+    console.error('[nickname] auto display_name write failed', { userId, message: error.message })
+  }
   return auto
+}
+
+// Read-only nickname for ANOTHER account (public Watch pages, single record).
+// NEVER writes: a missing row is logged and falls back to the deterministic auto
+// nickname. Deliberate -- if the signup trigger dies, "row missing" becomes true
+// for every account at once, and this is audience-facing traffic. Turning that
+// into a write per render would take Watch down with it (TK, 2026-07-28).
+// Historical gaps are closed by a one-off backfill, not at runtime.
+export async function getDisplayNameReadOnly(userId: string): Promise<string> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('profiles')
+    .select('id, display_name')
+    .eq('id', userId)
+    .maybeSingle()
+
+  const existing = (data?.display_name as string | null)?.trim()
+  if (existing) return existing
+  if (!data) {
+    console.error('[nickname] profiles row missing on a read path (not creating)', { userId })
+  }
+  return autoNickname(userId)
 }
 
 // Batch lookup for list/grid rendering. Does NOT auto-create (read path, no
@@ -66,9 +119,17 @@ export async function getDisplayNames(userIds: (string | null | undefined)[]): P
   return m
 }
 
-// Sets the account nickname (profile edit). Ensures the row exists. Caller
-// validates first.
-export async function setDisplayName(userId: string, value: string): Promise<void> {
+// Sets the SIGNED-IN account's nickname (profile edit). Ensures the row exists
+// first. Caller validates the value.
+//
+// THROWS on failure, deliberately: /profile shows a save result, and telling a
+// user their nickname was saved when it was not is worse than showing an error.
+// This used to swallow the error and return void.
+export async function setDisplayName(userId: string, email: string, value: string): Promise<void> {
+  if (!(await ensureProfileRow(userId, email))) {
+    throw new Error('setDisplayName: profiles row unavailable')
+  }
   const admin = createSupabaseAdmin()
-  await admin.from('profiles').upsert({ id: userId, display_name: value }, { onConflict: 'id' })
+  const { error } = await admin.from('profiles').update({ display_name: value }).eq('id', userId)
+  if (error) throw new Error('setDisplayName: ' + error.message)
 }
