@@ -104,23 +104,69 @@ void main() { vec3 b = texture(u_base, v_uv).rgb; vec3 g = texture(u_blur, v_uv)
 export const FRAG_COPY = `#version 300 es
 precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u; void main() { o = texture(u, v_uv); }`
 
-// Transition blend (crossfade + wipes) at progress p in [0,1]. Matches ffmpeg
-// xfade fade/wipeleft/wiperight/wipeup/wipedown (validated by transition-parity).
+// Transition blend at progress p in [0,1]. Every branch mirrors the ffmpeg xfade
+// transition of the same name, and every formula below was DERIVED BY MEASUREMENT
+// against this ffmpeg build, not recalled: the reference frame is selected by frame
+// index (scripts/parity-ff.mjs) and the A/B coefficients are separated by rendering
+// white-over-black and black-over-white, which makes each term readable on its own.
+//
+// slide-left (2026-07-30): A shifts left by p, B enters from the right, boundary at
+//   x = 1-p. Byte-identical to ffmpeg (0.00%, max 0) once the reference frame is
+//   frame-exact -- the previously recorded 8.81% was a harness artefact.
+// dip-to-black / dip-to-white (2026-07-30): NOT a symmetric fade through the
+//   midpoint. The darkest point is p ~= 0.2, and the two clip weights use different
+//   smoothstep widths:
+//       alpha = (1 - smoothstep(0, 0.2, p)) * (1 - p)      <- outgoing
+//       beta  = smoothstep(0, 0.8, p) * p                  <- incoming
+//       out   = alpha*A + beta*B + (1 - alpha - beta)*BG
+//   Verified on 14 progress points with ZERO error on both coefficients; the same
+//   alpha/beta with BG=white reproduce fadewhite (<=1 LSB). A naive "fade to black
+//   at p=0.5" would have been visibly wrong.
+// circle (circleopen, 2026-07-30): a wide radial smoothstep sweeping outward, not a
+//   hard disc with a soft rim:
+//       d = hypot(x - w/2, y - h/2) / hypot(w/2, h/2)
+//       out = mix(B, A, smoothstep(0, 1, d - (p - 0.5) * 3))
+//   Verified across 5 progress values x the full radius range.
+// u_res is the output canvas size -- only `circle` needs it (for the aspect ratio;
+// d is scale-invariant otherwise).
 export const FRAG_TRANSITION = `#version 300 es
-precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u_a, u_b; uniform float u_p; uniform int u_type;
+precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u_a, u_b; uniform float u_p; uniform int u_type; uniform vec2 u_res;
 void main() {
   vec3 a = texture(u_a, v_uv).rgb, b = texture(u_b, v_uv).rgb; vec3 c;
   if (u_type == 0) c = mix(a, b, u_p);
   else if (u_type == 1) c = v_uv.x > 1.0 - u_p ? b : a;      // wipe-left
   else if (u_type == 2) c = v_uv.x < u_p ? b : a;            // wipe-right
   else if (u_type == 3) c = v_uv.y > 1.0 - u_p ? b : a;      // wipe-up
-  else c = v_uv.y < u_p ? b : a;                             // wipe-down
+  else if (u_type == 4) c = v_uv.y < u_p ? b : a;            // wipe-down
+  else if (u_type == 5 || u_type == 6) {                     // dip to black / white
+    float alpha = (1.0 - smoothstep(0.0, 0.2, u_p)) * (1.0 - u_p);
+    float beta = smoothstep(0.0, 0.8, u_p) * u_p;
+    vec3 bg = u_type == 5 ? vec3(0.0) : vec3(1.0);
+    c = a * alpha + b * beta + bg * max(0.0, 1.0 - alpha - beta);
+  }
+  else if (u_type == 7) {                                    // circle (circleopen)
+    vec2 half_ = u_res * 0.5;
+    float d = length((v_uv - 0.5) * u_res) / length(half_);
+    c = mix(b, a, smoothstep(0.0, 1.0, d - (u_p - 0.5) * 3.0));
+  }
+  else {                                                     // slide-left
+    vec2 ua = v_uv + vec2(u_p, 0.0);
+    vec2 ub = v_uv - vec2(1.0 - u_p, 0.0);
+    c = v_uv.x > 1.0 - u_p ? texture(u_b, ub).rgb : texture(u_a, ua).rgb;
+  }
   o = vec4(c, 1.0);
 }`
 
-// transition id -> shader type int (E exposes only the parity-passed set).
+// transition id -> shader type int. ONLY parity-passed transitions are listed: an id
+// missing here cannot be exposed in the editor, which is what keeps "the preview
+// matches the render" true by construction rather than by intention.
+// dissolve is deliberately absent -- ffmpeg's dissolve field comes out of sinf() in
+// float32 and its fract() amplifies the last bits, so the pattern depends on the
+// ffmpeg build's libm and is not reproducible in a shader. Closing that one needs a
+// render-side change (a field we define), same class as grain/tmix.
 export const TRANSITION_TYPE: Record<string, number> = {
   crossfade: 0, 'wipe-left': 1, 'wipe-right': 2, 'wipe-up': 3, 'wipe-down': 4,
+  'dip-to-black': 5, 'dip-to-white': 6, circle: 7, 'slide-left': 8,
 }
 
 // ★ Boundary timing: at progress p the OUTGOING clip must show endMs_out - t(1-p)

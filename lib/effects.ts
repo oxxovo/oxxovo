@@ -59,13 +59,26 @@ export const EXPOSED_SLIDER_KEYS: readonly (keyof EffectParams)[] = [
 ]
 export const EXPOSED_SLIDERS: readonly EffectSpec[] = EFFECT_SPECS.filter((s) => EXPOSED_SLIDER_KEYS.includes(s.key))
 
-// The transitions E EXPOSES (parity-passed). crossfade + 4 wipes.
+// The transitions the editor EXPOSES. A transition may only appear here once the
+// preview reproduces the render for it -- the gate is scripts/gl-engine-transition
+// (4 content pairs x p=0.25/0.5/0.75, worst case, exit 1 on failure), and each id
+// must also exist in TRANSITION_TYPE (lib/gl-effects) or the preview cannot draw it.
+// Worst-case parity as of 2026-07-30: slide-left 0.00% (byte-identical), everything
+// else <= 0.30%.
+// NOT exposed, on purpose: dissolve -- ffmpeg's field comes out of float32 sinf()
+// whose fract() amplifies the last bits, so the pattern depends on the ffmpeg build's
+// libm and cannot be reproduced in a shader (or across GPUs). Opening it requires a
+// render-side field we define, same class as grain/tmix.
 export const EXPOSED_TRANSITIONS: readonly { id: string; label: string }[] = [
   { id: 'crossfade', label: 'Crossfade' },
   { id: 'wipe-left', label: 'Wipe left' },
   { id: 'wipe-right', label: 'Wipe right' },
   { id: 'wipe-up', label: 'Wipe up' },
   { id: 'wipe-down', label: 'Wipe down' },
+  { id: 'slide-left', label: 'Slide left' },
+  { id: 'dip-to-black', label: 'Dip to black' },
+  { id: 'dip-to-white', label: 'Dip to white' },
+  { id: 'circle', label: 'Circle open' },
 ]
 
 // Available in-platform LUTs (must match oxxovo-studio assets/luts + LUT_FILES).

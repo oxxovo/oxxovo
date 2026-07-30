@@ -43,7 +43,9 @@ export function xfadeFrameIndex(p, { fps = XFADE_FPS, offset = 1, duration = 1 }
 // Two still PNGs in, one PNG out. `type` is an ffmpeg xfade transition name.
 export function xfadeRefArgs({ aPng, bPng, type, p, out, fps = XFADE_FPS, offset = 1, duration = 1 }) {
   const n = xfadeFrameIndex(p, { fps, offset, duration })
-  const hold = offset + duration + 1 // both inputs outlive the transition
+  // Just past the transition: at 100 fps a 1s overhang is 100 wasted encoded
+  // frames per measurement, and the harnesses take hundreds of measurements.
+  const hold = offset + duration + 0.1
   return [
     '-y',
     '-loop', '1', '-t', String(hold), '-r', String(fps), '-i', aPng,

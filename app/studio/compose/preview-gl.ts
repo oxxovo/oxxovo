@@ -95,6 +95,8 @@ export class GLProcessor {
     gl.useProgram(this.progTrans)
     gl.uniform1i(gl.getUniformLocation(this.progTrans, 'u_a'), 0); gl.uniform1i(gl.getUniformLocation(this.progTrans, 'u_b'), 1)
     this.uf(this.progTrans, 'u_p', p); gl.uniform1i(gl.getUniformLocation(this.progTrans, 'u_type'), type)
+    // circle needs the canvas aspect (see FRAG_TRANSITION); harmless for the rest.
+    gl.uniform2f(gl.getUniformLocation(this.progTrans, 'u_res'), w, h)
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[aIdx].tex)
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.fbos[bIdx].tex)
     this.bindTarget(-1, w, h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)

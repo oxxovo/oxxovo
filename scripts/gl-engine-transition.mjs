@@ -10,7 +10,7 @@ import { chromium } from 'playwright-core'
 import { VERT, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample } from '../lib/gl-effects.ts'
 import { xfadeRefArgs, xfadeClipRefArgs } from './parity-ff.mjs'
 
-const [src] = process.argv.slice(2)
+const [src] = process.argv.slice(2) // optional: only part (2) needs a clip
 const TMP = process.env.TEMP + '/xfeng'
 const sh = (args) => new Promise((res, rej) => { const p = spawn('ffmpeg', args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-200))))); p.on('error', rej) })
 const rawOf = (png) => sh(['-y', '-i', png, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
@@ -35,21 +35,58 @@ async function glBlend(aB64, bB64, p, type) {
     tex(A, 0); tex(B, 1)
     gl.uniform1i(gl.getUniformLocation(pr, 'u_a'), 0); gl.uniform1i(gl.getUniformLocation(pr, 'u_b'), 1)
     gl.uniform1f(gl.getUniformLocation(pr, 'u_p'), p); gl.uniform1i(gl.getUniformLocation(pr, 'u_type'), type)
+    gl.uniform2f(gl.getUniformLocation(pr, 'u_res'), W, H)
     gl.viewport(0, 0, W, H); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
     return cv.toDataURL('image/png')
   }, { aB64, bB64, p, type, VERT, FRAG: FRAG_TRANSITION })
   return Buffer.from(url.split(',')[1], 'base64')
 }
 
-// ---- (1) PARITY: static A,B mid-frame per transition type ----
-await frameAt(1, `${TMP}/A.png`); await frameAt(10, `${TMP}/B.png`)
-const A64 = await b64(`${TMP}/A.png`), B64 = await b64(`${TMP}/B.png`)
-console.log('--- (1) mid-frame parity (progress 0.5) ---')
-for (const [id, ff] of [['crossfade', 'fade'], ['wipe-left', 'wipeleft'], ['wipe-right', 'wiperight'], ['wipe-up', 'wipeup'], ['wipe-down', 'wipedown']]) {
-  await sh(xfadeRefArgs({ aPng: `${TMP}/A.png`, bPng: `${TMP}/B.png`, type: ff, p: 0.5, out: `${TMP}/ff_${id}.png` }))
-  const gl = await glBlend(A64, B64, 0.5, TRANSITION_TYPE[id]); await writeFile(`${TMP}/gl_${id}.png`, gl)
-  const d = diff(await rawOf(`${TMP}/ff_${id}.png`), await rawOf(`${TMP}/gl_${id}.png`))
-  console.log(`  ${id.padEnd(11)}: ${d.toFixed(2)}%  ${d <= 5 ? 'PASS' : 'REVIEW'}`)
+// ---- (1) PARITY: every exposed transition x a fixed CONTENT SET x 3 progresses --
+// One image is not evidence (see gl-engine-parity for the same lesson), and a
+// transition can be right at p=0.5 and wrong elsewhere, so the gate needs both axes.
+// ffmpeg names must match the worker's XFADE_MAP.
+const FF_NAME = {
+  crossfade: 'fade', 'wipe-left': 'wipeleft', 'wipe-right': 'wiperight',
+  'wipe-up': 'wipeup', 'wipe-down': 'wipedown', 'dip-to-black': 'fadeblack',
+  'dip-to-white': 'fadewhite', circle: 'circleopen', 'slide-left': 'slideleft',
+}
+const CONTENT = {
+  smooth: ['-f', 'lavfi', '-i', 'color=c=gray:s=256x256', '-vf', "geq=r='128+60*sin(X/40)':g='120+50*sin(Y/35)':b='110+40*sin((X+Y)/50)',format=rgb24"],
+  mandel: ['-f', 'lavfi', '-i', 'mandelbrot=s=256x256'],
+  bars: ['-f', 'lavfi', '-i', 'smptebars=s=256x256'],
+  testsrc: ['-f', 'lavfi', '-i', 'testsrc2=s=256x256'],
+}
+const names = Object.keys(CONTENT)
+for (const [n, args] of Object.entries(CONTENT)) await sh(['-y', ...args, '-frames:v', '1', `${TMP}/c_${n}.png`])
+// pair each content with the next one, cyclically -> 4 A/B pairs
+const PAIRS = names.map((n, i) => ({ label: `${n}->${names[(i + 1) % names.length]}`.padEnd(16), a: `${TMP}/c_${n}.png`, b: `${TMP}/c_${names[(i + 1) % names.length]}.png` }))
+const PROGRESS = [0.25, 0.5, 0.75]
+const GATE = 5
+// Lowest fps that still puts every PROGRESS value exactly on a frame (0.05 grid).
+// The reference is frame-exact either way; this only avoids encoding frames we
+// then throw away -- 100 fps x hundreds of measurements is minutes of ffmpeg.
+const REF_FPS = 20
+
+console.log('--- (1) transition parity: worst over 4 content pairs x p=0.25/0.5/0.75 ---')
+console.log(`${'transition'.padEnd(13)}${'worst'.padEnd(9)}gate<=${GATE}%   worst case`)
+let fails = 0
+for (const id of Object.keys(TRANSITION_TYPE)) {
+  const ff = FF_NAME[id]
+  if (!ff) { console.log(`  ${id.padEnd(11)}: no ffmpeg name mapped -- REVIEW`); fails++; continue }
+  let worst = -1, where = ''
+  for (const pair of PAIRS) {
+    const aB64 = await b64(pair.a), bB64 = await b64(pair.b)
+    for (const p of PROGRESS) {
+      await sh(xfadeRefArgs({ aPng: pair.a, bPng: pair.b, type: ff, p, fps: REF_FPS, out: `${TMP}/ff_${id}.png` }))
+      await writeFile(`${TMP}/gl_${id}.png`, await glBlend(aB64, bB64, p, TRANSITION_TYPE[id]))
+      const d = diff(await rawOf(`${TMP}/ff_${id}.png`), await rawOf(`${TMP}/gl_${id}.png`))
+      if (d > worst) { worst = d; where = `${pair.label.trim()} @ p=${p}` }
+    }
+  }
+  const ok = worst <= GATE
+  if (!ok) fails++
+  console.log(`  ${id.padEnd(11)}: ${worst.toFixed(2)}%`.padEnd(26) + (ok ? 'PASS' : 'REVIEW') + `   (${where})`)
 }
 
 // ---- (2) BOUNDARY TIMING: crossfade, outgoing trim [0,6], incoming [8,14], t=1 ----
@@ -73,3 +110,5 @@ for (const p of [0, 0.5, 1]) {
   console.log(`  p=${p}: aTime=${aTime.toFixed(2)}s bTime=${bTime.toFixed(2)}s  diff=${d.toFixed(2)}%  ${d <= 8 ? 'ALIGNED' : 'DRIFT'}`)
 }
 await browser.close()
+if (fails) { console.log(`REVIEW: ${fails} transition(s) over gate`); process.exitCode = 1 }
+else console.log('ALL TRANSITIONS PASS')
