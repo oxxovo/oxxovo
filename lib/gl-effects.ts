@@ -23,6 +23,48 @@ uniform sampler2D u_tex, u_lut;
 uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_vignette, u_hasLut, u_N, u_grain, u_seed;
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+// ★ffmpeg eq is a YUV filter, not an RGB one. Measured 2026-07-30 (24-patch chart
+// + 256-step sweeps, planes read directly as yuv444p):
+//   * the graph negotiates yuv444p (no chroma subsampling) and the conversion is
+//     BT.601 LIMITED range -- modelling it that way reproduced ffmpeg's identity
+//     round trip BYTE-EXACT (mean 0/max 0 over the chart);
+//   * brightness/contrast touch ONLY Y, saturation touches ONLY U/V (verified both
+//     ways: Y unchanged by saturation, U unchanged by contrast);
+//   * per-plane transfer: Y' = ((Y/255 - 0.5)*contrast + 0.5 + brightness)*255
+//     (brightness form matched EXACTLY, 0/0 over 256 steps), U' = (U-128)*sat + 128.
+// Doing this in RGB (the previous shader) is a different operator: on pure red at
+// saturation 0.8 ffmpeg gives (216,17,11) while an RGB-luma mix gives (219,15,15) --
+// note G and B diverge, which an RGB-luma model cannot produce. That mismatch was
+// worth 2.5% (smooth gradients) to 7.5% (saturated) mean error, i.e. the colour
+// grade never actually passed its 2.5% gate on any content.
+// Residual after this port: <= 1 LSB (~0.3%), which is the pipeline's own floor --
+// ffmpeg's identity RGB->YUV->RGB round trip is itself lossy by up to 1 LSB.
+const float KR = 0.299, KG = 0.587, KB = 0.114;
+vec3 rgbToYuv601Limited(vec3 c) {
+  float y = dot(c, vec3(KR, KG, KB));
+  return vec3(16.0 + 219.0 * y,
+              128.0 + 224.0 * (c.b - y) / 1.772,
+              128.0 + 224.0 * (c.r - y) / 1.402);
+}
+vec3 yuv601LimitedToRgb(vec3 t) {
+  float y = (t.x - 16.0) / 219.0;
+  float u = (t.y - 128.0) / 224.0;
+  float v = (t.z - 128.0) / 224.0;
+  float r = y + 1.402 * v;
+  float b = y + 1.772 * u;
+  float g = (y - KR * r - KB * b) / KG;
+  return clamp(vec3(r, g, b), 0.0, 1.0);
+}
+// brightness = u_exposure, contrast = u_contrast, saturation = u_saturation --
+// colorUniforms() already produces the same numbers the render passes to eq.
+vec3 eqGrade(vec3 c, float brightness, float contrast, float saturation) {
+  vec3 t = rgbToYuv601Limited(c);
+  t.x = clamp(((t.x / 255.0 - 0.5) * contrast + 0.5 + brightness) * 255.0, 0.0, 255.0);
+  t.y = clamp((t.y - 128.0) * saturation + 128.0, 0.0, 255.0);
+  t.z = clamp((t.z - 128.0) * saturation + 128.0, 0.0, 255.0);
+  return yuv601LimitedToRgb(t);
+}
 vec3 lutSample(vec3 c) {
   float N = u_N; c = clamp(c, 0.0, 1.0);
   float bF = c.b * (N - 1.0); float b0 = floor(bF); float b1 = min(b0 + 1.0, N - 1.0); float f = bF - b0;
@@ -33,8 +75,9 @@ vec3 lutSample(vec3 c) {
 }
 void main() {
   vec3 c = texture(u_tex, v_uv).rgb;
-  c = (c - 0.5) * u_contrast + 0.5 + u_exposure;
-  float y = dot(c, LUMA); c = mix(vec3(y), c, u_saturation);
+  // eq (YUV) first, exactly like the render's filter order; everything after this
+  // mirrors an RGB filter (colortemperature / colorbalance / lut3d / vignette).
+  c = eqGrade(c, u_exposure, u_contrast, u_saturation);
   float k = u_tempK / 3000.0; c.r -= k * 0.05; c.b += k * 0.05;
   c.g += u_tint * (1.0 - abs(2.0 * dot(c, LUMA) - 1.0));
   if (u_hasLut > 0.5) c = lutSample(clamp(c, 0.0, 1.0));

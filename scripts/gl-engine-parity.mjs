@@ -7,18 +7,34 @@ import { spawn } from 'node:child_process'
 import { chromium } from 'playwright-core'
 import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, colorUniforms, glowStages, parseCube, tileCube } from '../lib/gl-effects.ts'
 
-const [testPng] = process.argv.slice(2)
+// ★Every recorded number needs provenance. A parity figure measured on ONE image
+// is not a property of the engine: the colour grade sat at a recorded "1.51%" while
+// actually ranging 2.5%-7.5% depending on content (that recorded value came from a
+// single low-saturation frame). So this harness runs a fixed CONTENT SET and prints
+// one row per content -- a gate passes only if every content passes.
+// The set is synthesised with ffmpeg (no external assets, reproducible anywhere):
+//   smooth  -- soft sine gradients, stands in for photographic footage
+//   mandel  -- fine detail, hard edges
+//   bars    -- SMPTE bars, fully saturated primaries (worst case for chroma math)
+//   testsrc -- ffmpeg's own pattern: saturated blocks + high-frequency zone plate
+// Pass image paths to override the set (e.g. real AI clip frames).
+const CONTENT = {
+  smooth: ['-f', 'lavfi', '-i', 'color=c=gray:s=320x240', '-vf', "geq=r='128+60*sin(X/40)':g='120+50*sin(Y/35)':b='110+40*sin((X+Y)/50)',format=rgb24"],
+  mandel: ['-f', 'lavfi', '-i', 'mandelbrot=s=320x240'],
+  bars: ['-f', 'lavfi', '-i', 'smptebars=s=320x240'],
+  testsrc: ['-f', 'lavfi', '-i', 'testsrc2=s=320x240'],
+}
+const TMPDIR = (process.env.TEMP || '/tmp').split(String.fromCharCode(92)).join('/')
+const argPngs = process.argv.slice(2)
 const run = (args) => new Promise((res, rej) => { const p = spawn('ffmpeg', args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-200))))); p.on('error', rej) })
 const raw = (png, vf) => run(['-y', '-i', png, ...(vf ? ['-vf', vf] : []), '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
 const diff = (a, b) => { const n = Math.min(a.length, b.length); let s = 0; for (let i = 0; i < n; i++) s += Math.abs(a[i] - b[i]); return s / n / 255 * 100 }
-const testB64 = (await readFile(testPng)).toString('base64')
-
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage()
 
 // Runs a WebGL2 pipeline in the page. `pipeline` describes passes with the shared
 // gl-effects shaders. Returns a PNG data buffer.
-async function glRun(spec) {
+async function glRun(spec, testB64) {
   const url = await page.evaluate(async ({ testB64, spec, VERT }) => {
     const img = new Image(); img.src = 'data:image/png;base64,' + testB64; await img.decode()
     const W = img.width, H = img.height
@@ -61,25 +77,70 @@ async function glRun(spec) {
 const shadersCL = { cl: FRAG_COLOR_LUT }
 const shadersGlow = { cl: FRAG_COLOR_LUT, blur: FRAG_BLUR, screen: FRAG_SCREEN, copy: '#version 300 es\nprecision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u; void main(){ o=texture(u,v_uv); }' }
 
-// color
-{
-  const U = colorUniforms({ exposure: 10, contrast: 30, saturation: -20 })
-  const p = testPng.replace(/\.png$/, '.eng.color.png'); await writeFile(p, await glRun({ shaders: shadersCL, U }))
-  const d = diff(await raw(testPng, 'eq=brightness=0.0500:contrast=1.3000:saturation=0.8000,format=rgb24'), await raw(p))
-  console.log(`ENGINE color : ${d.toFixed(2)}%  (harness 1.51%, gate <=2.5%)  ${d <= 2.5 ? 'PASS' : 'REVIEW'}`)
+// Build (or take) the content set, then measure every case on every content.
+const items = []
+if (argPngs.length) {
+  for (const p of argPngs) items.push({ name: p.split(/[\/]/).pop().replace(/\.png$/, ''), png: p })
+} else {
+  for (const [name, args] of Object.entries(CONTENT)) {
+    const png = `${TMPDIR}/parity_${name}.png`
+    await run(['-y', ...args, '-frames:v', '1', png])
+    items.push({ name, png })
+  }
 }
-// LUT
-{
-  const cube = parseCube(await readFile('public/luts/teal_orange.cube', 'utf8')); const t = tileCube(cube)
-  const p = testPng.replace(/\.png$/, '.eng.lut.png'); await writeFile(p, await glRun({ shaders: shadersCL, U: colorUniforms(), lut: { px: Array.from(t.px), W: t.W, H: t.H, N: cube.size } }))
-  const d = diff(await raw(testPng, `lut3d=file='public/luts/teal_orange.cube',format=rgb24`), await raw(p))
-  console.log(`ENGINE LUT   : ${d.toFixed(2)}%  (harness 0.18%, gate <=3%)   ${d <= 3 ? 'PASS' : 'REVIEW'}`)
+
+const CASES = [
+  {
+    name: 'color',
+    gate: 2.5,
+    // eq params mirror colorUniforms(): brightness=ex/200, contrast=1+co/100, saturation=1+sa/100
+    vf: 'eq=brightness=0.0500:contrast=1.3000:saturation=0.8000,format=rgb24',
+    gl: async (b64) => glRun({ shaders: shadersCL, U: colorUniforms({ exposure: 10, contrast: 30, saturation: -20 }) }, b64),
+  },
+  {
+    name: 'LUT',
+    gate: 3,
+    vf: `lut3d=file='public/luts/teal_orange.cube',format=rgb24`,
+    gl: async (b64) => {
+      const cube = parseCube(await readFile('public/luts/teal_orange.cube', 'utf8'))
+      const t = tileCube(cube)
+      return glRun({ shaders: shadersCL, U: colorUniforms(), lut: { px: Array.from(t.px), W: t.W, H: t.H, N: cube.size } }, b64)
+    },
+  },
+  {
+    name: 'glow',
+    gate: 5,
+    vf: 'split[a][b];[b]gblur=sigma=6.250[c];[a][c]blend=all_mode=screen:all_opacity=0.500,format=rgb24',
+    gl: async (b64) => glRun({ shaders: shadersGlow, U: colorUniforms(), stages: glowStages({ glow: 50 }) }, b64),
+  },
+]
+
+const results = {}
+for (const c of CASES) results[c.name] = []
+for (const it of items) {
+  const b64 = (await readFile(it.png)).toString('base64')
+  for (const c of CASES) {
+    const outPng = `${it.png.replace(/\.png$/, '')}.eng.${c.name}.png`
+    await writeFile(outPng, await c.gl(b64))
+    const d = diff(await raw(it.png, c.vf), await raw(outPng))
+    results[c.name].push({ content: it.name, d })
+  }
 }
-// glow (g=50 -> sigma 6.25, op 0.5)
-{
-  const stages = glowStages({ glow: 50 })
-  const p = testPng.replace(/\.png$/, '.eng.glow.png'); await writeFile(p, await glRun({ shaders: shadersGlow, U: colorUniforms(), stages }))
-  const d = diff(await raw(testPng, 'split[a][b];[b]gblur=sigma=6.250[c];[a][c]blend=all_mode=screen:all_opacity=0.500,format=rgb24'), await raw(p))
-  console.log(`ENGINE glow  : ${d.toFixed(2)}%  (harness 0.11-0.23%, gate <=5%)  ${d <= 5 ? 'PASS' : 'REVIEW'}`)
+
+console.log('ENGINE parity -- one row per case, one column per content')
+console.log('case   gate   ' + items.map((i) => i.name.padEnd(9)).join('') + ' verdict')
+let allPass = true
+for (const c of CASES) {
+  const rows = results[c.name]
+  const worst = Math.max(...rows.map((r) => r.d))
+  const ok = worst <= c.gate
+  if (!ok) allPass = false
+  console.log(
+    c.name.padEnd(7) + `<=${c.gate}%`.padEnd(7) +
+      rows.map((r) => `${r.d.toFixed(2)}%`.padEnd(9)).join('') +
+      (ok ? `PASS (worst ${worst.toFixed(2)}%)` : `REVIEW (worst ${worst.toFixed(2)}% on ${rows.find((r) => r.d === worst).content})`),
+  )
 }
+console.log(allPass ? 'ALL PASS' : 'REVIEW')
 await browser.close()
+if (!allPass) process.exitCode = 1
