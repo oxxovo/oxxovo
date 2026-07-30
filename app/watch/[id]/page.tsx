@@ -18,6 +18,7 @@ import {
   type WatchRound,
   type WatchVideo,
 } from '@/lib/watch'
+import { isWatchPublic } from '@/lib/watch-gate'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -47,6 +48,8 @@ export default async function WatchDetailPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ round?: string }>
 }) {
+  // Pre-launch: Watch is not publicly reachable in production (patent novelty).
+  if (!isWatchPublic()) notFound()
   const [{ id }, sp] = await Promise.all([params, searchParams])
   const round = parseRound(sp.round)
 

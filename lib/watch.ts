@@ -15,7 +15,9 @@ import 'server-only'
 import { unstable_cache } from 'next/cache'
 import { createSupabaseAdmin } from './supabase-admin'
 import { parseVideoUrl } from './video-url'
-import { getDisplayName, getDisplayNames } from './nickname'
+// getDisplayNameReadOnly (not getDisplayName): Watch renders OTHER people's
+// entries, and a public read must never write a profiles row. See lib/nickname.ts.
+import { getDisplayNameReadOnly, getDisplayNames } from './nickname'
 import { formatDeadlinePT } from './seasons'
 import { WATCH_LIST_TAG, WATCH_LIST_TTL } from './watch-cache'
 import { publicScoreSeasons, areScoresPublic } from './watch-scores'
@@ -798,7 +800,9 @@ export async function getWatchVideo(
   const url = (round === 'application' ? row.free_entry_url : row.main_round_video_url)?.trim()
   if (!url) return null
 
-  const displayName = row.user_id ? await getDisplayName(row.user_id) : undefined
+  // Read-only: this renders SOMEONE ELSE's entry on a public page, so it must
+  // never create a profiles row. See lib/nickname.ts getDisplayNameReadOnly.
+  const displayName = row.user_id ? await getDisplayNameReadOnly(row.user_id) : undefined
 
   const [likeAgg, viewAgg, commentAgg] = await Promise.all([
     admin

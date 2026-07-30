@@ -4,7 +4,7 @@
 //   node scripts/gl-engine-parity.mjs <test.png>
 import { readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
-import { chromium } from 'playwright'
+import { chromium } from 'playwright-core'
 import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, colorUniforms, glowStages, parseCube, tileCube } from '../lib/gl-effects.ts'
 
 const [testPng] = process.argv.slice(2)

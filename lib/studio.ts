@@ -1163,7 +1163,13 @@ export async function submitGeneration(args: {
     if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
     // Mirror account-level identity to profiles so the next submission prefills
     // it (profile/work split). Non-fatal: genesis already has the snapshot.
-    await upsertCreatorProfile(args.userId, { creatorName: name, country: info.country }).catch(() => {})
+    const mirror = await upsertCreatorProfile(args.userId, args.email, {
+      creatorName: name,
+      country: info.country,
+    }).catch((e) => ({ ok: false as const, error: String(e) }))
+    if (!mirror.ok) {
+      console.error('[studio] creator profile mirror failed (non-fatal)', { userId: args.userId, path: 'submitGeneration', error: mirror.error })
+    }
     // Lock the job below (step 7).
   } else if (effectiveRound === 'main') {
     // 5b-main. Mirror saveMainRoundSubmission EXACTLY: 'selected' gate via
@@ -1764,7 +1770,7 @@ export async function submitRender(args: {
     // name or null, never an auto-generated nickname).
     const profile = await getCreatorProfile(args.userId)
     const providedName = (info.creatorName ?? '').trim() || profile.creatorName
-    const name = providedName || (await getDisplayName(args.userId))
+    const name = providedName || (await getDisplayName(args.userId, args.email))
     const country = info.country?.trim() || profile.country || null
 
     // S-1/S-2: same gates as POST /api/apply -- window + capacity/waitlist split.
@@ -1814,7 +1820,13 @@ export async function submitRender(args: {
     if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
     // Mirror account-level identity to profiles for next-submission prefill
     // (profile/work split). Non-fatal: genesis already has the snapshot.
-    await upsertCreatorProfile(args.userId, { creatorName: providedName ?? undefined, country }).catch(() => {})
+    const mirror = await upsertCreatorProfile(args.userId, args.email, {
+      creatorName: providedName ?? undefined,
+      country,
+    }).catch((e) => ({ ok: false as const, error: String(e) }))
+    if (!mirror.ok) {
+      console.error('[studio] creator profile mirror failed (non-fatal)', { userId: args.userId, path: 'submitRender', error: mirror.error })
+    }
   } else if (effectiveRound === 'main') {
     // 7b-main. Mirror saveMainRoundSubmission EXACTLY: 'selected' gate via
     // canSubmitMainRound, then a selected -> main_round_submitted CAS transition.

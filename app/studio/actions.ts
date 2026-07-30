@@ -605,7 +605,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         .maybeSingle(),
       // The compose form no longer collects name/country (option A); the account
       // nickname is what the entry publishes as, shown in a notice.
-      getDisplayName(auth.userId),
+      getDisplayName(auth.userId, auth.email),
     ])
     const hasApplication = !!appRow
     const alreadySubmitted = !!(

@@ -147,8 +147,9 @@ export async function addWatchComment(
   if (text.length > COMMENT_MAX) return { ok: false, error: 'too_long' }
 
   const r = normRound(round)
-  // Ensure the account has a nickname so the comment renders with a name.
-  await getDisplayName(user.id)
+  // Ensure the account has a nickname (and a profiles row) so the comment
+  // renders with a name. Self path -- session email lets it create the row.
+  await getDisplayName(user.id, user.email)
 
   const admin = createSupabaseAdmin()
   const { error } = await admin

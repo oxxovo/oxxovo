@@ -10,6 +10,7 @@
 
 import 'server-only'
 import { createSupabaseAdmin } from './supabase-admin'
+import { ensureProfileRow } from './profile-row'
 
 export type CreatorProfile = {
   creatorName: string | null
@@ -31,20 +32,40 @@ export async function getCreatorProfile(userId: string): Promise<CreatorProfile>
   }
 }
 
-// Persist account-level identity on submit (ensures the profile row via upsert).
+// Persist account-level identity on submit. SELF PATH ONLY -- `email` must be the
+// caller's own session address (see lib/profile-row.ts for why it is required and
+// why there is no admin-API fallback).
+//
+// 2026-07-28 incident fix: this used to `upsert({id, creator_name, country})`
+// WITHOUT email. When the signup trigger was gone and the row did not exist, the
+// insert hit profiles.email NOT NULL, failed, and the error was discarded by the
+// caller's `.catch(() => {})` -- a silent total loss. Now the row is ensured first
+// (which owns the email column) and this writes an UPDATE, so identity persistence
+// never depends on being able to insert.
+//
 // Only non-empty values are written, so a blank field never wipes a previously
-// saved name/country, and other profile columns (display_name, membership) are
-// left untouched (ON CONFLICT updates only the keys we send).
+// saved name/country, and columns we do not own (display_name, membership, email)
+// are never touched. Returns a result instead of throwing: callers treat this as
+// non-fatal (genesis_applications already holds the per-entry snapshot) but they
+// must be able to LOG it -- silence is what made the incident invisible.
 export async function upsertCreatorProfile(
   userId: string,
+  email: string,
   fields: { creatorName?: string | null; country?: string | null },
-): Promise<void> {
-  const patch: Record<string, unknown> = { id: userId }
+): Promise<{ ok: boolean; error?: string }> {
+  const patch: Record<string, unknown> = {}
   const name = fields.creatorName?.trim()
   const country = fields.country?.trim()
   if (name) patch.creator_name = name
   if (country) patch.country = country
-  if (Object.keys(patch).length === 1) return // only the id -> nothing to write
+  if (Object.keys(patch).length === 0) return { ok: true } // nothing to write
+
+  if (!(await ensureProfileRow(userId, email))) {
+    return { ok: false, error: 'profiles row unavailable' }
+  }
+
   const admin = createSupabaseAdmin()
-  await admin.from('profiles').upsert(patch, { onConflict: 'id' })
+  const { error } = await admin.from('profiles').update(patch).eq('id', userId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
 }

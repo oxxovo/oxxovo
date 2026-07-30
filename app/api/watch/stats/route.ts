@@ -9,11 +9,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentCompetitionStats, getJudgingProgress } from '@/lib/watch'
 import { getCurrentSeason, getCurrentSeasonId, getSeasonById } from '@/lib/seasons'
+import { isWatchPublic } from '@/lib/watch-gate'
 
 // Run at request time -- these are live counts, never prerendered/cached.
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  // Pre-launch: Watch is not publicly reachable in production (patent novelty).
+  if (!isWatchPublic()) return NextResponse.json({ error: 'not_found' }, { status: 404 })
   // The Hero passes the season it rendered with; fall back to the resolved
   // current season if the param is missing (keeps the two in lock-step). Resolve
   // the FULL season so the judging bar can track the live round -- otherwise the

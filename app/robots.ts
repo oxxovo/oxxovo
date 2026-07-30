@@ -1,20 +1,25 @@
-import type { MetadataRoute } from "next";
+import type { MetadataRoute } from 'next'
+import { isWatchPublic } from '@/lib/watch-gate'
 
-// While the public site is gated (SITE_PUBLIC_ENABLED=false) we ask every
-// crawler to stay out entirely — belt-and-suspenders alongside the proxy.ts
-// rewrite and the coming-soon page's noindex. When the gate is lifted this
-// flips back to allow-all automatically (same single switch, no date logic).
+// Robots policy — two independent pre-launch gates, most-restrictive first:
+//
+//  1. Whole-site gate (SITE_PUBLIC_ENABLED=false): until the patent is filed the
+//     ENTIRE site is hidden (proxy.ts rewrites every page to /coming-soon). Ask
+//     crawlers to stay out completely. Single env switch, no date logic.
+//  2. Watch-only gate (isWatchPublic()): the pre-existing narrower policy — the
+//     Watch surface 404s in production before launch (lib/watch-gate), so keep
+//     /watch out of the index even when the rest of the site is public.
+//
+// Both flip back to allow-all automatically when their switch is lifted.
+// "/watch" also covers /watch/[id] and /watch-arena by prefix.
+// `host` names the canonical domain (www.oxxovo.ai — every other host 308s there);
+// it is only meaningful once something is indexable, so the total block omits it.
 export default function robots(): MetadataRoute.Robots {
-  const gated = process.env.SITE_PUBLIC_ENABLED === "false";
-
-  if (gated) {
-    return {
-      rules: { userAgent: "*", disallow: "/" },
-    };
+  if (process.env.SITE_PUBLIC_ENABLED === 'false') {
+    return { rules: { userAgent: '*', disallow: '/' } }
   }
-
-  return {
-    rules: { userAgent: "*", allow: "/" },
-    host: "https://www.oxxovo.ai",
-  };
+  if (isWatchPublic()) {
+    return { rules: { userAgent: '*', allow: '/' }, host: 'https://www.oxxovo.ai' }
+  }
+  return { rules: { userAgent: '*', disallow: '/watch' }, host: 'https://www.oxxovo.ai' }
 }

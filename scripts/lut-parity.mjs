@@ -3,7 +3,7 @@
 // The GL LUT shader here MUST match the one added to preview-gl.ts.
 import { readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
-import { chromium } from 'playwright'
+import { chromium } from 'playwright-core'
 
 const [testPng, cubePath] = process.argv.slice(2)
 

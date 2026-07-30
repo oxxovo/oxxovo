@@ -10,7 +10,7 @@
 // Shader below MUST stay identical to app/studio/compose/preview-gl.ts.
 import { readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
-import { chromium } from 'playwright'
+import { chromium } from 'playwright-core'
 
 const [testPng, ffPng, exSl = '10', coSl = '30', saSl = '-20'] = process.argv.slice(2)
 const iv = (v) => Math.round(Number(v))

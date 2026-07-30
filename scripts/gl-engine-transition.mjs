@@ -6,8 +6,9 @@
 //   node scripts/gl-engine-transition.mjs <src.mp4>
 import { writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
-import { chromium } from 'playwright'
+import { chromium } from 'playwright-core'
 import { VERT, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample } from '../lib/gl-effects.ts'
+import { xfadeRefArgs, xfadeClipRefArgs } from './parity-ff.mjs'
 
 const [src] = process.argv.slice(2)
 const TMP = process.env.TEMP + '/xfeng'
@@ -45,7 +46,7 @@ await frameAt(1, `${TMP}/A.png`); await frameAt(10, `${TMP}/B.png`)
 const A64 = await b64(`${TMP}/A.png`), B64 = await b64(`${TMP}/B.png`)
 console.log('--- (1) mid-frame parity (progress 0.5) ---')
 for (const [id, ff] of [['crossfade', 'fade'], ['wipe-left', 'wipeleft'], ['wipe-right', 'wiperight'], ['wipe-up', 'wipeup'], ['wipe-down', 'wipedown']]) {
-  await sh(['-y', '-loop', '1', '-t', '2', '-i', `${TMP}/A.png`, '-loop', '1', '-t', '2', '-i', `${TMP}/B.png`, '-filter_complex', `[0:v][1:v]xfade=transition=${ff}:duration=1:offset=1,format=rgb24[v]`, '-map', '[v]', '-ss', '1.5', '-frames:v', '1', `${TMP}/ff_${id}.png`])
+  await sh(xfadeRefArgs({ aPng: `${TMP}/A.png`, bPng: `${TMP}/B.png`, type: ff, p: 0.5, out: `${TMP}/ff_${id}.png` }))
   const gl = await glBlend(A64, B64, 0.5, TRANSITION_TYPE[id]); await writeFile(`${TMP}/gl_${id}.png`, gl)
   const d = diff(await rawOf(`${TMP}/ff_${id}.png`), await rawOf(`${TMP}/gl_${id}.png`))
   console.log(`  ${id.padEnd(11)}: ${d.toFixed(2)}%  ${d <= 5 ? 'PASS' : 'REVIEW'}`)
@@ -59,8 +60,15 @@ for (const p of [0, 0.5, 1]) {
   const { aTime, bTime } = transitionSample(p, t, outEnd, inStart)
   await frameAt(aTime, `${TMP}/ta.png`); await frameAt(bTime, `${TMP}/tb.png`)
   const gl = await glBlend(await b64(`${TMP}/ta.png`), await b64(`${TMP}/tb.png`), p, TRANSITION_TYPE.crossfade); await writeFile(`${TMP}/tgl.png`, gl)
-  // ground truth: xfade the trimmed clips, extract output frame at 5+p (offset=outEnd-t=5)
-  await sh(['-y', '-ss', '0', '-t', '6', '-i', src, '-ss', '8', '-t', '6', '-i', src, '-filter_complex', '[0:v]scale=256:256[a];[1:v]scale=256:256[b];[a][b]xfade=transition=fade:duration=1:offset=5,format=rgb24[v]', '-map', '[v]', '-ss', String(5 + p), '-frames:v', '1', `${TMP}/truth.png`])
+  // ground truth: xfade the trimmed clips, take the output frame at progress p by
+  // FRAME INDEX (offset = outEnd - t = 5). Both inputs are normalised to the
+  // harness fps inside the graph so the index is well defined -- see parity-ff.mjs.
+  await sh(xfadeClipRefArgs({
+    aArgs: ['-ss', '0', '-t', '6', '-i', src],
+    bArgs: ['-ss', '8', '-t', '6', '-i', src],
+    type: 'fade', p, pre: 'scale=256:256', offset: 5, duration: 1,
+    out: `${TMP}/truth.png`,
+  }))
   const d = diff(await rawOf(`${TMP}/truth.png`), await rawOf(`${TMP}/tgl.png`))
   console.log(`  p=${p}: aTime=${aTime.toFixed(2)}s bTime=${bTime.toFixed(2)}s  diff=${d.toFixed(2)}%  ${d <= 8 ? 'ALIGNED' : 'DRIFT'}`)
 }

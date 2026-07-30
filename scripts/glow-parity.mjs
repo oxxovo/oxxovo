@@ -4,7 +4,7 @@
 // so the glow gate is looser (<=5%). Reports mean abs diff.
 import { readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
-import { chromium } from 'playwright'
+import { chromium } from 'playwright-core'
 
 const [testPng, glowSl = '50'] = process.argv.slice(2)
 const g = Math.round(Number(glowSl))

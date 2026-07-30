@@ -172,7 +172,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
 
     // Mirror account-level identity to profiles so future submissions prefill it
     // (profile/work split). Non-fatal: genesis already holds the snapshot.
-    await upsertCreatorProfile(user.id, { creatorName: body.creator_name, country: body.country }).catch(() => {})
+    // Non-fatal, but never silent: the 2026-07-28 incident was invisible because
+    // this exact failure was swallowed (reports/handoff_profile_row_jenny2_2026-07-28.md).
+    const mirror = await upsertCreatorProfile(user.id, user.email ?? '', {
+      creatorName: body.creator_name,
+      country: body.country,
+    }).catch((e) => ({ ok: false as const, error: String(e) }))
+    if (!mirror.ok) {
+      console.error('[apply] creator profile mirror failed (non-fatal)', { userId: user.id, error: mirror.error })
+    }
 
     // AI pre-moderation (Patent 3): scan the public text (title + description +
     // statement) + the YouTube thumbnail (the external video itself can't be
