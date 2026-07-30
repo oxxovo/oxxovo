@@ -1061,8 +1061,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                         disabled={segments.length >= props.maxClips} title={c.prompt}
                         className="group flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/10 bg-black text-left transition hover:border-[#8b22ff]/60 disabled:opacity-40">
                         <div className="relative flex flex-1 items-center justify-center overflow-hidden">
-                          {/* real clip first frame (P6 swaps to thumbnail_url) */}
-                          <video src={c.url} preload="metadata" muted playsInline className="h-full w-full object-cover" />
+                          {/* real clip first frame (P6 swaps to thumbnail_url).
+                              crossOrigin: the GL preview textures this SAME url, and a
+                              no-cors thumbnail fetch would leave an opaque response in
+                              that cache slot which can never serve the CORS request ->
+                              tainted texture. One mode per url. See preview-gl.ts. */}
+                          <video src={c.url} crossOrigin="anonymous" preload="metadata" muted playsInline className="h-full w-full object-cover" />
                           <span className="absolute inset-0 flex items-center justify-center bg-[#8b22ff]/0 text-[16px] font-black text-white opacity-0 transition group-hover:bg-[#8b22ff]/25 group-hover:opacity-100">＋</span>
                         </div>
                         <div className="flex items-center justify-between px-1.5 py-1 text-[9px] text-white/45">
@@ -1103,11 +1107,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                 even when empty so the engine keeps its element ref. */}
             <div className={`absolute inset-0 m-auto overflow-hidden rounded-xl bg-black ${segments.length ? '' : 'hidden'}`}
               style={{ aspectRatio: aspect === '9:16' ? '9 / 16' : '16 / 9', maxWidth: '100%', maxHeight: '100%' }}>
-              {/* GL engine opts into crossOrigin on this element itself (?gl=1 cache
-                  key; R2 returns ACAO). It degrades to raw + an honest note on any
-                  CORS/media failure -- a black preview is never shown. object-fit is
-                  owned by the engine (per current clip) -- NOT set here, so a React
-                  re-render never clobbers it. */}
+              {/* GL engine opts into crossOrigin on this element itself and loads the
+                  BARE clip url (R2 CORS applied on the bucket; the ?gl=1 cache key is
+                  gone). It degrades to raw + an honest note on any CORS/media failure
+                  -- a black preview is never shown. object-fit is owned by the engine
+                  (per current clip) -- NOT set here, so a React re-render never
+                  clobbers it. */}
               <video ref={videoRef} playsInline className="absolute inset-0 h-full w-full rounded-xl" />
               {/* Text overlay draws on the OUTPUT canvas (this box) -- over bars / crop
                   exactly as the render does. */}

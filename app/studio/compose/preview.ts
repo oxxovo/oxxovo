@@ -16,6 +16,14 @@
 
 import type { EffectParams } from '@/lib/effects'
 
+// ★Cache key for the raw (no-CORS) path. The GL engine and the media-pool
+// thumbnails load a clip at its BARE url in CORS mode; a no-cors load of the same
+// url would put an opaque response in that cache slot, and an opaque response can
+// never serve a later cors request -> texture SecurityError. Since raw is also the
+// fallback for "CORS itself failed", it must stay independent: its own key, no
+// crossOrigin, no shared entry. One extra fetch, only on the exception path.
+const rawUrl = (u: string) => u + (u.includes('?') ? '&' : '?') + 'raw=1'
+
 export type PreviewClip = { id: string; url: string }
 export type PreviewSegment = {
   uid: string
@@ -99,7 +107,8 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
     const clip = clipMap.get(seg.jobId)
     if (!clip) { setPlaying(false); return }
     applyFit(seg)
-    if (video.src !== clip.url) video.src = clip.url
+    const url = rawUrl(clip.url)
+    if (video.src !== url) video.src = url
     try {
       video.currentTime = seg.startMs / 1000 + startOffsetMs / 1000
       await video.play()
@@ -119,9 +128,11 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
     approximate: (hasEffects: boolean) => hasEffects, // raw shows no effects
     mount(v) {
       video = v
-      // Raw playback needs no CORS; clear any crossOrigin left by a prior GL
-      // mount so this element reuses the media pool's opaque (no-cors) cache for
-      // the bare clip URL instead of forcing a separate CORS fetch.
+      // Raw playback needs no CORS at all, and it is the fallback for the case
+      // where CORS is exactly what failed -- so it must not depend on it. Clear any
+      // crossOrigin left by a prior GL mount and load through rawUrl() (?raw=1), a
+      // separate cache entry from the CORS-mode one GL and the pool thumbnails
+      // share. Costs one extra fetch only on this exception path.
       v.removeAttribute('crossorigin')
       v.addEventListener('timeupdate', onTimeUpdate)
       v.addEventListener('ended', onEnded)
@@ -143,7 +154,8 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
       const clip = clipMap.get(segs[ni].jobId)
       if (!clip) return
       applyFit(segs[ni])
-      if (video.src !== clip.url) video.src = clip.url
+      const url = rawUrl(clip.url)
+      if (video.src !== url) video.src = url
       const target = videoTimeMs / 1000
       const doSeek = () => { if (!video) return; try { video.currentTime = target } catch { /* not ready */ } if (playing) video.play().catch(() => {}) }
       if (video.readyState >= 1) doSeek()
@@ -156,7 +168,8 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
       const clip = clips.get(seg.jobId)
       if (!clip) return
       applyFit(seg)
-      if (video.src !== clip.url) video.src = clip.url
+      const url = rawUrl(clip.url)
+      if (video.src !== url) video.src = url
       const seek = () => { try { video!.currentTime = seg.startMs / 1000 } catch { /* not ready */ } }
       if (video.readyState >= 1) seek()
       else video.addEventListener('loadedmetadata', seek, { once: true })

@@ -182,13 +182,18 @@ function makeLutLoader() {
 }
 
 // The GL preview uploads each frame to a WebGL texture, which requires the clip
-// to be fetched in CORS mode (crossOrigin) with the bucket returning ACAO. A
-// dedicated cache key (?gl=1) isolates that CORS fetch from the media-pool
-// thumbnails, which fetch the SAME R2 URL in no-cors mode -- reusing an opaque
-// cached response here would taint the texture (SecurityError). R2 CORS verified
-// 2026-07-21: GET/HEAD + www.oxxovo.ai / *.vercel.app / localhost, ACAO echoed
-// per Origin (Vary: Origin), content-range exposed.
-const glUrl = (u: string) => u + (u.includes('?') ? '&' : '?') + 'gl=1'
+// to be fetched in CORS mode (crossOrigin) with the bucket returning ACAO.
+//
+// R2 CORS is now applied on the bucket (GET/HEAD, ACAO echoed per Origin), so the
+// clip is loaded at its BARE URL -- no ?gl=1 cache key any more. The invariant that
+// replaces it: every surface that loads a clip URL in the compose editor opts into
+// CORS mode too (the media-pool thumbnails carry crossOrigin), so one URL means one
+// cache entry and one download. Mixing modes on the same URL is what tainted the
+// texture before: an opaque (no-cors) cached response cannot serve a cors request.
+//   * GL + pool thumbnails : bare URL, CORS mode          <- shared cache entry
+//   * raw fallback engine   : ?raw=1, no-cors (preview.ts) <- deliberately independent
+// The raw engine keeps its own key so the black-screen fallback still works when
+// CORS itself is what failed. See preview.ts for that side of the contract.
 
 export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => void; onDegrade?: (reason: string) => void; onProgress?: (compMs: number) => void } = {}): PreviewEngine {
   let video: HTMLVideoElement | null = null
@@ -270,7 +275,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
         const segB = segs[idx + 1], clipB = clipMap.get(segB.jobId)
         if (clipB) {
           if (!videoB) { videoB = document.createElement('video'); videoB.playsInline = true; videoB.crossOrigin = 'anonymous' }
-          const bUrl = glUrl(clipB.url)
+          const bUrl = clipB.url
           if (videoB.src !== bUrl) { videoB.src = bUrl }
           const bTime = transitionSample(p, t, endA, segB.startMs / 1000).bTime
           if (Math.abs(videoB.currentTime - bTime) > 0.08) { try { videoB.currentTime = bTime } catch { /* not ready */ } }
@@ -308,7 +313,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     idx = i
     const clip = clipMap.get(segs[i].jobId)
     if (!clip) { setPlaying(false); return }
-    const url = glUrl(clip.url)
+    const url = clip.url
     if (video.src !== url) video.src = url
     video.volume = 1
     try { video.currentTime = segs[i].startMs / 1000 + startOffsetMs / 1000; await video.play() } catch { setPlaying(false) }
@@ -337,7 +342,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       // texImage2D refuses a cross-origin video element that did not opt into
       // CORS. The R2 bucket now returns Access-Control-Allow-Origin for this
       // app's origins (www.oxxovo.ai / *.vercel.app / localhost, verified), so
-      // the preview opts in: crossOrigin + a ?gl=1 cache key (see glUrl). The
+      // the preview opts in with crossOrigin on the bare URL (R2 CORS applied). The
       // safety net stays -- if ANY origin/browser still fails the CORS upload or
       // media load, drawFrame catches it -> degrade() -> raw (original footage +
       // honest note), never a black canvas.
@@ -386,7 +391,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       idx = ni
       const clip = clipMap.get(segs[ni].jobId)
       if (!clip) return
-      const url = glUrl(clip.url)
+      const url = clip.url
       const srcChanged = video.src !== url
       if (srcChanged) video.src = url
       video.volume = 1
@@ -416,7 +421,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       segs = [seg]; clipMap = clips; glob = global; idx = 0
       const clip = clips.get(seg.jobId)
       if (!video || !clip || dead) return
-      const url = glUrl(clip.url)
+      const url = clip.url
       if (video.src !== url) video.src = url
       // Setting currentTime drops readyState below HAVE_CURRENT_DATA until the
       // new frame decodes, and drawFrame no-ops under that -- firing two rAFs
