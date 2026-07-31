@@ -1592,9 +1592,15 @@ export async function deleteRender(userId: string, renderId: string): Promise<De
 }
 
 // Render statuses an intent may be accepted against: the render was REQUESTED (and
-// signed) before the deadline and is still moving. 'failed' is excluded on purpose --
-// there is a separate re-render path for that -- and 'submitted' is terminal.
-const ASYNC_SUBMIT_STATUSES = ['queued', 'rendering', 'uploading', 'ready'] as const
+// signed) before the deadline. 'submitted' is terminal, so it is the only exclusion.
+//
+// ★'failed' is INCLUDED. Excluding it recreated the very unfairness this design
+// exists to remove: a participant whose render failed a minute before the deadline
+// could not submit at all, with no time left to retry. The sweep gives an accepted
+// failed render ONE re-render of the same EDL (v1sr unchanged, so no re-signing and
+// no cap impact); if that also fails it goes to staff review with the entry intact.
+// There is nothing to game here -- an accepted submission with no file scores nothing.
+const ASYNC_SUBMIT_STATUSES = ['queued', 'rendering', 'uploading', 'ready', 'failed'] as const
 
 // ===========================================================================
 // Shared compose verification (steps 3 / 3b / 4 of a submission).
@@ -2137,12 +2143,19 @@ export type AsyncSweepReport = {
   rejected: { renderId: string; reason: string }[]
 }
 
-// A render lease is considered dead after this long without progress. Renders are
-// minutes, so hours means "the worker is gone", not "this one is slow".
-const RENDER_LEASE_STALE_MS = 3 * 60 * 60 * 1000
+// ★Lease threshold, derived rather than guessed. The worker now enforces a 15 minute
+// timeout on every ffmpeg call (RENDER_TIMEOUT_MS), itself based on a measured 20.6s
+// wall clock for a 40s five-clip 720p render with effects, transitions and text
+// (local machine, 2026-07-30). This is 2x that bound: the worker's own timeout fires
+// first and marks the render failed, so this only triggers when the PROCESS died
+// without cleaning up. My earlier 3h had no source and would have burned 12.5% of the
+// 24h buffer; 30 minutes burns 2%.
+const RENDER_LEASE_STALE_MS = Math.max(60_000, Number(process.env.RENDER_LEASE_STALE_MS ?? '1800000'))
 // How long an accepted submission may sit unfinished before staff are told. This does
 // NOT fail anything -- it only raises a flag. The buffer itself is a season parameter.
-const SUBMISSION_OVERDUE_MS = 24 * 60 * 60 * 1000
+const SUBMISSION_OVERDUE_MS = Math.max(60_000, Number(process.env.SUBMISSION_OVERDUE_MS ?? '86400000'))
+// One re-render, tracked by the application row's state rather than a new column.
+const REQUEUED_STATE = 'render_requeued'
 
 export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
   const admin = createSupabaseAdmin()
@@ -2168,6 +2181,41 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
       continue
     }
 
+    // ★An accepted render that FAILED gets exactly one re-render of the same EDL. The
+    // marker is the application row's state, so no extra column is needed. A second
+    // failure is a staff matter, never an automatic elimination.
+    if (row.status === 'failed') {
+      const { data: app } = await admin
+        .from('genesis_applications')
+        .select('id, studio_submission_state')
+        .eq('studio_application_render_id', id)
+        .maybeSingle()
+      if (app?.studio_submission_state === REQUEUED_STATE) {
+        out.overdue.push(id)
+        await admin
+          .from('genesis_applications')
+          .update({ studio_submission_state: 'render_failed' })
+          .eq('id', app.id)
+        continue
+      }
+      const { data: requeued } = await admin
+        .from('render_jobs')
+        .update({ status: 'queued', claimed_at: null, error_message: null, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('status', 'failed')
+        .select('id')
+      if (requeued?.length) {
+        out.requeued.push(id)
+        if (app) {
+          await admin
+            .from('genesis_applications')
+            .update({ studio_submission_state: REQUEUED_STATE })
+            .eq('id', app.id)
+        }
+      }
+      continue
+    }
+
     // Lease recovery: 'rendering'/'uploading' with no progress for too long means the
     // claiming worker is gone. Back to 'queued' so another lane picks it up; attempts
     // is left untouched so this cannot loop forever.
@@ -2190,7 +2238,7 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
       out.overdue.push(id)
       await admin
         .from('genesis_applications')
-        .update({ studio_submission_state: row.status === 'failed' ? 'render_failed' : 'render_overdue' })
+        .update({ studio_submission_state: 'render_overdue' })
         .eq('studio_application_render_id', id)
         .neq('studio_submission_state', 'finalized')
     }
