@@ -1591,6 +1591,94 @@ export async function deleteRender(userId: string, renderId: string): Promise<De
   return { ok: true }
 }
 
+// Render statuses an intent may be accepted against: the render was REQUESTED (and
+// signed) before the deadline and is still moving. 'failed' is excluded on purpose --
+// there is a separate re-render path for that -- and 'submitted' is terminal.
+const ASYNC_SUBMIT_STATUSES = ['queued', 'rendering', 'uploading', 'ready'] as const
+
+// ===========================================================================
+// Shared compose verification (steps 3 / 3b / 4 of a submission).
+//
+// Both submission phases need EXACTLY this, which is why it is one function: the
+// intent phase runs it at the deadline with requireFinal=false (v1sc does not exist
+// until the render lands) and the finalize phase runs it again with true. Running it
+// twice is deliberate -- it is what makes "swap the EDL or the bed after intent" fail
+// at finalize instead of going out signed.
+// ===========================================================================
+async function verifyComposeChain(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  render: {
+    id: string
+    edl: EdlSegment[] | ComposeEdl
+    source_job_ids: string[] | null
+    cryptobind_pid: string
+    cryptobind_tid: string
+    cryptobind_algo: string
+    cryptobind_render_signature: string
+    cryptobind_final_hash: string | null
+    cryptobind_final_signature: string | null
+  },
+  args: { userId: string; seasonId: string },
+  requireFinal: boolean,
+): Promise<{ ok: true } | (SubmitRenderResult & { ok: false })> {
+  // 3. Re-verify EVERY source clip: own-account, same season, valid CryptoBind.
+  //    The signature bundle is rebuilt from these to check the render v1sr sig.
+  const sourceIds = (render.source_job_ids as string[] | null) ?? []
+  if (!sourceIds.length) return { ok: false, reason: 'source_not_found', detail: 'empty source set' }
+  const { data: sources, error: srcErr } = await admin
+    .from('generation_jobs')
+    .select(
+      'id, user_id, season_id, status, duration_seconds, model_id, media_type, parent_image_job_ids, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_parent_bundle, cryptobind_content_hash, cryptobind_content_signature',
+    )
+    .in('id', sourceIds)
+  if (srcErr) return { ok: false, reason: 'failed', detail: srcErr.message }
+  const byId = new Map((sources ?? []).map((r) => [r.id as string, r]))
+
+  const sourceSignatures: string[] = []
+  for (const id of sourceIds) {
+    const row = byId.get(id)
+    if (!row) return { ok: false, reason: 'source_not_found', detail: id }
+    if (row.user_id !== args.userId) {
+      return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: not owned` }
+    }
+    if (row.season_id !== args.seasonId) {
+      return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: season mismatch` }
+    }
+    const sv = await verifySourceCryptoBind(admin, row, args.seasonId)
+    if (!sv.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${sv.detail}` }
+    sourceSignatures.push(String(row.cryptobind_signature))
+  }
+
+  // 3b. Fold the music asset's v1m signature into the bundle EXACTLY as createRender
+  //     did (append-only), so the recomputed v1sr matches. A swapped/removed bed
+  //     changes the bundle -> render_sig_mismatch.
+  const submitMusic = Array.isArray(render.edl) ? undefined : (render.edl as ComposeEdl).music
+  const ms = await resolveMusicSignature(admin, submitMusic, args.userId, await isMusicEnabled(args.seasonId))
+  if (!ms.ok) return { ok: false, reason: ms.reason, detail: ms.detail }
+  if (ms.signature) sourceSignatures.push(ms.signature)
+
+  // 4. Verify the composition itself: v1sr (EDL + source bundle), and v1sc (final)
+  //    once the render exists. requireFinal is the ONLY thing the two phases differ
+  //    by -- see verifyComposeBind.
+  const cv = verifyComposeBind(
+    {
+      id: render.id,
+      cryptobind_pid: String(render.cryptobind_pid),
+      cryptobind_tid: String(render.cryptobind_tid),
+      cryptobind_algo: String(render.cryptobind_algo),
+      cryptobind_render_signature: String(render.cryptobind_render_signature),
+      cryptobind_final_hash: render.cryptobind_final_hash,
+      cryptobind_final_signature: render.cryptobind_final_signature,
+      edl: (render.edl as EdlSegment[] | ComposeEdl) ?? [],
+    },
+    args.seasonId,
+    sourceSignatures,
+    { requireFinal },
+  )
+  if (!cv.ok) return { ok: false, reason: 'compose_cryptobind_failed', detail: cv.reason }
+  return { ok: true }
+}
+
 // ===========================================================================
 // submitRender -- submit a READY composed final into the participant's
 // application for the season. This is the compose analogue of submitGeneration.
@@ -1645,14 +1733,28 @@ export async function submitRender(args: {
   const { data: render, error: rErr } = await admin
     .from('render_jobs')
     .select(
-      'id, user_id, season_id, status, video_url, thumbnail_url, total_duration_seconds, edl, source_job_ids, cryptobind_pid, cryptobind_tid, cryptobind_algo, cryptobind_render_signature, cryptobind_final_hash, cryptobind_final_signature',
+      'id, user_id, season_id, status, video_url, thumbnail_url, total_duration_seconds, edl, source_job_ids, submit_intent_at, finalized_at, cryptobind_pid, cryptobind_tid, cryptobind_algo, cryptobind_render_signature, cryptobind_final_hash, cryptobind_final_signature',
     )
     .eq('id', args.renderId)
     .single()
   if (rErr || !render) return { ok: false, reason: 'render_not_found' }
   if (render.user_id !== args.userId) return { ok: false, reason: 'not_owner' }
-  if (render.status !== 'ready') return { ok: false, reason: 'not_ready' }
-  if (!render.video_url) return { ok: false, reason: 'not_ready', detail: 'no video_url' }
+
+  // ★ASYNCHRONOUS SUBMISSION. `rendered` -- not the caller's intent -- decides which
+  // phase this call performs, so there is exactly ONE submission path:
+  //   rendered  -> accept + finalize in one go (identical to the old behaviour, which
+  //                is what the render_jobs rows already sitting at 'ready' get)
+  //   not yet   -> accept the INTENT: everything except the parts that need the
+  //                rendered bytes. The 24h buffer's sweep finalizes it later.
+  // A render REQUESTED before the deadline can therefore no longer cost a
+  // participant their submission just because the queue was busy.
+  const rendered = render.status === 'ready' && !!render.video_url
+  if (!rendered && !(ASYNC_SUBMIT_STATUSES as readonly string[]).includes(String(render.status))) {
+    // failed / submitted / anything else: there is nothing to accept.
+    return { ok: false, reason: 'not_ready', detail: `status=${render.status}` }
+  }
+  // Per-render idempotence: one render can be accepted once.
+  if (render.submit_intent_at) return { ok: false, reason: 'already_submitted' }
 
   // 2. Season compose gate + cap (defense; caps are season-variable).
   const { data: seasonRow, error: sErr } = await admin
@@ -1669,60 +1771,11 @@ export async function submitRender(args: {
   if (minSeconds > 0 && totalSeconds < minSeconds - 0.001) return { ok: false, reason: 'too_short' }
   if (totalSeconds > maxSeconds + 0.001) return { ok: false, reason: 'too_long' }
 
-  // 3. Re-verify EVERY source clip: own-account, same season, valid CryptoBind.
-  //    The signature bundle is rebuilt from these to check the render v1sr sig.
-  const sourceIds = (render.source_job_ids as string[] | null) ?? []
-  if (!sourceIds.length) return { ok: false, reason: 'source_not_found', detail: 'empty source set' }
-  const { data: sources, error: srcErr } = await admin
-    .from('generation_jobs')
-    .select(
-      'id, user_id, season_id, status, duration_seconds, model_id, media_type, parent_image_job_ids, cryptobind_pid, cryptobind_tid, cryptobind_generated_at, cryptobind_signature, cryptobind_algo, cryptobind_parent_bundle, cryptobind_content_hash, cryptobind_content_signature',
-    )
-    .in('id', sourceIds)
-  if (srcErr) return { ok: false, reason: 'failed', detail: srcErr.message }
-  const byId = new Map((sources ?? []).map((r) => [r.id as string, r]))
-
-  const sourceSignatures: string[] = []
-  for (const id of sourceIds) {
-    const row = byId.get(id)
-    if (!row) return { ok: false, reason: 'source_not_found', detail: id }
-    if (row.user_id !== args.userId) {
-      return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: not owned` }
-    }
-    if (row.season_id !== args.seasonId) {
-      return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: season mismatch` }
-    }
-    // v1/v1c for a normal clip; v1v + parent v1i/v1ic chain for an i2v clip. A
-    // parent-less clip takes the exact old verifyCryptoBind path (no regression).
-    const sv = await verifySourceCryptoBind(admin, row, args.seasonId)
-    if (!sv.ok) return { ok: false, reason: 'source_cryptobind_failed', detail: `${id}: ${sv.detail}` }
-    sourceSignatures.push(String(row.cryptobind_signature))
-  }
-
-  // 3b. Fold the music asset's v1m signature into the bundle EXACTLY as createRender
-  //     did (append-only), so the recomputed v1sr matches. A swapped/removed bed
-  //     changes the bundle -> render_sig_mismatch.
-  const submitMusic = Array.isArray(render.edl) ? undefined : (render.edl as ComposeEdl).music
-  const ms = await resolveMusicSignature(admin, submitMusic, args.userId, await isMusicEnabled(args.seasonId))
-  if (!ms.ok) return { ok: false, reason: ms.reason, detail: ms.detail }
-  if (ms.signature) sourceSignatures.push(ms.signature)
-
-  // 4. Verify the composition itself: v1sr (EDL + source bundle) then v1sc (final).
-  const cv = verifyComposeBind(
-    {
-      id: render.id as string,
-      cryptobind_pid: String(render.cryptobind_pid),
-      cryptobind_tid: String(render.cryptobind_tid),
-      cryptobind_algo: String(render.cryptobind_algo),
-      cryptobind_render_signature: String(render.cryptobind_render_signature),
-      cryptobind_final_hash: render.cryptobind_final_hash as string | null,
-      cryptobind_final_signature: render.cryptobind_final_signature as string | null,
-      edl: (render.edl as EdlSegment[] | ComposeEdl) ?? [],
-    },
-    args.seasonId,
-    sourceSignatures,
-  )
-  if (!cv.ok) return { ok: false, reason: 'compose_cryptobind_failed', detail: cv.reason }
+  // 3 / 3b / 4. Source clips + music bed + the composition's own signatures.
+  //    requireFinal follows whether the render has actually landed: at intent time
+  //    v1sc does not exist yet, and finalize runs this again with it required.
+  const chain = await verifyComposeChain(admin, render, args, rendered)
+  if (!chain.ok) return chain as SubmitRenderResult
 
   // 5. Studio round for this season -- effective round resolved server-side.
   //    Main-round window + 'selected' gate enforced below at the CAS step via
@@ -1734,7 +1787,7 @@ export async function submitRender(args: {
   const email = args.email.toLowerCase()
   const { data: appRow, error: aErr } = await admin
     .from('genesis_applications')
-    .select('id, status, studio_application_submitted_at, main_round_submitted_at')
+    .select('id, status, studio_application_submitted_at, main_round_submitted_at, studio_application_intent_at')
     .eq('season_id', args.seasonId)
     .ilike('email', email)
     .order('created_at', { ascending: false })
@@ -1800,9 +1853,14 @@ export async function submitRender(args: {
       country,
       channel_url: info.channelUrl?.trim() || null,
       ai_service: 'OXXOVO Studio',
-      free_entry_url: render.video_url,
-      thumbnail_url: render.thumbnail_url,
-      video_duration_seconds: durationInt,
+      // The URL columns are written by FINALIZE only. That is deliberate and is the
+      // contract the scoring side reads: free_entry_url IS NOT NULL means "the file
+      // exists and its v1sc was verified", so an accepted-but-unrendered entry is
+      // never picked up as scorable. studio_application_intent_at is what records
+      // that the submission itself arrived before the deadline.
+      free_entry_url: rendered ? render.video_url : null,
+      thumbnail_url: rendered ? render.thumbnail_url : null,
+      video_duration_seconds: rendered ? durationInt : null,
       agreed_to_rules: true,
       agreed_to_privacy: true,
       agreed_to_integrity_notice: true,
@@ -1815,7 +1873,12 @@ export async function submitRender(args: {
       // blocks scoring -- only public visibility (isPublicRow). Prelim only.
       watch_hold: !!seasonRow.studio_prelim_hold_enabled,
       studio_application_render_id: render.id,
+      // submitted_at stays the "this account has submitted" marker for every other
+      // caller, and it is set at ACCEPT time because that is when the submission was
+      // received -- before the deadline. Only the file lags.
       studio_application_submitted_at: now,
+      studio_application_intent_at: now,
+      studio_submission_state: rendered ? 'finalized' : 'intent',
     })
     if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
     // Mirror account-level identity to profiles for next-submission prefill
@@ -1843,10 +1906,12 @@ export async function submitRender(args: {
       .from('genesis_applications')
       .update({
         status: 'main_round_submitted',
-        main_round_video_url: render.video_url,
-        thumbnail_url: render.thumbnail_url,
+        main_round_video_url: rendered ? render.video_url : null,
+        thumbnail_url: rendered ? render.thumbnail_url : null,
         main_round_submitted_at: now,
         studio_main_render_id: render.id,
+        studio_application_intent_at: now,
+        studio_submission_state: rendered ? 'finalized' : 'intent',
       })
       .eq('id', appRow.id)
       .eq('status', 'selected')
@@ -1858,29 +1923,57 @@ export async function submitRender(args: {
     }
   } else {
     // 7c-application. Row exists -- single application submission (status unchanged).
-    if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
-    const { error: upErr } = await admin
+    if (appRow.studio_application_submitted_at || appRow.studio_application_intent_at) {
+      return { ok: false, reason: 'already_submitted' }
+    }
+    // ★The read above is not the guard -- this UPDATE is. `.is(intent_at, null)` makes
+    // single submission a DB-level CAS instead of a read-then-write with a race
+    // window (two tabs pressing submit within the same round trip).
+    const { data: claimed, error: upErr } = await admin
       .from('genesis_applications')
       .update({
-        free_entry_url: render.video_url,
-        thumbnail_url: render.thumbnail_url,
-        video_duration_seconds: durationInt,
+        free_entry_url: rendered ? render.video_url : null,
+        thumbnail_url: rendered ? render.thumbnail_url : null,
+        video_duration_seconds: rendered ? durationInt : null,
         ai_service: 'OXXOVO Studio',
         studio_application_render_id: render.id,
         studio_application_submitted_at: now,
+        studio_application_intent_at: now,
+        studio_submission_state: rendered ? 'finalized' : 'intent',
       })
       .eq('id', appRow.id)
+      .is('studio_application_intent_at', null)
+      .select('id')
     if (upErr) return { ok: false, reason: 'failed', detail: upErr.message }
+    if (!claimed?.length) return { ok: false, reason: 'already_submitted' }
   }
 
-  // 8. Lock the render: ready -> submitted (terminal). CAS guards a double
-  //    submit race.
-  const { error: rUpErr } = await admin
-    .from('render_jobs')
-    .update({ status: 'submitted', submitted_at: now, updated_at: now })
-    .eq('id', render.id)
-    .eq('status', 'ready')
-  if (rUpErr) return { ok: false, reason: 'failed', detail: rUpErr.message }
+  // 8. Lock the render. Both branches CAS on `submit_intent_at IS NULL` so a double
+  //    submit cannot take the row twice.
+  if (rendered) {
+    const { error: rUpErr } = await admin
+      .from('render_jobs')
+      .update({ status: 'submitted', submitted_at: now, submit_intent_at: now, finalized_at: now, updated_at: now })
+      .eq('id', render.id)
+      .eq('status', 'ready')
+      .is('submit_intent_at', null)
+    if (rUpErr) return { ok: false, reason: 'failed', detail: rUpErr.message }
+  } else {
+    // Accepted, not finalized. status is left alone ON PURPOSE so the worker keeps
+    // rendering it; submit_intent_at is what marks it as claimed for submission and
+    // is what the finalize sweep looks for.
+    const { data: marked, error: rUpErr } = await admin
+      .from('render_jobs')
+      .update({ submit_intent_at: now, updated_at: now })
+      .eq('id', render.id)
+      .is('submit_intent_at', null)
+      .select('id')
+    if (rUpErr) return { ok: false, reason: 'failed', detail: rUpErr.message }
+    if (!marked?.length) return { ok: false, reason: 'already_submitted' }
+    // Nothing else to do: archiving the round's clips waits for finalize, because a
+    // participant whose render is still queued must keep seeing their workspace.
+    return { ok: true }
+  }
 
   // 9. Move THIS round's remaining ready source clips into My Library (soft
   //    archive) so the Compose workspace + generate screen empty out -- single
@@ -1903,4 +1996,204 @@ export async function submitRender(args: {
   if (archErr) console.error('[studio] submit archive failed (non-fatal):', archErr.message)
 
   return { ok: true }
+}
+
+// ===========================================================================
+// finalizeSubmission -- the second half of an asynchronous submission.
+//
+// Runs after the worker has rendered an ACCEPTED submission: verifies the full chain
+// again (now including v1sc), publishes the file onto the application row, and closes
+// the render out. Idempotent and safe to call from two places at once -- the season
+// tick sweeps every pending row hourly, and a participant viewing their own render
+// triggers it for their own row so they are not waiting on the cron.
+//
+// ★It must never run for a render that was not accepted: without `submit_intent_at`
+// this would fill free_entry_url before the deadline, and free_entry_url IS NOT NULL
+// is exactly what makes an entry scorable. The four conditions below are the gate.
+// ===========================================================================
+export type FinalizeResult =
+  | { ok: true; finalized: boolean }
+  | { ok: false; reason: string; detail?: string }
+
+export async function finalizeSubmission(renderId: string): Promise<FinalizeResult> {
+  const admin = createSupabaseAdmin()
+  const { data: render, error: rErr } = await admin
+    .from('render_jobs')
+    .select(
+      'id, user_id, season_id, status, video_url, thumbnail_url, total_duration_seconds, edl, source_job_ids, submit_intent_at, finalized_at, cryptobind_pid, cryptobind_tid, cryptobind_algo, cryptobind_render_signature, cryptobind_final_hash, cryptobind_final_signature',
+    )
+    .eq('id', renderId)
+    .single()
+  if (rErr || !render) return { ok: false, reason: 'render_not_found' }
+
+  // The gate. Any miss is a no-op, not an error: the sweep calls this speculatively.
+  if (!render.submit_intent_at) return { ok: true, finalized: false }
+  if (render.finalized_at) return { ok: true, finalized: false }
+  if (render.status !== 'ready' || !render.video_url) return { ok: true, finalized: false }
+
+  const seasonId = String(render.season_id)
+  const userId = String(render.user_id)
+
+  // Full chain INCLUDING v1sc. Re-running it here is what catches an EDL or bed that
+  // was swapped between accept and finalize.
+  const chain = await verifyComposeChain(admin, render, { userId, seasonId }, true)
+  if (!chain.ok) {
+    await admin
+      .from('genesis_applications')
+      .update({ studio_submission_state: 'finalize_rejected', updated_at: new Date().toISOString() })
+      .eq('studio_application_render_id', render.id)
+    return { ok: false, reason: chain.reason, detail: chain.detail }
+  }
+
+  const { data: seasonRow } = await admin
+    .from('seasons')
+    .select('studio_prelim_hold_enabled')
+    .eq('id', seasonId)
+    .single()
+
+  const now = new Date().toISOString()
+  const durationInt = Math.round(Number(render.total_duration_seconds))
+  const { data: appRow } = await admin
+    .from('genesis_applications')
+    .select('id, status, studio_main_render_id')
+    .eq('studio_application_render_id', render.id)
+    .maybeSingle()
+
+  if (appRow) {
+    // Prelim entry: publish the file. The hold flag is stamped HERE (not at accept)
+    // because it gates public visibility of a file that did not exist yet.
+    await admin
+      .from('genesis_applications')
+      .update({
+        free_entry_url: render.video_url,
+        thumbnail_url: render.thumbnail_url,
+        video_duration_seconds: durationInt,
+        watch_hold: !!seasonRow?.studio_prelim_hold_enabled,
+        studio_submission_state: 'finalized',
+        updated_at: now,
+      })
+      .eq('id', appRow.id)
+  } else {
+    // Main round: the render is referenced by studio_main_render_id instead.
+    await admin
+      .from('genesis_applications')
+      .update({
+        main_round_video_url: render.video_url,
+        thumbnail_url: render.thumbnail_url,
+        studio_submission_state: 'finalized',
+        updated_at: now,
+      })
+      .eq('studio_main_render_id', render.id)
+  }
+
+  // Close the render out. CAS on finalized_at so two concurrent sweeps cannot both
+  // archive the participant's clips.
+  const { data: closed, error: cErr } = await admin
+    .from('render_jobs')
+    .update({ status: 'submitted', submitted_at: now, finalized_at: now, updated_at: now })
+    .eq('id', render.id)
+    .is('finalized_at', null)
+    .select('id')
+  if (cErr) return { ok: false, reason: 'failed', detail: cErr.message }
+  if (!closed?.length) return { ok: true, finalized: false }
+
+  // Archive this round's remaining ready clips (same rule as the synchronous path).
+  const cfg = await getSeasonStudioConfig(seasonId)
+  let arch = admin
+    .from('generation_jobs')
+    .update({ archived_at: now, updated_at: now })
+    .eq('user_id', userId)
+    .eq('season_id', seasonId)
+    .eq('status', 'ready')
+    .is('archived_at', null)
+  if (cfg.round === 'both' && cfg.mainRoundStartAt) {
+    arch = appRow ? arch.lt('created_at', cfg.mainRoundStartAt) : arch.gte('created_at', cfg.mainRoundStartAt)
+  }
+  const { error: archErr } = await arch
+  if (archErr) console.error('[studio] finalize archive failed (non-fatal):', archErr.message)
+
+  return { ok: true, finalized: true }
+}
+
+// ===========================================================================
+// sweepAsyncSubmissions -- the 24h processing buffer's engine. Called from the
+// SEASON TICK (hourly), deliberately NOT from a new Vercel cron entry: the plan's
+// cron limit is already at 3, and exceeding it deploys fine while the schedule
+// silently never fires.
+//
+// It also runs the render LEASE recovery, which is a pre-existing bug rather than
+// anything to do with asynchronous submission: claimNextRender() moves a row to
+// 'rendering' with no claimed_at and nothing anywhere reclaims it, so a worker that
+// dies mid-render leaves that row stuck forever -- no retry, no failure, no trace.
+// A worker WAS down for a month, so this is not hypothetical.
+//
+// Nothing here ever fails a participant: an overdue render is flagged for staff, not
+// rejected. A platform backlog is not a participant's failure.
+// ===========================================================================
+export type AsyncSweepReport = {
+  finalized: string[]
+  requeued: string[]
+  overdue: string[]
+  rejected: { renderId: string; reason: string }[]
+}
+
+// A render lease is considered dead after this long without progress. Renders are
+// minutes, so hours means "the worker is gone", not "this one is slow".
+const RENDER_LEASE_STALE_MS = 3 * 60 * 60 * 1000
+// How long an accepted submission may sit unfinished before staff are told. This does
+// NOT fail anything -- it only raises a flag. The buffer itself is a season parameter.
+const SUBMISSION_OVERDUE_MS = 24 * 60 * 60 * 1000
+
+export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
+  const admin = createSupabaseAdmin()
+  const out: AsyncSweepReport = { finalized: [], requeued: [], overdue: [], rejected: [] }
+  const nowMs = Date.now()
+
+  const { data: pending, error } = await admin
+    .from('render_jobs')
+    .select('id, status, submit_intent_at, claimed_at, updated_at, attempts')
+    .not('submit_intent_at', 'is', null)
+    .is('finalized_at', null)
+  if (error) {
+    console.error('[studio] async sweep query failed:', error.message)
+    return out
+  }
+
+  for (const row of pending ?? []) {
+    const id = String(row.id)
+    if (row.status === 'ready') {
+      const res = await finalizeSubmission(id)
+      if (res.ok && res.finalized) out.finalized.push(id)
+      else if (!res.ok) out.rejected.push({ renderId: id, reason: res.reason })
+      continue
+    }
+
+    // Lease recovery: 'rendering'/'uploading' with no progress for too long means the
+    // claiming worker is gone. Back to 'queued' so another lane picks it up; attempts
+    // is left untouched so this cannot loop forever.
+    if (row.status === 'rendering' || row.status === 'uploading') {
+      const since = Date.parse(String(row.claimed_at ?? row.updated_at ?? ''))
+      if (Number.isFinite(since) && nowMs - since > RENDER_LEASE_STALE_MS) {
+        const { data: requeued } = await admin
+          .from('render_jobs')
+          .update({ status: 'queued', claimed_at: null, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .eq('status', row.status)
+          .select('id')
+        if (requeued?.length) out.requeued.push(id)
+      }
+    }
+
+    // Overdue: flag for staff, never auto-fail.
+    const accepted = Date.parse(String(row.submit_intent_at))
+    if (Number.isFinite(accepted) && nowMs - accepted > SUBMISSION_OVERDUE_MS) {
+      out.overdue.push(id)
+      await admin
+        .from('genesis_applications')
+        .update({ studio_submission_state: row.status === 'failed' ? 'render_failed' : 'render_overdue' })
+        .eq('studio_application_render_id', id)
+        .neq('studio_submission_state', 'finalized')
+    }
+  }
+  return out
 }

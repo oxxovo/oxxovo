@@ -29,6 +29,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { buildNextSeasonRow } from '@/lib/season-schedule'
 import { releasePrelimHoldCore } from '@/lib/watch-hold'
+import { sweepAsyncSubmissions, type AsyncSweepReport } from '@/lib/studio'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
 import type { Season } from '@/lib/seasons'
 
@@ -74,6 +75,7 @@ type SeasonTickReport = {
   advancements: { id: string; advanced: number; rejected: number; nTarget: number }[]
   skippedCreation?: string
   errors: string[]
+  asyncSweep?: AsyncSweepReport
 }
 
 async function handle(request: NextRequest) {
@@ -376,6 +378,16 @@ async function handle(request: NextRequest) {
   }
   if (alerts.length > 0) await Promise.allSettled(alerts)
 
+  // ★Asynchronous submission: finalize accepted-and-rendered entries, recover dead
+  // render leases, flag overdue ones. Deliberately part of THIS tick rather than a new
+  // cron entry -- see sweepAsyncSubmissions for why (Vercel cron plan limit).
+  let asyncSweep: Awaited<ReturnType<typeof sweepAsyncSubmissions>> | undefined
+  try {
+    asyncSweep = await sweepAsyncSubmissions()
+  } catch (e) {
+    errors.push(`asyncSweep: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   const report: SeasonTickReport = {
     ok: true,
     ranAt: now.toISOString(),
@@ -385,6 +397,7 @@ async function handle(request: NextRequest) {
     prelimReleases,
     advancements,
     ...(skippedCreation ? { skippedCreation } : {}),
+    ...(asyncSweep ? { asyncSweep } : {}),
     errors,
   }
   return NextResponse.json(report)
