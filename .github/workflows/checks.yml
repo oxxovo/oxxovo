@@ -40,9 +40,21 @@ jobs:
         run: npm test
 
       # Catches what tsc cannot: route/server-component regressions, and any page that
-      # reaches for the database while prerendering. Verified 2026-07-30 to complete
-      # with NO environment variables present (the local .env.local was moved aside for
-      # that check), so this needs no secrets -- if it ever does, the fix is to stop
-      # depending on env at build time, not to add secrets.
+      # reaches for the database while prerendering.
+      #
+      # ★It needs PLACEHOLDERS, not secrets. Measured 2026-07-30 by moving the local
+      # .env.local aside: with no env at all the build FAILS, because prerendering /faq
+      # reaches createSupabaseAdmin() and that throws on a missing URL/key. With the
+      # obviously-fake values below the build completes (exit 0) -- the client is
+      # constructed, the query fails with "fetch failed", and the page falls back to its
+      # no-season state, which is exactly the path a real outage would take.
+      #
+      # These are not credentials and nothing reaches a real database. If a future page
+      # needs REAL data to build, the fix is to stop depending on data at build time,
+      # not to add secrets here.
       - name: Build
         run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
