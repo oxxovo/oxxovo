@@ -1504,6 +1504,11 @@ export type StudioRender = {
   error_message: string | null
   edl: EdlSegment[]
   submitted_at: string | null
+  // Asynchronous submission: accepted before the deadline vs. actually finalised. The
+  // participant screen needs both -- "accepted" is the reassurance, "finalised" is the
+  // completion.
+  submit_intent_at: string | null
+  finalized_at: string | null
   created_at: string
 }
 
@@ -1511,7 +1516,7 @@ export async function listUserRenders(userId: string, seasonId: string): Promise
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('render_jobs')
-    .select('id, status, total_duration_seconds, video_url, error_message, edl, submitted_at, created_at')
+    .select('id, status, total_duration_seconds, video_url, error_message, edl, submitted_at, submit_intent_at, finalized_at, created_at')
     .eq('user_id', userId)
     .eq('season_id', seasonId)
     // Soft-deleted renders are hidden everywhere (row + R2 file preserved).

@@ -26,6 +26,7 @@ import {
   submitGeneration,
   createRender,
   listUserRenders,
+  finalizeSubmission,
   listMusicAssets,
   submitRender,
   deleteClip,
@@ -716,6 +717,11 @@ export type RenderStatusDTO = {
   videoUrl: string | null
   totalSeconds: number
   error?: string | null
+  // Asynchronous submission. acceptedAt is when the submission was RECEIVED (before
+  // the deadline); finalized says whether the rendered file has been published onto
+  // the entry. Between the two the screen shows "accepted, processing".
+  acceptedAt?: string | null
+  finalized?: boolean
 } | null
 
 export async function pollRenderAction(token: string, renderId: string): Promise<RenderStatusDTO> {
@@ -724,16 +730,46 @@ export async function pollRenderAction(token: string, renderId: string): Promise
   if (!auth) return null
   const season = await getCurrentSeason()
   if (!season) return null
-  const renders = await listUserRenders(auth.userId, season.id)
-  const r = renders.find((x) => x.id === renderId)
+  let renders = await listUserRenders(auth.userId, season.id)
+  let r = renders.find((x) => x.id === renderId)
   if (!r) return null
+
+  // ★SELF-FINALIZE. The hourly season tick is the guarantee; this exists so a
+  // participant watching their own render does not wait up to an hour to see it
+  // complete. FOUR conditions, all required:
+  //   owner            -- listUserRenders filters by user_id, so reaching here already
+  //                       proves it (never act on a bare renderId);
+  //   submit_intent_at -- the submission was ACCEPTED. ★Without this the call would
+  //                       fill free_entry_url for a render nobody submitted, and
+  //                       free_entry_url IS NOT NULL is exactly what makes an entry
+  //                       scorable -- self-healing must not become a way around the
+  //                       deadline gate;
+  //   finalized_at nul -- not already done (finalizeSubmission is idempotent anyway);
+  //   status ready     -- the file exists and carries its v1sc.
+  if (r.submit_intent_at && !r.finalized_at && r.status === 'ready') {
+    const fin = await finalizeSubmission(r.id)
+    if (!fin.ok) {
+      console.error('[studio] self-finalize failed', { renderId: r.id, reason: fin.reason, detail: fin.detail })
+    } else if (fin.finalized) {
+      renders = await listUserRenders(auth.userId, season.id)
+      r = renders.find((x) => x.id === renderId) ?? r
+    }
+  }
+
   const status = (['queued', 'rendering', 'uploading', 'ready', 'failed'].includes(r.status) ? r.status : 'ready') as
     | 'queued'
     | 'rendering'
     | 'uploading'
     | 'ready'
     | 'failed'
-  return { status, videoUrl: r.video_url, totalSeconds: Number(r.total_duration_seconds), error: r.error_message }
+  return {
+    status,
+    videoUrl: r.video_url,
+    totalSeconds: Number(r.total_duration_seconds),
+    error: r.error_message,
+    acceptedAt: r.submit_intent_at,
+    finalized: !!r.finalized_at,
+  }
 }
 
 export type SubmitRenderActionResult =
