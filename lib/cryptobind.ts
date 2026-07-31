@@ -431,6 +431,16 @@ export type ComposeVerifyResult =
 // Submission verify: recompute EDL hash + source bundle from live data, confirm
 // the request signature, then confirm the worker's content signature. The caller
 // MUST separately verify each source clip's own v1/v1c CryptoBind + ownership.
+//
+// ★`requireFinal` exists for asynchronous submission (72h window + 24h processing
+// buffer). The two halves of this check become available at DIFFERENT times:
+//   v1sr (request)  -- signed by createRender, so it exists BEFORE the render;
+//   v1sc (content)  -- stamped by the worker, so it exists only AFTER the render.
+// Accepting a submission at the deadline therefore verifies v1sr (requireFinal
+// false) and the finalize pass verifies both once the render lands. NOTHING about
+// the signatures changes -- no new canonical string, no new signature, worker
+// untouched. Only WHEN each half is checked moves. Default stays true so every
+// existing caller keeps the strict behaviour.
 export function verifyComposeBind(
   row: {
     id: string
@@ -444,7 +454,9 @@ export function verifyComposeBind(
   },
   expectedTid: string,
   sourceSignatures: string[],
+  opts: { requireFinal?: boolean } = {},
 ): ComposeVerifyResult {
+  const requireFinal = opts.requireFinal ?? true
   if (row.cryptobind_algo !== CRYPTOBIND_ALGO) return { ok: false, reason: 'unsupported_algo' }
   if (row.cryptobind_tid !== expectedTid) return { ok: false, reason: 'tid_mismatch' }
 
@@ -464,8 +476,12 @@ export function verifyComposeBind(
   }
 
   if (!row.cryptobind_final_hash || !row.cryptobind_final_signature) {
-    return { ok: false, reason: 'final_missing' }
+    // Not yet rendered. At intent time that is the expected state; at finalize time
+    // it means the sweep ran too early and the caller must retry, never accept.
+    return requireFinal ? { ok: false, reason: 'final_missing' } : { ok: true }
   }
+  // A final signature that is PRESENT is always checked, even at intent time: if the
+  // render already landed there is no reason to look at less evidence than we have.
   const expectedFinal = sign(
     composeContentCanonical({ renderId: row.id, tid: row.cryptobind_tid, finalHash: row.cryptobind_final_hash }),
   )

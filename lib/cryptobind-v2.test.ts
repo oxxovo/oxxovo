@@ -15,6 +15,9 @@ import {
   computeEdlHash,
   computeSourceBundle,
   buildMusicAssetBind,
+  buildComposeRequestBind,
+  buildComposeContentBind,
+  verifyComposeBind,
   verifyMusicAssetBind,
   musicAssetCanonicalString,
   type ComposeEdl,
@@ -244,4 +247,71 @@ test('backward compat: v1 array still uses the edl1 prefix', () => {
   const v1 = edlCanonicalString([{ jobId: 'clipA', startMs: 0, endMs: 5000 }])
   assert.ok(v1.startsWith('edl1|'))
   assert.notEqual(computeEdlHash([{ jobId: 'clipA', startMs: 0, endMs: 5000 }]), GOLDEN_HASH)
+})
+
+
+// ---- ASYNC SUBMISSION: requireFinal ---------------------------------------
+// The intent phase runs at the deadline, before the render exists, so it can only
+// check v1sr; finalize checks both halves once the worker has stamped v1sc. These
+// tests pin that split so a future edit cannot quietly let an unrendered submission
+// through the strict path (or reject a legitimate intent).
+const CB_PID = '11111111-1111-4111-8111-111111111111'
+const CB_TID = 'season_test'
+const CB_RENDER_ID = '22222222-2222-4222-8222-222222222222'
+const CB_SOURCE_SIGS = ['aa'.repeat(32), 'bb'.repeat(32)]
+
+function composeRow(withFinal: boolean) {
+  const req = buildComposeRequestBind({
+    pid: CB_PID, tid: CB_TID, renderId: CB_RENDER_ID, edl: sample, sourceSignatures: CB_SOURCE_SIGS,
+  })
+  const base = {
+    id: CB_RENDER_ID,
+    cryptobind_pid: CB_PID,
+    cryptobind_tid: CB_TID,
+    cryptobind_algo: 'HMAC-SHA256',
+    cryptobind_render_signature: req.cryptobind_render_signature,
+    edl: sample,
+  }
+  if (!withFinal) return base
+  const content = buildComposeContentBind({ renderId: CB_RENDER_ID, tid: CB_TID, finalHash: 'cc'.repeat(32) })
+  return { ...base, ...content }
+}
+
+test('requireFinal: an unrendered render passes intent but not the strict path', () => {
+  const row = composeRow(false)
+  assert.deepEqual(verifyComposeBind(row, CB_TID, CB_SOURCE_SIGS, { requireFinal: false }), { ok: true })
+  // default (and explicit true) must still refuse -- this is the existing behaviour
+  assert.deepEqual(verifyComposeBind(row, CB_TID, CB_SOURCE_SIGS), { ok: false, reason: 'final_missing' })
+  assert.deepEqual(verifyComposeBind(row, CB_TID, CB_SOURCE_SIGS, { requireFinal: true }), { ok: false, reason: 'final_missing' })
+})
+
+test('requireFinal: a rendered render passes both paths', () => {
+  const row = composeRow(true)
+  assert.deepEqual(verifyComposeBind(row, CB_TID, CB_SOURCE_SIGS, { requireFinal: false }), { ok: true })
+  assert.deepEqual(verifyComposeBind(row, CB_TID, CB_SOURCE_SIGS), { ok: true })
+})
+
+test('requireFinal=false still refuses a TAMPERED request signature', () => {
+  // The relaxation must be limited to "v1sc not present yet" -- everything v1sr
+  // covers stays enforced at intent time.
+  const row = { ...composeRow(false), cryptobind_render_signature: 'ff'.repeat(32) }
+  assert.deepEqual(verifyComposeBind(row, CB_TID, CB_SOURCE_SIGS, { requireFinal: false }), { ok: false, reason: 'render_sig_mismatch' })
+})
+
+test('requireFinal=false still refuses a swapped SOURCE bundle (EDL/clip tamper)', () => {
+  const row = composeRow(false)
+  const swapped = ['aa'.repeat(32), 'cc'.repeat(32)]
+  assert.deepEqual(verifyComposeBind(row, CB_TID, CB_SOURCE_SIGS, { requireFinal: false }), { ok: true })
+  assert.deepEqual(verifyComposeBind(row, CB_TID, swapped, { requireFinal: false }), { ok: false, reason: 'render_sig_mismatch' })
+})
+
+test('requireFinal=false still refuses a PRESENT but tampered final signature', () => {
+  // If v1sc exists it is checked regardless of the flag: never look at less
+  // evidence than is available.
+  const row = { ...composeRow(true), cryptobind_final_signature: 'ff'.repeat(32) }
+  assert.deepEqual(verifyComposeBind(row, CB_TID, CB_SOURCE_SIGS, { requireFinal: false }), { ok: false, reason: 'final_sig_mismatch' })
+})
+
+test('requireFinal=false still refuses a tid mismatch (wrong season)', () => {
+  assert.deepEqual(verifyComposeBind(composeRow(false), 'season_other', CB_SOURCE_SIGS, { requireFinal: false }), { ok: false, reason: 'tid_mismatch' })
 })
