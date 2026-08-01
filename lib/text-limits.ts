@@ -4,6 +4,21 @@
 // KR in stage 7) is accepted automatically with no second edit here.
 
 import { FONT_SPECS, type TextLayer } from './text-render'
+import { textBlockMetrics, undrawableChars } from './text-metrics'
+
+// ★ The output canvas per aspect -- mirrors the worker's canvasForAspect()
+// (oxxovo-studio/src/render.ts). Only the RATIO matters here: textBlockMetrics
+// returns fractions, so 720x1280 and 1080x1920 give identical answers. The real
+// numbers are used anyway so this cannot drift from what ships.
+export const TEXT_CANVAS: Record<string, readonly [number, number]> = {
+  '16:9': [1280, 720],
+  '9:16': [720, 1280],
+}
+// A v2 EDL carrying texts always carries an aspect (the editor sets one before a
+// layer can exist). If one ever arrives without, assume the TIGHTER canvas: 9:16
+// has a third of 16:9's horizontal room, so guessing it can only be stricter,
+// never permissive.
+export const TIGHTEST_ASPECT = '9:16'
 
 export const TEXT_LIMITS = {
   // ★ MIN_SIZE_PCT floor: below ~5% of canvas height anti-aliasing dominates and
@@ -26,9 +41,19 @@ export type TextReason =
   | 'too_many_texts' | 'text_content' | 'text_font' | 'text_size'
   | 'text_color' | 'text_stroke' | 'text_align' | 'text_pos'
   | 'text_window' | 'text_fade' | 'text_trademark'
+  // ★ Geometry. The render spec neither wraps nor shrinks to fit, so without
+  // these a layer silently runs off the frame -- measured 2026-07-31: a 7-syllable
+  // Korean title at 12% on 9:16 is 131% of the frame width, and four lines at 12%
+  // from yNorm=0.55 puts the last line entirely below the bottom edge.
+  | 'text_too_wide' | 'text_too_tall'
+  // ★ The chosen font has no glyph for a character. Black Han Sans covers 2,581
+  // of 11,172 Hangul syllables; the rest draw NO ink (not even a fallback box),
+  // so the caption would ship with a blank gap.
+  | 'text_font_glyph'
 
-// Validate ONE layer against the composition duration (ms). Pure; no i18n.
-export function validateTextLayer(x: unknown, totalMs: number): TextReason | null {
+// Validate ONE layer against the composition duration (ms) and the output canvas.
+// Pure; no i18n.
+export function validateTextLayer(x: unknown, totalMs: number, canvas: readonly [number, number]): TextReason | null {
   const l = x as TextLayer
   if (!l || typeof l !== 'object') return 'text_content'
   const content = typeof l.content === 'string' ? l.content : ''
@@ -48,6 +73,13 @@ export function validateTextLayer(x: unknown, totalMs: number): TextReason | nul
   const fin = l.fadeInMs ?? 0
   const fout = l.fadeOutMs ?? 0
   if (fin < 0 || fout < 0 || fin + fout > l.endMs - l.startMs) return 'text_fade'
+
+  // Geometry last: it is the only part that needs the canvas, and the checks
+  // above have already guaranteed the fields it reads are well formed.
+  if (undrawableChars(l.font, content).length) return 'text_font_glyph'
+  const m = textBlockMetrics(l, canvas[0], canvas[1])
+  if (m.widthFrac > 1) return 'text_too_wide'
+  if (m.bottomFrac > 1) return 'text_too_tall'
   return null
 }
 
@@ -83,12 +115,14 @@ export function findBlockedTrademark(content: string, blocklist: string[]): stri
 export function validateTexts(
   texts: unknown,
   totalMs: number,
+  aspect?: string,
 ): { ok: true } | { ok: false; index: number; reason: TextReason } {
   if (texts === undefined || texts === null) return { ok: true }
   if (!Array.isArray(texts)) return { ok: false, index: -1, reason: 'text_content' }
   if (texts.length > TEXT_LIMITS.MAX_TEXTS) return { ok: false, index: -1, reason: 'too_many_texts' }
+  const canvas = TEXT_CANVAS[aspect ?? TIGHTEST_ASPECT] ?? TEXT_CANVAS[TIGHTEST_ASPECT]
   for (let i = 0; i < texts.length; i++) {
-    const r = validateTextLayer(texts[i], totalMs)
+    const r = validateTextLayer(texts[i], totalMs, canvas)
     if (r) return { ok: false, index: i, reason: r }
   }
   return { ok: true }

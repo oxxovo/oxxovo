@@ -1397,7 +1397,7 @@ export async function createRender(args: {
   // 2b. Text/title overlays (EDL v2). Server is authority for the shape + the 5%
   //     size floor (client mirrors both). Content moderation is a later step.
   const texts = Array.isArray(args.edl) ? [] : (args.edl.texts ?? [])
-  const tv = validateTexts(texts, totalMs)
+  const tv = validateTexts(texts, totalMs, aspect)
   if (!tv.ok) return { ok: false, reason: tv.reason, detail: tv.index >= 0 ? `text#${tv.index + 1}` : undefined }
   // Trademark blocklist (no-deploy tunable). Cheap local check; the AI content
   // scan runs at submit (the public gate). Absent list -> no block.

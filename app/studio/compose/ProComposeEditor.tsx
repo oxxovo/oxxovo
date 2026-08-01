@@ -31,9 +31,11 @@ import { createRawPreview, type PreviewEngine, type PreviewTransition } from './
 import { createGLPreview } from './preview-gl'
 import { hasAnyEffect, EXPOSED_SLIDERS, LUT_OPTIONS, EXPOSED_TRANSITIONS, type EffectParams } from '@/lib/effects'
 import { FONT_SPECS, type TextLayer } from '@/lib/text-render'
-import { TEXT_LIMITS, validateTexts, type TextReason } from '@/lib/text-limits'
+import { TEXT_LIMITS, TEXT_CANVAS, validateTexts, type TextReason } from '@/lib/text-limits'
 import { TextOverlay } from './TextOverlay'
 import { TextTrack } from './TextTrack'
+import { TextFitReadout } from './TextFit'
+import { maxFittingSizePct } from '@/lib/text-metrics'
 import { createMusicPreview, type MusicPreview, type MusicBed } from './music-preview'
 
 // effects/speed are populated by the effect UI (E); undefined in C (no effect UI
@@ -168,6 +170,15 @@ const DICT = {
     tt_hint: '바를 끌어 구간을 옮기고, 양 끝을 끌어 길이를 조절하세요.',
     tt_move: '끌어서 구간 이동',
     tt_trim_s: '시작 조절', tt_trim_e: '끝 조절',
+    fit_w: '가로', fit_h: '세로', fit_ok: '화면 안에 들어갑니다',
+    fix_split: 'Enter로 줄을 나누세요 — 문구를 그대로 두고 폭을 줄일 수 있어요.',
+    fix_smaller: '글자 크기를 줄이세요.',
+    fix_shorter: '글자 수를 줄이세요.',
+    fix_font: (n: string) => `이 문구라면 ${n} 글꼴로는 들어갑니다.`,
+    fix_up: '위치를 위쪽으로 옮기세요.',
+    fix_fewer_lines: '줄 수를 줄이세요.',
+    fix_none: `최소 크기(${TEXT_LIMITS.MIN_SIZE_PCT}%)에서도 들어가지 않아요. 줄을 나누거나 문구를 줄여 주세요.`,
+    fix_glyph: (c: string) => `이 글꼴에 없는 글자: ${c} — 영상에서 빈칸으로 나옵니다.`,
     // --- output aspect / per-clip fit ---
     aspect_hint: '출력 비율 — 미리보기가 즉시 바뀝니다',
     crop_badge: '크롭됨',
@@ -223,6 +234,9 @@ const DICT = {
       text_window: '표시 구간이 영상 길이를 벗어났어요.',
       text_fade: '페이드가 표시 구간보다 길어요.',
       text_trademark: '상표·브랜드명은 사용할 수 없어요. 문구를 수정해 주세요.',
+      text_too_wide: '문구가 화면 폭을 넘어가요. 줄을 나누거나, 크기를 줄이거나, 글자 수를 줄여 주세요.',
+      text_too_tall: '문구가 화면 아래로 넘어가요. 위쪽으로 옮기거나, 크기를 줄이거나, 줄 수를 줄여 주세요.',
+      text_font_glyph: '이 글꼴에 없는 글자가 있어요 — 그대로 두면 영상에서 빈칸으로 나와요. 글꼴을 바꾸거나 문구를 수정해 주세요.',
     }[r]),
   },
   en: {
@@ -343,6 +357,15 @@ const DICT = {
     tt_hint: 'Drag a bar to move its window; drag an edge to resize.',
     tt_move: 'Drag to move the window',
     tt_trim_s: 'Trim start', tt_trim_e: 'Trim end',
+    fit_w: 'Width', fit_h: 'Height', fit_ok: 'Fits the frame',
+    fix_split: 'Press Enter to split the line — keeps every word, narrows the block.',
+    fix_smaller: 'Reduce the text size.',
+    fix_shorter: 'Use fewer characters.',
+    fix_font: (n: string) => `This text would fit in ${n}.`,
+    fix_up: 'Move the text higher in the frame.',
+    fix_fewer_lines: 'Use fewer lines.',
+    fix_none: `It does not fit even at the minimum size (${TEXT_LIMITS.MIN_SIZE_PCT}%). Split the line or shorten the text.`,
+    fix_glyph: (c: string) => `Characters this font cannot draw: ${c} — they render as blank space.`,
     // --- output aspect / per-clip fit ---
     aspect_hint: 'Output aspect — the preview reframes instantly',
     crop_badge: 'CROPPED',
@@ -398,6 +421,9 @@ const DICT = {
       text_window: 'The show window is outside the video length.',
       text_fade: 'Fade is longer than the show window.',
       text_trademark: 'Trademarks / brand names are not allowed. Please edit the text.',
+      text_too_wide: 'This line is wider than the frame. Split it across lines, reduce the size, or shorten it.',
+      text_too_tall: 'The text runs past the bottom of the frame. Move it up, reduce the size, or use fewer lines.',
+      text_font_glyph: 'This font has no glyph for one of these characters — it would render as a blank gap. Change the font or edit the text.',
     }[r]),
   },
 } as const
@@ -1003,7 +1029,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     // the edl1 hash + the existing effect-free render path).
     // Pre-validate text layers with the SAME rules the server enforces, so a bad
     // layer (e.g. size < 5%) is explained inline before a round-trip.
-    const tv = validateTexts(texts, totalMs)
+    const tv = validateTexts(texts, totalMs, aspect)
     if (!tv.ok) {
       setErr(tv.index >= 0 ? `${t.text_reason(tv.reason)} (${t.text_layer_n(tv.index + 1)})` : t.text_reason(tv.reason))
       setRenderState(null); setBusy(false); return
@@ -1476,6 +1502,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                         const strokeOn = !!l.strokeColor && (l.strokePct ?? 0) > 0
                         const GRID_X: [number, TextLayer['align']][] = [[0.06, 'left'], [0.5, 'center'], [0.94, 'right']]
                         const GRID_Y = [0.1, 0.45, 0.82]
+                        // ★Dynamic size cap. The slider stops where the text stops
+                        // fitting THIS aspect, so a participant cannot drag into a
+                        // value the server will reject. Nothing else is clamped --
+                        // position and content stay exactly as they were set.
+                        const canvas = TEXT_CANVAS[aspect] ?? TEXT_CANVAS['9:16']
+                        const sizeCap = maxFittingSizePct(l, canvas[0], canvas[1], TEXT_LIMITS.MIN_SIZE_PCT, TEXT_LIMITS.MAX_SIZE_PCT)
                         return (
                           <div className="space-y-2.5 rounded-lg border border-white/10 bg-white/[.02] p-2.5">
                             {/* content */}
@@ -1504,7 +1536,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                                 <span className="flex items-center justify-between text-[11px] text-white/55">
                                   <span>{t.text_size}</span><span className="tabular-nums text-white/35">{Math.round(l.sizePct)}%</span>
                                 </span>
-                                <input type="range" min={TEXT_LIMITS.MIN_SIZE_PCT} max={TEXT_LIMITS.MAX_SIZE_PCT} value={l.sizePct}
+                                <input type="range" min={TEXT_LIMITS.MIN_SIZE_PCT} max={sizeCap ?? TEXT_LIMITS.MIN_SIZE_PCT} step={0.5} value={l.sizePct}
                                   onChange={(e) => up({ sizePct: Number(e.target.value) }, 'text-size')}
                                   className="w-full accent-[#8b22ff]" />
                               </label>
@@ -1515,6 +1547,15 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                               </label>
                             </div>
                             <p className="text-[9px] leading-tight text-white/35">{t.text_size_floor(TEXT_LIMITS.MIN_SIZE_PCT)}</p>
+                            <TextFitReadout layer={l} canvas={canvas} fonts={FONT_SPECS}
+                              atSizeFloor={l.sizePct <= TEXT_LIMITS.MIN_SIZE_PCT}
+                              labels={{
+                                width: t.fit_w, height: t.fit_h, ok: t.fit_ok,
+                                tooWide: t.text_reason('text_too_wide') ?? '', tooTall: t.text_reason('text_too_tall') ?? '',
+                                fixSplit: t.fix_split, fixSmaller: t.fix_smaller, fixShorter: t.fix_shorter,
+                                fixFont: t.fix_font, fixUp: t.fix_up, fixFewerLines: t.fix_fewer_lines,
+                                noSizeFits: t.fix_none, missingGlyph: t.fix_glyph,
+                              }} />
                             {/* stroke */}
                             <div className="grid grid-cols-2 items-end gap-3">
                               <label className="block">
