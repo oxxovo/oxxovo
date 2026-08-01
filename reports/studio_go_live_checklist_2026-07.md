@@ -107,18 +107,49 @@ switch was made, which is why unifying cost nothing.)
   deploy` uploads the directory, not the commit -- that is how the reference mockups
   leaked on 2026-07-02), stamps `BUILD_SHA`, and re-reads `/api/version` to confirm the
   stamp reached the build.
-- ★VERIFY, and do not skip it because the CLI said "success":
-  ```
-  curl https://www.oxxovo.ai/api/version
-  ```
+- ★VERIFY, and do not skip it because the CLI said "success". Open this in a browser
+  (no login, nothing to install):
+
+      https://www.oxxovo.ai/api/version
+
   Expect `{"sha":"<the commit you meant>","dirty":false,"builtAt":"<a minute ago>"}`.
+  - **404** -> the route is not deployed yet, i.e. you are still looking at the
+    pre-C3 production. Measured 2026-08-01: production returns 404 here, which is the
+    marker that this deploy has not happened.
   - `dirty:true` -> the deploy carried files that are in no commit. The SHA does not
     describe what shipped; redeploy from a clean tree.
   - `sha:"unknown"` -> it was deployed by hand instead of through the script, and this
     deployment is once again unidentifiable. Redeploy through the script.
   - an OLD `builtAt` -> you are looking at a cached/previous deployment, not this one.
+  - ★If you prefer a terminal: on Windows PowerShell use `curl.exe`, NOT `curl`. Bare
+    `curl` is an alias for Invoke-WebRequest there and prints a different object.
 - CAUTION: Vercel git auto-deploy stays OFF (`vercel.json` git.deploymentEnabled.main
   =false). Every production move goes through this command so every one is stamped.
+
+**★C4. Re-confirm REACHABILITY on production, right after C3**
+- WHY this exists and is not redundant with Phase D: **D runs on Preview**, and
+  production is a different build shipped in one ~216-commit step. "The server
+  accepts it" and "a participant can get to the screen that sends it" are different
+  claims. On 2026-07-31 every server-side test of asynchronous submission passed
+  while the submit form was unreachable, because it was rendered only inside the
+  `renderReady` branch. A green Preview E2E would not have caught that on prod.
+- Right after C3, before any Phase E flip -- these do not need Studio to be open:
+  1. `/api/version` reports the SHA you deployed (above).
+  2. `https://www.oxxovo.ai/studio/compose` returns the closed-gate page, NOT a 500
+     and not a 404. A 500 here means the build is broken for logged-out users; a 404
+     means the route did not ship.
+- ★Then, as the FIRST check after `session6_enabled = true` in Phase E, walk the one
+  path Preview cannot prove -- **the participant reaching the submit control**:
+  - Sign in as the test account, open `/studio/compose`, and confirm the submit form
+    is present for a render whose status is `queued` (not only `ready`). The statuses
+    that must show it are `ASYNC_SUBMIT_STATUSES` = queued / rendering / uploading /
+    ready / failed (`lib/studio.ts`; the editor keeps its own mirrored copy, so a
+    change to one and not the other reproduces exactly the 2026-07-31 defect).
+  - Reload the page mid-processing and confirm the "accepted, processing" panel comes
+    back from the DB rather than an empty editor.
+  - Then remove the test entry.
+- Ask this of every launch item, not just this one: not "does the feature work" but
+  "can a participant get to the screen where it works, on the build that is live".
 
 ---
 
