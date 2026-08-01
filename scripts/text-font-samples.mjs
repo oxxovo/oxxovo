@@ -30,9 +30,13 @@ for (const f of OT.FONT_SPECS) {
   GlobalFonts.registerFromPath(p, f.family)
 }
 
+// ★ The REAL output canvas, taken from the worker's canvasForAspect()
+// (oxxovo-studio/src/render.ts:169). Rendering the samples at a larger canvas
+// would make the fonts look crisper than the video a participant actually gets --
+// the 5% floor is 64px here, not 96px. Judge readability at ship resolution.
 const ASPECTS = [
-  { id: '9x16', W: 1080, H: 1920 }, // primary Studio output
-  { id: '16x9', W: 1920, H: 1080 },
+  { id: '9x16', W: 720, H: 1280 }, // primary Studio output
+  { id: '16x9', W: 1280, H: 720 },
 ]
 
 // One frame shows the whole usable size band at once, so a single glance answers
