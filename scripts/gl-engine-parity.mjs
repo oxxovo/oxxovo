@@ -2,10 +2,67 @@
 // the same source preview-gl.ts uses) headlessly and compares with ffmpeg, so a
 // port can't drift from the harness parity. Cases: color, LUT, glow (multipass).
 //   node scripts/gl-engine-parity.mjs <test.png>
+//
+// ★What the ffmpeg side is, and why that mattered (2026-08-01). This harness never
+// read the worker: the filter strings it compared against were hand-written COPIES
+// of what oxxovo-studio/src/render.ts builds. render.ts could drift and every run
+// would still say PASS -- a green harness measuring nothing, which is the same shape
+// as the worker CI that ran for a month without `npm ci`.
+// Now: color and LUT call the worker's OWN effectVideoFilters(). Their strings are
+// no longer written here at all.
+// ★glow is STILL a local copy (see its case below) -- deliberately, and it is printed
+// as such in the output so nobody reads "imported" and assumes all three are covered.
+import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { register } from 'node:module'
 import { chromium } from 'playwright-core'
 import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, colorUniforms, glowStages, parseCube, tileCube } from '../lib/gl-effects.ts'
+import { resolveWorkerRepo } from './worker-repo.mjs'
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const WORKER_REPO = resolveWorkerRepo(ROOT)
+const RENDER_TS = join(WORKER_REPO, 'src', 'render.ts')
+
+// ★FAIL LOUD. If the worker cannot be loaded we exit 1 -- we do NOT fall back to the
+// old hand-written strings. A harness that quietly degrades to comparing itself is
+// worse than no harness: it reports PASS while verifying nothing.
+if (!existsSync(RENDER_TS)) {
+  console.error(`\n★Cannot load the worker's filter builder -- not measuring anything, so exiting 1.`)
+  console.error(`  looked for : ${RENDER_TS}`)
+  console.error(`  app root   : ${ROOT}`)
+  console.error(`  WORKER_REPO: ${process.env.WORKER_REPO ?? '(unset -- derived from the app directory name)'}`)
+  console.error(`\n  Clone/worktree oxxovo-studio next to this checkout, or set WORKER_REPO.\n`)
+  process.exit(1)
+}
+// render.ts reads LUT_DIR at module scope, so it must be set BEFORE the import below.
+process.env.LUT_DIR = join(WORKER_REPO, 'assets', 'luts')
+// Worker source uses extensionless relative imports (render.ts -> './text-render').
+// Same resolve hook `npm test` uses; registering here keeps a bare `node
+// scripts/gl-engine-parity.mjs` working, with no npm-script flag to remember.
+register('./test-hooks.mjs', import.meta.url)
+let effectVideoFilters
+try {
+  ;({ effectVideoFilters } = await import(pathToFileURL(RENDER_TS).href))
+} catch (e) {
+  console.error(`\n★Found ${RENDER_TS} but could not import it -- exiting 1 rather than`)
+  console.error(`  falling back to local copies of its filter strings.\n  ${e?.message ?? e}\n`)
+  process.exit(1)
+}
+// The ffmpeg side must read the SAME .cube the preview serves, or the LUT row compares
+// two different tables and its 0.0x% means nothing.
+const LUT_APP = join(ROOT, 'public', 'luts', 'teal_orange.cube')
+const LUT_WORKER = join(process.env.LUT_DIR, 'teal_orange.cube')
+const md5 = async (p) => createHash('md5').update(await readFile(p)).digest('hex')
+if ((await md5(LUT_APP)) !== (await md5(LUT_WORKER))) {
+  console.error(`\n★public/luts and the worker's assets/luts disagree for teal_orange.cube.`)
+  console.error(`  ${LUT_APP}\n  ${LUT_WORKER}`)
+  console.error(`  The LUT row would compare two different tables. Exiting 1.\n`)
+  process.exit(1)
+}
 
 // ★Every recorded number needs provenance. A parity figure measured on ONE image
 // is not a property of the engine: the colour grade sat at a recorded "1.51%" while
@@ -89,18 +146,28 @@ if (argPngs.length) {
   }
 }
 
+// The GL side takes slider values; the ffmpeg side takes the SAME slider values
+// through the worker's own builder. That equality is the whole point -- one set of
+// numbers, two engines, no third transcription in the middle.
+const COLOR_SLIDERS = { exposure: 10, contrast: 30, saturation: -20 }
+const LUT_ID = 'teal-orange'
+const ff = (e) => effectVideoFilters(e).join(',')
+
 const CASES = [
   {
     name: 'color',
     gate: 2.5,
-    // eq params mirror colorUniforms(): brightness=ex/200, contrast=1+co/100, saturation=1+sa/100
-    vf: 'eq=brightness=0.0500:contrast=1.3000:saturation=0.8000,format=rgb24',
-    gl: async (b64) => glRun({ shaders: shadersCL, U: colorUniforms({ exposure: 10, contrast: 30, saturation: -20 }) }, b64),
+    // ★From the worker, not transcribed: effectVideoFilters() maps the sliders to
+    // eq(brightness=ex/200, contrast=1+co/100, saturation=1+sa/100). If that mapping
+    // changes in render.ts, this row moves instead of silently still passing.
+    vf: `${ff(COLOR_SLIDERS)},format=rgb24`,
+    gl: async (b64) => glRun({ shaders: shadersCL, U: colorUniforms(COLOR_SLIDERS) }, b64),
   },
   {
     name: 'LUT',
     gate: 3,
-    vf: `lut3d=file='public/luts/teal_orange.cube',format=rgb24`,
+    // ★From the worker (LUT_DIR points at its assets/luts, md5-checked above).
+    vf: `${ff({ lut: LUT_ID })},format=rgb24`,
     gl: async (b64) => {
       const cube = parseCube(await readFile('public/luts/teal_orange.cube', 'utf8'))
       const t = tileCube(cube)
@@ -110,6 +177,17 @@ const CASES = [
   {
     name: 'glow',
     gate: 5,
+    // ★STILL A LOCAL COPY of what render.ts buildSegmentFC() emits -- this row does
+    // NOT detect drift in the worker's glow. Deferred on purpose (approved
+    // 2026-08-01): buildSegmentFC returns a labelled filter_complex whose tail
+    // appends the geometric normalisation, including `format=yuv420p`. Adopting it
+    // as-is would fold a chroma-subsampling round trip into this number, so the
+    // 5% gate would have to be re-baselined -- which is a measurement and an
+    // approval, not a drive-by edit. Closing it means extracting the sigma/opacity
+    // pair out of buildSegmentFC in the worker (~15 lines, no behaviour change);
+    // that is step 0 of the effects epic, before grain/motionBlur/dissolve touch
+    // render.ts. Until then the harness SAYS so on every run (see COPIED below).
+    copied: true,
     vf: 'split[a][b];[b]gblur=sigma=6.250[c];[a][c]blend=all_mode=screen:all_opacity=0.500,format=rgb24',
     gl: async (b64) => glRun({ shaders: shadersGlow, U: colorUniforms(), stages: glowStages({ glow: 50 }) }, b64),
   },
@@ -127,6 +205,21 @@ for (const it of items) {
   }
 }
 
+// ★Every number carries its own provenance. These figures are properties of a
+// SPECIFIC ffmpeg build, and the deployed worker's is not necessarily this one
+// (measured 2026-08-01: Railway runs 5.1.9-0+deb12u1 on Debian 12). A parity table
+// with no version on it invites the same mistake as a harness with no source on it.
+const ffVersion = await new Promise((res) => {
+  const p = spawn('ffmpeg', ['-version'])
+  let o = ''
+  p.stdout.on('data', (d) => (o += d))
+  p.on('close', () => res(o.split('\n')[0].replace(/^ffmpeg version /, '').split(' ')[0] || 'unknown'))
+  p.on('error', () => res('MISSING'))
+})
+console.log('')
+console.log(`ffmpeg     : ${ffVersion}   (LOCAL -- the deployed worker prints its own at boot)`)
+console.log(`worker repo: ${WORKER_REPO}`)
+console.log(`filters    : color+LUT imported from the worker; glow = LOCAL COPY (drift NOT detected)`)
 console.log('ENGINE parity -- one row per case, one column per content')
 console.log('case   gate   ' + items.map((i) => i.name.padEnd(9)).join('') + ' verdict')
 let allPass = true
@@ -138,7 +231,8 @@ for (const c of CASES) {
   console.log(
     c.name.padEnd(7) + `<=${c.gate}%`.padEnd(7) +
       rows.map((r) => `${r.d.toFixed(2)}%`.padEnd(9)).join('') +
-      (ok ? `PASS (worst ${worst.toFixed(2)}%)` : `REVIEW (worst ${worst.toFixed(2)}% on ${rows.find((r) => r.d === worst).content})`),
+      (ok ? `PASS (worst ${worst.toFixed(2)}%)` : `REVIEW (worst ${worst.toFixed(2)}% on ${rows.find((r) => r.d === worst).content})`) +
+      (c.copied ? '  ★COPIED filter -- not compared against render.ts' : ''),
   )
 }
 console.log(allPass ? 'ALL PASS' : 'REVIEW')
