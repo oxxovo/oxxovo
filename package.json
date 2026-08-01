@@ -12,7 +12,8 @@
     "test:parity:engine": "node scripts/gl-engine-parity.mjs",
     "test:parity:transition": "node scripts/gl-engine-transition.mjs",
     "test:eq-model": "node scripts/eq-model-probe.mjs",
-    "test:text-parity": "node --import ./scripts/test-register.mjs scripts/text-parity.mjs"
+    "test:text-parity": "node --import ./scripts/test-register.mjs scripts/text-parity.mjs",
+    "test:text-samples": "node --import ./scripts/test-register.mjs scripts/text-font-samples.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
