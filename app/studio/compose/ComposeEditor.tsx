@@ -21,6 +21,12 @@ export type EditorRenderStatus = {
   videoUrl: string | null
   totalSeconds: number
   error?: string | null
+  // Asynchronous submission (mirrors the server RenderStatusDTO): acceptedAt is when
+  // the submission was RECEIVED -- before the deadline -- and finalized says whether
+  // the rendered file has landed on the entry. Between the two the editor shows
+  // "accepted, processing" rather than pretending the submission has not happened.
+  acceptedAt?: string | null
+  finalized?: boolean
 }
 
 // Applicant info collected at submission ONLY when the application round has no
@@ -44,6 +50,18 @@ export type ComposeSubmitCtx = {
   statementMin: number
   statementMax: number
 }
+
+// Server-side acceptance state for an asynchronous submission. Mirrors the server
+// ComposeSubmissionStatus without importing the server module into this client file.
+// Non-null = this round's submission was already accepted; the editor must show
+// "accepted, processing" on re-entry instead of offering the submit form again.
+export type ComposeSubmission = {
+  acceptedAt: string
+  finalized: boolean
+  renderId: string | null
+  renderStatus: 'queued' | 'rendering' | 'uploading' | 'ready' | 'submitted' | 'failed' | null
+  state: 'intent' | 'finalized' | 'render_failed' | 'render_requeued' | 'render_overdue' | 'finalize_rejected' | null
+} | null
 
 // The participant's latest resumable render (server-persisted), so re-entry can
 // restore the composition instead of starting over. Shape mirrors the server
@@ -99,6 +117,9 @@ export type ComposeEditorProps = {
   // Submission step (optional -- the editor renders the submit UI only when both
   // are provided). The demo stubs these like onRender/pollRender.
   submitCtx?: ComposeSubmitCtx
+  // Server-side acceptance for this round (asynchronous submission). Omitted in the
+  // demo. Present + not finalized -> the "accepted, processing" screen.
+  submission?: ComposeSubmission
   onSubmit?: (
     renderId: string,
     applicant?: ComposeApplicant,

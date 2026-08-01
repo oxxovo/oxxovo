@@ -9,7 +9,7 @@ import Link from 'next/link'
 import { useAdminLang, setAdminLang } from '@/lib/admin-i18n'
 import { useLocalToken } from '@/lib/use-local-user'
 import ProComposeEditor from './ProComposeEditor'
-import { type ComposeApplicant, type ComposeSubmitCtx } from './ComposeEditor'
+import { type ComposeApplicant, type ComposeSubmitCtx, type ComposeSubmission } from './ComposeEditor'
 import {
   loadComposeState,
   createRenderAction,
@@ -39,6 +39,7 @@ export default function ComposePage() {
     maxSeconds: number
     maxClips: number
     submit: ComposeSubmitCtx
+    submission: ComposeSubmission
     resumeRender: ResumeRender | null
     nickname: string
     musicEnabled: boolean
@@ -107,6 +108,7 @@ export default function ComposePage() {
             maxSeconds={data.maxSeconds}
             maxClips={data.maxClips}
             submitCtx={data.submit}
+            submission={data.submission}
             resumeRender={data.resumeRender}
             nickname={data.nickname}
             musicEnabled={data.musicEnabled}

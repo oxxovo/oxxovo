@@ -22,6 +22,7 @@ import type {
   SourceClip,
   ComposeApplicant,
   ComposeSubmitCtx,
+  ComposeSubmission,
   ComposeResumeRender,
   EditorRenderStatus,
   ComposeEditorProps,
@@ -93,6 +94,21 @@ const DICT = {
     delete_final_confirm: '이 완성작을 삭제할까요? 편집 화면으로 돌아갑니다. (제출 전에만 가능)',
     submitted_ok: '제출 완료 — 채점 대기 중입니다. 제출 후에는 수정할 수 없습니다.',
     already_submitted: '이번 라운드에 이미 제출했습니다.',
+    // ★Asynchronous submission -- the accepted-but-not-yet-finalized screen. The one
+    // thing a participant needs to read here is that the DEADLINE is already met; the
+    // rendering that follows is our problem, not theirs. No time estimate is shown:
+    // it depends on the queue and would be a lie.
+    acc_title: '제출 접수됨 · 처리 중',
+    acc_at: (s: string) => `접수 시각: ${s}`,
+    acc_before_deadline: '접수는 마감 전에 완료되었습니다. 마감 이후 처리에는 영향을 받지 않습니다.',
+    acc_processing: '완성본을 순서대로 처리하고 있습니다. 이 화면을 닫아도 처리는 계속됩니다.',
+    acc_render: (s: string) =>
+      ({ queued: '대기 중', rendering: '처리 중', uploading: '업로드 중', ready: '처리 완료', submitted: '처리 완료', failed: '재확인 중' } as Record<string, string>)[s] ?? s,
+    acc_render_label: '완성본 상태',
+    acc_requeued: '처리 중 문제가 있어 자동으로 다시 처리하고 있습니다. 참가 자격에는 영향이 없습니다.',
+    acc_failed: '처리 중 문제가 발생해 운영진이 확인하고 있습니다. 참가 자격에는 영향이 없습니다.',
+    acc_no_resubmit: '단일 제출이므로 다시 제출하거나 수정할 수 없습니다.',
+    submit_async_note: '완성본이 아직 생성 중이어도 지금 제출할 수 있습니다 — 접수는 마감 전에 기록되고, 완성본은 이어서 처리됩니다.',
     submit_warn: '제출하면 이 완성본이 채점에 들어가며 되돌릴 수 없습니다.',
     need_info: '예선은 이 제출이 곧 참가 신청입니다 — 작품 설명과 동의만 입력하세요.',
     publish_as: (n: string) => `이 작품은 '${n}'(으)로 공개됩니다 — 이름은 프로필에서 변경할 수 있어요.`,
@@ -252,6 +268,17 @@ const DICT = {
     delete_final_confirm: 'Delete this final? You return to editing. (Only before submission.)',
     submitted_ok: 'Submitted — awaiting scoring. Submissions cannot be edited.',
     already_submitted: 'Already submitted for this round.',
+    acc_title: 'Submission received · processing',
+    acc_at: (s: string) => `Received at ${s}`,
+    acc_before_deadline: 'Your submission was received BEFORE the deadline. Processing afterwards does not affect it.',
+    acc_processing: 'Finals are being processed in order. Processing continues even if you leave this page.',
+    acc_render: (s: string) =>
+      ({ queued: 'Waiting', rendering: 'Processing', uploading: 'Uploading', ready: 'Processed', submitted: 'Processed', failed: 'Being re-checked' } as Record<string, string>)[s] ?? s,
+    acc_render_label: 'Final status',
+    acc_requeued: 'Processing hit a problem and is being retried automatically. Your entry is not affected.',
+    acc_failed: 'Processing hit a problem and staff are looking into it. Your entry is not affected.',
+    acc_no_resubmit: 'Single submission — it cannot be resubmitted or edited.',
+    submit_async_note: 'You can submit now even while the final is still rendering — receipt is recorded before the deadline and the final is processed afterwards.',
     submit_warn: 'Submitting enters this final into scoring and cannot be undone.',
     need_info: 'In the application round this submission is your entry — just add your statement and agree below.',
     publish_as: (n: string) => `This entry will be published as '${n}' — you can change your name in your profile.`,
@@ -372,6 +399,13 @@ const POOL_OVERSCAN = 2
 const ZOOM_MIN = 6
 const ZOOM_MAX = 120
 
+// ★Mirror of lib/studio ASYNC_SUBMIT_STATUSES. Submission is no longer tied to the
+// render being finished: a final REQUESTED before the deadline must be submittable
+// before the deadline, otherwise a busy queue costs the participant their entry.
+// 'failed' is included because the server accepts it too -- a failure inside the
+// buffer is ours to fix, not grounds for losing the round.
+const SUBMITTABLE_RENDER_STATUSES: string[] = ['queued', 'rendering', 'uploading', 'ready', 'failed']
+
 export default function ProComposeEditor(props: ComposeEditorProps) {
   const t = DICT[props.lang]
   const clipById = useMemo(() => new Map(props.clips.map((c) => [c.id, c])), [props.clips])
@@ -418,6 +452,10 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const [submitErr, setSubmitErr] = useState<string | null>(null)
   const [submitDone, setSubmitDone] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // ★Asynchronous submission. Seeded from the SERVER so a participant who reloads
+  // during the 24h buffer still sees their acceptance -- client state is not where a
+  // submission lives. Advanced locally by a successful submit and by polling.
+  const [accepted, setAccepted] = useState<ComposeSubmission>(props.submission ?? null)
   const [ap, setAp] = useState<ComposeApplicant>({
     creatorName: '', creatorStatement: '', country: '', channelUrl: '',
     agreedRules: false, agreedPrivacy: false, agreedIntegrity: false,
@@ -504,6 +542,8 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const over = totalMs > maxMs
   const under = props.minSeconds > 0 && segments.length > 0 && totalMs < minMs
   const tooMany = segments.length > props.maxClips
+  // `accepted` (below) also gates this: once the round's submission is accepted it is
+  // single-submission and terminal, so a new render would have nowhere to go.
   const canRender = segments.length > 0 && !over && !under && !tooMany && !busy
 
   // ---- sequence ops (order / trim / cut) ------------------------------------
@@ -1002,7 +1042,9 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const sMax = ctx?.statementMax ?? 250
   const stmtLen = ap.creatorStatement.trim().length
   const infoValid = !needInfo || (stmtLen >= sMin && stmtLen <= sMax && ap.agreedRules && ap.agreedPrivacy && ap.agreedIntegrity)
-  const canSubmit = !!props.onSubmit && !!renderId && !submitting && !submitDone && infoValid && !ctx?.alreadySubmitted
+  const renderSubmittable = !!renderId && !!renderState && SUBMITTABLE_RENDER_STATUSES.includes(renderState.status)
+  const canSubmit =
+    !!props.onSubmit && renderSubmittable && !submitting && !submitDone && infoValid && !ctx?.alreadySubmitted && !accepted
   const doSubmit = async () => {
     if (!props.onSubmit || !renderId) return
     setSubmitErr(null); setSubmitting(true)
@@ -1010,10 +1052,44 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
       ? { creatorName: '', creatorStatement: ap.creatorStatement.trim(), agreedRules: ap.agreedRules, agreedPrivacy: ap.agreedPrivacy, agreedIntegrity: ap.agreedIntegrity }
       : undefined
     const res = await props.onSubmit(renderId, applicant)
-    if (res.ok) setSubmitDone(true)
-    else setSubmitErr(res.error)
+    if (res.ok) {
+      setSubmitDone(true)
+      // A ready render is accepted AND finalized in the same call (the synchronous
+      // path is preserved); anything else is accepted only, and the buffer's sweep --
+      // or the poll below, which self-finalizes -- completes it.
+      const finalizedNow = renderState?.status === 'ready' && !!renderState.videoUrl
+      setAccepted({
+        acceptedAt: new Date().toISOString(),
+        finalized: finalizedNow,
+        renderId,
+        renderStatus: renderState?.status ?? null,
+        state: finalizedNow ? 'finalized' : 'intent',
+      })
+    } else setSubmitErr(res.error)
     setSubmitting(false)
   }
+
+  // ★Buffer poll. While a submission is accepted but not finalized, keep the render
+  // status live -- and, because pollRender self-finalizes an owner's ready render, this
+  // is also what turns "processing" into "submitted" without waiting for the hourly
+  // tick. Deliberately slow: this runs for as long as the page is open.
+  const acceptedRenderId = accepted?.renderId ?? null
+  const acceptedFinalized = accepted?.finalized ?? false
+  useEffect(() => {
+    const rid = acceptedRenderId
+    if (!rid || acceptedFinalized) return
+    let alive = true
+    const tick = async () => {
+      const st = await props.pollRender(rid)
+      if (!alive || !st) return
+      setRenderState(st)
+      setAccepted((a) => (a ? { ...a, finalized: !!st.finalized, renderStatus: st.status } : a))
+    }
+    void tick()
+    const iv = setInterval(tick, props.demo ? 1500 : 10000)
+    return () => { alive = false; clearInterval(iv) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acceptedRenderId, acceptedFinalized])
   const doDeleteRender = async () => {
     if (!props.onDelete || !renderId) return
     if (typeof window !== 'undefined' && !window.confirm(t.delete_final_confirm)) return
@@ -1028,6 +1104,17 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const paneHead = 'text-[11px] uppercase tracking-[0.2em] text-[#b66cff] font-bold'
   const renderReady = renderState?.status === 'ready' && !!renderState.videoUrl
   const isRendering = busy && !!renderState && renderState.status !== 'ready' && renderState.status !== 'failed'
+  // Accepted-and-still-processing: the panel below replaces the whole render/submit
+  // area. Once finalized it falls through to the ordinary "submitted" message.
+  const inBuffer = !!accepted && !accepted.finalized
+  const acceptedAtLabel = accepted ? new Date(accepted.acceptedAt).toLocaleString(props.lang === 'ko' ? 'ko-KR' : 'en-US') : ''
+  // Only these two states mean "something went wrong"; every other state during the
+  // buffer is ordinary queueing. finalize_rejected / render_overdue are staff-review
+  // paths, so they read the same as a failure to the participant -- never an accusation,
+  // and never a loss of standing.
+  const bufferTrouble =
+    accepted?.state === 'render_failed' || accepted?.state === 'render_overdue' || accepted?.state === 'finalize_rejected'
+  const bufferRetrying = accepted?.state === 'render_requeued'
 
   return (
     <div className="flex flex-col gap-3">
@@ -1599,8 +1686,34 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
 
       {/* RENDER + SUBMIT (reused backend flow) */}
       <div className="rounded-xl border border-white/10 bg-[#08060f] p-4">
-        {!renderReady ? (
-          <button onClick={doRender} disabled={!canRender}
+        {inBuffer ? (
+          /* ★ACCEPTED · PROCESSING. The submission is already recorded; nothing here is
+             actionable, and no time estimate is shown -- the queue makes any estimate a
+             lie. The line that matters is "received before the deadline". */
+          <div className="space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/[.07] p-4">
+            <p className="text-sm font-bold text-emerald-200">✓ {t.acc_title}</p>
+            <p className="text-[12px] text-white/70">{t.acc_at(acceptedAtLabel)}</p>
+            <p className="text-[12px] font-bold text-emerald-300">{t.acc_before_deadline}</p>
+            <p className="text-[12px] text-white/55">
+              {t.acc_render_label}: {t.acc_render(accepted!.renderStatus ?? renderState?.status ?? 'queued')}
+            </p>
+            {bufferTrouble ? (
+              <p className="text-[12px] text-amber-300/90">{t.acc_failed}</p>
+            ) : bufferRetrying ? (
+              <p className="text-[12px] text-amber-300/90">{t.acc_requeued}</p>
+            ) : (
+              <p className="text-[12px] text-white/55">{t.acc_processing}</p>
+            )}
+            <p className="text-[11px] text-white/35">{t.acc_no_resubmit}</p>
+          </div>
+        ) : (
+        <>
+        {/* A finalized submission ends the round -- say so instead of leaving a live
+            "make final" button that submitRender would only reject. */}
+        {(ctx?.alreadySubmitted || accepted) && !renderSubmittable ? (
+          <p className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">{t.already_submitted}</p>
+        ) : !renderReady ? (
+          <button onClick={doRender} disabled={!canRender || !!accepted || !!ctx?.alreadySubmitted}
             className="rounded-lg bg-gradient-to-br from-[#7d23ff] to-[#6220dc] px-5 py-2.5 text-sm font-bold text-white transition hover:brightness-110 disabled:opacity-40">
             {isRendering ? t.rendering : t.render}
           </button>
@@ -1612,10 +1725,14 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
         )}
         {err && <p className="mt-2 text-[12px] text-[#ff8888]">{err}</p>}
 
-        {renderReady && (
+        {(renderReady || renderSubmittable) && (
           <div className="mt-3 space-y-3">
-            <video src={renderState!.videoUrl!} controls className="w-full max-w-2xl rounded-lg border border-white/10 bg-black" />
-            <p className="text-[12px] font-bold text-emerald-300">✓ {t.final_ready}</p>
+            {renderReady && (
+              <>
+                <video src={renderState!.videoUrl!} controls className="w-full max-w-2xl rounded-lg border border-white/10 bg-black" />
+                <p className="text-[12px] font-bold text-emerald-300">✓ {t.final_ready}</p>
+              </>
+            )}
 
             {submitDone ? (
               <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{t.submitted_ok}</p>
@@ -1639,6 +1756,10 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                     ))}
                   </div>
                 )}
+                {/* Only shown while the file is still coming: submitting now is the
+                    whole point of the asynchronous path, and a participant staring at a
+                    queued render needs to be told it is allowed. */}
+                {!renderReady && <p className="text-[11px] text-emerald-300/80">{t.submit_async_note}</p>}
                 <p className="text-[11px] text-amber-300/80">{t.submit_warn}</p>
                 {submitErr && <p className="text-[12px] text-[#ff8888]">{t.submit_err(submitErr)}</p>}
                 <div className="flex items-center gap-3">
@@ -1646,7 +1767,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                     className="rounded-lg bg-gradient-to-br from-[#7d23ff] to-[#6220dc] px-5 py-2 text-sm font-bold text-white transition hover:brightness-110 disabled:opacity-40">
                     {submitting ? t.submitting : t.submit_btn}
                   </button>
-                  {props.onDelete && (
+                  {props.onDelete && renderReady && (
                     <button onClick={doDeleteRender} disabled={deleting} className="text-[11px] text-white/40 transition hover:text-[#ff8888] disabled:opacity-40">
                       {deleting ? t.deleting : t.delete_final}
                     </button>
@@ -1655,6 +1776,8 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
               </div>
             )}
           </div>
+        )}
+        </>
         )}
       </div>
     </div>
