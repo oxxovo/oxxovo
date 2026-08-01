@@ -179,6 +179,7 @@ const DICT = {
     fix_fewer_lines: '줄 수를 줄이세요.',
     fix_none: `최소 크기(${TEXT_LIMITS.MIN_SIZE_PCT}%)에서도 들어가지 않아요. 줄을 나누거나 문구를 줄여 주세요.`,
     fix_glyph: (c: string) => `이 글꼴에 없는 글자: ${c} — 영상에서 빈칸으로 나옵니다.`,
+    fit_cap: (n: number) => `화면에 들어가는 최대 크기 ${n}% — 이 눈금을 넘기면 잘립니다.`,
     // --- output aspect / per-clip fit ---
     aspect_hint: '출력 비율 — 미리보기가 즉시 바뀝니다',
     crop_badge: '크롭됨',
@@ -366,6 +367,7 @@ const DICT = {
     fix_fewer_lines: 'Use fewer lines.',
     fix_none: `It does not fit even at the minimum size (${TEXT_LIMITS.MIN_SIZE_PCT}%). Split the line or shorten the text.`,
     fix_glyph: (c: string) => `Characters this font cannot draw: ${c} — they render as blank space.`,
+    fit_cap: (n: number) => `Largest size that fits: ${n}% — past this tick the text is clipped.`,
     // --- output aspect / per-clip fit ---
     aspect_hint: 'Output aspect — the preview reframes instantly',
     crop_badge: 'CROPPED',
@@ -1536,9 +1538,25 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                                 <span className="flex items-center justify-between text-[11px] text-white/55">
                                   <span>{t.text_size}</span><span className="tabular-nums text-white/35">{Math.round(l.sizePct)}%</span>
                                 </span>
-                                <input type="range" min={TEXT_LIMITS.MIN_SIZE_PCT} max={sizeCap ?? TEXT_LIMITS.MIN_SIZE_PCT} step={0.5} value={l.sizePct}
-                                  onChange={(e) => up({ sizePct: Number(e.target.value) }, 'text-size')}
-                                  className="w-full accent-[#8b22ff]" />
+                                {/* ★Safe-cap MARKER, not a hard stop. Capping `max`
+                                    at sizeCap desynced the thumb from the number:
+                                    lower the text and the cap drops below the value
+                                    already set, so the thumb pins at max while the
+                                    readout still says 12%. Clamping the value would
+                                    fix that by silently changing what the
+                                    participant placed, which is the one thing we do
+                                    not do. A tick keeps the thumb honest and shows
+                                    where the frame stops. */}
+                                <span className="relative mt-1 block">
+                                  <input type="range" min={TEXT_LIMITS.MIN_SIZE_PCT} max={TEXT_LIMITS.MAX_SIZE_PCT} step={0.5} value={l.sizePct}
+                                    onChange={(e) => up({ sizePct: Number(e.target.value) }, 'text-size')}
+                                    className="w-full accent-[#8b22ff]" />
+                                  {sizeCap !== null && sizeCap < TEXT_LIMITS.MAX_SIZE_PCT && (
+                                    <span aria-hidden title={t.fit_cap(sizeCap)}
+                                      className="pointer-events-none absolute top-0 h-3 w-px bg-[#ffd24a]"
+                                      style={{ left: `${((sizeCap - TEXT_LIMITS.MIN_SIZE_PCT) / (TEXT_LIMITS.MAX_SIZE_PCT - TEXT_LIMITS.MIN_SIZE_PCT)) * 100}%` }} />
+                                  )}
+                                </span>
                               </label>
                               <label className="block">
                                 <span className="text-[11px] text-white/55">{t.text_color}</span>
