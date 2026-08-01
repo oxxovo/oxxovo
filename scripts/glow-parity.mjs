@@ -4,6 +4,7 @@
 // so the glow gate is looser (<=5%). Reports mean abs diff.
 import { readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
+import { FFMPEG } from './ffmpeg-bin.mjs'
 import { chromium } from 'playwright-core'
 
 const [testPng, glowSl = '50'] = process.argv.slice(2)
@@ -15,7 +16,7 @@ function ffRaw(png, vf) {
   return new Promise((res, rej) => {
     const args = ['-y', '-i', png]; if (vf) args.push('-vf', vf)
     args.push('-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1')
-    const p = spawn('ffmpeg', args); const ch = []
+    const p = spawn(FFMPEG, args); const ch = []
     p.stdout.on('data', (d) => ch.push(d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c)))); p.on('error', rej)
   })
 }

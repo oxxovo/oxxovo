@@ -3,21 +3,46 @@
 // progress p the engine's transitionSample() must pick the outgoing frame
 // endMs_out - t(1-p) and incoming startMs_in + t*p so the preview lines up with
 // the render's xfade; measured at p = 0 / 0.5 / 1.
-//   node scripts/gl-engine-transition.mjs <src.mp4>
+//   node scripts/gl-engine-transition.mjs [src.mkv]
+//
+// ★Part (2) had NEVER RUN (found + fixed 2026-08-01). It needed a clip argument that
+// `npm run test:parity:transition` does not pass, so it died on `undefined` as an
+// input filename -- which also meant the gate on the LAST TWO LINES was unreachable:
+// part (1) could report REVIEW and the process would still exit on the crash instead
+// of through `process.exitCode = 1`. Anyone reading the nine PASS lines and stopping
+// there saw a healthy harness. Third instance of this shape in one day (a harness
+// measuring another lane's mirror; a CI job with no `npm ci`; this).
+// Now the clip is SYNTHESISED with lavfi when no argument is given, so the default
+// invocation exercises both parts, and part (2) failing counts toward the exit code.
+import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { chromium } from 'playwright-core'
 import { VERT, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample } from '../lib/gl-effects.ts'
 import { xfadeRefArgs, xfadeClipRefArgs } from './parity-ff.mjs'
+import { FFMPEG, ffmpegBanner } from './ffmpeg-bin.mjs'
 
-const [src] = process.argv.slice(2) // optional: only part (2) needs a clip
 const TMP = process.env.TEMP + '/xfeng'
-const sh = (args) => new Promise((res, rej) => { const p = spawn('ffmpeg', args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-200))))); p.on('error', rej) })
+const sh = (args) => new Promise((res, rej) => { const p = spawn(FFMPEG, args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-200))))); p.on('error', rej) })
 const rawOf = (png) => sh(['-y', '-i', png, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
 const diff = (a, b) => { const n = Math.min(a.length, b.length); let s = 0; for (let i = 0; i < n; i++) s += Math.abs(a[i] - b[i]); return s / n / 255 * 100 }
 // accurate output-seek frame at time t (seconds), scaled 256, to png path
 const frameAt = (t, out) => sh(['-y', '-i', src, '-ss', String(t), '-frames:v', '1', '-vf', 'scale=256:256', out])
 const b64 = async (png) => (await sh(['-y', '-i', png, '-c:v', 'png', '-f', 'image2pipe', 'pipe:1'])).toString('base64')
+
+// Part (2) needs a real clip with time-varying content (it samples t=5..9s). An
+// optional argument still wins, but the DEFAULT must work -- a test that only runs
+// when someone remembers an argument is a test that does not run.
+// testsrc2 moves and carries a frame counter, so two timestamps are never equal.
+// FFV1 because it is lossless and built into every ffmpeg: an encoder in the loop
+// would make this measurement depend on the encoder's version too, which is exactly
+// the confound being untangled elsewhere today.
+const [srcArg] = process.argv.slice(2)
+const SYNTH = `${TMP}/synth_16s.mkv`
+if (!srcArg && !existsSync(SYNTH)) {
+  await sh(['-y', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=25:d=16', '-c:v', 'ffv1', '-pix_fmt', 'yuv420p', SYNTH])
+}
+const src = srcArg || SYNTH
 
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage()
@@ -68,6 +93,9 @@ const GATE = 5
 // then throw away -- 100 fps x hundreds of measurements is minutes of ffmpeg.
 const REF_FPS = 20
 
+console.log('')
+console.log(await ffmpegBanner())
+console.log(`clip       : ${srcArg ? src : src + '  (synthesised -- pass a path to override)'}`)
 console.log('--- (1) transition parity: worst over 4 content pairs x p=0.25/0.5/0.75 ---')
 console.log(`${'transition'.padEnd(13)}${'worst'.padEnd(9)}gate<=${GATE}%   worst case`)
 let fails = 0
@@ -107,8 +135,13 @@ for (const p of [0, 0.5, 1]) {
     out: `${TMP}/truth.png`,
   }))
   const d = diff(await rawOf(`${TMP}/truth.png`), await rawOf(`${TMP}/tgl.png`))
-  console.log(`  p=${p}: aTime=${aTime.toFixed(2)}s bTime=${bTime.toFixed(2)}s  diff=${d.toFixed(2)}%  ${d <= 8 ? 'ALIGNED' : 'DRIFT'}`)
+  // ★DRIFT now counts. It printed a verdict nobody could act on before: the run
+  // crashed before the exit-code line, so a misaligned boundary and a clean one
+  // ended the same way.
+  const aligned = d <= 8
+  if (!aligned) fails++
+  console.log(`  p=${p}: aTime=${aTime.toFixed(2)}s bTime=${bTime.toFixed(2)}s  diff=${d.toFixed(2)}%  ${aligned ? 'ALIGNED' : 'DRIFT'}`)
 }
 await browser.close()
-if (fails) { console.log(`REVIEW: ${fails} transition(s) over gate`); process.exitCode = 1 }
+if (fails) { console.log(`REVIEW: ${fails} check(s) over gate`); process.exitCode = 1 }
 else console.log('ALL TRANSITIONS PASS')

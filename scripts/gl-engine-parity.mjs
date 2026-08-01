@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { register } from 'node:module'
 import { chromium } from 'playwright-core'
+import { FFMPEG, ffmpegBanner } from './ffmpeg-bin.mjs'
 import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, colorUniforms, glowStages, parseCube, tileCube } from '../lib/gl-effects.ts'
 import { resolveWorkerRepo } from './worker-repo.mjs'
 
@@ -83,7 +84,7 @@ const CONTENT = {
 }
 const TMPDIR = (process.env.TEMP || '/tmp').split(String.fromCharCode(92)).join('/')
 const argPngs = process.argv.slice(2)
-const run = (args) => new Promise((res, rej) => { const p = spawn('ffmpeg', args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-200))))); p.on('error', rej) })
+const run = (args) => new Promise((res, rej) => { const p = spawn(FFMPEG, args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-200))))); p.on('error', rej) })
 const raw = (png, vf) => run(['-y', '-i', png, ...(vf ? ['-vf', vf] : []), '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
 const diff = (a, b) => { const n = Math.min(a.length, b.length); let s = 0; for (let i = 0; i < n; i++) s += Math.abs(a[i] - b[i]); return s / n / 255 * 100 }
 const browser = await chromium.launch({ headless: true })
@@ -209,15 +210,8 @@ for (const it of items) {
 // SPECIFIC ffmpeg build, and the deployed worker's is not necessarily this one
 // (measured 2026-08-01: Railway runs 5.1.9-0+deb12u1 on Debian 12). A parity table
 // with no version on it invites the same mistake as a harness with no source on it.
-const ffVersion = await new Promise((res) => {
-  const p = spawn('ffmpeg', ['-version'])
-  let o = ''
-  p.stdout.on('data', (d) => (o += d))
-  p.on('close', () => res(o.split('\n')[0].replace(/^ffmpeg version /, '').split(' ')[0] || 'unknown'))
-  p.on('error', () => res('MISSING'))
-})
 console.log('')
-console.log(`ffmpeg     : ${ffVersion}   (LOCAL -- the deployed worker prints its own at boot)`)
+console.log(await ffmpegBanner())
 console.log(`worker repo: ${WORKER_REPO}`)
 console.log(`filters    : color+LUT imported from the worker; glow = LOCAL COPY (drift NOT detected)`)
 console.log('ENGINE parity -- one row per case, one column per content')

@@ -5,6 +5,7 @@
 // Gate <=5%; frame-exact references actually land at <=0.2% (slide: 0.00%).
 import { readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
+import { FFMPEG } from './ffmpeg-bin.mjs'
 import { chromium } from 'playwright-core'
 import { xfadeRefArgs } from './parity-ff.mjs'
 
@@ -21,7 +22,7 @@ const GL_BODY = {
   slideleft: 'vec2 ua=uv+vec2(t,0.0); vec2 ub=uv-vec2(1.0-t,0.0); gl_FragColor=vec4(uv.x>1.0-t?texture2D(b,ub).rgb:texture2D(a,ua).rgb,1.0);',
 }
 const FFMAP = { fade: 'fade', wipeleft: 'wipeleft', wiperight: 'wiperight', slideleft: 'slideleft' }
-const run = (args) => new Promise((res, rej) => { const p = spawn('ffmpeg', args); const ch = []; p.stdout.on('data', (d) => ch.push(d)); let e = ''; p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-300))))); p.on('error', rej) })
+const run = (args) => new Promise((res, rej) => { const p = spawn(FFMPEG, args); const ch = []; p.stdout.on('data', (d) => ch.push(d)); let e = ''; p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-300))))); p.on('error', rej) })
 const raw = (png) => run(['-y', '-i', png, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
 
 // ffmpeg reference at EXACTLY `progress` (frame-index selection, 100 fps grid).

@@ -10,6 +10,7 @@
 // Shader below MUST stay identical to app/studio/compose/preview-gl.ts.
 import { readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
+import { FFMPEG } from './ffmpeg-bin.mjs'
 import { chromium } from 'playwright-core'
 
 const [testPng, ffPng, exSl = '10', coSl = '30', saSl = '-20'] = process.argv.slice(2)
@@ -31,7 +32,7 @@ void main(){ v_uv=vec2((a_pos.x+1.0)*0.5,(1.0-a_pos.y)*0.5); gl_Position=vec4(a_
 
 function ffToRaw(png) {
   return new Promise((res, rej) => {
-    const p = spawn('ffmpeg', ['-y', '-i', png, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
+    const p = spawn(FFMPEG, ['-y', '-i', png, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
     const chunks = []; p.stdout.on('data', (d) => chunks.push(d))
     p.on('close', (c) => (c === 0 ? res(Buffer.concat(chunks)) : rej(new Error('ffmpeg raw ' + c))))
     p.on('error', rej)
