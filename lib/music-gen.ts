@@ -35,6 +35,8 @@ import { buildMusicAssetBind, hashMusicAsset } from '@/lib/cryptobind'
 import { getMusicGate } from '@/lib/music-gate'
 import {
   validateMusicPrompt,
+  validateMusicPricing,
+  musicCostUsd,
   findImitation,
   parseArtistBlocklist,
   type MusicReason,
@@ -94,7 +96,10 @@ export function getMusicProvider(): MusicProvider {
 // and the server came to disagree. What stays here is genuinely global and not
 // a gate: price, length bound, blocklist.
 export interface MusicGenConfig {
-  genCostUsd: number // studio_music_gen_cost_usd -- raw provider cost per generation
+  /** studio_music_gen_cost_usd -- flat provider cost per generated track */
+  genCostUsd: number
+  /** studio_music_gen_cost_per_second_usd -- provider cost per second of audio */
+  genCostPerSecondUsd: number
   maxSeconds: number // studio_music_gen_max_seconds -- 0 => no explicit cap here
   artistBlocklist: string[] // studio_music_artist_blocklist
 }
@@ -106,18 +111,26 @@ export async function getMusicGenConfig(): Promise<MusicGenConfig> {
     .select('key, value')
     .in('key', [
       'studio_music_gen_cost_usd',
+      'studio_music_gen_cost_per_second_usd',
       'studio_music_gen_max_seconds',
       'studio_music_artist_blocklist',
     ])
   if (error) throw new Error('getMusicGenConfig: ' + error.message)
   const map = new Map<string, string>()
   for (const r of data ?? []) map.set(r.key as string, r.value as string)
+  // ★A missing PRICE key reads as 0, not as an error, because either half of the
+  // cost model may legitimately be zero (a per-output vendor has no per-second
+  // rate, and vice versa). What must never be zero is the TOTAL -- and that is
+  // enforced by validateMusicPricing at the point of charge, which refuses the
+  // generation instead of charging nothing. Cap and blocklist are not prices and
+  // keep their permissive default.
   const num = (k: string) => {
     const n = Number(map.get(k))
     return Number.isFinite(n) && n >= 0 ? n : 0
   }
   return {
     genCostUsd: num('studio_music_gen_cost_usd'),
+    genCostPerSecondUsd: num('studio_music_gen_cost_per_second_usd'),
     maxSeconds: num('studio_music_gen_max_seconds'),
     artistBlocklist: parseArtistBlocklist(map.get('studio_music_artist_blocklist')),
   }
@@ -213,8 +226,19 @@ export async function createMusicGeneration(args: {
   }
 
   // 4. Price + balance (platform_config pricing, like a clip generation).
+  //    ★Price is checked BEFORE the balance. An unpriced generation costs 0
+  //    credits, and `balance < 0` is false for everyone, so a missing config key
+  //    would otherwise hand out free music the moment the season switch is
+  //    flipped -- and that switch is a SQL UPDATE, not a deploy. Zero is "not
+  //    priced yet", never "free": the company pays nothing toward participant
+  //    generation.
+  const cost = { baseUsd: cfg.genCostUsd, perSecondUsd: cfg.genCostPerSecondUsd }
+  const priceReason = validateMusicPricing(cost, args.durationSeconds)
+  if (priceReason) return { ok: false, reason: priceReason }
+  const costUsd = musicCostUsd(cost, args.durationSeconds)
+
   const pricing = await getStudioPricing()
-  const credits = creditsForCost(cfg.genCostUsd, pricing)
+  const credits = creditsForCost(costUsd, pricing)
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'music_insufficient_credits' }
 
@@ -245,7 +269,7 @@ export async function createMusicGeneration(args: {
     amount_credits: -credits,
     type: 'generation_charge',
     reason: 'studio_music_ai',
-    metadata: { music_asset_id: assetId, cost_usd: cfg.genCostUsd },
+    metadata: { music_asset_id: assetId, cost_usd: costUsd },
   })
   if (chErr) {
     await admin.from('studio_music_assets').delete().eq('id', assetId)
