@@ -32,6 +32,7 @@ import { hasAnyEffect, EXPOSED_SLIDERS, LUT_OPTIONS, EXPOSED_TRANSITIONS, type E
 import { FONT_SPECS, type TextLayer } from '@/lib/text-render'
 import { TEXT_LIMITS, validateTexts, type TextReason } from '@/lib/text-limits'
 import { TextOverlay } from './TextOverlay'
+import { TextTrack } from './TextTrack'
 import { createMusicPreview, type MusicPreview, type MusicBed } from './music-preview'
 
 // effects/speed are populated by the effect UI (E); undefined in C (no effect UI
@@ -146,6 +147,11 @@ const DICT = {
     text_fade_in: '들어옴', text_fade_out: '나감',
     text_delete: '삭제',
     text_drag: '드래그해서 위치 이동',
+    tt_title: '자막 트랙',
+    tt_none: '텍스트를 추가하면 표시 구간이 여기에 나타나요.',
+    tt_hint: '바를 끌어 구간을 옮기고, 양 끝을 끌어 길이를 조절하세요.',
+    tt_move: '끌어서 구간 이동',
+    tt_trim_s: '시작 조절', tt_trim_e: '끝 조절',
     // --- output aspect / per-clip fit ---
     aspect_hint: '출력 비율 — 미리보기가 즉시 바뀝니다',
     crop_badge: '크롭됨',
@@ -305,6 +311,11 @@ const DICT = {
     text_fade_in: 'In', text_fade_out: 'Out',
     text_delete: 'Delete',
     text_drag: 'Drag to move',
+    tt_title: 'Caption track',
+    tt_none: 'Add a text layer and its show window appears here.',
+    tt_hint: 'Drag a bar to move its window; drag an edge to resize.',
+    tt_move: 'Drag to move the window',
+    tt_trim_s: 'Trim start', tt_trim_e: 'Trim end',
     // --- output aspect / per-clip fit ---
     aspect_hint: 'Output aspect — the preview reframes instantly',
     crop_badge: 'CROPPED',
@@ -1219,6 +1230,16 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                   <div className="flex min-w-full flex-1 items-center justify-center rounded-lg border border-dashed border-white/12 text-[11px] text-white/25">{t.drag_here}</div>
                 )}
               </div>
+              {/* Caption track. Inside this width:trackW box on purpose -- it then
+                  shares the ruler's time axis and inherits zoom + h-scroll. */}
+              {segments.length > 0 && (
+                <TextTrack
+                  texts={texts} totalMs={totalMs} pxPerSec={pxPerSec}
+                  selectedIndex={selText} playheadMs={playheadMs} boundariesMs={segStarts}
+                  labels={{ title: t.tt_title, none: t.tt_none, hint: t.tt_hint, move: t.tt_move, trimStart: t.tt_trim_s, trimEnd: t.tt_trim_e }}
+                  onSelect={setSelText}
+                  onWindow={(i, patch, key) => updateText(i, patch, key)} />
+              )}
             </div>
             <p className="mt-3 text-[10px] text-white/30">{t.tl_hint}</p>
           </div>
