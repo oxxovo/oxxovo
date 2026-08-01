@@ -1,3 +1,11 @@
+// ★★★ THIS COMMAND IS THE LAUNCH. IT PUTS ~216 COMMITS ON www.oxxovo.ai. ★★★
+//
+// Production has been one deployment since 2026-07-13. There is no staged rollout and
+// no auto-rollback: this replaces what participants see, in one step, immediately.
+// Do NOT run it until E2E and the go-live checklist (reports/studio_go_live_checklist
+// _2026-07.md, Phase C3) are done. To look without deploying, use `vercel deploy`
+// WITHOUT `--prod`, which publishes a Preview URL only.
+//
 // Controlled production deploy. `npm run deploy:prod`
 //
 // The app has no git auto-deploy (vercel.json git.deploymentEnabled.main=false), so
@@ -74,6 +82,9 @@ if (unpushed.status === 0 && unpushed.stdout.trim()) {
   console.error(`★${n} commit(s) on ${branch} are not pushed. This SHA is not on the remote yet.\n`)
 }
 
+// The header warning is for whoever reads the file; this is for whoever runs it, which
+// is the person who needs it. One line, above the deploy, in the place TK actually looks.
+console.error('★ PRODUCTION DEPLOY -- this replaces www.oxxovo.ai for everyone, now.\n')
 console.error(`Deploying ${branch} @ ${buildSha}  (built ${buildTime})\n`)
 
 const res = spawnSync(
