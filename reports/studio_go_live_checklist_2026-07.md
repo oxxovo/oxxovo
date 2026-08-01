@@ -76,7 +76,10 @@ runs only AFTER the studio code is deployed to prod. Skip for now.)
 
 ## Phase C -- worker deploy (Railway)
 
-**C1. Deploy `oxxovo-studio` from branch `feat/studio-loadtest`**
+**C1. Deploy `oxxovo-studio` from branch `main`**
+(Worker trunk was unified to `main` on 2026-07-31 -- Railway auto-deploys from it, so
+main is the deploy of record. `feat/studio-loadtest` was identical at 0350b51 when the
+switch was made, which is why unifying cost nothing.)
 - WHAT: this branch has the concurrency lanes, fal retry, and spend guards.
   ffmpeg is in the Dockerfile (compose render).
 - ENV to set on Railway:
@@ -95,6 +98,27 @@ runs only AFTER the studio code is deployed to prod. Skip for now.)
   concurrency tier and generations have balance. Bump `studio_fal_deposit_usd`
   to match every top-up so the low-water guard is accurate.
 - VERIFY: fal dashboard Concurrency page shows the raised limit within minutes.
+
+**★C3. App production deploy -- `npm run deploy:prod`** (NOT `vercel deploy` by hand)
+- WHAT: the one moment the whole launch actually ships. Production has been a single
+  deployment since 2026-07-13 and main is ~216 commits behind, so this is a very large
+  single step -- which is exactly why it must be identifiable afterwards.
+- The script refuses on a dirty working tree (including UNTRACKED files: `vercel
+  deploy` uploads the directory, not the commit -- that is how the reference mockups
+  leaked on 2026-07-02), stamps `BUILD_SHA`, and re-reads `/api/version` to confirm the
+  stamp reached the build.
+- ★VERIFY, and do not skip it because the CLI said "success":
+  ```
+  curl https://www.oxxovo.ai/api/version
+  ```
+  Expect `{"sha":"<the commit you meant>","dirty":false,"builtAt":"<a minute ago>"}`.
+  - `dirty:true` -> the deploy carried files that are in no commit. The SHA does not
+    describe what shipped; redeploy from a clean tree.
+  - `sha:"unknown"` -> it was deployed by hand instead of through the script, and this
+    deployment is once again unidentifiable. Redeploy through the script.
+  - an OLD `builtAt` -> you are looking at a cached/previous deployment, not this one.
+- CAUTION: Vercel git auto-deploy stays OFF (`vercel.json` git.deploymentEnabled.main
+  =false). Every production move goes through this command so every one is stamped.
 
 ---
 

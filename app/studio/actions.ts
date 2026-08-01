@@ -517,6 +517,26 @@ export type ComposeSubmitCtx = {
   statementMax: number
 }
 
+// ★Asynchronous submission, participant-facing state. Non-null from the moment the
+// submission is ACCEPTED (intent, before the deadline) until it is FINALIZED (the
+// rendered file published onto the entry, inside the 24h buffer). It is what lets a
+// participant who reloads mid-buffer still see "accepted, processing" instead of an
+// empty editor -- the acceptance lives in the DB, not in client state.
+//   acceptedAt   -- genesis_applications.studio_application_intent_at (the proof the
+//                   submission arrived before the deadline; this is the reassurance)
+//   renderStatus -- live worker progress, so "processing" is not a static word
+//   state        -- studio_submission_state, which is how a failed/re-queued/overdue
+//                   render reaches the screen at all
+// Null for pre-async rows (intent_at null): those fall back to the existing
+// "already submitted" message, so no legacy submission changes appearance.
+export type ComposeSubmissionStatus = {
+  acceptedAt: string
+  finalized: boolean
+  renderId: string | null
+  renderStatus: 'queued' | 'rendering' | 'uploading' | 'ready' | 'submitted' | 'failed' | null
+  state: 'intent' | 'finalized' | 'render_failed' | 'render_requeued' | 'render_overdue' | 'finalize_rejected' | null
+} | null
+
 // The participant's latest non-terminal render for this season, so the editor
 // can restore it on re-entry (the render + its R2 video are server-persisted;
 // the editor's client state is not). 'ready' means it is directly submittable.
@@ -538,6 +558,7 @@ export type LoadComposeResult =
         maxSeconds: number
         maxClips: number
         submit: ComposeSubmitCtx
+        submission: ComposeSubmissionStatus
         resumeRender: ResumeRender | null
         // Account nickname the entry will publish as (option A: the compose form
         // no longer asks for a name; identity is the account, editable in /profile).
@@ -598,7 +619,9 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     const [{ data: appRow }, nickname] = await Promise.all([
       admin
         .from('genesis_applications')
-        .select('id, studio_application_submitted_at, main_round_submitted_at')
+        .select(
+          'id, studio_application_submitted_at, main_round_submitted_at, studio_application_intent_at, studio_submission_state, studio_application_render_id, studio_main_render_id',
+        )
         .eq('season_id', season.id)
         .ilike('email', auth.email)
         .order('created_at', { ascending: false })
@@ -621,6 +644,25 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     // re-arranging + re-rendering. listUserRenders is ordered newest-first.
     const renders = await listUserRenders(auth.userId, season.id)
     const resumable = renders.find((r) => r.status !== 'submitted' && r.status !== 'failed')
+
+    // ★Accepted-submission state (asynchronous submission). Keyed off the application
+    // row rather than "the newest render carrying an intent", because the round is what
+    // decides which render IS the submission -- a participant can hold a spare render
+    // that was never submitted, and it must not be mistaken for the entry.
+    const submissionRenderId =
+      (effectiveRound === 'main' ? appRow?.studio_main_render_id : appRow?.studio_application_render_id) ?? null
+    const submissionRender = submissionRenderId ? renders.find((r) => r.id === submissionRenderId) ?? null : null
+    const submission: ComposeSubmissionStatus = appRow?.studio_application_intent_at
+      ? {
+          acceptedAt: String(appRow.studio_application_intent_at),
+          // finalized_at on the render is the authoritative "the file is on the entry"
+          // marker; the state column is the human-readable mirror the sweep writes.
+          finalized: !!submissionRender?.finalized_at || appRow.studio_submission_state === 'finalized',
+          renderId: submissionRenderId,
+          renderStatus: submissionRender?.status ?? null,
+          state: (appRow.studio_submission_state ?? null) as NonNullable<ComposeSubmissionStatus>['state'],
+        }
+      : null
 
     // Music beds (allowlist-gated by the season). Empty + disabled until the
     // library is seeded and studio_music_enabled is turned on. When music is on,
@@ -673,6 +715,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
           statementMin: STATEMENT_MIN,
           statementMax: STATEMENT_MAX,
         },
+        submission,
         nickname,
         resumeRender,
         musicEnabled,
