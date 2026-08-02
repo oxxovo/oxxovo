@@ -1,8 +1,15 @@
 // Resend client — SERVER ONLY.
 //
 // RESEND_API_KEY must be present in env (Vercel + .env.local).
-// EMAIL_FROM defaults to info@oxxovo.com (verified at Resend with Cloudflare
-// DKIM/SPF/DMARC).
+//
+// ★EMAIL_FROM defaults to info@oxxovo.com, and that is NOT the same typo as the
+// alert RECIPIENT that was corrected to .ai on 2026-08-01. A from-address must
+// be on a domain verified in the Resend account, and measured that day the
+// account holds exactly one: oxxovo.com (verified 2026-05-19, DKIM/SPF/DMARC via
+// Cloudflare). oxxovo.ai is not registered there at all. Changing this line
+// before verifying .ai in Resend does not move our mail to the new domain -- it
+// stops our mail. Order: verify oxxovo.ai in Resend -> set EMAIL_FROM -> then
+// this fallback can follow. See Phase B of reports/studio_go_live_checklist.
 
 import 'server-only'
 import { Resend } from 'resend'

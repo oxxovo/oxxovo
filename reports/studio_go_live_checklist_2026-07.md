@@ -72,6 +72,39 @@ runs only AFTER the studio code is deployed to prod. Skip for now.)
 - VERIFY: Vercel env has `OPENAI_API_KEY`. If absent, the gate fails OPEN
   (generation still works, but no prompt moderation).
 
+**★B5. Operational alerts must actually ARRIVE (not just be addressed)**
+- WHAT: `sendAdminAlert` is how the platform tells us anything went wrong while
+  nobody was watching -- pricing problems, deferrals, blocked finalist
+  advancement, cron failures. Measured 2026-08-01: the recipient fallback was
+  `info@oxxovo.com` and **`OPS_ALERT_EMAIL` is not set in ANY Vercel environment**
+  (`vercel env ls`: 17 variables, not among them), so the fallback was live. It
+  now falls back to `info@oxxovo.ai`, the company mailbox.
+- ★THE SENDER IS A SEPARATE QUESTION with a separate answer. Resend rejects a
+  from-address whose domain is not verified in the account, and the account holds
+  exactly one domain: **`oxxovo.com`, verified 2026-05-19** (measured via the
+  Resend API, 2026-08-01 -- `oxxovo.ai` is not registered there at all). So:
+  1. verify `oxxovo.ai` in Resend (Cloudflare DKIM/SPF/DMARC records), THEN
+  2. set `EMAIL_FROM=info@oxxovo.ai` in Vercel (it already exists as a variable,
+     value not readable from a CLI session -- confirm it in the dashboard).
+  Doing 2 without 1 does not move our mail to the new domain, it stops our mail:
+  every send returns a 403 whose only trace is a server log line.
+- ★CONFIRM (nothing here is provable from a Claude session -- these are TK's):
+  - Resend dashboard -> Domains: is `oxxovo.ai` present and verified?
+  - Vercel -> Environment Variables: what is `EMAIL_FROM` set to, and should
+    `OPS_ALERT_EMAIL` be set to route alerts away from the inbox the inbound
+    Worker reads?
+  - Cloudflare Email Routing: which domain actually RECEIVES `info@` today? The
+    inbound autoresponder was built against `.com` (`app/api/email/inbound`), and
+    its loop guard already matches both domains, so receiving on either is safe.
+- ★VERIFY BY DELIVERY, not by reading the code:
+  ```
+  node --env-file=.env.local --import ./scripts/test-register.mjs scripts/send-test-alert.mjs          # dry run, sends nothing
+  node --env-file=.env.local --import ./scripts/test-register.mjs scripts/send-test-alert.mjs --send   # sends ONE email
+  ```
+  It calls the real `sendAdminAlert`, prints the exact from/to it will use, and
+  prints the subject to look for. **Resend accepting the send is not delivery** --
+  the check is a human opening the inbox and finding that subject.
+
 ---
 
 ## Phase C -- worker deploy (Railway)
@@ -230,6 +263,30 @@ is a standing rule for the music switch, not a launch-day step.**
   kind exists in the live table -- and every season has both switches false. So as
   of today step 1 has not been done, which is correct: the vendor (ElevenLabs) price
   is not settled, and until it is there is nothing to write.
+
+**★C7. Live-database probes are for quiet days. Not during a competition window.**
+- THE RULE: **no write probe against the live database during the 72h round.**
+  Reading is fine. Writing -- even a throwaway row -- puts a test row in the same
+  tables that hold participants' entries, jobs and credits, at the one time
+  nobody can afford a mistaken `DELETE` predicate or a probe that outlives its
+  cleanup.
+- WHY it comes up at all: probing IS the right way to check a failure path.
+  On 2026-08-01 the pricing-health check was verified by inserting one unpriced
+  model row and watching detect -> alert -> dedupe -> recover -> clean up, which
+  no unit test could have shown. That was the correct call **on a quiet day**.
+- IF a probe is unavoidable outside a window, all four, every time:
+  1. **inactive / invisible**: `active=false`, or a row no participant-facing
+     query can return. Never a real row's values, even "temporarily".
+  2. **`zz_` prefix on the id**, so a leftover is obvious in any listing and
+     sorts to the bottom rather than hiding among real rows.
+  3. **cleanup in a `finally`**, so a mid-probe crash still removes it.
+  4. **the report states what was created, that it was deleted, and the count
+     the table returned to** (2026-08-01: `model_catalog` back to 19 rows). A
+     cleanup nobody verified is a cleanup nobody did.
+- ★And say whether anything left the building. The same probe would have mailed
+  ops if it had run through the cron; it did not, because it called the checker
+  directly and only the cron sends. That distinction belongs in the report, not
+  in the prober's head.
 
 ---
 
