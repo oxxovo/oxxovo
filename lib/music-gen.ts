@@ -29,7 +29,7 @@
 import 'server-only'
 import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
+import { getBalance, getStudioPricing, creditsForCostOrNull } from '@/lib/credits'
 import { moderateSubmission } from '@/lib/moderation'
 import { buildMusicAssetBind, hashMusicAsset } from '@/lib/cryptobind'
 import { getMusicGate } from '@/lib/music-gate'
@@ -106,7 +106,9 @@ export function getMusicProvider(): MusicProvider {
 // and the server came to disagree. What stays here is genuinely global and not
 // a gate: price, length bound, blocklist.
 export interface MusicGenConfig {
-  /** studio_music_gen_cost_usd -- flat provider cost per generated track */
+  /** studio_music_gen_cost_usd -- flat provider cost per generated track. An
+   *  absent key reads as 0, which is NOT "free" -- see the note in
+   *  getMusicGenConfig and validateMusicPricing. */
   genCostUsd: number
   /** studio_music_gen_cost_per_second_usd -- provider cost per second of audio */
   genCostPerSecondUsd: number
@@ -248,7 +250,18 @@ export async function createMusicGeneration(args: {
   const costUsd = musicCostUsd(cost, args.durationSeconds)
 
   const pricing = await getStudioPricing()
-  const credits = creditsForCost(costUsd, pricing)
+  // ★Two guards, and they are not redundant. validateMusicPricing above rejects
+  // an unpriced generation on the COST side, before any arithmetic;
+  // creditsForCostOrNull is the shared guard that no charge path may skip, and
+  // it also catches a pricing row that rounds to nothing. It is fed `costUsd`
+  // (base + perSecond x duration), not cfg.genCostUsd -- passing the flat term
+  // alone would price a per-minute vendor at zero, which is the exact hole the
+  // unit-neutral cost model closed.
+  const credits = creditsForCostOrNull(costUsd, pricing)
+  // 'music_not_priced', not 'music_ai_disabled': nothing is charged and the
+  // participant is not at fault, and conflating it with the season switch would
+  // hide a misconfiguration behind a state that looks intentional.
+  if (credits === null) return { ok: false, reason: 'music_not_priced' }
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'music_insufficient_credits' }
 

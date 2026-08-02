@@ -151,6 +151,86 @@ switch was made, which is why unifying cost nothing.)
 - Ask this of every launch item, not just this one: not "does the feature work" but
   "can a participant get to the screen where it works, on the build that is live".
 
+**★C5. FREEZE: no push to the worker repo during a competition window (the 72h
+round). This is a standing rule from launch onward, not a one-time step.**
+- THE RULE: **during the 72h window, nothing is pushed to `oxxovo-studio` `main`.**
+  If a push is genuinely unavoidable, watch that deploy through to a successful
+  boot line before doing anything else -- the push is not finished when git says
+  "pushed", it is finished when the new container prints its boot line.
+- WHY it is not just caution: Railway auto-deploys `oxxovo-studio` `main` on
+  every push. The app does not work this way (Vercel git deploys are off,
+  `vercel.json` `git.deploymentEnabled.main=false`), so the two repos do not
+  behave alike and the worker's behaviour is the surprising one. A push that
+  touches nothing but a comment still rebuilds the image.
+- WHY that is dangerous specifically now: the Dockerfile pins ffmpeg
+  (`ARG FFMPEG_VERSION=7:5.1.9-0+deb12u1`, 2026-07-31). The pin is deliberate --
+  an unpinned renderer changes under us with no record -- but it means the image
+  build FAILS the day Debian publishes 5.1.10 and drops 5.1.9 from the archive.
+  Nothing announces that day. The break does not surface when Debian releases;
+  it surfaces on **the next push, whenever that is**, which is why an unrelated
+  one-line push mid-competition is the actual hazard.
+- WHAT a push during the window would cost: renders stop for participants who
+  are inside a 72h deadline they cannot extend. That is the one time the
+  platform cannot absorb a broken worker build.
+- IF a push is unavoidable, the boot line is the confirmation, and it reads one
+  of four ways (printed by `main()` in the worker's `src/worker.ts`, first log line
+  of the new container; the apt epoch `7:` is stripped for the comparison):
+  - `ffmpeg=5.1.9-0+deb12u1` -> the deployed binary matches the pin. Proceed.
+  - the build fails with the pin string not found -> Debian moved. Bump
+    `FFMPEG_VERSION` per the instructions in the Dockerfile, and re-measure the
+    parity tables under the new binary
+    (`FFMPEG_BIN=... npm run test:parity:transition`) before trusting them --
+    `reports/ffmpeg_version_parity_2026-08-01.md` measured that `dissolve` is
+    version-dependent, so a version bump is a renderer change, not a build fix.
+  - `ffmpeg=<version> ★MISMATCH(pinned ...)` -> the image built but the running
+    binary is not the pinned one. Stop.
+  - `ffmpeg=MISSING` -> no ffmpeg in the image at all: renders will fail while
+    generation keeps working, which is the confusing failure this line exists to
+    make obvious.
+- ★NOT VERIFIED: whether Railway keeps serving the previous good image when a
+  build fails. That is the usual behaviour, and if it holds a failed build is
+  loud-but-harmless; nobody here has measured it on this project, so do not plan
+  the window around it.
+- ★A failed deploy cannot be read from a Claude session -- `railway logs` in
+  lane A returns the previous deployment's output. The boot line has to be read
+  by whoever has the Railway dashboard.
+
+**★C6. PRICE BEFORE SWITCH: AI music cannot be turned on with one SQL line. This
+is a standing rule for the music switch, not a launch-day step.**
+- THE ORDER, and it is not interchangeable:
+  1. the price key exists in `platform_config` -- today `studio_music_gen_cost_usd`
+     (raw provider USD per generation). ★If the vendor bills per second or per
+     minute instead, the unit-neutral key that replaces it is what has to be there
+     (lane C's open item, `reports/lane_c_handoff_2026-07-30.md`); a per-generation
+     key filled in with a per-minute number is a wrong price, not a missing one,
+     and nothing below catches that.
+  2. THEN `seasons.studio_music_ai_enabled = true` for the season.
+- ★If you do 2 without 1, the switch is on and music still does not open. **That
+  is the designed behaviour, not a bug to work around.** A missing price key reads
+  as 0 (`getMusicGenConfig`, lib/music-gen.ts), and 0 credits does not mean a cheap
+  generation -- it means `balance < credits` is `balance < 0`, false for every
+  account, so AI music would be free and uncapped-by-balance for anyone including a
+  zero-balance account. `creditsForCost` refuses to price at 0, so instead: the
+  compose editor withholds the AI music panel (logging
+  `AI music is switched ON but unpriced` to the runtime log), and a direct call
+  refuses with `music_ai_disabled` + `detail: pricing_unavailable`.
+- WHICH SWITCH: the two music switches are both `seasons` columns and they are not
+  the same. `studio_music_enabled` (master) only opens the pre-generated library
+  picker -- it spends nothing and does not need the price key.
+  `studio_music_ai_enabled` is the one that spends. The rule above binds to the AI
+  switch; turning the master on alone is a real, safe operating state
+  (lib/music-gate.ts documents why).
+- VERIFY before flipping (both must be true):
+  ```sql
+  SELECT key, value FROM platform_config WHERE key LIKE 'studio_music%';
+  SELECT id, studio_music_enabled, studio_music_ai_enabled
+  FROM seasons WHERE id = '<season>';
+  ```
+  Measured 2026-08-01: the first query returns **zero rows** -- no music key of any
+  kind exists in the live table -- and every season has both switches false. So as
+  of today step 1 has not been done, which is correct: the vendor (ElevenLabs) price
+  is not settled, and until it is there is nothing to write.
+
 ---
 
 ## Phase D -- E2E (order matters; no prod exposure)

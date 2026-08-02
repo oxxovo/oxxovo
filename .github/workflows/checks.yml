@@ -32,10 +32,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      # 83 tests: CryptoBind KAT + v1i/v1ic/v1v + EDL v2 canonical (incl. the
+      # 92 tests: CryptoBind KAT + v1i/v1ic/v1v + EDL v2 canonical (incl. the
       # requireFinal split used by asynchronous submission) + moderation + music
-      # limits. The KAT goldens are byte-mirrored with oxxovo-studio, so a one-byte
-      # drift in a canonical string fails here AND in the worker repo.
+      # limits + the credit pricing guard. The KAT goldens are byte-mirrored with
+      # oxxovo-studio, so a one-byte drift in a canonical string fails here AND in
+      # the worker repo.
       - name: Tests
         run: npm test
 
