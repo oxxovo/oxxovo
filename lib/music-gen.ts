@@ -33,6 +33,8 @@ import { getBalance, getStudioPricing, creditsForCostOrNull } from '@/lib/credit
 import { moderateSubmission } from '@/lib/moderation'
 import { buildMusicAssetBind, hashMusicAsset } from '@/lib/cryptobind'
 import { getMusicGate } from '@/lib/music-gate'
+import { isMusicLicenseType } from '@/lib/music-license'
+import type { MusicProvenance } from '@/lib/music-provider'
 import {
   validateMusicPrompt,
   validateMusicPricing,
@@ -361,6 +363,20 @@ export async function markMusicGenerating(assetId: string): Promise<boolean> {
 //    object). Hash-based binding so a later r2_key repoint / byte tamper breaks the
 //    signature (verifyMusicAssetBind at render). Idempotent-safe: only a
 //    'generating' row is advanced.
+//    ★PROVENANCE IS REQUIRED, not optional. The four columns exist (migration Run
+//    2026-07-30) and a track with no provenance is a track whose licence we
+//    cannot state: which vendor made it, under which model version, when, and
+//    under what terms. Typing it as required means an adapter that does not
+//    report it fails to COMPILE rather than writing a null we discover later.
+//
+//    ★provider_generated_at is the VENDOR's stamp and is NOT
+//    cryptobind_generated_at, which this function sets itself, in our process,
+//    at signing time. They differ by the download and upload, and they answer
+//    different questions -- "when was this made" and "when did we sign it". Do
+//    not collapse them.
+//
+//    ★None of this is inside the v1m canonical (v1m|assetId|source|contentHash),
+//    so recording it cannot move a signature or a KAT golden.
 export async function finalizeMusicGeneration(args: {
   assetId: string
   audio: Buffer | Uint8Array
@@ -368,8 +384,28 @@ export async function finalizeMusicGeneration(args: {
   r2Key: string
   url: string
   title?: string
+  provenance: MusicProvenance
+  /** Optional CAS: only finalize if this attempt still owns the row. */
+  claimToken?: string | null
 }): Promise<{ ok: boolean; errorMessage?: string }> {
   const admin = createSupabaseAdmin()
+
+  // ★Last line of defence on the enumeration. studio_music_assets.license_type is
+  // plain nullable text with no DB-level enum (probed live 2026-08-01), so the
+  // column accepts any string and this is the only thing that does not. A label
+  // we do not recognise means the adapter is not the code that was classified at
+  // registration -- refuse rather than store a track whose terms we cannot name.
+  if (!isMusicLicenseType(args.provenance.licenseType)) {
+    return { ok: false, errorMessage: `unrecognised license_type: ${String(args.provenance.licenseType)}` }
+  }
+  const generatedAt = args.provenance.generatedAt
+  if (!(generatedAt instanceof Date) || Number.isNaN(generatedAt.getTime())) {
+    return { ok: false, errorMessage: 'provenance.generatedAt is not a valid date' }
+  }
+  if (!args.provenance.provider || !args.provenance.providerModel) {
+    return { ok: false, errorMessage: 'provenance must name both a provider and a model' }
+  }
+
   const contentHash = hashMusicAsset(args.audio)
   const bind = buildMusicAssetBind({
     assetId: args.assetId,
@@ -377,7 +413,7 @@ export async function finalizeMusicGeneration(args: {
     contentHash,
     generatedAt: new Date(),
   })
-  const { data, error } = await admin
+  let q = admin
     .from('studio_music_assets')
     .update({
       status: 'ready',
@@ -385,6 +421,10 @@ export async function finalizeMusicGeneration(args: {
       url: args.url,
       duration_seconds: Math.round(args.durationSeconds),
       ...(args.title ? { title: args.title } : {}),
+      provider: args.provenance.provider,
+      provider_model: args.provenance.providerModel,
+      provider_generated_at: generatedAt.toISOString(),
+      license_type: args.provenance.licenseType,
       cryptobind_content_hash: bind.cryptobind_content_hash,
       cryptobind_signature: bind.cryptobind_signature,
       cryptobind_generated_at: bind.cryptobind_generated_at,
@@ -394,7 +434,10 @@ export async function finalizeMusicGeneration(args: {
     })
     .eq('id', args.assetId)
     .in('status', ['queued', 'generating'])
-    .select('id')
+  // Status alone is not ownership: a reclaimed row is 'generating' again, so a
+  // revived worker would pass a status-only check and overwrite a live attempt.
+  if (args.claimToken) q = q.eq('claim_token', args.claimToken)
+  const { data, error } = await q.select('id')
   if (error) return { ok: false, errorMessage: error.message }
   if ((data?.length ?? 0) === 0) return { ok: false, errorMessage: 'asset not in a finalizable state' }
   return { ok: true }
