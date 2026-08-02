@@ -27,7 +27,13 @@
  *   node --env-file=.env.local --import ./scripts/test-register.mjs e2e/tamper-compose.mjs
  */
 import { createClient } from '@supabase/supabase-js'
-import { createRender, submitRender, finalizeSubmission } from '../lib/studio.ts'
+
+// ★Set BEFORE lib/studio.ts is imported. Its limits are read once at module load
+// (like every other threshold in that file), so a later assignment does nothing --
+// the first version of this test set it after the import and measured the default
+// 40 while claiming to measure 1.
+process.env.MAX_FINALIZE_PER_TICK = process.env.MAX_FINALIZE_PER_TICK ?? '1'
+const { createRender, submitRender, finalizeSubmission, sweepAsyncSubmissions } = await import('../lib/studio.ts')
 
 const DEMO_EMAIL = 'studio-demo@oxxovo.ai'
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -241,6 +247,42 @@ try {
       )
     }
   }
+  // ── per-tick cap + ordering (positive AND negative in one pass) ───────────
+  // ★MAX_FINALIZE_PER_TICK=1 for this run, so two accepted submissions cannot
+  // both finalize in one tick. NEGATIVE: tick 1 must finalize exactly one, and
+  // it must be the OLDER acceptance -- unordered, the cap would process an
+  // arbitrary prefix forever and the other row would starve. POSITIVE: the
+  // remainder must actually be picked up by the next tick, not merely reported.
+  console.log('\nPER-TICK CAP (MAX_FINALIZE_PER_TICK=1)')
+  // Earlier cases leave their own accepted rows behind; the sweep would count
+  // those against the cap and the test would measure the wrong thing.
+  for (const id of madeRenders) {
+    await admin.from('render_jobs').update({ submit_intent_at: null }).eq('id', id)
+  }
+  const capA = await intentThenLand()
+  await sleep(1500) // distinct submit_intent_at so "older" is unambiguous
+  // A second accepted submission needs its own application row; the harness's
+  // clearApplication would drop A's, so B reuses the same application (one entry
+  // per season) and we drive the sweep on the render rows themselves.
+  const capB = await newRender()
+  const bIntent = await admin
+    .from('render_jobs')
+    .update({ submit_intent_at: new Date().toISOString() })
+    .eq('id', capB)
+    .select('id')
+  const bLanded = await waitReady(capB)
+  if (capA.err || !bIntent.data?.length || !bLanded) {
+    ok(false, `cap fixture not built (${capA.err ?? ''} landed=${bLanded})`)
+  } else {
+    const tick1 = await sweepAsyncSubmissions()
+    ok(tick1.budget.finalizedThisTick === 1, `tick 1 honoured the cap (finalized ${tick1.budget.finalizedThisTick})`)
+    ok(tick1.budget.remaining >= 1, `tick 1 reported the remainder (${tick1.budget.remaining})`)
+    ok(tick1.finalized.includes(capA.id), 'tick 1 took the OLDER acceptance first (no starvation)')
+    const tick2 = await sweepAsyncSubmissions()
+    ok(tick2.finalized.includes(capB), 'tick 2 picked up what tick 1 left behind')
+    console.log(`  budget after tick 2: ${JSON.stringify(tick2.budget)}`)
+  }
+
 } finally {
   const removedApps = await clearApplication()
   for (const id of madeRenders) await admin.from('render_jobs').delete().eq('id', id)

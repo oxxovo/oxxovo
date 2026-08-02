@@ -44,6 +44,14 @@ import type { Season } from '@/lib/seasons'
 // triggers.
 export const dynamic = 'force-dynamic'
 
+// ★DECLARED, not inherited. Nothing here set maxDuration, so the tick ran on the
+// platform default -- a number nobody in this repo had written down, and one the
+// finalize byte-check (a real download per submission) can exceed. An undeclared
+// budget also made the 60s download timeout unreachable: the function would be
+// killed before the timeout it was supposed to enforce. 300s is the Pro ceiling
+// for the Node runtime; the per-tick finalize cap below is sized against it.
+export const maxDuration = 300
+
 // Forward-only lifecycle order. 'upcoming' sits between draft and active: it is
 // an announced teaser (shown on the lobby as "COMING SOON", no applications) that
 // must NOT be regressed to draft by the tick, and is auto-promoted to 'active'
