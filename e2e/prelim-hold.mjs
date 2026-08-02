@@ -144,8 +144,15 @@ if (colErr) {
     }
     return { renderId: res.renderId, appId: app?.id ?? null, held: !!app?.watch_hold, url: app?.free_entry_url ?? null }
   }
+  // ★The list is keyed by applicationId + round, NOT by `id`. The first version
+  // of this harness matched v.id, which is undefined on every WatchVideo -- so
+  // every "is it public" read false, the three absence checks passed while
+  // measuring nothing, and only the hold-OFF control failed loudly enough to say
+  // so. That control is why this line is correct now.
   const isPublic = async (appId) =>
-    (await getWatchVideos({ seasonId: SEASON })).some((v) => v.id === appId)
+    (await getWatchVideos({ seasonId: SEASON })).some(
+      (v) => v.applicationId === appId && v.round === 'application',
+    )
   const releasedAt = async () =>
     (await admin.from('seasons').select('prelim_released_at').eq('id', SEASON).maybeSingle()).data?.prelim_released_at ?? null
 
