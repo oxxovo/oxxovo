@@ -219,6 +219,28 @@ export async function createMusicGeneration(args: {
   const hit = findImitation(prompt, cfg.artistBlocklist)
   if (hit) return { ok: false, reason: 'music_imitation', detail: hit }
 
+  // 3. ★Per-user cap, per season+round -- the same axis the clip caps use.
+  //    Counted in ROWS, and checked BEFORE the price/balance step below, so the
+  //    ceiling cannot be bought past. Single pool: there is no draft music (one
+  //    provider, one parameter set, one price, byte-identical output), so a
+  //    draft/competition split would only make a participant buy the same audio
+  //    twice. gate.cap 0 = explicit season opt-in to unlimited.
+  //
+  //    ★MOVED AHEAD OF MODERATION (2026-08-02). The guards now run cheapest
+  //    first: pure checks, then one indexed count, then the network call. Two
+  //    reasons, both found by the E2E rather than by reading:
+  //      - A participant at their ceiling used to burn an OpenAI moderation
+  //        request per attempt, for a request that was going to be refused.
+  //      - They were also told the wrong thing. With the moderation key absent
+  //        the refusal came back 'music_moderation' when the real reason was the
+  //        cap -- a misleading answer that also hid the ordering.
+  //    Nothing is weakened: the prompt is still never sent to a vendor, and
+  //    moderation still gates every generation that actually proceeds.
+  if (gate.cap > 0) {
+    const used = await countMusicGenerationsForRound(args.userId, args.seasonId, args.round)
+    if (used >= gate.cap) return { ok: false, reason: 'music_cap_reached', detail: `${used}/${gate.cap}` }
+  }
+
   // 2d. AI moderation of the prompt. flagged -> refused; pending (no key/timeout)
   //     -> ALSO refused here (never charge a credit for a prompt we could not
   //     clear). This is stricter than the video path's fail-safe-to-admin-queue,
@@ -226,17 +248,6 @@ export async function createMusicGeneration(args: {
   const mod = await moderateSubmission({ text: prompt })
   if (mod.status !== 'approved') {
     return { ok: false, reason: 'music_moderation', detail: mod.categories.join(',') || mod.status }
-  }
-
-  // 3. ★Per-user cap, per season+round -- the same axis the clip caps use.
-  //    Counted in ROWS, and checked BEFORE the price/balance step below, so the
-  //    ceiling cannot be bought past. Single pool: there is no draft music (one
-  //    provider, one parameter set, one price, byte-identical output), so a
-  //    draft/competition split would only make a participant buy the same audio
-  //    twice. gate.cap 0 = explicit season opt-in to unlimited.
-  if (gate.cap > 0) {
-    const used = await countMusicGenerationsForRound(args.userId, args.seasonId, args.round)
-    if (used >= gate.cap) return { ok: false, reason: 'music_cap_reached', detail: `${used}/${gate.cap}` }
   }
 
   // 4. Price + balance (platform_config pricing, like a clip generation).
