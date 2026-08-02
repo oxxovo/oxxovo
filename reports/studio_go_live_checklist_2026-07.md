@@ -189,10 +189,17 @@ switch was made, which is why unifying cost nothing.)
   Read the JSON's `budget` field: `finalizedThisTick` / `remaining` /
   `selfFinalized`.
   - ★IF IT TIMES OUT, THE ANSWER IS NOT A ROLLBACK. Lower `MAX_FINALIZE_PER_TICK`
-    (default 40) in the Vercel environment -- it is read from env, so the tick's
-    workload shrinks **without a deploy**, and the buffer just takes more ticks to
-    drain. That is why finding out late is survivable: a 24h buffer absorbs a
-    slower drain, and nothing else in the tick depends on the cap.
+    (default 40, e.g. to 10) in the Vercel environment and re-run
+    `npm run deploy:prod` on the SAME commit. No code change, no revert -- only
+    the tick's workload shrinks, and the buffer just takes more ticks to drain.
+    That is why finding out late is survivable: a 24h buffer absorbs a slower
+    drain, and nothing else in the tick depends on the cap.
+  - ★The re-deploy is NOT optional. Vercel applies env values when a deployment is
+    created, so the running production keeps the old cap until a new deployment
+    exists -- the same rule already stated under B5. `lib/studio.ts` additionally
+    reads the cap once at module load, so even a new deployment's warm instances
+    turn over at the next cold start, not mid-tick. Budget ~2 minutes for the
+    correction, not zero.
 - CAUTION: Vercel git auto-deploy stays OFF (`vercel.json` git.deploymentEnabled.main
   =false). Every production move goes through this command so every one is stamped.
 
