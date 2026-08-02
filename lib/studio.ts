@@ -7,7 +7,7 @@
 import 'server-only'
 import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
+import { getBalance, getStudioPricing, creditsForCostOrNull } from '@/lib/credits'
 import { moderateSubmission } from '@/lib/moderation'
 import { getCreatorProfile, upsertCreatorProfile } from '@/lib/profile'
 import { getDisplayName } from '@/lib/nickname'
@@ -558,7 +558,10 @@ export async function createGeneration(args: {
   // 4. Price + balance.
   const pricing = await getStudioPricing()
   const estCost = model.cost_per_second_usd * duration
-  const credits = creditsForCost(estCost, pricing)
+  // null = the model has no usable price (cost_per_second_usd defaults to 0).
+  // Refuse: at 0 credits the balance test below passes for every account.
+  const credits = creditsForCostOrNull(estCost, pricing)
+  if (credits === null) return { ok: false, reason: 'failed', detail: 'pricing_unavailable' }
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'insufficient_credits' }
 
@@ -739,7 +742,8 @@ export async function createImageGeneration(args: {
 
   const pricing = await getStudioPricing()
   const estCost = model.cost_per_second_usd // per-image (no duration)
-  const credits = creditsForCost(estCost, pricing)
+  const credits = creditsForCostOrNull(estCost, pricing)
+  if (credits === null) return { ok: false, reason: 'failed', detail: 'pricing_unavailable' }
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'insufficient_credits' }
 
@@ -945,7 +949,8 @@ export async function createI2vGeneration(args: {
 
   const pricing = await getStudioPricing()
   const estCost = model.cost_per_second_usd * totalDuration
-  const credits = creditsForCost(estCost, pricing)
+  const credits = creditsForCostOrNull(estCost, pricing)
+  if (credits === null) return { ok: false, reason: 'failed', detail: 'pricing_unavailable' }
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'insufficient_credits' }
 

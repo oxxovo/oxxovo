@@ -8,7 +8,10 @@
 // are read from platform_config -- never hardcoded.
 
 import 'server-only'
-import { createSupabaseAdmin } from '@/lib/supabase-admin'
+// Relative, not the '@/' alias: the pricing guard below is unit-tested under
+// `node --test`, whose resolve hook (scripts/test-hooks.mjs) understands
+// relative specifiers and not the bundler alias. Same reason as lib/music-gate.ts.
+import { createSupabaseAdmin } from './supabase-admin'
 
 export type CreditTxType = 'purchase' | 'admin_adjust' | 'generation_charge' | 'refund'
 
@@ -62,8 +65,40 @@ export async function getStudioPricing(): Promise<StudioPricing> {
 
 // Credits charged for a generation: raw cost x (1 + margin) / credit value,
 // rounded up to whole credits. Mirrors the worker's creditsForCost.
+//
+// ★It THROWS instead of returning 0. Every call site decides "may this account
+// spend?" with `balance < credits`, and `balance < 0` is false for EVERY
+// account -- so a zero price does not make a generation cheap, it removes the
+// balance check entirely, for a zero-balance user as much as anyone. Two ways
+// to reach a zero here, both live: model_catalog.cost_per_second_usd is
+// `NOT NULL DEFAULT 0` (a model onboarded without its probe number prices at
+// zero), and a missing platform_config price key reads as 0 (measured
+// 2026-08-01: studio_music_gen_cost_usd does not exist in the live table).
+// Neither is a free generation anyone decided to give away, so this refuses to
+// name a price rather than name one that disables the check. A caller that must
+// survive a misconfigured price uses creditsForCostOrNull and closes down the
+// spend path it was pricing.
 export function creditsForCost(costUsd: number, pricing: StudioPricing): number {
-  return Math.ceil((costUsd * (1 + pricing.marginRate)) / pricing.creditUsdValue)
+  const credits = Math.ceil((costUsd * (1 + pricing.marginRate)) / pricing.creditUsdValue)
+  if (!Number.isFinite(credits) || credits <= 0) {
+    throw new Error(
+      `creditsForCost: refusing a non-positive charge (cost_usd=${costUsd}, ` +
+        `margin_rate=${pricing.marginRate}, credit_usd_value=${pricing.creditUsdValue}) ` +
+        '-- unpriced model row or missing platform_config price',
+    )
+  }
+  return credits
+}
+
+// Same arithmetic, for the paths that have somewhere to fail closed TO: null
+// means "this cannot be priced". The caller must then withhold the spend (hide
+// the panel, refuse the generation) -- never charge 0 and never proceed.
+export function creditsForCostOrNull(costUsd: number, pricing: StudioPricing): number | null {
+  try {
+    return creditsForCost(costUsd, pricing)
+  } catch {
+    return null
+  }
 }
 
 // --- Stripe top-up (purchase) --------------------------------------------

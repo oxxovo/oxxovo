@@ -51,7 +51,7 @@ import {
   type MusicAssetStatusDTO,
 } from '@/lib/music-gen'
 import { getMusicGate } from '@/lib/music-gate'
-import { getBalance, getStudioPricing, getStudioPurchaseConfig, creditsForCost } from '@/lib/credits'
+import { getBalance, getStudioPricing, getStudioPurchaseConfig, creditsForCostOrNull } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
 import { getCreatorProfile } from '@/lib/profile'
 import { getDisplayName } from '@/lib/nickname'
@@ -670,7 +670,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     // editor can show the AI panel only when it will actually work.
     const gate = await getMusicGate(season.id)
     const { enabled: musicEnabled, assets: musicAssets } = await listMusicAssets(season.id, auth.userId)
-    const musicAiEnabled = gate.aiEnabled
+    let musicAiEnabled = gate.aiEnabled
     let musicCreditCost = 0
     let musicCap = 0
     let musicUsed = 0
@@ -680,7 +680,19 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         getStudioPricing(),
         countMusicGenerationsForRound(auth.userId, season.id, effectiveRound),
       ])
-      musicCreditCost = creditsForCost(mcfg.genCostUsd, pricing)
+      // ★Unpriced (missing studio_music_gen_cost_usd, or an explicit 0) is not a
+      // free generation -- it is a spend path with no balance check. Close the
+      // AI panel instead of showing "0 credits", and do not take the whole
+      // editor down with it: the clip/compose work below is unaffected.
+      const priced = creditsForCostOrNull(mcfg.genCostUsd, pricing)
+      if (priced === null) {
+        console.error(
+          '[studio] AI music is switched ON but unpriced (studio_music_gen_cost_usd=' +
+            `${mcfg.genCostUsd}) -- panel withheld`,
+        )
+        musicAiEnabled = false
+      }
+      musicCreditCost = priced ?? 0
       // Surfaced so the participant can see the ceiling BEFORE spending. Music
       // beds are the same artefact whether made while practising or for the
       // entry, so a silent counter would let someone burn the round's budget

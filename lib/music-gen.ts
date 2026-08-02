@@ -29,7 +29,7 @@
 import 'server-only'
 import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { getBalance, getStudioPricing, creditsForCost } from '@/lib/credits'
+import { getBalance, getStudioPricing, creditsForCostOrNull } from '@/lib/credits'
 import { moderateSubmission } from '@/lib/moderation'
 import { buildMusicAssetBind, hashMusicAsset } from '@/lib/cryptobind'
 import { getMusicGate } from '@/lib/music-gate'
@@ -94,7 +94,10 @@ export function getMusicProvider(): MusicProvider {
 // and the server came to disagree. What stays here is genuinely global and not
 // a gate: price, length bound, blocklist.
 export interface MusicGenConfig {
-  genCostUsd: number // studio_music_gen_cost_usd -- raw provider cost per generation
+  // studio_music_gen_cost_usd -- raw provider cost per generation. Absent key
+  // reads as 0, which is NOT "free": creditsForCost refuses a non-positive
+  // charge, so an unpriced generator means AI music stays unavailable.
+  genCostUsd: number
   maxSeconds: number // studio_music_gen_max_seconds -- 0 => no explicit cap here
   artistBlocklist: string[] // studio_music_artist_blocklist
 }
@@ -214,7 +217,14 @@ export async function createMusicGeneration(args: {
 
   // 4. Price + balance (platform_config pricing, like a clip generation).
   const pricing = await getStudioPricing()
-  const credits = creditsForCost(cfg.genCostUsd, pricing)
+  // ★genCostUsd reads 0 when studio_music_gen_cost_usd is absent from
+  // platform_config -- which it is today (measured 2026-08-01). At 0 credits the
+  // balance test below is `balance < 0`, false for everyone, so AI music would
+  // be free for a zero-balance account the moment the season switch goes on.
+  // Unpriced = not available, and the participant-facing meaning of that is the
+  // same as the AI switch being off; `detail` says which one it actually was.
+  const credits = creditsForCostOrNull(cfg.genCostUsd, pricing)
+  if (credits === null) return { ok: false, reason: 'music_ai_disabled', detail: 'pricing_unavailable' }
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'music_insufficient_credits' }
 
