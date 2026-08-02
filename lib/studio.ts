@@ -20,6 +20,7 @@ import {
   buildI2vBind,
   computeSourceBundle,
   verifyMusicAssetBind,
+  hashVideoContent,
   CRYPTOBIND_ALGO,
   type EdlSegment,
   type ComposeEdl,
@@ -2049,6 +2050,63 @@ export async function submitRender(args: {
 // this would fill free_entry_url before the deadline, and free_entry_url IS NOT NULL
 // is exactly what makes an entry scorable. The four conditions below are the gate.
 // ===========================================================================
+// ===========================================================================
+// ★Do the delivered BYTES match the hash we signed? (S2)
+//
+// v1sc signs (renderId, tid, finalHash). It does not sign video_url or r2_key, and
+// until 2026-08-02 nothing re-read the object -- so a row could point at one file
+// while carrying a valid signature over the hash of another, and finalize said OK.
+// Measured that day: repointing video_url after intent FINALIZED a submission
+// carrying bytes nobody signed. Not reachable by a participant (render_jobs is
+// service-role only), but it is precisely the state a zombie worker produced
+// before the claim-token CAS, and the verification called it valid.
+//
+// Re-hashing the delivered file closes it without touching a signature format --
+// the KAT goldens stay byte-identical, which matters: they are the tripwire for a
+// design change, and breaking them to patch a hole would blunt the tripwire.
+//
+// ★TWO FAILURE CLASSES, kept apart on purpose:
+//   mismatch  -> REFUSE. The file is not the one that was signed.
+//   unreadable -> NOT a refusal. R2 having a bad minute must never cost a
+//                 participant their entry, so it returns "not yet": the hourly
+//                 sweep tries again, and SUBMISSION_OVERDUE_MS eventually raises
+//                 the overdue flag for staff. A timeout is part of that -- without
+//                 one, a stalled read holds the whole tick.
+//
+// ★TIMEOUT, derived. Measured 2026-08-02 from this machine against the live
+// bucket: real renders are 3.7 MB (21s) to 11.6 MB (15s) and downloaded at
+// 1.8-3.0 MB/s. The season's ceiling is 40s, so ~31 MB at the worst observed
+// throughput is ~17s. 60s is ~3.5x that, and the Vercel-to-R2 path should be
+// faster than a home link -- which I could not measure, hence the margin.
+const FINAL_BYTES_TIMEOUT_MS = Math.max(5_000, Number(process.env.FINAL_BYTES_TIMEOUT_MS ?? '60000'))
+
+type FinalBytesCheck =
+  | { ok: true }
+  | { ok: false; kind: 'mismatch'; detail: string }
+  | { ok: false; kind: 'unreadable'; detail: string }
+
+async function verifyDeliveredBytes(videoUrl: string, expectedHash: string): Promise<FinalBytesCheck> {
+  if (!expectedHash) return { ok: false, kind: 'mismatch', detail: 'no signed hash on the render' }
+  let buf: Buffer
+  try {
+    const res = await fetch(videoUrl, { signal: AbortSignal.timeout(FINAL_BYTES_TIMEOUT_MS) })
+    if (!res.ok) return { ok: false, kind: 'unreadable', detail: `HTTP ${res.status}` }
+    buf = Buffer.from(await res.arrayBuffer())
+  } catch (e) {
+    return { ok: false, kind: 'unreadable', detail: e instanceof Error ? e.message : String(e) }
+  }
+  if (buf.length === 0) return { ok: false, kind: 'unreadable', detail: 'empty body' }
+  const actual = hashVideoContent(buf)
+  if (actual !== expectedHash) {
+    return {
+      ok: false,
+      kind: 'mismatch',
+      detail: `signed ${expectedHash.slice(0, 12)}… but the file hashes to ${actual.slice(0, 12)}… (${buf.length} bytes)`,
+    }
+  }
+  return { ok: true }
+}
+
 export type FinalizeResult =
   | { ok: true; finalized: boolean }
   | { ok: false; reason: string; detail?: string }
@@ -2081,6 +2139,25 @@ export async function finalizeSubmission(renderId: string): Promise<FinalizeResu
       .update({ studio_submission_state: 'finalize_rejected', updated_at: new Date().toISOString() })
       .eq('studio_application_render_id', render.id)
     return { ok: false, reason: chain.reason, detail: chain.detail }
+  }
+
+  // ★The chain above proves the ROW is coherent. This proves the FILE is the one
+  // the row describes -- see verifyDeliveredBytes for why that is a separate
+  // question and why the two failure classes are handled differently.
+  const bytes = await verifyDeliveredBytes(String(render.video_url), String(render.cryptobind_final_hash ?? ''))
+  if (!bytes.ok && bytes.kind === 'mismatch') {
+    console.error(`[studio] finalize REFUSED, delivered bytes do not match the signed hash (${render.id}): ${bytes.detail}`)
+    await admin
+      .from('genesis_applications')
+      .update({ studio_submission_state: 'finalize_rejected', updated_at: new Date().toISOString() })
+      .eq('studio_application_render_id', render.id)
+    return { ok: false, reason: 'final_bytes_mismatch', detail: bytes.detail }
+  }
+  if (!bytes.ok) {
+    // Unreadable, not wrong. Leave the submission accepted and try again next tick;
+    // the overdue flag is what escalates it to a human if it keeps failing.
+    console.error(`[studio] finalize DEFERRED, could not read the final file (${render.id}): ${bytes.detail}`)
+    return { ok: true, finalized: false }
   }
 
   const { data: seasonRow } = await admin

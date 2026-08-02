@@ -217,6 +217,29 @@ try {
       ok(refused, `${label} -> finalize refused (${fin.ok ? (fin.finalized ? '★FINALIZED' : 'not finalized') : fin.reason})`)
       if (!refused) { console.log('  ★STOPPING: a tampered render finalized'); break }
     }
+
+    // ★The other half of the byte check, and it is not a tamper: an UNREADABLE
+    // file must not be treated as a wrong one. R2 having a bad minute cannot cost
+    // a participant their entry, so this must defer (try again next tick, overdue
+    // if it persists) and must NOT mark the application finalize_rejected.
+    const u = await intentThenLand()
+    if (u.err) {
+      ok(false, `UNREADABLE: could not set up the async window (${u.err})`)
+    } else {
+      await admin.from('render_jobs')
+        .update({ video_url: 'https://pub-bf4080d3cdcd422dbef5b1a7f2b9e19a.r2.dev/renders/does-not-exist-lane-a.mp4' })
+        .eq('id', u.id)
+      const fin = await finalizeSubmission(u.id)
+      const deferred = fin.ok === true && fin.finalized === false
+      ok(deferred, `UNREADABLE file -> deferred, not refused (${fin.ok ? 'finalized=' + fin.finalized : 'reason ' + fin.reason})`)
+      const { data: app } = await admin
+        .from('genesis_applications').select('studio_submission_state')
+        .eq('studio_application_render_id', u.id).maybeSingle()
+      ok(
+        app?.studio_submission_state !== 'finalize_rejected',
+        `UNREADABLE file -> the entry is NOT marked finalize_rejected (state ${app?.studio_submission_state ?? 'none'})`,
+      )
+    }
   }
 } finally {
   const removedApps = await clearApplication()
