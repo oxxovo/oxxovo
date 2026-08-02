@@ -48,3 +48,8 @@ next-env.d.ts
 /scripts/set-admin-password.mjs
 /scripts/inspect-admin-access.mjs
 scripts/.rehearsal-stash.json
+
+# E2E reachability artefacts -- regenerated per run. Untracked files also block
+# `npm run deploy:prod` (it refuses a dirty tree, because `vercel deploy` uploads
+# the directory rather than the commit -- how the reference mockups leaked).
+reports/_shots/

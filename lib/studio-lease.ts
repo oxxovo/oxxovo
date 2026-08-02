@@ -23,6 +23,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { refundMusicGeneration } from '@/lib/music-gen'
 import { CLAIM_COLUMN, type StudioLeaseTable } from '@/lib/studio-claim-columns'
 import { isOwnedBy } from '@/lib/studio-sweep-scope'
+import { boundaryFor, isPastRound, seasonBoundsFrom, type SeasonBounds } from '@/lib/studio-round-bounds'
 
 export { CLAIM_COLUMN, type StudioLeaseTable }
 
@@ -63,9 +64,20 @@ const RENDER_MAX_ATTEMPTS = 3
 // spend on their behalf.
 const MONEY_MAX_ATTEMPTS = 2
 
-// Long enough queued that something is wrong. Reported, never auto-refunded --
-// see the note in the report type.
+// Long enough queued that something is worth reporting, whether or not it is yet
+// refundable. Detection, not a decision.
 const QUEUE_OVERDUE_MS = Math.max(60_000, Number(process.env.STUDIO_QUEUE_OVERDUE_MS ?? '86400000'))
+
+// ★Grace past the round boundary before a still-queued job is given back.
+//
+// The boundary itself is the honest deadline: after it, the job cannot be
+// submitted for the round it was bought for, so holding the credits serves
+// nobody. The grace exists because the 24h processing buffer is real -- work
+// accepted right at the deadline is still being finished during it -- and
+// refunding into that window would take credits back from a job that was about
+// to complete. Same 24h the submission buffer uses, and env-overridable
+// alongside it.
+const ROUND_GRACE_MS = Math.max(0, Number(process.env.STUDIO_ROUND_GRACE_MS ?? '86400000'))
 
 export type StudioLeaseReport = {
   /** In-flight rows handed back to the queue for one more attempt. */
@@ -73,15 +85,17 @@ export type StudioLeaseReport = {
   /** In-flight rows past the retry bound: failed and refunded. */
   refunded: { table: StudioLeaseTable; id: string }[]
   /**
-   * Rows sitting in 'queued' far longer than they should. ★FLAGGED, NOT
-   * REFUNDED. The honest deadline for a queued job is its round closing -- after
-   * that the job cannot be used, so it should be given back. But round-boundary
-   * semantics live with getSeasonPhase (head office), and season_0's schedule
-   * columns are known stale, so deciding a participant's money off them here
-   * would be worse than reporting it. Detection now, automatic refund once the
-   * boundary is settled.
+   * Rows still in 'queued' long enough to be worth a look, but NOT yet past
+   * their round boundary (or with no boundary to compare against). Reported
+   * only. A job that is merely slow is not a job to take money back for.
    */
   overdue: { table: StudioLeaseTable; id: string; ageHours: number }[]
+  /**
+   * Rows given back because their round has closed: the job can no longer be
+   * submitted for the round it was bought for, so the credits go home. Distinct
+   * from `refunded`, which is a lease that expired mid-flight.
+   */
+  expired: { table: StudioLeaseTable; id: string; seasonId: string }[]
   errors: string[]
 }
 
@@ -93,6 +107,34 @@ function ageMs(value: unknown, fallback: unknown, now: number): number | null {
   return Number.isFinite(t) ? now - t : null
 }
 
+// ★When a round stops being able to use a job.
+//
+// Read-only over the seasons date columns. getSeasonPhase (head office) owns the
+// question of which phase a season is IN; this only needs a timestamp to compare
+// against, so it takes the columns directly and interprets nothing else.
+//
+// ★A NULL BOUNDARY MEANS "DO NOT ACT", NEVER "ACT NOW". Measured 2026-08-02:
+// season_1 and every season_100x rehearsal row have application_close_at = null,
+// and several have main_round_end_at = null too. Date.parse(null) is NaN, and a
+// NaN comparison quietly reads as "not past" -- which is the safe direction here
+// only by accident, so it is made explicit instead of relied on.
+async function loadSeasonBounds(): Promise<Map<string, SeasonBounds>> {
+  const admin = createSupabaseAdmin()
+  const out = new Map<string, SeasonBounds>()
+  const { data, error } = await admin
+    .from('seasons')
+    .select('id, application_close_at, main_round_end_at, awards_announcement_at')
+  if (error) {
+    // Unreadable schedule -> no boundary for anyone -> nothing is expired. The
+    // sweep still does its lease work; it just does not spend the participant's
+    // money on a guess.
+    console.warn('[studio] season bounds unreadable, skipping round-expiry:', error.message)
+    return out
+  }
+  for (const row of data ?? []) out.set(String(row.id), seasonBoundsFrom(row))
+  return out
+}
+
 type LaneSpec = {
   table: StudioLeaseTable
   inFlight: string[]
@@ -102,6 +144,8 @@ type LaneSpec = {
   scope?: Record<string, string>
   /** Only rows whose column IS NULL. Used for the render split -- see below. */
   nullScope?: string[]
+  /** Column holding the round this row belongs to, when the table has one. */
+  roundColumn?: string
   /** How quiet the claim must be before the row is considered abandoned. */
   staleMs: number
   /** Automatic retries before the row is given up on. */
@@ -165,6 +209,7 @@ async function laneSpecs(): Promise<LaneSpec[]> {
       maxAttempts: MONEY_MAX_ATTEMPTS,
       // A library bed is seeded straight to ready and must never be swept.
       scope: { source: 'ai' },
+      roundColumn: 'round',
       // Already idempotent, already marks the row failed.
       refund: async (id, detail) => {
         await refundMusicGeneration({ assetId: id, detail })
@@ -202,8 +247,9 @@ async function laneSpecs(): Promise<LaneSpec[]> {
  */
 export async function sweepStudioLeases(): Promise<StudioLeaseReport> {
   const admin = createSupabaseAdmin()
-  const report: StudioLeaseReport = { requeued: [], refunded: [], overdue: [], errors: [] }
+  const report: StudioLeaseReport = { requeued: [], refunded: [], overdue: [], expired: [], errors: [] }
   const now = Date.now()
+  const seasonBounds = await loadSeasonBounds()
 
   for (const lane of await laneSpecs()) {
     const claimCol = CLAIM_COLUMN[lane.table]
@@ -212,7 +258,17 @@ export async function sweepStudioLeases(): Promise<StudioLeaseReport> {
       // Widened to `string` on purpose: supabase-js parses a LITERAL select at
       // the type level, and the column list here is assembled per lane. The rows
       // are read through explicit casts below either way.
-      const cols: string = ['id', 'status', 'attempts', claimCol, 'created_at', 'updated_at', ...nullCols].join(', ')
+      const cols: string = [
+        'id',
+        'status',
+        'attempts',
+        claimCol,
+        'created_at',
+        'updated_at',
+        'season_id',
+        ...(lane.roundColumn ? [lane.roundColumn] : []),
+        ...nullCols,
+      ].join(', ')
       let q = admin
         .from(lane.table)
         .select(cols)
@@ -240,6 +296,38 @@ export async function sweepStudioLeases(): Promise<StudioLeaseReport> {
 
         if (status === lane.queuedStatus) {
           const age = ageMs((row as unknown as Record<string, unknown>).created_at, null, now)
+          const seasonId = String((row as unknown as Record<string, unknown>).season_id ?? '')
+          const round = lane.roundColumn
+            ? String((row as unknown as Record<string, unknown>)[lane.roundColumn] ?? '')
+            : null
+          const boundary = boundaryFor(seasonBounds.get(seasonId), round)
+
+          // ★Past the round it was bought for. The job can never be submitted
+          // now, so holding the credits serves nobody -- give them back and take
+          // the row out of the queue so no worker picks up work with no purpose.
+          //
+          // A missing boundary is NOT a reason to act. It means the season has
+          // no date on that column (measured: season_1 and every season_100x
+          // rehearsal row), and refunding off an absent value would be deciding
+          // a participant's money from nothing.
+          if (isPastRound(boundary, now, ROUND_GRACE_MS)) {
+            const detail = `round closed ${new Date(boundary as number).toISOString()} -- job never became usable`
+            try {
+              if (lane.refund) await lane.refund(id, detail)
+              else {
+                await admin
+                  .from(lane.table)
+                  .update({ status: 'failed', error_message: detail, updated_at: new Date().toISOString() })
+                  .eq('id', id)
+                  .eq('status', status)
+              }
+              report.expired.push({ table: lane.table, id, seasonId })
+            } catch (e) {
+              report.errors.push(`${lane.table} expire ${id}: ${e instanceof Error ? e.message : String(e)}`)
+            }
+            continue
+          }
+
           if (age !== null && age > QUEUE_OVERDUE_MS) {
             report.overdue.push({ table: lane.table, id, ageHours: Math.round(age / 3_600_000) })
           }
@@ -298,11 +386,12 @@ export async function sweepStudioLeases(): Promise<StudioLeaseReport> {
     }
   }
 
-  if (report.requeued.length || report.refunded.length || report.overdue.length || report.errors.length) {
+  if (report.requeued.length || report.refunded.length || report.expired.length || report.overdue.length || report.errors.length) {
     console.log(
       '[studio] lease sweep:',
       `requeued=${report.requeued.length}`,
       `refunded=${report.refunded.length}`,
+      `expired=${report.expired.length}`,
       `overdue=${report.overdue.length}`,
       `errors=${report.errors.length}`,
     )
