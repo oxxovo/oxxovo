@@ -960,8 +960,19 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   }
   // patch a layer; pass coalesceKey (e.g. 'text-size') for continuous drags so a
   // slide collapses into one undo step (mirrors the effect sliders).
+  //
+  // ★THE KEY CARRIES THE LAYER INDEX, like every other per-item key in this file
+  // (`trim:${uid}:${edge}`, `fx:${uid}:${key}`, `spd:${uid}`). Text was the one
+  // exception, and it cost an undo step: two layers dragged within COALESCE_MS
+  // shared the key, so the second edit merged into the first and one undo
+  // reverted BOTH -- back to the state before either. Hard to reach while the
+  // only way to move a window was the inspector's slider on the single selected
+  // layer; easy the moment the caption track put every layer's bar on screen at
+  // once, which is exactly what it is for.
+  // The intended merge is unaffected: the bar edge and the inspector slider act
+  // on the same layer, so they still produce the same key and stay one step.
   const updateText = (i: number, patch: Partial<TextLayer>, coalesceKey?: string) => {
-    commit(coalesceKey ?? 'text-edit', !!coalesceKey)
+    commit(coalesceKey ? `${coalesceKey}:${i}` : 'text-edit', !!coalesceKey)
     setTexts((ts) => ts.map((l, k) => (k === i ? { ...l, ...patch } : l)))
   }
   const removeText = (i: number) => {

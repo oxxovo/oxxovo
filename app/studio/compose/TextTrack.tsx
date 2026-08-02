@@ -19,6 +19,10 @@
 
 import { useRef, useState } from 'react'
 import type { TextLayer } from '@/lib/text-render'
+// Lane packing lives in lib/ so it can be tested without React -- overlapping
+// windows sharing a lane makes a caption invisible, which is the one failure
+// here that reports nothing. See lib/text-track-lanes.ts.
+import { assignLanes, laneCount } from '@/lib/text-track-lanes'
 
 export type TextTrackLabels = {
   title: string
@@ -48,22 +52,6 @@ type Drag = {
   originX: number
   startMs: number
   endMs: number
-}
-
-// Greedy lane packing: a layer goes in the first lane whose last bar has already
-// ended. Overlapping windows therefore stack instead of hiding each other, which
-// is the whole point of showing several layers at once.
-function assignLanes(texts: TextLayer[]): number[] {
-  const order = texts.map((l, i) => ({ i, l })).sort((a, b) => a.l.startMs - b.l.startMs)
-  const laneEnd: number[] = []
-  const lane = new Array<number>(texts.length).fill(0)
-  for (const { i, l } of order) {
-    let k = laneEnd.findIndex((end) => end <= l.startMs)
-    if (k < 0) k = laneEnd.length
-    laneEnd[k] = l.endMs
-    lane[i] = k
-  }
-  return lane
 }
 
 export function TextTrack({
@@ -96,8 +84,8 @@ export function TextTrack({
   // and that is the edge a caption most often wants to land on.
   const guides = totalMs > 0 ? [...boundariesMs, totalMs] : boundariesMs
   const lanes = assignLanes(texts)
-  const laneCount = Math.max(1, ...lanes.map((l) => l + 1))
-  const trackH = laneCount * LANE_H + (laneCount - 1) * LANE_GAP
+  const nLanes = laneCount(lanes)
+  const trackH = nLanes * LANE_H + (nLanes - 1) * LANE_GAP
 
   // Pull an edge to the nearest clip boundary when it is within SNAP_PX on screen.
   // Returns the snapped ms and records which boundary, so the guide can light up.
