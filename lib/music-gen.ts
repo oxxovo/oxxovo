@@ -46,6 +46,16 @@ import {
 // Provider interface -- the Beatoven boundary. The API shape is deferred (실측),
 // so the caller only knows: given a prompt + duration, eventually get audio bytes.
 // The provider owns whatever sync/async/polling the real API needs.
+//
+// ★SUPERSEDED, NOT YET REMOVED. lib/music-provider.ts is the boundary as of
+// 2026-08-01: it is pure (the worker can mirror it, this file it cannot), it
+// makes provenance a required field, and it names the primary/fallback slots.
+// The block below is the older, weaker version and is kept only so this file
+// keeps compiling until the adapter step lands. ★Import MusicProvider /
+// MusicGenParams / MusicGenOutput from lib/music-provider.ts, not from here --
+// the two MusicGenOutput shapes are NOT the same (the new one requires
+// provider / providerModel / generatedAt / licenseType). Deleting this block is
+// the first edit of step ③a-3.
 // ===========================================================================
 
 export interface MusicGenParams {
