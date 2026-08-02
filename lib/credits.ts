@@ -90,6 +90,17 @@ export function creditsForCost(costUsd: number, pricing: StudioPricing): number 
   return credits
 }
 
+// The ROW-level half of the same rule, for the places that hold a raw cost and
+// no pricing config: a catalogue row is sellable only if its cost is a positive
+// finite number. It cannot BE creditsForCost (that needs margin + credit value,
+// i.e. two more DB reads on a picker render), so the two are kept adjacent and
+// stated as one rule: a non-positive cost never reaches a charge, whichever end
+// notices it first.
+export function isSellableCost(costUsd: unknown): boolean {
+  const n = Number(costUsd)
+  return Number.isFinite(n) && n > 0
+}
+
 // Same arithmetic, for the paths that have somewhere to fail closed TO: null
 // means "this cannot be priced". The caller must then withhold the spend (hide
 // the panel, refuse the generation) -- never charge 0 and never proceed.

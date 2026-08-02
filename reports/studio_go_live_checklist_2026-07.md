@@ -72,6 +72,57 @@ runs only AFTER the studio code is deployed to prod. Skip for now.)
 - VERIFY: Vercel env has `OPENAI_API_KEY`. If absent, the gate fails OPEN
   (generation still works, but no prompt moderation).
 
+**★B5. Operational alerts must actually ARRIVE (not just be addressed)**
+- WHAT: `sendAdminAlert` is how the platform tells us anything went wrong while
+  nobody was watching -- pricing problems, deferrals, blocked finalist
+  advancement, cron failures. Measured 2026-08-01: the recipient fallback was
+  `info@oxxovo.com` and **`OPS_ALERT_EMAIL` is not set in ANY Vercel environment**
+  (`vercel env ls`: 17 variables, not among them), so the fallback was live. It
+  now falls back to `info@oxxovo.ai`, the company mailbox.
+- ★THE SENDER IS A SEPARATE QUESTION with a separate answer, and the ORDER is the
+  whole point. Resend rejects a from-address whose domain is not verified in the
+  account. On 2026-08-01 the account held exactly one domain (`oxxovo.com`,
+  verified 2026-05-19), so setting `EMAIL_FROM` to .ai first would not have moved
+  our mail -- it would have stopped it, with a 403 whose only trace is a log line.
+  1. verify `oxxovo.ai` in Resend -- **done 2026-08-02** (Cloudflare
+     auto-configure; MX/SPF land on the `send` subdomain so the root Google MX is
+     untouched). ★Resend **"Enable Receiving" stays OFF**: switching it on
+     repoints the root MX at Resend and breaks the receiving that works today. We
+     need sending only.
+  2. `EMAIL_FROM=info@oxxovo.ai` -- **set 2026-08-02, Production + Preview**, via
+     `vercel env rm` + `vercel env add` (the documented path; the value cannot be
+     read back afterwards, encrypted).
+  3. `OPS_ALERT_EMAIL=info@oxxovo.ai` -- **set 2026-08-02, Production + Preview**,
+     explicitly rather than left to the code fallback. A fallback is what saves
+     you when configuration is missing, not the configuration.
+- ★Env changes take effect on the NEXT deploy, not immediately. Production is
+  still pre-C3, so today these are staged for the launch deploy, not live.
+- ★Still TK's to confirm (not provable from a CLI session): the two values in the
+  Vercel dashboard (encrypted, unreadable after write -- the runtime proof is the
+  `[admin-alert] sent to <address>` log line), and which domain Cloudflare Email
+  Routing actually RECEIVES `info@` on. The inbound loop guard matches both
+  domains and their subdomains, so receiving on either is safe.
+- ★VERIFY BY DELIVERY, not by reading the code:
+  ```
+  node --env-file=.env.local --import ./scripts/test-register.mjs scripts/send-test-alert.mjs          # dry run, sends nothing
+  node --env-file=.env.local --import ./scripts/test-register.mjs scripts/send-test-alert.mjs --send   # sends ONE email
+  ```
+  It calls the real `sendAdminAlert`, prints the exact from/to it will use, and
+  prints the Resend message id. **Resend accepting the send is not delivery** --
+  ask Resend what became of it:
+  ```
+  curl -s -H "Authorization: Bearer $RESEND_API_KEY" https://api.resend.com/emails/<id>
+  ```
+  `last_event` reads `delivered` / `bounced` / `complained`. Even `delivered` is
+  Resend's word for "the receiving server accepted it" -- the last check is a
+  human finding the subject in the inbox.
+- Run 2026-08-02, both directions measured end to end:
+  | from | to | Resend `last_event` |
+  |---|---|---|
+  | info@oxxovo.com | info@oxxovo.ai | delivered |
+  | info@oxxovo.ai | info@oxxovo.ai | delivered |
+  The second is the configuration that ships. Inbox confirmation is TK's.
+
 ---
 
 ## Phase C -- worker deploy (Railway)
@@ -231,6 +282,30 @@ is a standing rule for the music switch, not a launch-day step.**
   of today step 1 has not been done, which is correct: the vendor (ElevenLabs) price
   is not settled, and until it is there is nothing to write.
 
+**★C7. Live-database probes are for quiet days. Not during a competition window.**
+- THE RULE: **no write probe against the live database during the 72h round.**
+  Reading is fine. Writing -- even a throwaway row -- puts a test row in the same
+  tables that hold participants' entries, jobs and credits, at the one time
+  nobody can afford a mistaken `DELETE` predicate or a probe that outlives its
+  cleanup.
+- WHY it comes up at all: probing IS the right way to check a failure path.
+  On 2026-08-01 the pricing-health check was verified by inserting one unpriced
+  model row and watching detect -> alert -> dedupe -> recover -> clean up, which
+  no unit test could have shown. That was the correct call **on a quiet day**.
+- IF a probe is unavoidable outside a window, all four, every time:
+  1. **inactive / invisible**: `active=false`, or a row no participant-facing
+     query can return. Never a real row's values, even "temporarily".
+  2. **`zz_` prefix on the id**, so a leftover is obvious in any listing and
+     sorts to the bottom rather than hiding among real rows.
+  3. **cleanup in a `finally`**, so a mid-probe crash still removes it.
+  4. **the report states what was created, that it was deleted, and the count
+     the table returned to** (2026-08-01: `model_catalog` back to 19 rows). A
+     cleanup nobody verified is a cleanup nobody did.
+- ★And say whether anything left the building. The same probe would have mailed
+  ops if it had run through the cron; it did not, because it called the checker
+  directly and only the cron sends. That distinction belongs in the report, not
+  in the prober's head.
+
 ---
 
 ## Phase D -- E2E (order matters; no prod exposure)
@@ -289,6 +364,33 @@ Do these at launch, not before:
   ```
   (The E2E also self-guards: it ABORTS if any target model is already active on
   startup, so a leftover is caught at the next run too.)
+
+- ★**PRICING gate -- no active model may be unpriced.** `cost_per_second_usd` is
+  `NOT NULL DEFAULT 0`, so a model onboarded without its probe number is priced
+  at zero, and zero is not a cheap generation: every spend path asks
+  `balance < credits`, and `balance < 0` is false for every account, so the
+  balance check would simply not apply. The code refuses at three layers now (the
+  picker withholds it, the enqueue paths refuse with `pricing_unavailable`, and
+  `creditsForCost` throws), which means the failure mode at launch is not "free
+  generations" but "a participant blocked on a generic error". Confirm it is
+  neither, by eye, before opening the doors:
+  ```sql
+  SELECT id, tier, active, cost_per_second_usd
+  FROM model_catalog
+  WHERE cost_per_second_usd IS NULL OR cost_per_second_usd <= 0
+  ORDER BY active DESC, id;
+  ```
+  **Expect zero rows.** Measured 2026-08-01: 19/19 rows priced above zero, the
+  cheapest at 0.01 -- so a non-empty result means something changed after that
+  date, not that this has always been so. An `active=false` row in the result is
+  not urgent today and IS the thing that becomes urgent the moment somebody flips
+  it in the block above.
+  - This is also watched automatically: the season-tick cron runs the same check
+    every tick and mails ops when the answer CHANGES (`lib/pricing-health.ts`).
+    The manual run here exists because launch day is exactly when nobody wants to
+    find out that the mail was going to an unread mailbox.
+  - To read the current state without waiting for mail, the tick's JSON response
+    carries `pricing.signature` (`ok` when healthy) and the full problem list.
 
 - ★**Submission-moderation PROD live check (right before/at launch)** -- the
   submission gate (`moderateSubmission`, lib/moderation.ts) scans the creator

@@ -5,6 +5,21 @@ export async function resolve(specifier, context, nextResolve) {
   if (specifier === 'server-only') {
     return { url: 'data:text/javascript,export{}', shortCircuit: true }
   }
+  // The `@/` path alias (tsconfig paths -> repo root) is a bundler feature; node
+  // sees it as a bare package name and fails. Map it to the repo root, which is
+  // this file's parent directory. Without this, any module under test that
+  // reaches a dependency through the alias is untestable -- lib/pricing-health.ts
+  // imports lib/music-gen.ts, which uses the alias throughout.
+  if (specifier.startsWith('@/')) {
+    const base = new URL('../' + specifier.slice(2), import.meta.url).href
+    for (const candidate of [base + '.ts', base + '.tsx', base]) {
+      try {
+        return await nextResolve(candidate, context)
+      } catch {
+        /* try the next form */
+      }
+    }
+  }
   // App code uses extensionless relative imports (bundler resolution). Under
   // `node --test` (native type strip) those need an explicit .ts -- append it.
   if (/^\.\.?\//.test(specifier) && !/\.[cm]?[jt]s$/.test(specifier)) {

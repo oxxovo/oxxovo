@@ -84,6 +84,10 @@ export type ComposeEditorProps = {
   maxClips: number
   demo?: boolean
   resumeRender?: ComposeResumeRender | null
+  // ★A FAILED render offered only for its arrangement. Never resumed (the row is
+  // dead); its EDL is the last server-side copy of the timeline, which is all a
+  // participant on a second device has after a stalled render was swept away.
+  restorableRender?: (Omit<ComposeResumeRender, 'status'> & { status: 'failed' }) | null
   // Account nickname the entry publishes as (option A: no name/country fields;
   // identity is the account, shown as a notice and editable in /profile).
   nickname?: string

@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
   }
 
   const from = normalizeAddr(body.from)
-  const to = normalizeAddr(body.to) || 'info@oxxovo.com'
+  const to = normalizeAddr(body.to) || 'info@oxxovo.ai'
   const subject = (body.subject ?? '').trim()
   const text = (body.text ?? '').trim()
   const messageId = (body.messageId ?? '').trim() || null
@@ -211,7 +211,7 @@ export async function POST(req: NextRequest) {
       to: from,
       subject: replySubject,
       text: `${decision.reply}\n\n— OXXOVO Team\ninfo@oxxovo.ai`,
-      replyTo: 'info@oxxovo.com',
+      replyTo: 'info@oxxovo.ai',
       headers: replyHeaders,
     })
     if (error) {
@@ -268,7 +268,7 @@ async function sendReceiptAck(o: {
       to: o.from,
       subject: replySubject,
       text,
-      replyTo: 'info@oxxovo.com',
+      replyTo: 'info@oxxovo.ai',
       headers: {
         'Auto-Submitted': 'auto-replied',
         'X-Auto-Response-Suppress': 'All',

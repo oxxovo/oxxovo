@@ -30,7 +30,14 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { buildNextSeasonRow } from '@/lib/season-schedule'
 import { releasePrelimHoldCore } from '@/lib/watch-hold'
 import { sweepAsyncSubmissions, type AsyncSweepReport } from '@/lib/studio'
+import { sweepStudioLeases, type StudioLeaseReport } from '@/lib/studio-lease'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
+import {
+  reportPricingHealth,
+  pricingAlertHtml,
+  summarizeProblems,
+  type PricingHealthReport,
+} from '@/lib/pricing-health'
 import type { Season } from '@/lib/seasons'
 
 // Run at request time — a prerendered 'now' would silently ignore time-based
@@ -76,6 +83,14 @@ type SeasonTickReport = {
   skippedCreation?: string
   errors: string[]
   asyncSweep?: AsyncSweepReport
+  // Lane C's lease recovery over the rows lane A's sweep does not own: clips, AI
+  // music, and renders nobody submitted. Ownership is declared in
+  // lib/studio-sweep-scope.ts and pinned by lib/studio-sweep-scope.test.ts.
+  leaseSweep?: StudioLeaseReport
+  // Always present, alert or not: the tick's JSON is the one place ops can read
+  // the CURRENT pricing state on demand, rather than waiting for the mail that
+  // only fires on a change.
+  pricing?: { signature: string; alerted: boolean; problems: string[] }
 }
 
 async function handle(request: NextRequest) {
@@ -293,8 +308,36 @@ async function handle(request: NextRequest) {
     }
   }
 
+  // ── 2.6. PRICING HEALTH ───────────────────────────────────────────────────
+  // Can everything that can be spent on still be priced? The charge paths refuse
+  // rather than charge 0 (lib/credits.ts), so a broken price gives nothing away --
+  // it BLOCKS the participant, who sees a generic failure, while nothing is
+  // written anywhere: the refusal happens before the job row exists. This is the
+  // half that tells us. It alerts only when the set of problems CHANGES (a
+  // standing condition would otherwise mail every tick), recovery included.
+  // Never throws -- a pricing probe must not cost the tick its other work.
+  let pricingHealth: PricingHealthReport | undefined
+  try {
+    pricingHealth = await reportPricingHealth()
+    if (pricingHealth.stateError) {
+      errors.push(`season-tick: pricing alert state: ${pricingHealth.stateError}`)
+    }
+  } catch (e) {
+    errors.push(`season-tick: pricing health check threw: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   // ── 3. NOTIFY ────────────────────────────────────────────────────────────
   const alerts: Promise<boolean>[] = []
+  if (pricingHealth?.changed) {
+    alerts.push(
+      sendAdminAlert(
+        pricingHealth.recovered
+          ? '[OXXOVO] Studio pricing healthy again'
+          : `[OXXOVO] Studio pricing problem: ${summarizeProblems(pricingHealth.problems)}`,
+        pricingAlertHtml(pricingHealth),
+      ),
+    )
+  }
   for (const d of deferrals) {
     alerts.push(
       sendAdminAlert(
@@ -388,6 +431,18 @@ async function handle(request: NextRequest) {
     errors.push(`asyncSweep: ${e instanceof Error ? e.message : String(e)}`)
   }
 
+  // ★Same tick, not a new cron entry -- the plan's cron limit is 3 and exceeding
+  // it deploys fine while the schedule silently never fires. Runs after the
+  // submission sweep so a render finalized this tick is never also seen as stale,
+  // and isolated the same way: a throw here must not cost the tick its other work.
+  let leaseSweep: StudioLeaseReport | undefined
+  try {
+    leaseSweep = await sweepStudioLeases()
+    if (leaseSweep.errors?.length) errors.push(...leaseSweep.errors.map((e) => `studioLease: ${e}`))
+  } catch (e) {
+    errors.push(`studioLease: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   const report: SeasonTickReport = {
     ok: true,
     ranAt: now.toISOString(),
@@ -398,6 +453,16 @@ async function handle(request: NextRequest) {
     advancements,
     ...(skippedCreation ? { skippedCreation } : {}),
     ...(asyncSweep ? { asyncSweep } : {}),
+    ...(leaseSweep ? { leaseSweep } : {}),
+    ...(pricingHealth
+      ? {
+          pricing: {
+            signature: pricingHealth.signature,
+            alerted: pricingHealth.changed,
+            problems: pricingHealth.problems.map((p) => `${p.kind}:${p.id} ${p.detail}`),
+          },
+        }
+      : {}),
     errors,
   }
   return NextResponse.json(report)
