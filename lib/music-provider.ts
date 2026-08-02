@@ -72,11 +72,37 @@ export interface MusicLicenseTerms {
    *  is the shape a "no reseller" clause forbids. FALSE must refuse
    *  registration however good the output licence is. */
   resaleToEndUsersPermitted: boolean
-  /** Human-readable pointer to the document these booleans were read out of
-   *  (URL + retrieval date, or "written reply 2026-08-xx"). Not machine-checked;
-   *  it exists so a future reader can re-derive the booleans instead of
-   *  trusting them. */
-  readonly source: string
+  /** Where each boolean above was read out of. See MusicLicenseSource. */
+  readonly source: MusicLicenseSource
+}
+
+// ★WHO FILLS THE BOOLEANS ABOVE: not an engineer. Reading a vendor's licence
+// page and typing `true` is the same failure this whole split exists to prevent
+// -- it makes vendor marketing copy our legal position, one step later in the
+// process. Measured precedents: Wondera's "full legal indemnity" was sales copy,
+// and Sonilo's "Tier 3 support" was the vendor's own blog. Both read as facts on
+// the page. Values are confirmed by 대표님/고문 against the contract or terms
+// text and injected; until then a provider has no terms and therefore cannot
+// register (the booleans are required, and any unconfirmed field left false
+// classifies to null -> registration throws).
+//
+// ★A URL IS NOT A SOURCE. "we read their licence page" does not survive six
+// months: the page changes, and nobody can reconstruct which sentence anyone
+// relied on. So the citation is structured and `clause` is REQUIRED -- a
+// document with no clause reference will not compile.
+export interface MusicLicenseSource {
+  /** The document, named as it names itself, with its version/date if it has
+   *  one. e.g. 'ElevenLabs API Terms of Service (2026-05-14)'. */
+  readonly document: string
+  /** ★The specific provision relied on, e.g. '§3.A' or 'Section 4.2(b)'. Not
+   *  a summary of it -- the pointer, so the original can be re-read. */
+  readonly clause: string
+  /** ISO date the document was retrieved / the reply was received. Fixes WHICH
+   *  version of a document that changes without notice was relied on. */
+  readonly retrievedAt: string
+  /** Who confirmed it (고문 / 대표님 / counsel name). Not the engineer who
+   *  wired the adapter. */
+  readonly confirmedBy: string
 }
 
 // ★THE ④ GATE. Ours, not the adapter's. Returns the label a set of declared
