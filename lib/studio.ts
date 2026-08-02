@@ -31,6 +31,7 @@ import { validateTexts, parseTrademarkBlocklist, findBlockedTrademark, type Text
 import { validateMusicBed, type MusicReason } from '@/lib/music-limits'
 import { isOwnedBy } from '@/lib/studio-sweep-scope'
 import { isMusicEnabled } from '@/lib/music-gate'
+import { shouldHoldPrelim } from '@/lib/watch-hold'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -160,9 +161,6 @@ export type SeasonStudioConfig = {
   // the UI can STATE the rule without hardcoding it. 0 = unset -> caller decides.
   studioComposeMinSeconds: number
   studioComposeMaxSeconds: number
-  // Fairness hold: when true, a prelim submission is held off /watch until the
-  // cohort is released together (anti-copy). Visibility only -- never scoring.
-  prelimHoldEnabled: boolean
 }
 
 // Per-round video-length bounds, resolved from the season config. Application
@@ -366,7 +364,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_prelim_hold_enabled')
+    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -384,7 +382,6 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     studioComposeEnabled: Boolean(data.studio_compose_enabled),
     studioComposeMinSeconds: Number(data.studio_compose_min_seconds ?? 0),
     studioComposeMaxSeconds: Number(data.studio_compose_max_seconds ?? 0),
-    prelimHoldEnabled: Boolean(data.studio_prelim_hold_enabled),
   }
 }
 
@@ -1184,7 +1181,7 @@ export async function submitGeneration(args: {
       moderation_flags: mod.categories.length ? mod.categories : null,
       moderation_checked_at: now,
       // Fairness hold (anti-copy), prelim only -- see submitRender. Visibility only.
-      watch_hold: cfg.prelimHoldEnabled,
+      watch_hold: await shouldHoldPrelim(args.seasonId),
       studio_application_job_id: job.id,
       studio_application_signature: job.cryptobind_signature,
       studio_application_submitted_at: now,
@@ -1801,7 +1798,7 @@ export async function submitRender(args: {
   const { data: seasonRow, error: sErr } = await admin
     .from('seasons')
     // Music gate read separately (fail-closed) -- see the note in createRender.
-    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_prelim_hold_enabled')
+    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
@@ -1912,7 +1909,7 @@ export async function submitRender(args: {
       // Fairness hold (anti-copy): when the season enables it, the prelim entry is
       // held off /watch until the cohort is released together (manual/auto). Never
       // blocks scoring -- only public visibility (isPublicRow). Prelim only.
-      watch_hold: !!seasonRow.studio_prelim_hold_enabled,
+      watch_hold: await shouldHoldPrelim(args.seasonId),
       studio_application_render_id: render.id,
       // submitted_at stays the "this account has submitted" marker for every other
       // caller, and it is set at ACCEPT time because that is when the submission was
@@ -2211,11 +2208,11 @@ export async function finalizeSubmission(
     return { ok: true, finalized: false }
   }
 
-  const { data: seasonRow } = await admin
-    .from('seasons')
-    .select('studio_prelim_hold_enabled')
-    .eq('id', seasonId)
-    .single()
+  // ★The hold decision comes from lib/watch-hold, not from the switch read here.
+  // This is the site where the difference matters: an accepted submission can
+  // finalize up to 24h after the cohort was published, and stamping the switch
+  // put it straight back under the hold -- forever, on the manual release.
+  const holdThisEntry = await shouldHoldPrelim(seasonId)
 
   const now = new Date().toISOString()
   const durationInt = Math.round(Number(render.total_duration_seconds))
@@ -2242,7 +2239,7 @@ export async function finalizeSubmission(
           free_entry_url: render.video_url,
           thumbnail_url: render.thumbnail_url,
           video_duration_seconds: durationInt,
-          watch_hold: !!seasonRow?.studio_prelim_hold_enabled,
+          watch_hold: holdThisEntry,
           studio_submission_state: 'finalized',
         })
         .eq('id', appRow.id)
