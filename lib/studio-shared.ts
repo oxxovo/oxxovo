@@ -46,3 +46,23 @@ export function assemblePresetPrompt(
     ? `${preset.bracket_tags} ${p}. ${preset.desc_text}`
     : `${p}. ${preset.desc_text}`
 }
+
+// ★WHICH RENDER STATUSES A PARTICIPANT MAY SUBMIT. ONE definition, imported by
+// both sides, because this list existed twice and the copy is what broke.
+//
+// Submission is not tied to the render being finished: a final REQUESTED before
+// the deadline must be submittable before the deadline, or a busy queue costs
+// the participant their entry. 'failed' is included because a failure inside the
+// 24h buffer is ours to fix (the sweep re-renders it once), not grounds for
+// losing the round. 'submitted' is absent -- an entry is accepted once.
+//
+// On 2026-07-31 the server accepted all of these while the editor rendered its
+// submit form only in the `renderReady` branch, so every asynchronous path was
+// dead code on the screen: the server-side tests passed and no participant could
+// reach the control. That is why the list lives here and not in two files.
+export const ASYNC_SUBMIT_STATUSES = ['queued', 'rendering', 'uploading', 'ready', 'failed'] as const
+export type AsyncSubmitStatus = (typeof ASYNC_SUBMIT_STATUSES)[number]
+
+export function isSubmittableRenderStatus(status: string | null | undefined): boolean {
+  return !!status && (ASYNC_SUBMIT_STATUSES as readonly string[]).includes(status)
+}

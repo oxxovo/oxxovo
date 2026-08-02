@@ -45,6 +45,7 @@ import {
 
 import {
   assemblePresetPrompt,
+  isSubmittableRenderStatus,
   type StudioParamRule,
   type StudioPreset,
   type StudioPresetGroup,
@@ -1630,7 +1631,8 @@ export async function deleteRender(userId: string, renderId: string): Promise<De
 // failed render ONE re-render of the same EDL (v1sr unchanged, so no re-signing and
 // no cap impact); if that also fails it goes to staff review with the entry intact.
 // There is nothing to game here -- an accepted submission with no file scores nothing.
-const ASYNC_SUBMIT_STATUSES = ['queued', 'rendering', 'uploading', 'ready', 'failed'] as const
+// ASYNC_SUBMIT_STATUSES now lives in lib/studio-shared.ts -- see the note there
+// on why a second copy of this list is what broke the submit form.
 
 // ===========================================================================
 // Shared compose verification (steps 3 / 3b / 4 of a submission).
@@ -1785,7 +1787,7 @@ export async function submitRender(args: {
   // A render REQUESTED before the deadline can therefore no longer cost a
   // participant their submission just because the queue was busy.
   const rendered = render.status === 'ready' && !!render.video_url
-  if (!rendered && !(ASYNC_SUBMIT_STATUSES as readonly string[]).includes(String(render.status))) {
+  if (!rendered && !isSubmittableRenderStatus(String(render.status))) {
     // failed / submitted / anything else: there is nothing to accept.
     return { ok: false, reason: 'not_ready', detail: `status=${render.status}` }
   }
