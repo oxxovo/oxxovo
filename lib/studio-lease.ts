@@ -22,6 +22,7 @@ import 'server-only'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { refundMusicGeneration } from '@/lib/music-gen'
 import { CLAIM_COLUMN, type StudioLeaseTable } from '@/lib/studio-claim-columns'
+import { isOwnedBy } from '@/lib/studio-sweep-scope'
 
 export { CLAIM_COLUMN, type StudioLeaseTable }
 
@@ -36,7 +37,14 @@ export { CLAIM_COLUMN, type StudioLeaseTable }
 // ★It must stay ABOVE the deadline for a second reason: an abandoned fal request
 // is not cancelled, only walked away from. Reclaiming a row while its ghost is
 // still running is how two attempts end up writing the same artefact.
-const LEASE_STALE_MS = Math.max(60_000, Number(process.env.STUDIO_LEASE_STALE_MS ?? '4200000'))
+const MONEY_LEASE_STALE_MS = Math.max(60_000, Number(process.env.STUDIO_LEASE_STALE_MS ?? '4200000'))
+
+// ★Lane A's render values, matched deliberately. 30 minutes is 2x the worker's
+// ffmpeg timeout, exactly as 70 minutes is 2x the fal/music deadline -- the same
+// rule, different call bound. The numbers differ because the evidence differs,
+// not because two people picked separately.
+const RENDER_LEASE_STALE_MS = Math.max(60_000, Number(process.env.RENDER_LEASE_STALE_MS ?? '1800000'))
+const RENDER_MAX_ATTEMPTS = 3
 
 // ★One automatic retry, then stop -- and the bound is doing two jobs.
 //
@@ -53,7 +61,7 @@ const LEASE_STALE_MS = Math.max(60_000, Number(process.env.STUDIO_LEASE_STALE_MS
 // the balance AND frees the per-round cap slot (a 'failed' row is not counted),
 // so the participant is whole and retrying becomes their choice rather than our
 // spend on their behalf.
-const MAX_LEASE_ATTEMPTS = 2
+const MONEY_MAX_ATTEMPTS = 2
 
 // Long enough queued that something is wrong. Reported, never auto-refunded --
 // see the note in the report type.
@@ -92,13 +100,24 @@ type LaneSpec = {
   queuedStatus: string
   /** Extra equality filters (music shares its table with library assets). */
   scope?: Record<string, string>
-  refund: (id: string, detail: string) => Promise<void>
+  /** Only rows whose column IS NULL. Used for the render split -- see below. */
+  nullScope?: string[]
+  /** How quiet the claim must be before the row is considered abandoned. */
+  staleMs: number
+  /** Automatic retries before the row is given up on. */
+  maxAttempts: number
+  /**
+   * Terminal action. Renders pass null: they cost CPU, never credits
+   * (createRender does not charge), so there is nothing to give back.
+   */
+  refund: ((id: string, detail: string) => Promise<void>) | null
 }
 
-// ★Renders are NOT here. Lane A owns render lease recovery (sweepAsyncSubmissions)
-// and the render claim-token work; two sweeps requeueing the same table would
-// race each other. The mapping above still lists render_jobs because the mapping
-// describes the schema, not this function's scope.
+// ★THE SPLIT IS DECLARED, NOT ASSUMED. Which rows belong to this sweep comes
+// from studio-sweep-scope.ts, and a test executes both scopes over every
+// (table, hasSubmitIntent) combination to prove they neither overlap nor leave a
+// gap. Overlap would requeue an accepted render twice a tick and slip past lane
+// A's attempt bound; the gap is the bug being fixed.
 async function laneSpecs(): Promise<LaneSpec[]> {
   const admin = createSupabaseAdmin()
   return [
@@ -106,6 +125,8 @@ async function laneSpecs(): Promise<LaneSpec[]> {
       table: 'generation_jobs',
       inFlight: ['generating', 'uploading'],
       queuedStatus: 'queued',
+      staleMs: MONEY_LEASE_STALE_MS,
+      maxAttempts: MONEY_MAX_ATTEMPTS,
       refund: async (id, detail) => {
         // Mirror of the worker's refundFailedJob: a clip charge is linked by
         // generation_job_id, and the prior-refund lookup keeps it idempotent.
@@ -140,12 +161,34 @@ async function laneSpecs(): Promise<LaneSpec[]> {
       table: 'studio_music_assets',
       inFlight: ['generating'],
       queuedStatus: 'queued',
+      staleMs: MONEY_LEASE_STALE_MS,
+      maxAttempts: MONEY_MAX_ATTEMPTS,
       // A library bed is seeded straight to ready and must never be swept.
       scope: { source: 'ai' },
       // Already idempotent, already marks the row failed.
       refund: async (id, detail) => {
         await refundMusicGeneration({ assetId: id, detail })
       },
+    },
+    {
+      // ★Renders that were never accepted for submission. Lane A sweeps the
+      // accepted ones; this is the complement, and until now it was nobody's.
+      // The symptom was not just a stuck row: the compose editor resumes onto
+      // "the newest render that is neither submitted nor failed", so a
+      // participant could be parked on a render that would never finish.
+      // Marking it failed is what releases them.
+      table: 'render_jobs',
+      inFlight: ['rendering', 'uploading'],
+      queuedStatus: 'queued',
+      nullScope: ['submit_intent_at'],
+      // ★Lane A's numbers, not this file's. A render costs CPU, so it can afford
+      // more retries and a shorter fuse than a lane that pays a vendor per
+      // attempt. Two sets of values for the same table would be arbitrary; two
+      // sets across tables with different cost models are just correct.
+      staleMs: RENDER_LEASE_STALE_MS,
+      maxAttempts: RENDER_MAX_ATTEMPTS,
+      // Nothing to refund -- createRender charges no credits.
+      refund: null,
     },
   ]
 }
@@ -165,11 +208,19 @@ export async function sweepStudioLeases(): Promise<StudioLeaseReport> {
   for (const lane of await laneSpecs()) {
     const claimCol = CLAIM_COLUMN[lane.table]
     try {
+      const nullCols = lane.nullScope ?? []
+      // Widened to `string` on purpose: supabase-js parses a LITERAL select at
+      // the type level, and the column list here is assembled per lane. The rows
+      // are read through explicit casts below either way.
+      const cols: string = ['id', 'status', 'attempts', claimCol, 'created_at', 'updated_at', ...nullCols].join(', ')
       let q = admin
         .from(lane.table)
-        .select(`id, status, attempts, ${claimCol}, created_at, updated_at`)
+        .select(cols)
         .in('status', [...lane.inFlight, lane.queuedStatus])
       for (const [k, v] of Object.entries(lane.scope ?? {})) q = q.eq(k, v)
+      // ★The ownership split, applied at the query. Selected as well as filtered
+      // so the per-row assertion below can re-check it rather than trust it.
+      for (const c of nullCols) q = q.is(c, null)
       const { data, error } = await q
       if (error) {
         report.errors.push(`${lane.table}: ${error.message}`)
@@ -177,22 +228,29 @@ export async function sweepStudioLeases(): Promise<StudioLeaseReport> {
       }
 
       for (const row of data ?? []) {
-        const id = String((row as Record<string, unknown>).id)
-        const status = String((row as Record<string, unknown>).status)
+        const id = String((row as unknown as Record<string, unknown>).id)
+        const status = String((row as unknown as Record<string, unknown>).status)
+
+        // ★Belt and braces on the split. The .is(col, null) filter above should
+        // already have excluded lane A's rows; this asserts it per row, because
+        // the cost of the filter silently not applying is two sweeps requeueing
+        // the same accepted render every tick and bypassing lane A's bound.
+        const hasSubmitIntent = (row as unknown as Record<string, unknown>).submit_intent_at != null
+        if (!isOwnedBy('studio_lease', { table: lane.table, hasSubmitIntent })) continue
 
         if (status === lane.queuedStatus) {
-          const age = ageMs((row as Record<string, unknown>).created_at, null, now)
+          const age = ageMs((row as unknown as Record<string, unknown>).created_at, null, now)
           if (age !== null && age > QUEUE_OVERDUE_MS) {
             report.overdue.push({ table: lane.table, id, ageHours: Math.round(age / 3_600_000) })
           }
           continue
         }
 
-        const age = ageMs((row as Record<string, unknown>)[claimCol], (row as Record<string, unknown>).updated_at, now)
-        if (age === null || age <= LEASE_STALE_MS) continue
+        const age = ageMs((row as unknown as Record<string, unknown>)[claimCol], (row as unknown as Record<string, unknown>).updated_at, now)
+        if (age === null || age <= lane.staleMs) continue
 
-        const attempts = Number((row as Record<string, unknown>).attempts ?? 0)
-        if (attempts < MAX_LEASE_ATTEMPTS) {
+        const attempts = Number((row as unknown as Record<string, unknown>).attempts ?? 0)
+        if (attempts < lane.maxAttempts) {
           // Hand it back. CAS on the observed status so a worker that is in fact
           // alive and finishing right now wins the race instead of being
           // trampled. claim_token is cleared, which is what actually invalidates
@@ -212,10 +270,25 @@ export async function sweepStudioLeases(): Promise<StudioLeaseReport> {
           continue
         }
 
-        // Past the bound. Give the credits back rather than spend again.
+        // Past the bound. Stop retrying: give the credits back where there are
+        // any, and either way get the row out of a state it will never leave.
+        const detail = `lease expired after ${attempts} attempts`
         try {
-          await lane.refund(id, `lease expired after ${attempts} attempts`)
-          report.refunded.push({ table: lane.table, id })
+          if (lane.refund) {
+            await lane.refund(id, detail)
+            report.refunded.push({ table: lane.table, id })
+          } else {
+            // Renders: no charge to return, but the row still has to stop being
+            // in flight -- that is what releases a participant whose editor is
+            // resumed onto it.
+            const { error: fErr } = await admin
+              .from(lane.table)
+              .update({ status: 'failed', error_message: detail, updated_at: new Date().toISOString() })
+              .eq('id', id)
+              .eq('status', status)
+            if (fErr) report.errors.push(`${lane.table} fail ${id}: ${fErr.message}`)
+            else report.refunded.push({ table: lane.table, id })
+          }
         } catch (e) {
           report.errors.push(`${lane.table} refund ${id}: ${e instanceof Error ? e.message : String(e)}`)
         }
