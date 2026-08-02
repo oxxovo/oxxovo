@@ -16,6 +16,8 @@
     "test:reachability": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/reachability-queued-submit.mjs",
     "test:kat": "node --import ./scripts/test-register.mjs e2e/kat-cross-repo.mjs",
     "test:deadline": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/deadline-and-sync.mjs",
+    "test:requeue": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/requeue-recovery.mjs",
+    "test:tamper": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/tamper-compose.mjs",
     "deploy:prod": "node scripts/deploy-prod.mjs"
   },
   "dependencies": {
