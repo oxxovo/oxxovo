@@ -457,6 +457,10 @@ export type CreateGenerationResult =
         // Stage 3 (image / i2v):
         | 'not_image_model'
         | 'not_video_model'
+        // ★The model is a video model but does not take a start image, so it
+        // cannot shoot an actor. Distinct from 'not_video_model': that one says
+        // "wrong medium", this one says "right medium, wrong capability".
+        | 'not_i2v_model'
         | 'character_not_found'
         | 'parent_not_found'
         | 'parent_not_ready'
@@ -516,6 +520,17 @@ export async function createGeneration(args: {
   const models = await getActiveModels()
   const model = models.find((m) => m.id === args.modelId)
   if (!model) return { ok: false, reason: 'unknown_model' }
+  // ★And it must not be an i2v model. This is the other half of the guard in
+  // createI2vGeneration: that one refuses a t2v model on the actor path, this one
+  // refuses an i2v model on the plain text path. An i2v row points at a dedicated
+  // image-to-video endpoint (kling-v3-pro-i2v is a separate catalogue row from
+  // kling-v3-pro), so calling it with no start image is a 422 -- charge, fail,
+  // refund, for a request that could have been refused for free.
+  // ★If a model ever accepts a start image OPTIONALLY, this flag is the wrong
+  // thing to key on and the catalogue needs a second one. Do not relax this
+  // check to make such a model work; today `accepts_start_image` means
+  // "requires one".
+  if (model.acceptsI2v) return { ok: false, reason: 'not_i2v_model', detail: 'i2v model on the t2v path' }
 
   // 1a. Preset (optional). Must exist + be active; the server assembles the
   // final prompt itself -- a client-assembled prompt is never trusted.
@@ -919,6 +934,18 @@ export async function createI2vGeneration(args: {
   const model = await getModelById(args.modelId)
   if (!model) return { ok: false, reason: 'unknown_model' }
   if (model.mediaType !== 'video') return { ok: false, reason: 'not_video_model' }
+  // ★The server decides what an i2v model is, not the editor. Until now the only
+  // thing keeping a plain t2v model out of this path was one client-side filter
+  // (`ActorMode.tsx`, `state.models.filter(m => m.acceptsI2v)`), and a filter in
+  // the browser is a suggestion. Sending start_image_url/elements/multi_prompt to
+  // a model whose schema has no such fields is a fal 422: the participant is
+  // charged, the worker fails the job, refundFailedJob returns the credits, and
+  // they are told "generation failed" for a request the server could have refused
+  // for free. Measured 2026-08-02: `accepts_start_image=true` is set on exactly
+  // one of the 19 catalogue rows (kling-v3-pro-i2v), which is why the gap has not
+  // cost anything yet -- and why it will the moment a second i2v model lands or
+  // the picker changes.
+  if (!model.acceptsI2v) return { ok: false, reason: 'not_i2v_model' }
 
   const shots = (args.shots ?? []).map((s) => ({
     prompt: (s.prompt ?? '').trim(),

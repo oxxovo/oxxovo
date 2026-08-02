@@ -332,6 +332,44 @@ is a standing rule for the music switch, not a launch-day step.**
   directly and only the cron sends. That distinction belongs in the report, not
   in the prober's head.
 
+**★C8. `MUSIC_CONCURRENCY` STAYS UNSET. Setting it "just in case" stops the
+renders. Standing rule, not a launch-day step.**
+- THE RULE: **do not set `MUSIC_CONCURRENCY` on Railway.** Unset (or 0) is the
+  correct production value today and stays correct for the whole of season 0.
+- WHY setting it is worse than leaving it: `WORKER_CONCURRENCY` and
+  `RENDER_CONCURRENCY` are capacity knobs where a forgotten value means a slow
+  queue, so the worker refuses to boot without them. `MUSIC_CONCURRENCY` is not
+  that knob -- above zero it makes `main()` call `buildMusicProviderSlots()`,
+  which resolves a vendor adapter from `ADAPTERS` in `src/music-lane.ts`.
+  **`ADAPTERS` is empty and is meant to be** (an entry in it is a claim that we
+  may lawfully resell that vendor's output; no vendor is confirmed). So the call
+  throws, `main()` rejects, and the process exits -- **taking the generation and
+  render lanes with it.** The failure reads as "the worker is down", and its
+  cause is a music variable on a platform where music is off. Nothing else in the
+  worker fails this way.
+- ★It is also the WRONG variable for season 0 in the first place. 대표님 confirmed
+  on 2026-08-02 that season 0 music is the **pre-generated library** -- OXXOVO
+  seeds 300 tracks and participants only pick. There is no participant generation
+  to give a lane to. `MUSIC_CONCURRENCY` belongs to season 1's plan C.
+- WHICH SWITCH goes with it (and read C6 with this): the season 0 configuration
+  is `studio_music_enabled = true` (library picker) with
+  `studio_music_ai_enabled` left **false**. Measured 2026-08-02: with the AI
+  switch false, `assertMusicLaneConsistency()` does not object to a missing lane,
+  and every other music mechanism -- the worker lane, the lease sweep, refunds,
+  charging, the price fail-closed -- is out of the library path by construction,
+  not by luck. Library-only is a first-class state the code was written for.
+- VERIFY at deploy, on the worker's own boot line (C5 explains why that line, and
+  not `git push`, is the confirmation):
+  ```
+  music=OFF (MUSIC_CONCURRENCY unset)
+  ```
+  Anything else on a season-0 deploy is the mistake this rule exists for. And if
+  the container is not printing a boot line at all, check this variable before
+  anything else -- an empty-registry throw happens before the lanes start.
+- ★IF a future season really does turn AI music on, the order is C6's, plus a
+  vendor in `ADAPTERS` and `platform_config.studio_music_provider_primary`. All
+  three, or the boot fails again -- which is the intended direction.
+
 ---
 
 ## Phase D -- E2E (order matters; no prod exposure)

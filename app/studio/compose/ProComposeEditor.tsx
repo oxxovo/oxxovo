@@ -194,6 +194,7 @@ const DICT = {
     music_none_assets: '음악 라이브러리 준비 중입니다.',
     music_need_clip: '먼저 타임라인에 클립을 올리세요.',
     music_pick: '음악 선택',
+    music_loading: '불러오는 중…',
     music_change: '변경',
     music_volume: '음악 볼륨',
     music_balance: '원본 소리',
@@ -387,6 +388,7 @@ const DICT = {
     music_none_assets: 'Music library coming soon.',
     music_need_clip: 'Add a clip to the timeline first.',
     music_pick: 'Pick music',
+    music_loading: 'Loading…',
     music_change: 'Change',
     music_volume: 'Music volume',
     music_balance: 'Original audio',
@@ -471,12 +473,42 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // just-finished generation is immediately selectable without a full reload.
   type PickAsset = { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }
   const [extraMusic, setExtraMusic] = useState<PickAsset[]>([])
+  // ★Lazily-loaded library. See ComposeEditorProps.loadMusicAssets: the beds are
+  // no longer shipped with the page, so they arrive here the first time the
+  // picker is actually needed.
+  const [loadedMusic, setLoadedMusic] = useState<PickAsset[] | null>(null)
+  const [musicLoading, setMusicLoading] = useState(false)
   const musicAssets = useMemo<PickAsset[]>(() => {
-    const base = props.musicAssets ?? []
+    const base = props.musicAssets ?? loadedMusic ?? []
     const seen = new Set(base.map((a) => a.id))
     return [...base, ...extraMusic.filter((a) => !seen.has(a.id))]
-  }, [props.musicAssets, extraMusic])
+  }, [props.musicAssets, loadedMusic, extraMusic])
+  const loadMusic = useCallback(() => {
+    if (!props.loadMusicAssets || loadedMusic !== null || musicLoading) return
+    setMusicLoading(true)
+    props
+      .loadMusicAssets()
+      // ★An empty array on failure, not a retry loop and not a thrown error. The
+      // picker's "no tracks" state already exists and is honest here: nothing is
+      // pickable right now. A bed cannot be silently substituted, and the render
+      // path re-resolves the asset server-side regardless of what this list said.
+      .then((a) => setLoadedMusic(a ?? []))
+      .catch(() => setLoadedMusic([]))
+      .finally(() => setMusicLoading(false))
+  }, [props, loadedMusic, musicLoading])
+  // Has the picker list actually been resolved? Distinguishes "there are no
+  // tracks" from "we have not fetched them yet" -- without it an empty list
+  // before the first fetch reads as "library coming soon", which is a lie.
+  const musicListReady = props.musicAssets !== undefined || loadedMusic !== null
   const musicUrl = music ? (musicAssets.find((a) => a.id === music.assetId)?.url ?? null) : null
+  // ★A restored draft can already have a bed selected, and then the list is not
+  // optional: without it the panel shows a bare asset id instead of the track
+  // name, and the preview has no URL to play. So a selected bed loads the list
+  // whether or not the participant ever touches the picker.
+  useEffect(() => {
+    if (musicEnabled && music && !musicListReady) loadMusic()
+  }, [musicEnabled, music, musicListReady, loadMusic])
+
   // AI music-gen panel state (Stage 6). Gated on props.musicAiEnabled.
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiState, setAiState] = useState<'idle' | 'generating' | 'error'>('idle')
@@ -1756,12 +1788,16 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                 {musicEnabled && (
                 <div className="mt-4 border-t border-white/8 pt-3">
                   <p className="mb-2 text-[11px] uppercase tracking-[0.15em] text-white/45">{t.music_title}</p>
-                  {musicAssets.length === 0 ? (
+                  {musicListReady && musicAssets.length === 0 ? (
                     <p className="py-2 text-[11px] text-white/35">{t.music_none_assets}</p>
                   ) : !music ? (
-                    <select value="" onChange={(e) => { const a = musicAssets.find((x) => x.id === e.target.value); if (a) pickMusic(a.id, a.source) }}
+                    // ★The list loads on first contact with this control, not on
+                    // page load. Focus fires for the keyboard too, so this is not
+                    // a mouse-only affordance.
+                    <select value="" onFocus={loadMusic} onMouseDown={loadMusic}
+                      onChange={(e) => { const a = musicAssets.find((x) => x.id === e.target.value); if (a) pickMusic(a.id, a.source) }}
                       className="w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none">
-                      <option value="">{t.music_pick}…</option>
+                      <option value="">{musicLoading ? t.music_loading : `${t.music_pick}…`}</option>
                       {musicAssets.map((a) => <option key={a.id} value={a.id}>{a.mood} — {a.title}</option>)}
                     </select>
                   ) : (() => {

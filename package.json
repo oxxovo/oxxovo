@@ -19,6 +19,7 @@
     "test:text-samples": "node --import ./scripts/test-register.mjs scripts/text-font-samples.mjs",
     "test:reachability": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/reachability-queued-submit.mjs",
     "test:kat": "node --import ./scripts/test-register.mjs e2e/kat-cross-repo.mjs",
+    "test:i2v-guard": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/i2v-model-guard.mjs",
     "test:deadline": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/deadline-and-sync.mjs",
     "deploy:prod": "node scripts/deploy-prod.mjs"
   },

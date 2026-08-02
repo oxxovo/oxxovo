@@ -711,8 +711,15 @@ function Generator({
   prefill: Prefill | null
   onPrefillApplied: () => void
 }) {
-  const [modelId, setModelId] = useState(state.models[0]?.id ?? '')
-  const model = state.models.find((m) => m.id === modelId) ?? state.models[0]
+  // ★Text-to-video only. An i2v model (accepts_start_image) needs a start image
+  // this form has no way to supply -- it belongs to the AI-actor "shoot shots"
+  // step, which builds that input server-side. Today this filter removes nothing
+  // (the one i2v row is inactive, measured 2026-08-02), and that is exactly why
+  // it has to exist before ⑪ flips it on: activating the model for step ③ would
+  // otherwise also drop it into this picker, where every generation would 422.
+  const t2vModels = state.models.filter((m) => !m.acceptsI2v)
+  const [modelId, setModelId] = useState(t2vModels[0]?.id ?? '')
+  const model = t2vModels.find((m) => m.id === modelId) ?? t2vModels[0]
   const [duration, setDuration] = useState(model?.min_duration_seconds ?? 4)
   const [prompt, setPrompt] = useState('')
   // CameraDirector (Stage 1): chosen preset + advanced params. No preset = the
@@ -766,7 +773,7 @@ function Generator({
     ? state.draftGenerationsUsed >= state.maxDraftGenerations
     : state.generationsUsed >= state.maxGenerations
   const insufficient = credits > state.balance
-  const disabled = pending || !model || prompt.trim() === '' || capReached || insufficient || !state.models.length
+  const disabled = pending || !model || prompt.trim() === '' || capReached || insufficient || !t2vModels.length
 
   const errText = (e: string, detail?: string): string => {
     switch (e) {
@@ -811,8 +818,8 @@ function Generator({
     })
   }
 
-  const competitionModels = state.models.filter((m) => m.tier !== 'draft')
-  const draftModels = state.models.filter((m) => m.tier === 'draft')
+  const competitionModels = t2vModels.filter((m) => m.tier !== 'draft')
+  const draftModels = t2vModels.filter((m) => m.tier === 'draft')
   const optionLabel = (m: (typeof state.models)[number]) =>
     `${m.display_name} · ${m.tier}${m.hasAudio ? '' : ` · ${t.silent_marker}`}`
 

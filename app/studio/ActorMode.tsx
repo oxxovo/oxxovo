@@ -89,6 +89,7 @@ const DICT = {
     err_shots: '샷 프롬프트를 확인하세요.',
     err_duration: '길이 합계가 모델 허용 범위를 벗어났습니다.',
     err_i2v: '영상 생성 실패',
+    err_not_i2v: '이 모델은 배우 샷 촬영을 지원하지 않습니다. 다른 모델을 선택하세요.',
     err_insufficient: '크레딧이 부족합니다.',
     err_generic: '생성 실패',
     // status
@@ -152,6 +153,7 @@ const DICT = {
     err_shots: 'Check your shot prompts.',
     err_duration: 'Total length is outside the model range.',
     err_i2v: 'Video generation failed',
+    err_not_i2v: 'This model cannot shoot actor shots. Pick another model.',
     err_insufficient: 'Not enough credits.',
     err_generic: 'Generation failed',
     st_queued: 'Queued', st_generating: 'Generating', st_uploading: 'Uploading', st_ready: 'Ready', st_failed: 'Failed',
@@ -628,6 +630,11 @@ function Shots({
       case 'bad_duration': return t.err_duration
       case 'insufficient_credits': return t.err_insufficient
       case 'cap_reached': return t.cap_reached
+      // Reachable only if the picker offered a model the server does not accept
+      // for shooting -- i.e. the two disagree. Say so plainly instead of
+      // reporting it as a generation failure, because nothing was generated.
+      case 'not_i2v_model':
+      case 'not_video_model': return t.err_not_i2v
       default: return t.err_i2v
     }
   }

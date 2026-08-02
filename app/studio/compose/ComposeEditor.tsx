@@ -93,7 +93,21 @@ export type ComposeEditorProps = {
   nickname?: string
   // Music bed assets available to the participant (platform library + their own
   // AI-generated tracks), mood-grouped. Omitted in the demo / when music is off.
+  // ★NOT the normal path any more -- see loadMusicAssets. Kept for the demo,
+  // which has a fixed handful and no server action to call.
   musicAssets?: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
+  // ★Fetch the pickable beds ON DEMAND, instead of shipping them with the page.
+  //
+  // Season 0's library is planned at 300 tracks (대표님, 2026-08-02). Sending all
+  // of them inside loadComposeState meant every editor load carried the whole
+  // catalogue -- including the majority of loads where the participant never
+  // opens the music panel. This is called the first time the picker is needed.
+  //
+  // ★This is the seam a filtered picker needs anyway: 300 items do not belong in
+  // one <select>, and whatever replaces it will filter server-side, through here.
+  // The filter arguments are not invented yet because the classification axis is
+  // head office's call (see reports/lane_c_library_pipeline_design_2026-08-02.md).
+  loadMusicAssets?: () => Promise<{ id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]>
   // Allowlist gate: the season's studio_music_enabled. When false the editor hides
   // the music panel entirely (createRender also rejects music with music_disabled).
   musicEnabled?: boolean
