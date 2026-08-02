@@ -140,9 +140,10 @@ export type SeasonStudioConfig = {
   // the video caps (media_type='image'). Draft image tier has its own cap.
   maxImageGenerationsPerRound: number
   maxDraftImageGenerationsPerRound: number
+  // Round BOUNDARY only (which round a clip and a submission belong to). The
+  // main round's CLOSE is not here on purpose -- see the note on
+  // canSubmitMainRound below.
   mainRoundStartAt: string | null
-  // S-3: main-round submission window = mainRoundStartAt + submissionHours.
-  submissionHours: number
   // S-7: per-round video-length bounds (seconds). The generation duration must
   // fall within the bounds of the round it belongs to, not just the model's.
   // NOTE: in compose mode a generation is a building-block CLIP whose final
@@ -177,13 +178,15 @@ export function videoBoundsForRound(
   return { min: cfg.applicationVideoMinSeconds, max: cfg.applicationVideoMaxSeconds }
 }
 
-// S-3: the absolute submission deadline for the main round (ms epoch), or null
-// when the season has no main_round_start_at yet. After this instant a main-
-// round studio submission is refused.
-export function mainRoundDeadlineMs(cfg: SeasonStudioConfig): number | null {
-  if (!cfg.mainRoundStartAt) return null
-  return new Date(cfg.mainRoundStartAt).getTime() + cfg.submissionHours * 3_600_000
-}
+// ★There is no main-round deadline helper here, deliberately. There used to be
+// one (`mainRoundDeadlineMs`, start + submission_hours) that nothing ever called,
+// while the actual gate on both submit paths is canSubmitMainRound in
+// lib/seasons.ts, which reads main_round_end_at. Two definitions of one boundary
+// is the shape that produced the 2026-07-31 defect (a second copy of
+// ASYNC_SUBMIT_STATUSES), and these two DO come apart in the data: season_test
+// has an end 76 minutes off its derived value. main_round_end_at is the
+// authority; submission_hours is the input that computes it once, at season
+// creation (lib/season-schedule.ts).
 
 // Server-authoritative round resolution. For a fixed-round season the setting IS
 // the effective round. For 'both', the schedule decides: before the main round
@@ -363,7 +366,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_prelim_hold_enabled')
+    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_prelim_hold_enabled')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -374,7 +377,6 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     maxImageGenerationsPerRound: Number(data.studio_max_image_generations_per_round ?? 20),
     maxDraftImageGenerationsPerRound: Number(data.studio_max_draft_image_generations_per_round ?? 40),
     mainRoundStartAt: (data.main_round_start_at as string | null) ?? null,
-    submissionHours: Number(data.submission_hours ?? 48),
     applicationVideoMinSeconds: Number(data.application_video_min_seconds ?? 0),
     applicationVideoMaxSeconds: Number(data.application_video_max_seconds ?? 0),
     mainRoundVideoMinSeconds: Number(data.main_round_video_min_seconds ?? 0),

@@ -129,10 +129,21 @@ async function handle(request: NextRequest) {
       const result = await fireMainRoundStart(season)
       report.mainRoundStart.push({ season: season.id, ...result })
 
-      const submissionCloseAt = new Date(
-        new Date(season.main_round_start_at).getTime() +
-          season.submission_hours * 3_600_000,
-      )
+      // ★The close this reminds people about must be the close that REFUSES them:
+      // canSubmitMainRound reads main_round_end_at, so that column is the
+      // authority here too. Deriving it again from submission_hours made a second
+      // definition of one boundary -- they agree for season_0/season_1 today but
+      // NOT for season_test (76 minutes apart), so an edited end date would have
+      // sent "6 hours left" against an instant that was not the deadline. The
+      // derivation stays only as the fallback for seasons whose end is not set
+      // yet, which is how the column itself is computed at creation
+      // (lib/season-schedule.ts).
+      const submissionCloseAt = season.main_round_end_at
+        ? new Date(season.main_round_end_at)
+        : new Date(
+            new Date(season.main_round_start_at).getTime() +
+              season.submission_hours * 3_600_000,
+          )
       const reminderHours = Array.isArray(season.deadline_reminder_hours)
         ? (season.deadline_reminder_hours as number[])
         : []
