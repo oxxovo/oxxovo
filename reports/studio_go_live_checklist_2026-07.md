@@ -79,31 +79,49 @@ runs only AFTER the studio code is deployed to prod. Skip for now.)
   `info@oxxovo.com` and **`OPS_ALERT_EMAIL` is not set in ANY Vercel environment**
   (`vercel env ls`: 17 variables, not among them), so the fallback was live. It
   now falls back to `info@oxxovo.ai`, the company mailbox.
-- ★THE SENDER IS A SEPARATE QUESTION with a separate answer. Resend rejects a
-  from-address whose domain is not verified in the account, and the account holds
-  exactly one domain: **`oxxovo.com`, verified 2026-05-19** (measured via the
-  Resend API, 2026-08-01 -- `oxxovo.ai` is not registered there at all). So:
-  1. verify `oxxovo.ai` in Resend (Cloudflare DKIM/SPF/DMARC records), THEN
-  2. set `EMAIL_FROM=info@oxxovo.ai` in Vercel (it already exists as a variable,
-     value not readable from a CLI session -- confirm it in the dashboard).
-  Doing 2 without 1 does not move our mail to the new domain, it stops our mail:
-  every send returns a 403 whose only trace is a server log line.
-- ★CONFIRM (nothing here is provable from a Claude session -- these are TK's):
-  - Resend dashboard -> Domains: is `oxxovo.ai` present and verified?
-  - Vercel -> Environment Variables: what is `EMAIL_FROM` set to, and should
-    `OPS_ALERT_EMAIL` be set to route alerts away from the inbox the inbound
-    Worker reads?
-  - Cloudflare Email Routing: which domain actually RECEIVES `info@` today? The
-    inbound autoresponder was built against `.com` (`app/api/email/inbound`), and
-    its loop guard already matches both domains, so receiving on either is safe.
+- ★THE SENDER IS A SEPARATE QUESTION with a separate answer, and the ORDER is the
+  whole point. Resend rejects a from-address whose domain is not verified in the
+  account. On 2026-08-01 the account held exactly one domain (`oxxovo.com`,
+  verified 2026-05-19), so setting `EMAIL_FROM` to .ai first would not have moved
+  our mail -- it would have stopped it, with a 403 whose only trace is a log line.
+  1. verify `oxxovo.ai` in Resend -- **done 2026-08-02** (Cloudflare
+     auto-configure; MX/SPF land on the `send` subdomain so the root Google MX is
+     untouched). ★Resend **"Enable Receiving" stays OFF**: switching it on
+     repoints the root MX at Resend and breaks the receiving that works today. We
+     need sending only.
+  2. `EMAIL_FROM=info@oxxovo.ai` -- **set 2026-08-02, Production + Preview**, via
+     `vercel env rm` + `vercel env add` (the documented path; the value cannot be
+     read back afterwards, encrypted).
+  3. `OPS_ALERT_EMAIL=info@oxxovo.ai` -- **set 2026-08-02, Production + Preview**,
+     explicitly rather than left to the code fallback. A fallback is what saves
+     you when configuration is missing, not the configuration.
+- ★Env changes take effect on the NEXT deploy, not immediately. Production is
+  still pre-C3, so today these are staged for the launch deploy, not live.
+- ★Still TK's to confirm (not provable from a CLI session): the two values in the
+  Vercel dashboard (encrypted, unreadable after write -- the runtime proof is the
+  `[admin-alert] sent to <address>` log line), and which domain Cloudflare Email
+  Routing actually RECEIVES `info@` on. The inbound loop guard matches both
+  domains and their subdomains, so receiving on either is safe.
 - ★VERIFY BY DELIVERY, not by reading the code:
   ```
   node --env-file=.env.local --import ./scripts/test-register.mjs scripts/send-test-alert.mjs          # dry run, sends nothing
   node --env-file=.env.local --import ./scripts/test-register.mjs scripts/send-test-alert.mjs --send   # sends ONE email
   ```
   It calls the real `sendAdminAlert`, prints the exact from/to it will use, and
-  prints the subject to look for. **Resend accepting the send is not delivery** --
-  the check is a human opening the inbox and finding that subject.
+  prints the Resend message id. **Resend accepting the send is not delivery** --
+  ask Resend what became of it:
+  ```
+  curl -s -H "Authorization: Bearer $RESEND_API_KEY" https://api.resend.com/emails/<id>
+  ```
+  `last_event` reads `delivered` / `bounced` / `complained`. Even `delivered` is
+  Resend's word for "the receiving server accepted it" -- the last check is a
+  human finding the subject in the inbox.
+- Run 2026-08-02, both directions measured end to end:
+  | from | to | Resend `last_event` |
+  |---|---|---|
+  | info@oxxovo.com | info@oxxovo.ai | delivered |
+  | info@oxxovo.ai | info@oxxovo.ai | delivered |
+  The second is the configuration that ships. Inbox confirmation is TK's.
 
 ---
 

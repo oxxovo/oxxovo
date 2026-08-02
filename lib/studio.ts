@@ -2185,6 +2185,14 @@ const RENDER_LEASE_STALE_MS = Math.max(60_000, Number(process.env.RENDER_LEASE_S
 const SUBMISSION_OVERDUE_MS = Math.max(60_000, Number(process.env.SUBMISSION_OVERDUE_MS ?? '86400000'))
 // One re-render, tracked by the application row's state rather than a new column.
 const REQUEUED_STATE = 'render_requeued'
+// ★How many times a render may be CLAIMED before the lease sweep stops handing it
+// out again. The worker increments `attempts` on every claim, so 3 means: the
+// original attempt plus two recoveries. Derived from what the failures look like
+// rather than picked: a render that dies twice in a row is not a transient worker
+// death, it is a render that kills workers, and the third recovery only adds
+// another zombie window. Env-overridable like the two thresholds above, so a bad
+// value can be corrected without a deploy.
+const MAX_RENDER_ATTEMPTS = Math.max(1, Number(process.env.MAX_RENDER_ATTEMPTS ?? '3'))
 
 export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
   const admin = createSupabaseAdmin()
@@ -2246,11 +2254,33 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
     }
 
     // Lease recovery: 'rendering'/'uploading' with no progress for too long means the
-    // claiming worker is gone. Back to 'queued' so another lane picks it up; attempts
-    // is left untouched so this cannot loop forever.
+    // claiming worker is gone. Back to 'queued' so another lane picks it up.
+    //
+    // ★BOUNDED. This used to say "attempts is left untouched so this cannot loop
+    // forever", which was simply wrong: nothing read attempts, and the worker
+    // increments it on the next claim anyway, so a render that kills its worker
+    // every time was requeued once an hour indefinitely. A render costs no vendor
+    // money (CPU only), so the cost was not the argument against it -- the zombie
+    // window was. Every requeue is another chance for the stalled worker to wake
+    // up and write over the one that finished, so an unbounded retry is an
+    // unbounded number of draws at that race. The cap ends the draws.
+    //
+    // Past the cap the row is LEFT ALONE, deliberately: not requeued, and not
+    // failed either. Auto-failing would take a decision that belongs to staff and
+    // hand a participant an error for a platform problem. It goes into `overdue`,
+    // which is the tick's "a human should look at this" channel.
     if (row.status === 'rendering' || row.status === 'uploading') {
       const since = Date.parse(String(row.claimed_at ?? row.updated_at ?? ''))
       if (Number.isFinite(since) && nowMs - since > RENDER_LEASE_STALE_MS) {
+        const attempts = Number(row.attempts ?? 0)
+        if (attempts >= MAX_RENDER_ATTEMPTS) {
+          out.overdue.push(id)
+          console.error(
+            `[studio] render ${id} stalled at attempt ${attempts} (cap ${MAX_RENDER_ATTEMPTS}) -- ` +
+              'not requeued, left for staff',
+          )
+          continue
+        }
         const { data: requeued } = await admin
           .from('render_jobs')
           .update({ status: 'queued', claimed_at: null, updated_at: new Date().toISOString() })

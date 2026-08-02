@@ -54,5 +54,10 @@ const ok = await sendAdminAlert(
   </div>`,
 )
 console.log(ok ? '\nResend accepted the send (2xx).' : '\n★Resend did NOT accept it -- see the error above.')
-console.log('★Accepted is not delivered. Confirm in the inbox, then say so explicitly.')
-process.exit(ok ? 0 : 1)
+console.log('★Accepted is not delivered. The line above carries the Resend message id:')
+console.log('   status: curl -s -H "Authorization: Bearer $RESEND_API_KEY" https://api.resend.com/emails/<id>')
+console.log('   -> last_event: delivered | bounced | complained. Then confirm the inbox anyway.')
+// Set the code rather than calling process.exit(): an immediate exit while the
+// keep-alive socket is still closing aborts the process on Windows (libuv
+// assertion), which looks exactly like a crashed send.
+process.exitCode = ok ? 0 : 1

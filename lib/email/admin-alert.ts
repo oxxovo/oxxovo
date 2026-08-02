@@ -8,16 +8,15 @@ import 'server-only'
 const ALERT_TO = process.env.OPS_ALERT_EMAIL || 'info@oxxovo.ai'
 
 // ★WHO THEY COME FROM, and that is a different question with a different answer.
-// Resend refuses a from-address whose domain is not verified in the account, and
-// the account has exactly ONE: `oxxovo.com`, verified 2026-05-19 (measured via
-// the Resend API on 2026-08-01 — oxxovo.ai is not registered there at all).
-// Moving the SENDER to .ai before .ai is verified would turn every alert into a
-// rejected send whose only trace is a console.error nobody reads: strictly worse
-// than an alert with an odd return address, because it looks like silence rather
-// than failure. So the recipient moves now and the sender waits for the Resend
-// side of the Workspace migration. EMAIL_FROM (already set in Vercel for
-// participant mail) is reused, so the day .ai is verified, one env var moves both.
-const ALERT_FROM = process.env.EMAIL_FROM || 'info@oxxovo.com'
+// Resend refuses a from-address whose domain is not verified in the account. On
+// 2026-08-01 the account held exactly one domain (oxxovo.com), so the sender had
+// to stay there while the recipient moved. **oxxovo.ai was verified on
+// 2026-08-02** (Cloudflare auto-configure, on the `send` subdomain so the root
+// Google MX is untouched — Resend "Enable Receiving" stays OFF deliberately;
+// switching it on would repoint the root MX and break the receiving that works
+// today). So the sender moves now too. EMAIL_FROM still wins, so the deploy
+// decides and this is only what a machine without that variable falls back to.
+const ALERT_FROM = process.env.EMAIL_FROM || 'info@oxxovo.ai'
 
 // Lightweight admin alert over Resend for background jobs (cron) that have no
 // user in the loop. Returns true on a 2xx send and NEVER throws — a failed
@@ -63,6 +62,14 @@ export async function sendAdminAlert(subject: string, html: string): Promise<boo
       )
       return false
     }
+    // ★Log the Resend message id on success. "Accepted" and "delivered" are
+    // different claims, and without the id there is no way to look up which one
+    // this send turned into -- the dashboard's Emails log is keyed by it.
+    const id = await res
+      .json()
+      .then((j: { id?: string }) => j?.id)
+      .catch(() => undefined)
+    console.log(`[admin-alert] sent to ${ALERT_TO} (resend id ${id ?? 'unknown'}): ${subject}`)
     return true
   } catch (e) {
     console.error('[admin-alert] send failed:', e instanceof Error ? e.message : e)
