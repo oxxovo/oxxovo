@@ -6,9 +6,10 @@
 // BT.601 LIMITED (identity round trip reproduced byte-exact, 0/0), brightness and
 // contrast act on Y only, saturation on U/V only.
 import { spawn } from 'node:child_process'
+import { FFMPEG } from './ffmpeg-bin.mjs'
 import { writeFileSync } from 'node:fs'
 const TMP = process.env.TEMP
-const run = (args) => new Promise((res, rej) => { const p = spawn('ffmpeg', args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res({ out: Buffer.concat(ch), err: e }) : rej(new Error('ff ' + c + ' ' + e.slice(-500))))); p.on('error', rej) })
+const run = (args) => new Promise((res, rej) => { const p = spawn(FFMPEG, args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res({ out: Buffer.concat(ch), err: e }) : rej(new Error('ff ' + c + ' ' + e.slice(-500))))); p.on('error', rej) })
 
 // 1 px per patch, 64 patches wide x 1 -> exact addressing, no interpolation.
 const PATCHES = [
