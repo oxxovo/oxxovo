@@ -195,6 +195,42 @@ round). This is a standing rule from launch onward, not a one-time step.**
   lane A returns the previous deployment's output. The boot line has to be read
   by whoever has the Railway dashboard.
 
+**★C6. PRICE BEFORE SWITCH: AI music cannot be turned on with one SQL line. This
+is a standing rule for the music switch, not a launch-day step.**
+- THE ORDER, and it is not interchangeable:
+  1. the price key exists in `platform_config` -- today `studio_music_gen_cost_usd`
+     (raw provider USD per generation). ★If the vendor bills per second or per
+     minute instead, the unit-neutral key that replaces it is what has to be there
+     (lane C's open item, `reports/lane_c_handoff_2026-07-30.md`); a per-generation
+     key filled in with a per-minute number is a wrong price, not a missing one,
+     and nothing below catches that.
+  2. THEN `seasons.studio_music_ai_enabled = true` for the season.
+- ★If you do 2 without 1, the switch is on and music still does not open. **That
+  is the designed behaviour, not a bug to work around.** A missing price key reads
+  as 0 (`getMusicGenConfig`, lib/music-gen.ts), and 0 credits does not mean a cheap
+  generation -- it means `balance < credits` is `balance < 0`, false for every
+  account, so AI music would be free and uncapped-by-balance for anyone including a
+  zero-balance account. `creditsForCost` refuses to price at 0, so instead: the
+  compose editor withholds the AI music panel (logging
+  `AI music is switched ON but unpriced` to the runtime log), and a direct call
+  refuses with `music_ai_disabled` + `detail: pricing_unavailable`.
+- WHICH SWITCH: the two music switches are both `seasons` columns and they are not
+  the same. `studio_music_enabled` (master) only opens the pre-generated library
+  picker -- it spends nothing and does not need the price key.
+  `studio_music_ai_enabled` is the one that spends. The rule above binds to the AI
+  switch; turning the master on alone is a real, safe operating state
+  (lib/music-gate.ts documents why).
+- VERIFY before flipping (both must be true):
+  ```sql
+  SELECT key, value FROM platform_config WHERE key LIKE 'studio_music%';
+  SELECT id, studio_music_enabled, studio_music_ai_enabled
+  FROM seasons WHERE id = '<season>';
+  ```
+  Measured 2026-08-01: the first query returns **zero rows** -- no music key of any
+  kind exists in the live table -- and every season has both switches false. So as
+  of today step 1 has not been done, which is correct: the vendor (ElevenLabs) price
+  is not settled, and until it is there is nothing to write.
+
 ---
 
 ## Phase D -- E2E (order matters; no prod exposure)
