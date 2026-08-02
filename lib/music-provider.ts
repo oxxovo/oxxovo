@@ -249,7 +249,17 @@ export interface MusicProvider {
    *  MUST: return the vendor's own bytes and the measured duration.
    *  MUST: throw. Never resolve with empty audio, never resolve a partial.
    *  MUST NOT: retry internally on rate limit (that is the lane's schedule),
-   *            touch the DB, touch R2, or read platform_config. */
+   *            touch the DB, touch R2, or read platform_config.
+   *
+   *  ★THE LANE IMPOSES A WALL CLOCK, and the adapter does not get a say in it.
+   *  "May poll internally" was an unbounded licence as first written: an
+   *  adapter could wait forever, which holds a participant's paid job in flight
+   *  with no ceiling AND makes the lease-recovery threshold underivable (that
+   *  threshold is defined as sitting above the worker's own timeout). So the
+   *  lane wraps this call in a deadline. An adapter MUST NOT swallow or extend
+   *  it -- no internal "just one more poll" past its own limit -- and MUST NOT
+   *  treat being abandoned as success. On expiry the participant is refunded;
+   *  note the vendor's work is not thereby cancelled. */
   generate(params: MusicGenParams): Promise<MusicGenOutput>
 }
 
