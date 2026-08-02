@@ -192,6 +192,10 @@ const DICT = {
     music_ai_remaining: (left: number, cap: number) => `이번 라운드 ${left}/${cap}회 남음`,
     music_ai_cap_reached: '이번 라운드 생성 횟수를 모두 사용했습니다',
     music_ai_default_title: 'AI 음악',
+    restore_title: '직전 렌더가 실패했습니다',
+    restore_body: '클립은 그대로 있습니다. 잃은 것은 배열뿐이고, 그 배열도 복원할 수 있습니다.',
+    restore_cta: '배열 복원',
+    restore_done: '배열을 복원했습니다. 다시 렌더하시면 됩니다.',
     music_ai_refund_note: '생성에 실패하면 크레딧은 자동으로 환불됩니다.',
     music_ai_reason: (r: string) =>
       (({
@@ -362,6 +366,10 @@ const DICT = {
     music_ai_remaining: (left: number, cap: number) => `${left}/${cap} left this round`,
     music_ai_cap_reached: 'No generations left this round',
     music_ai_default_title: 'AI music',
+    restore_title: 'Your last render failed',
+    restore_body: 'Your clips are all still here. Only the arrangement was lost, and it can be restored.',
+    restore_cta: 'Restore arrangement',
+    restore_done: 'Arrangement restored. Render again when you are ready.',
     music_ai_refund_note: 'Credits are automatically refunded if generation fails.',
     music_ai_reason: (r: string) =>
       (({
@@ -411,6 +419,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const clipById = useMemo(() => new Map(props.clips.map((c) => [c.id, c])), [props.clips])
 
   const [segments, setSegments] = useState<Segment[]>([])
+  // ★Offer to restore the arrangement of a render that failed, but ONLY when the
+  // timeline came up empty. If the local draft already brought the arrangement
+  // back, nothing was lost and a banner about loss would be its own small lie.
+  type RestorableEdl = { jobId: string; startMs: number; endMs: number; fit?: 'contain' | 'cover' }
+  const [restorable, setRestorable] = useState<RestorableEdl[] | null>(null)
+  const [arrangementRestored, setArrangementRestored] = useState(false)
   const [texts, setTexts] = useState<TextLayer[]>([]) // text/title overlays (stage 5 renders, stage 6 edits)
   const [selText, setSelText] = useState<number | null>(null) // selected text layer index
   const [aspect, setAspect] = useState<Aspect>('16:9') // output aspect (letterbox/crop per clip)
@@ -503,6 +517,13 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (rebuilt.length && draftTexts && draftTexts.length) setTexts(draftTexts)
     if (rebuilt.length && draftAspect) setAspect(draftAspect)
     if (rebuilt.length && draftMusic) setMusic(draftMusic)
+    if (!rebuilt.length && props.restorableRender?.edl?.length) {
+      // Keep only segments whose clip still exists, exactly as the resume path
+      // does -- offering to restore a timeline that references a deleted clip
+      // would restore a hole.
+      const usable = props.restorableRender.edl.filter((e) => clipById.has(e.jobId))
+      if (usable.length) setRestorable(usable)
+    }
     if (rr && rr.status === 'ready' && rr.videoUrl) {
       const chosen = rebuilt.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
       if (edlEq(chosen, rr.edl)) {
@@ -1118,6 +1139,40 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* ★RESTORE BANNER. A stalled render that the lease sweep gave up on becomes
+          'failed', which drops it out of resume -- correct, because resuming a dead
+          row shows a render that will never finish, but it also empties the
+          timeline. The clips were never at risk; only the arrangement was, and the
+          first line says exactly that so nobody spends the round wondering what
+          they lost. Shown only when the timeline actually came up empty. */}
+      {restorable && !arrangementRestored && segments.length === 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[#8b22ff]/35 bg-[#8b22ff]/8 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-[#d9b8ff]">{t.restore_title}</p>
+            <p className="mt-0.5 text-[11px] text-white/60">{t.restore_body}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSegments(
+                restorable.map((e) => ({
+                  uid: nextUid(),
+                  jobId: e.jobId,
+                  startMs: e.startMs,
+                  endMs: e.endMs,
+                  fit: e.fit,
+                })),
+              )
+              setArrangementRestored(true)
+            }}
+            className="rounded-lg border border-[#8b22ff]/50 px-3 py-1.5 text-xs font-bold text-[#b66cff] transition hover:bg-[#8b22ff]/15">
+            {t.restore_cta}
+          </button>
+        </div>
+      )}
+      {arrangementRestored && (
+        <p className="rounded-xl border border-white/10 bg-[#08060f] px-4 py-2 text-[11px] text-white/55">{t.restore_done}</p>
+      )}
       {/* 3-PANE: mobile vertical; lg = pool | preview (top), timeline full-width bottom */}
       <div className="flex flex-col gap-3 lg:grid lg:h-[calc(100vh-220px)] lg:min-h-[560px] lg:grid-cols-[300px_minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)_280px] lg:gap-3 lg:overflow-hidden">
 

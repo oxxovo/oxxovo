@@ -28,6 +28,7 @@ import {
 import { verifySourceClipCrypto } from '@/lib/studio-verify'
 import { validateTexts, parseTrademarkBlocklist, findBlockedTrademark, type TextReason } from '@/lib/text-limits'
 import { validateMusicBed, type MusicReason } from '@/lib/music-limits'
+import { isOwnedBy } from '@/lib/studio-sweep-scope'
 import { isMusicEnabled } from '@/lib/music-gate'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
@@ -2199,10 +2200,17 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
   const out: AsyncSweepReport = { finalized: [], requeued: [], overdue: [], rejected: [] }
   const nowMs = Date.now()
 
+  // ★TARGET SET, declared rather than implied: this sweep owns renders that were
+  // ACCEPTED for submission. Everything else -- clips, music, and renders nobody
+  // submitted -- belongs to sweepStudioLeases. The split is lane C's
+  // lib/studio-sweep-scope.ts, used here rather than restated, because two sweeps
+  // over one table that merely "agree today" is how a row gets requeued twice per
+  // tick: the attempts bound is bypassed and each extra requeue re-opens the
+  // zombie window.
   const { data: pending, error } = await admin
     .from('render_jobs')
     .select('id, status, submit_intent_at, claimed_at, updated_at, attempts')
-    .not('submit_intent_at', 'is', null)
+    .not('submit_intent_at', 'is', null) // the query half of the same rule
     .is('finalized_at', null)
   if (error) {
     console.error('[studio] async sweep query failed:', error.message)
@@ -2211,6 +2219,13 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
 
   for (const row of pending ?? []) {
     const id = String(row.id)
+    // Defence in depth: the filter above is a string in a query builder and the
+    // predicate is the actual rule. If they ever disagree, skip loudly rather than
+    // act on a row this sweep does not own.
+    if (!isOwnedBy('async_submission', { table: 'render_jobs', hasSubmitIntent: row.submit_intent_at != null })) {
+      console.error(`[studio] async sweep fetched a row it does not own (${id}) -- filter drift; skipping`)
+      continue
+    }
     if (row.status === 'ready') {
       const res = await finalizeSubmission(id)
       if (res.ok && res.finalized) out.finalized.push(id)
@@ -2237,7 +2252,13 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
       }
       const { data: requeued } = await admin
         .from('render_jobs')
-        .update({ status: 'queued', claimed_at: null, error_message: null, updated_at: new Date().toISOString() })
+        // ★claim_token: null is what actually disowns the previous attempt. Clearing
+        // claimed_at only makes the row look free; the token is what the worker's
+        // writes are CAS'd against, so leaving it set means a stalled worker that
+        // wakes between the requeue and the next claim still passes its own CAS and
+        // writes onto a row that is queued for someone else. Matches
+        // sweepStudioLeases, which clears it for the same reason.
+        .update({ status: 'queued', claimed_at: null, claim_token: null, error_message: null, updated_at: new Date().toISOString() })
         .eq('id', id)
         .eq('status', 'failed')
         .select('id')
@@ -2283,7 +2304,7 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
         }
         const { data: requeued } = await admin
           .from('render_jobs')
-          .update({ status: 'queued', claimed_at: null, updated_at: new Date().toISOString() })
+          .update({ status: 'queued', claimed_at: null, claim_token: null, updated_at: new Date().toISOString() })
           .eq('id', id)
           .eq('status', row.status)
           .select('id')

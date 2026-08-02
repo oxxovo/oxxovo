@@ -30,6 +30,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { buildNextSeasonRow } from '@/lib/season-schedule'
 import { releasePrelimHoldCore } from '@/lib/watch-hold'
 import { sweepAsyncSubmissions, type AsyncSweepReport } from '@/lib/studio'
+import { sweepStudioLeases, type StudioLeaseReport } from '@/lib/studio-lease'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
 import {
   reportPricingHealth,
@@ -82,6 +83,10 @@ type SeasonTickReport = {
   skippedCreation?: string
   errors: string[]
   asyncSweep?: AsyncSweepReport
+  // Lane C's lease recovery over the rows lane A's sweep does not own: clips, AI
+  // music, and renders nobody submitted. Ownership is declared in
+  // lib/studio-sweep-scope.ts and pinned by lib/studio-sweep-scope.test.ts.
+  leaseSweep?: StudioLeaseReport
   // Always present, alert or not: the tick's JSON is the one place ops can read
   // the CURRENT pricing state on demand, rather than waiting for the mail that
   // only fires on a change.
@@ -426,6 +431,18 @@ async function handle(request: NextRequest) {
     errors.push(`asyncSweep: ${e instanceof Error ? e.message : String(e)}`)
   }
 
+  // ★Same tick, not a new cron entry -- the plan's cron limit is 3 and exceeding
+  // it deploys fine while the schedule silently never fires. Runs after the
+  // submission sweep so a render finalized this tick is never also seen as stale,
+  // and isolated the same way: a throw here must not cost the tick its other work.
+  let leaseSweep: StudioLeaseReport | undefined
+  try {
+    leaseSweep = await sweepStudioLeases()
+    if (leaseSweep.errors?.length) errors.push(...leaseSweep.errors.map((e) => `studioLease: ${e}`))
+  } catch (e) {
+    errors.push(`studioLease: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   const report: SeasonTickReport = {
     ok: true,
     ranAt: now.toISOString(),
@@ -436,6 +453,7 @@ async function handle(request: NextRequest) {
     advancements,
     ...(skippedCreation ? { skippedCreation } : {}),
     ...(asyncSweep ? { asyncSweep } : {}),
+    ...(leaseSweep ? { leaseSweep } : {}),
     ...(pricingHealth
       ? {
           pricing: {

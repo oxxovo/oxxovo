@@ -20,6 +20,7 @@ import {
   pollMusicAction,
   type ComposeClip,
   type ResumeRender,
+  type RestorableRender,
 } from '../actions'
 import type { EdlSegment } from '@/lib/studio'
 
@@ -41,6 +42,7 @@ export default function ComposePage() {
     submit: ComposeSubmitCtx
     submission: ComposeSubmission
     resumeRender: ResumeRender | null
+    restorableRender: RestorableRender | null
     nickname: string
     musicEnabled: boolean
     musicAssets: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
@@ -110,6 +112,7 @@ export default function ComposePage() {
             submitCtx={data.submit}
             submission={data.submission}
             resumeRender={data.resumeRender}
+            restorableRender={data.restorableRender}
             nickname={data.nickname}
             musicEnabled={data.musicEnabled}
             musicAssets={data.musicAssets}

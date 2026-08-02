@@ -548,6 +548,11 @@ export type ResumeRender = {
   edl: EdlSegment[]
 }
 
+// A failed render offered for arrangement restore. Same shape as ResumeRender so
+// the editor can reuse its rebuild path, with the status narrowed to the only
+// value it can have -- nothing else is restorable.
+export type RestorableRender = Omit<ResumeRender, 'status'> & { status: 'failed' }
+
 export type LoadComposeResult =
   | {
       ok: true
@@ -560,6 +565,10 @@ export type LoadComposeResult =
         submit: ComposeSubmitCtx
         submission: ComposeSubmissionStatus
         resumeRender: ResumeRender | null
+        // Newest FAILED render, offered only when nothing is resumable: its EDL is
+        // the last server-side copy of the arrangement. null when there is nothing
+        // to restore or a live render already covers it.
+        restorableRender: RestorableRender | null
         // Account nickname the entry will publish as (option A: the compose form
         // no longer asks for a name; identity is the account, editable in /profile).
         nickname: string
@@ -644,6 +653,19 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     // re-arranging + re-rendering. listUserRenders is ordered newest-first.
     const renders = await listUserRenders(auth.userId, season.id)
     const resumable = renders.find((r) => r.status !== 'submitted' && r.status !== 'failed')
+    // ★A failed render is deliberately NOT resumable -- resuming a dead row would
+    // show a participant a render that will never finish. But the ARRANGEMENT lives
+    // on that row, and it is the only server-side copy: the editor's other source is
+    // a localStorage draft, which is gone on another device or after a cleared
+    // cache. So when there is nothing to resume, the newest failed render is offered
+    // as a restore instead -- its EDL, not its status. Losing the timeline is not
+    // data loss (every clip is still in the media pool) but inside a 72h window an
+    // empty timeline reads as loss, and the banner says so in those words.
+    const restorable = resumable
+      ? null
+      : renders.find(
+          (r) => r.status === 'failed' && Array.isArray(r.edl) && (r.edl as EdlSegment[]).length > 0,
+        ) ?? null
 
     // ★Accepted-submission state (asynchronous submission). Keyed off the application
     // row rather than "the newest render carrying an intent", because the round is what
@@ -700,6 +722,15 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
       musicCap = gate.cap
       musicUsed = used
     }
+    const restorableRender = restorable
+      ? {
+          id: restorable.id,
+          status: 'failed' as const,
+          videoUrl: null,
+          totalSeconds: Number(restorable.total_duration_seconds ?? 0),
+          edl: (restorable.edl ?? []) as EdlSegment[],
+        }
+      : null
     const resumeRender = resumable
       ? {
           id: resumable.id,
@@ -730,6 +761,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         submission,
         nickname,
         resumeRender,
+        restorableRender,
         musicEnabled,
         musicAssets,
         musicAiEnabled,
