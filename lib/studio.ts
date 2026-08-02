@@ -2132,6 +2132,29 @@ async function verifyDeliveredBytes(
   return { ok: true }
 }
 
+// Mark the entry behind a render. Refusing a submission and RECORDING why are two
+// different things, and only the second one reaches a human -- so the write is
+// checked. It failed silently for weeks (an `updated_at` column that does not
+// exist on this table), which is why the payload here is only ever columns
+// genesis_applications actually has.
+async function flagEntry(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  renderId: string,
+  state: 'finalize_rejected',
+): Promise<void> {
+  const { data, error } = await admin
+    .from('genesis_applications')
+    .update({ studio_submission_state: state })
+    .eq('studio_application_render_id', renderId)
+    .select('id')
+  if (error || !data?.length) {
+    console.error(
+      `[studio] could NOT flag the entry ${state} for render ${renderId}: ` +
+        (error?.message ?? 'no application row matched'),
+    )
+  }
+}
+
 export type FinalizeResult =
   | { ok: true; finalized: boolean }
   | { ok: false; reason: string; detail?: string }
@@ -2162,10 +2185,7 @@ export async function finalizeSubmission(
   // was swapped between accept and finalize.
   const chain = await verifyComposeChain(admin, render, { userId, seasonId }, true)
   if (!chain.ok) {
-    await admin
-      .from('genesis_applications')
-      .update({ studio_submission_state: 'finalize_rejected', updated_at: new Date().toISOString() })
-      .eq('studio_application_render_id', render.id)
+    await flagEntry(admin, render.id, 'finalize_rejected')
     return { ok: false, reason: chain.reason, detail: chain.detail }
   }
 
@@ -2179,10 +2199,7 @@ export async function finalizeSubmission(
   )
   if (!bytes.ok && bytes.kind === 'mismatch') {
     console.error(`[studio] finalize REFUSED, delivered bytes do not match the signed hash (${render.id}): ${bytes.detail}`)
-    await admin
-      .from('genesis_applications')
-      .update({ studio_submission_state: 'finalize_rejected', updated_at: new Date().toISOString() })
-      .eq('studio_application_render_id', render.id)
+    await flagEntry(admin, render.id, 'finalize_rejected')
     return { ok: false, reason: 'final_bytes_mismatch', detail: bytes.detail }
   }
   if (!bytes.ok) {
@@ -2206,31 +2223,47 @@ export async function finalizeSubmission(
     .eq('studio_application_render_id', render.id)
     .maybeSingle()
 
-  if (appRow) {
-    // Prelim entry: publish the file. The hold flag is stamped HERE (not at accept)
-    // because it gates public visibility of a file that did not exist yet.
-    await admin
-      .from('genesis_applications')
-      .update({
-        free_entry_url: render.video_url,
-        thumbnail_url: render.thumbnail_url,
-        video_duration_seconds: durationInt,
-        watch_hold: !!seasonRow?.studio_prelim_hold_enabled,
-        studio_submission_state: 'finalized',
-        updated_at: now,
-      })
-      .eq('id', appRow.id)
-  } else {
-    // Main round: the render is referenced by studio_main_render_id instead.
-    await admin
-      .from('genesis_applications')
-      .update({
-        main_round_video_url: render.video_url,
-        thumbnail_url: render.thumbnail_url,
-        studio_submission_state: 'finalized',
-        updated_at: now,
-      })
-      .eq('studio_main_render_id', render.id)
+  // ★PUBLISHING THE ENTRY IS THE WHOLE POINT, so its result is checked. This
+  // write used to carry `updated_at`, a column genesis_applications does not
+  // have; PostgREST rejects the entire statement for one unknown column and the
+  // error was never read. Every asynchronously-finalized submission therefore
+  // closed its render row while leaving the entry at its accept-time state with
+  // free_entry_url NULL -- and free_entry_url IS NOT NULL is exactly the contract
+  // the scorer reads, so the entry silently scored nothing. Nothing anywhere
+  // said so: the tick reported the render as finalized.
+  const published = appRow
+    ? // Prelim entry: publish the file. The hold flag is stamped HERE (not at
+      // accept) because it gates public visibility of a file that did not exist yet.
+      await admin
+        .from('genesis_applications')
+        .update({
+          free_entry_url: render.video_url,
+          thumbnail_url: render.thumbnail_url,
+          video_duration_seconds: durationInt,
+          watch_hold: !!seasonRow?.studio_prelim_hold_enabled,
+          studio_submission_state: 'finalized',
+        })
+        .eq('id', appRow.id)
+        .select('id')
+    : // Main round: the render is referenced by studio_main_render_id instead.
+      await admin
+        .from('genesis_applications')
+        .update({
+          main_round_video_url: render.video_url,
+          thumbnail_url: render.thumbnail_url,
+          studio_submission_state: 'finalized',
+        })
+        .eq('studio_main_render_id', render.id)
+        .select('id')
+  if (published.error || !published.data?.length) {
+    // ★DEFER rather than close. The render row stays open, so the next tick tries
+    // again instead of the submission being lost with a success in the log. It
+    // also stays in `remaining`, which is what a human eventually reads.
+    console.error(
+      `[studio] finalize DEFERRED, the entry was not published (${render.id}): ` +
+        (published.error?.message ?? 'no application row matched'),
+    )
+    return { ok: true, finalized: false }
   }
 
   // Close the render out. CAS on finalized_at so two concurrent sweeps cannot both
