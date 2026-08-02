@@ -14,6 +14,7 @@
     "test:eq-model": "node scripts/eq-model-probe.mjs",
     "test:text-parity": "node --import ./scripts/test-register.mjs scripts/text-parity.mjs",
     "test:reachability": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/reachability-queued-submit.mjs",
+    "test:kat": "node --import ./scripts/test-register.mjs e2e/kat-cross-repo.mjs",
     "deploy:prod": "node scripts/deploy-prod.mjs"
   },
   "dependencies": {
