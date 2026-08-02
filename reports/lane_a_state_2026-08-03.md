@@ -6,7 +6,7 @@
 
 | 레포 | 경로 | 브랜치 | HEAD |
 |---|---|---|---|
-| 앱 | `C:\Users\Tom\oxxovo` | `feat/studio-budget-guard` | **`06a9aef`** |
+| 앱 | `C:\Users\Tom\oxxovo` | `feat/studio-budget-guard` | **`ed744eb`** |
 | 워커 | `C:\Users\Tom\oxxovo-studio` | `main` | `2069b8d` (오늘 변경 없음) |
 
 앱 미커밋 0. 워커는 손대지 않았다.
@@ -69,16 +69,49 @@ NULL 그대로였다.**
   대기 중이면 `sweepAsyncSubmissions()`를 **거부**한다(노트북에서 남의 제출을
   확정시키지 않는다).
 
+## 4b. 승인 후 추가 작업 (같은 날 오후)
+
+**① `mainRoundDeadlineMs()` 정리 — 삭제 (`1c01d3d`)**
+- 호출부 0, 정의는 `start + submission_hours`. 실제 게이트는 `canSubmitMainRound`
+  (= `main_round_end_at`)이고 양쪽 제출 경로·로비·리스 경계가 전부 그걸 읽는다.
+- **두 정의는 데이터에서 실제로 어긋난다**: season_0/season_1은 일치하지만
+  **season_test는 76분 차이**(`main_round_end_at`은 시즌 생성 때 한 번 계산되고
+  그 뒤엔 편집 가능하다 — `lib/season-schedule.ts`).
+- 그래서 헬퍼를 지우고 **`SeasonStudioConfig.submissionHours`도 제거**했다. 그 필드는
+  헬퍼를 먹이려고만 존재했고, 입력을 스튜디오 설정에 남겨두면 거기서 또 마감을
+  유도하게 된다.
+- **덤으로 같은 형태를 하나 더 잡았다**: 이메일 틱이 "24h/6h 남음" 리마인더 시각을
+  `submission_hours`로 **다시 계산**하고 있었다 → `main_round_end_at`을 읽도록
+  통일(미설정 시즌만 기존 유도식을 폴백). 마감일이 편집되면 마감이 아닌 시각을
+  기준으로 리마인더가 나갔을 것이다.
+- tsc 0 / build 0 / 124 units.
+
+**② R2 고아 오브젝트 정리 — 225개 삭제 (`ed744eb`)**
+
+| prefix | 삭제 | 남은 고아 | 살아있는 것(무손상) |
+|---|---|---|---|
+| `renders/` | **113개 (3707.5 MB)** | **0** | 11개 (220.5 MB) |
+| `posters/` | **112개 (21.1 MB)** | **0** | 47개 (6.1 MB) |
+| `seasons/` | 0 | 3개 (14.9 MB) — 내 것 아님 | 34개 |
+| `images/` | 0 | 2개 (5.9 MB) — 내 것 아님 | 9개 |
+
+- 삭제분은 전부 studio-demo 계정(`dcf59288…`) 소유. **삭제 후 다시 LIST해서 0 확인**.
+- 남긴 것: `season_loadtest`(2) + `season_test`의 다른 계정(`c67e76f0…`, 3) — 참가자
+  자산 정리는 내 판단으로 하지 않는다. 이름에 id가 없는 손수 만든 포스터 37개
+  (mascot/비교샷)는 **파싱 불가로 분류해 손대지 않았다**.
+- 스크립트(`npm run r2:orphans`)는 기본 dry-run, `--owner` 화이트리스트 필수,
+  **세 테이블 전부 조회**. 이게 중요한 이유는 실측으로 드러났다: render_jobs만 보면
+  `--prefix=seasons/`가 **살아있는 참가자 클립 37개를 "고아"라고 불렀다**.
+
 ## 5. ★모르는 것 / 남은 것
 
 1. **런타임 `maxDuration`** — 어제와 동일. ⑩ C3 이후에만 알 수 있고, 실패 시 대응은
    상한 낮추고 **재배포**(위 3-1).
-2. **R2 고아 오브젝트** — 오늘 하니스들이 또 만들었다(zz 픽스처 렌더 + 변조 하니스).
-   행은 전부 지웠고 파일만 남는다. **E2E가 끝났으니 ⑩ 정리 항목에서 한 번에** 지운다.
-3. **`mainRoundDeadlineMs()`(`lib/studio.ts:183`)는 아무도 호출하지 않는다.**
-   본선 마감의 실제 판정은 `canSubmitMainRound`(= `main_round_end_at`)이고, 이 헬퍼는
-   `main_round_start_at + submission_hours`라는 **다른 정의**다. 죽은 코드 + 두 번째
-   정의라서 위험하지만 오늘 범위 밖이라 손대지 않았다.
+2. ~~R2 고아 오브젝트~~ — **오후에 225개 삭제 완료**(4b-②). 남은 5개는 내 것이 아니라
+   보고만 했다. 앞으로 하니스를 돌린 날은 `npm run r2:orphans`로 확인하면 된다.
+3. ~~`mainRoundDeadlineMs()`~~ — **오후에 삭제 완료**(4b-①). 관련해 남은 관찰:
+   **season_test의 `main_round_end_at`이 유도값과 76분 다르다**(리허설 편집 흔적).
+   운영 데이터가 아니라 방치해도 되지만, season_0 일정 정정 때 같이 볼 만하다.
 4. **season_test 정리** — 오늘 첫 시도에서 마감 테스트를 season_test에 돌렸다가
    `e2e/lib.mjs`의 규칙을 발견하고 `zz_` 픽스처로 갈아탔다. season_test의
    3개 컬럼은 **복원 확인까지 마쳤고**(하니스가 재읽기로 검증) 최종 코드는 season_test를
