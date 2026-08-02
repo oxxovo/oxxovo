@@ -7,7 +7,7 @@
 import 'server-only'
 import { randomUUID } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { getBalance, getStudioPricing, creditsForCostOrNull } from '@/lib/credits'
+import { getBalance, getStudioPricing, creditsForCostOrNull, isSellableCost } from '@/lib/credits'
 import { moderateSubmission } from '@/lib/moderation'
 import { getCreatorProfile, upsertCreatorProfile } from '@/lib/profile'
 import { getDisplayName } from '@/lib/nickname'
@@ -263,7 +263,26 @@ export async function getActiveModels(mediaType: 'video' | 'image' = 'video'): P
     .eq('active', true)
     .order('cost_per_second_usd', { ascending: true })
   if (error) throw new Error('getActiveModels: ' + error.message)
-  return (data ?? []).map(mapModelRow).filter((m) => m.mediaType === mediaType)
+  const rows = (data ?? []).map(mapModelRow).filter((m) => m.mediaType === mediaType)
+  // ★A model with no usable price is not offered. cost_per_second_usd is
+  // NOT NULL DEFAULT 0, so a model onboarded without its probe number is active
+  // and free -- and free is not cheap, it is a generation whose balance check
+  // cannot fail (see creditsForCost). The enqueue paths refuse it anyway, but a
+  // refusal the participant meets after writing a prompt reads as "the site is
+  // broken"; not listing it is the same safety one step earlier. This does NOT
+  // replace the server guard: getModelById (image / i2v) loads by id and never
+  // consults `active`, so it never passes through here.
+  // Measured 2026-08-01: 19/19 catalogue rows priced > 0, so this filters
+  // nothing today. It is here for the next model onboarding, not for now.
+  const sellable = rows.filter((m) => isSellableCost(m.cost_per_second_usd))
+  if (sellable.length !== rows.length) {
+    const dropped = rows.filter((m) => !isSellableCost(m.cost_per_second_usd)).map((m) => m.id)
+    console.error(
+      `[studio] ${dropped.length} active ${mediaType} model(s) withheld from the picker -- ` +
+        `no usable price in model_catalog.cost_per_second_usd: ${dropped.join(', ')}`,
+    )
+  }
+  return sellable
 }
 
 // Load ONE model by id regardless of `active` (image/i2v models stay active=false

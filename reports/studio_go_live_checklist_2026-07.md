@@ -290,6 +290,33 @@ Do these at launch, not before:
   (The E2E also self-guards: it ABORTS if any target model is already active on
   startup, so a leftover is caught at the next run too.)
 
+- ★**PRICING gate -- no active model may be unpriced.** `cost_per_second_usd` is
+  `NOT NULL DEFAULT 0`, so a model onboarded without its probe number is priced
+  at zero, and zero is not a cheap generation: every spend path asks
+  `balance < credits`, and `balance < 0` is false for every account, so the
+  balance check would simply not apply. The code refuses at three layers now (the
+  picker withholds it, the enqueue paths refuse with `pricing_unavailable`, and
+  `creditsForCost` throws), which means the failure mode at launch is not "free
+  generations" but "a participant blocked on a generic error". Confirm it is
+  neither, by eye, before opening the doors:
+  ```sql
+  SELECT id, tier, active, cost_per_second_usd
+  FROM model_catalog
+  WHERE cost_per_second_usd IS NULL OR cost_per_second_usd <= 0
+  ORDER BY active DESC, id;
+  ```
+  **Expect zero rows.** Measured 2026-08-01: 19/19 rows priced above zero, the
+  cheapest at 0.01 -- so a non-empty result means something changed after that
+  date, not that this has always been so. An `active=false` row in the result is
+  not urgent today and IS the thing that becomes urgent the moment somebody flips
+  it in the block above.
+  - This is also watched automatically: the season-tick cron runs the same check
+    every tick and mails ops when the answer CHANGES (`lib/pricing-health.ts`).
+    The manual run here exists because launch day is exactly when nobody wants to
+    find out that the mail was going to an unread mailbox.
+  - To read the current state without waiting for mail, the tick's JSON response
+    carries `pricing.signature` (`ok` when healthy) and the full problem list.
+
 - ★**Submission-moderation PROD live check (right before/at launch)** -- the
   submission gate (`moderateSubmission`, lib/moderation.ts) scans the creator
   statement and FAILS SAFE to `moderation_status='pending'` (NOT public) when the
