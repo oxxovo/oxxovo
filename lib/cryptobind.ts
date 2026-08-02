@@ -633,6 +633,14 @@ export function i2vCanonicalString(i: I2vBindInput): string {
 }
 
 // sha256 over image bytes -- identical to the worker copy.
+// sha256 over the final video bytes -- byte-mirrors the worker's hashVideoContent
+// (oxxovo-studio/src/cryptobind.ts). The worker produces this hash and signs it as
+// v1sc; the app recomputes it from the DELIVERED file at finalize, which is the
+// only check that covers the bytes rather than the row.
+export function hashVideoContent(buffer: Buffer | Uint8Array): string {
+  return createHash('sha256').update(buffer).digest('hex')
+}
+
 export function hashImageContent(buffer: Buffer | Uint8Array): string {
   return createHash('sha256').update(buffer).digest('hex')
 }

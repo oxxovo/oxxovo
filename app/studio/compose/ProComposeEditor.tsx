@@ -27,6 +27,7 @@ import type {
   EditorRenderStatus,
   ComposeEditorProps,
 } from './ComposeEditor'
+import { isSubmittableRenderStatus } from '@/lib/studio-shared'
 import { createRawPreview, type PreviewEngine, type PreviewTransition } from './preview'
 import { createGLPreview } from './preview-gl'
 import { hasAnyEffect, EXPOSED_SLIDERS, LUT_OPTIONS, EXPOSED_TRANSITIONS, type EffectParams } from '@/lib/effects'
@@ -448,12 +449,7 @@ const POOL_OVERSCAN = 2
 const ZOOM_MIN = 6
 const ZOOM_MAX = 120
 
-// ★Mirror of lib/studio ASYNC_SUBMIT_STATUSES. Submission is no longer tied to the
-// render being finished: a final REQUESTED before the deadline must be submittable
-// before the deadline, otherwise a busy queue costs the participant their entry.
-// 'failed' is included because the server accepts it too -- a failure inside the
-// buffer is ours to fix, not grounds for losing the round.
-const SUBMITTABLE_RENDER_STATUSES: string[] = ['queued', 'rendering', 'uploading', 'ready', 'failed']
+
 
 export default function ProComposeEditor(props: ComposeEditorProps) {
   const t = DICT[props.lang]
@@ -565,11 +561,23 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
       const usable = props.restorableRender.edl.filter((e) => clipById.has(e.jobId))
       if (usable.length) setRestorable(usable)
     }
-    if (rr && rr.status === 'ready' && rr.videoUrl) {
+    // ★ADOPT AN IN-FLIGHT RENDER, not only a finished one. This used to require
+    // status==='ready', which quietly reproduced the 2026-07-31 defect one layer
+    // down: submission is allowed while the render is still queued, but a
+    // participant who requested the render and then RELOADED came back with
+    // renderId=null, so `renderSubmittable` was false and the submit control was
+    // not on the page. It worked only inside the tab that started the render --
+    // exactly the case asynchronous submission exists to survive. The EDL guard is
+    // unchanged: a render is only adopted onto the arrangement it was made from.
+    if (rr && isSubmittableRenderStatus(rr.status)) {
       const chosen = rebuilt.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
       if (edlEq(chosen, rr.edl)) {
         setRenderId(rr.id)
-        setRenderState({ status: 'ready', videoUrl: rr.videoUrl, totalSeconds: rr.totalSeconds })
+        setRenderState({
+          status: rr.status,
+          videoUrl: rr.status === 'ready' ? rr.videoUrl : null,
+          totalSeconds: rr.totalSeconds,
+        })
       }
     }
     if (draftAp?.creatorStatement) setAp((a) => ({ ...a, creatorStatement: draftAp.creatorStatement ?? a.creatorStatement }))
@@ -1104,7 +1112,9 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const sMax = ctx?.statementMax ?? 250
   const stmtLen = ap.creatorStatement.trim().length
   const infoValid = !needInfo || (stmtLen >= sMin && stmtLen <= sMax && ap.agreedRules && ap.agreedPrivacy && ap.agreedIntegrity)
-  const renderSubmittable = !!renderId && !!renderState && SUBMITTABLE_RENDER_STATUSES.includes(renderState.status)
+  // ★The server's own list, imported -- not a copy of it. The copy is what made
+  // every asynchronous submission path unreachable on 2026-07-31.
+  const renderSubmittable = !!renderId && !!renderState && isSubmittableRenderStatus(renderState.status)
   const canSubmit =
     !!props.onSubmit && renderSubmittable && !submitting && !submitDone && infoValid && !ctx?.alreadySubmitted && !accepted
   const doSubmit = async () => {
@@ -1152,6 +1162,27 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     return () => { alive = false; clearInterval(iv) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acceptedRenderId, acceptedFinalized])
+  // ★Keep a RESUMED in-flight render moving. The buffer poll above only runs once
+  // a submission has been accepted; a render picked up from a reload has not been
+  // submitted yet, so without this it would sit at 'queued' on screen until the
+  // participant reloaded again -- and the submit control, though reachable, would
+  // never turn into a preview.
+  const liveRenderId = renderId
+  const liveRenderStatus = renderState?.status ?? null
+  useEffect(() => {
+    if (!liveRenderId || accepted) return
+    if (liveRenderStatus !== 'queued' && liveRenderStatus !== 'rendering' && liveRenderStatus !== 'uploading') return
+    let alive = true
+    const tick = async () => {
+      const st = await props.pollRender(liveRenderId)
+      if (!alive || !st) return
+      setRenderState(st)
+    }
+    const iv = setInterval(tick, props.demo ? 1500 : 10000)
+    return () => { alive = false; clearInterval(iv) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRenderId, liveRenderStatus, accepted])
+
   const doDeleteRender = async () => {
     if (!props.onDelete || !renderId) return
     if (typeof window !== 'undefined' && !window.confirm(t.delete_final_confirm)) return

@@ -834,7 +834,9 @@ export async function pollRenderAction(token: string, renderId: string): Promise
   //   finalized_at nul -- not already done (finalizeSubmission is idempotent anyway);
   //   status ready     -- the file exists and carries its v1sc.
   if (r.submit_intent_at && !r.finalized_at && r.status === 'ready') {
-    const fin = await finalizeSubmission(r.id)
+    // ★interactive: a participant is waiting on this response, so the byte check
+    // gets the short budget and the sweep keeps the long one.
+    const fin = await finalizeSubmission(r.id, { interactive: true })
     if (!fin.ok) {
       console.error('[studio] self-finalize failed', { renderId: r.id, reason: fin.reason, detail: fin.detail })
     } else if (fin.finalized) {

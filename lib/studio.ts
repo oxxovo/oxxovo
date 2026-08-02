@@ -5,7 +5,7 @@
 // 6-stage machine and produces the artifact.
 
 import 'server-only'
-import { randomUUID } from 'crypto'
+import { randomUUID, createHash } from 'crypto'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getBalance, getStudioPricing, creditsForCostOrNull, isSellableCost } from '@/lib/credits'
 import { moderateSubmission } from '@/lib/moderation'
@@ -20,6 +20,7 @@ import {
   buildI2vBind,
   computeSourceBundle,
   verifyMusicAssetBind,
+  hashVideoContent,
   CRYPTOBIND_ALGO,
   type EdlSegment,
   type ComposeEdl,
@@ -45,6 +46,7 @@ import {
 
 import {
   assemblePresetPrompt,
+  isSubmittableRenderStatus,
   type StudioParamRule,
   type StudioPreset,
   type StudioPresetGroup,
@@ -1630,7 +1632,8 @@ export async function deleteRender(userId: string, renderId: string): Promise<De
 // failed render ONE re-render of the same EDL (v1sr unchanged, so no re-signing and
 // no cap impact); if that also fails it goes to staff review with the entry intact.
 // There is nothing to game here -- an accepted submission with no file scores nothing.
-const ASYNC_SUBMIT_STATUSES = ['queued', 'rendering', 'uploading', 'ready', 'failed'] as const
+// ASYNC_SUBMIT_STATUSES now lives in lib/studio-shared.ts -- see the note there
+// on why a second copy of this list is what broke the submit form.
 
 // ===========================================================================
 // Shared compose verification (steps 3 / 3b / 4 of a submission).
@@ -1785,7 +1788,7 @@ export async function submitRender(args: {
   // A render REQUESTED before the deadline can therefore no longer cost a
   // participant their submission just because the queue was busy.
   const rendered = render.status === 'ready' && !!render.video_url
-  if (!rendered && !(ASYNC_SUBMIT_STATUSES as readonly string[]).includes(String(render.status))) {
+  if (!rendered && !isSubmittableRenderStatus(String(render.status))) {
     // failed / submitted / anything else: there is nothing to accept.
     return { ok: false, reason: 'not_ready', detail: `status=${render.status}` }
   }
@@ -2047,11 +2050,96 @@ export async function submitRender(args: {
 // this would fill free_entry_url before the deadline, and free_entry_url IS NOT NULL
 // is exactly what makes an entry scorable. The four conditions below are the gate.
 // ===========================================================================
+// ===========================================================================
+// ★Do the delivered BYTES match the hash we signed? (S2)
+//
+// v1sc signs (renderId, tid, finalHash). It does not sign video_url or r2_key, and
+// until 2026-08-02 nothing re-read the object -- so a row could point at one file
+// while carrying a valid signature over the hash of another, and finalize said OK.
+// Measured that day: repointing video_url after intent FINALIZED a submission
+// carrying bytes nobody signed. Not reachable by a participant (render_jobs is
+// service-role only), but it is precisely the state a zombie worker produced
+// before the claim-token CAS, and the verification called it valid.
+//
+// Re-hashing the delivered file closes it without touching a signature format --
+// the KAT goldens stay byte-identical, which matters: they are the tripwire for a
+// design change, and breaking them to patch a hole would blunt the tripwire.
+//
+// ★TWO FAILURE CLASSES, kept apart on purpose:
+//   mismatch  -> REFUSE. The file is not the one that was signed.
+//   unreadable -> NOT a refusal. R2 having a bad minute must never cost a
+//                 participant their entry, so it returns "not yet": the hourly
+//                 sweep tries again, and SUBMISSION_OVERDUE_MS eventually raises
+//                 the overdue flag for staff. A timeout is part of that -- without
+//                 one, a stalled read holds the whole tick.
+//
+// ★TIMEOUT, derived. Measured 2026-08-02 from this machine against the live
+// bucket: real renders are 3.7 MB (21s) to 11.6 MB (15s) and downloaded at
+// 1.8-3.0 MB/s. The season's ceiling is 40s, so ~31 MB at the worst observed
+// throughput is ~17s. 60s is ~3.5x that, and the Vercel-to-R2 path should be
+// faster than a home link -- which I could not measure, hence the margin.
+const FINAL_BYTES_TIMEOUT_MS = Math.max(5_000, Number(process.env.FINAL_BYTES_TIMEOUT_MS ?? '60000'))
+
+// ★The interactive budget is a different number, because the caller is different.
+// finalizeSubmission also runs inside a participant's poll (self-finalize, every
+// 10s while they watch their render), and there the cost of a slow read is a
+// person waiting -- and, if the read keeps failing, one download every 10s. A
+// short bound hands the slow case to the sweep, which has 300s and no one
+// watching. Never longer than FINAL_BYTES_TIMEOUT_MS: the interactive path must
+// give up first, not last.
+const FINAL_BYTES_TIMEOUT_INTERACTIVE_MS = Math.min(
+  FINAL_BYTES_TIMEOUT_MS,
+  Math.max(2_000, Number(process.env.FINAL_BYTES_TIMEOUT_INTERACTIVE_MS ?? '10000')),
+)
+
+type FinalBytesCheck =
+  | { ok: true }
+  | { ok: false; kind: 'mismatch'; detail: string }
+  | { ok: false; kind: 'unreadable'; detail: string }
+
+async function verifyDeliveredBytes(
+  videoUrl: string,
+  expectedHash: string,
+  timeoutMs: number,
+): Promise<FinalBytesCheck> {
+  if (!expectedHash) return { ok: false, kind: 'mismatch', detail: 'no signed hash on the render' }
+  let actual: string
+  let bytes = 0
+  try {
+    const res = await fetch(videoUrl, { signal: AbortSignal.timeout(timeoutMs) })
+    if (!res.ok) return { ok: false, kind: 'unreadable', detail: `HTTP ${res.status}` }
+    if (!res.body) return { ok: false, kind: 'unreadable', detail: 'no response body' }
+    // ★Hash the stream, never the whole file. One 12 MB buffer is harmless; a tick
+    // that finalizes forty of them in a row is not, and the ceiling here is a 40s
+    // render (~31 MB). Chunked hashing makes the file size irrelevant to memory.
+    const h = createHash('sha256')
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      h.update(chunk)
+      bytes += chunk.byteLength
+    }
+    actual = h.digest('hex')
+  } catch (e) {
+    return { ok: false, kind: 'unreadable', detail: e instanceof Error ? e.message : String(e) }
+  }
+  if (bytes === 0) return { ok: false, kind: 'unreadable', detail: 'empty body' }
+  if (actual !== expectedHash) {
+    return {
+      ok: false,
+      kind: 'mismatch',
+      detail: `signed ${expectedHash.slice(0, 12)}… but the file hashes to ${actual.slice(0, 12)}… (${bytes} bytes)`,
+    }
+  }
+  return { ok: true }
+}
+
 export type FinalizeResult =
   | { ok: true; finalized: boolean }
   | { ok: false; reason: string; detail?: string }
 
-export async function finalizeSubmission(renderId: string): Promise<FinalizeResult> {
+export async function finalizeSubmission(
+  renderId: string,
+  opts?: { interactive?: boolean },
+): Promise<FinalizeResult> {
   const admin = createSupabaseAdmin()
   const { data: render, error: rErr } = await admin
     .from('render_jobs')
@@ -2079,6 +2167,29 @@ export async function finalizeSubmission(renderId: string): Promise<FinalizeResu
       .update({ studio_submission_state: 'finalize_rejected', updated_at: new Date().toISOString() })
       .eq('studio_application_render_id', render.id)
     return { ok: false, reason: chain.reason, detail: chain.detail }
+  }
+
+  // ★The chain above proves the ROW is coherent. This proves the FILE is the one
+  // the row describes -- see verifyDeliveredBytes for why that is a separate
+  // question and why the two failure classes are handled differently.
+  const bytes = await verifyDeliveredBytes(
+    String(render.video_url),
+    String(render.cryptobind_final_hash ?? ''),
+    opts?.interactive ? FINAL_BYTES_TIMEOUT_INTERACTIVE_MS : FINAL_BYTES_TIMEOUT_MS,
+  )
+  if (!bytes.ok && bytes.kind === 'mismatch') {
+    console.error(`[studio] finalize REFUSED, delivered bytes do not match the signed hash (${render.id}): ${bytes.detail}`)
+    await admin
+      .from('genesis_applications')
+      .update({ studio_submission_state: 'finalize_rejected', updated_at: new Date().toISOString() })
+      .eq('studio_application_render_id', render.id)
+    return { ok: false, reason: 'final_bytes_mismatch', detail: bytes.detail }
+  }
+  if (!bytes.ok) {
+    // Unreadable, not wrong. Leave the submission accepted and try again next tick;
+    // the overdue flag is what escalates it to a human if it keeps failing.
+    console.error(`[studio] finalize DEFERRED, could not read the final file (${render.id}): ${bytes.detail}`)
+    return { ok: true, finalized: false }
   }
 
   const { data: seasonRow } = await admin
@@ -2171,6 +2282,12 @@ export type AsyncSweepReport = {
   requeued: string[]
   overdue: string[]
   rejected: { renderId: string; reason: string }[]
+  // ★What the buffer actually has left, reported together because one number
+  // alone is misleading: "40 done" reads fine while 400 wait. `remaining` is what
+  // this tick did NOT get to, and `selfFinalized` is how many never needed the
+  // sweep at all (a participant's own editor finished them), which is the
+  // difference between the 13h worst case and the real one.
+  budget: { finalizedThisTick: number; remaining: number; selfFinalized: number }
 }
 
 // ★Lease threshold, derived rather than guessed. The worker now enforces a 15 minute
@@ -2186,6 +2303,19 @@ const RENDER_LEASE_STALE_MS = Math.max(60_000, Number(process.env.RENDER_LEASE_S
 const SUBMISSION_OVERDUE_MS = Math.max(60_000, Number(process.env.SUBMISSION_OVERDUE_MS ?? '86400000'))
 // One re-render, tracked by the application row's state rather than a new column.
 const REQUEUED_STATE = 'render_requeued'
+// ★How many finalizations one tick may perform. Each now costs a real download
+// (the delivered-bytes check), measured 2026-08-02 at 3.7-11.6 MB and 1.8-3.0
+// MB/s, so ~5s per submission including verification. 40 x 5s = ~200s against the
+// route's declared 300s budget, leaving headroom for everything else the tick
+// does. At 500 entries that is ~13 ticks, i.e. ~13h inside the 24h buffer -- and
+// that is the WORST case, where nobody's editor self-finalized first.
+//
+// ★The cap is only half of it. Without an ORDER the query returns rows in
+// whatever order Postgres likes, so a cap would process an arbitrary prefix every
+// hour and the rest would never be reached -- not slow, starved. Oldest accepted
+// first is both fair and the one that runs out of buffer soonest.
+const MAX_FINALIZE_PER_TICK = Math.max(1, Number(process.env.MAX_FINALIZE_PER_TICK ?? '40'))
+
 // ★How many times a render may be CLAIMED before the lease sweep stops handing it
 // out again. The worker increments `attempts` on every claim, so 3 means: the
 // original attempt plus two recoveries. Derived from what the failures look like
@@ -2197,7 +2327,10 @@ const MAX_RENDER_ATTEMPTS = Math.max(1, Number(process.env.MAX_RENDER_ATTEMPTS ?
 
 export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
   const admin = createSupabaseAdmin()
-  const out: AsyncSweepReport = { finalized: [], requeued: [], overdue: [], rejected: [] }
+  const out: AsyncSweepReport = {
+    finalized: [], requeued: [], overdue: [], rejected: [],
+    budget: { finalizedThisTick: 0, remaining: 0, selfFinalized: 0 },
+  }
   const nowMs = Date.now()
 
   // ★TARGET SET, declared rather than implied: this sweep owns renders that were
@@ -2212,6 +2345,9 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
     .select('id, status, submit_intent_at, claimed_at, updated_at, attempts')
     .not('submit_intent_at', 'is', null) // the query half of the same rule
     .is('finalized_at', null)
+    // ★Oldest acceptance first. With a per-tick cap and no order, the same
+    // arbitrary prefix is retried every hour and the tail starves.
+    .order('submit_intent_at', { ascending: true })
   if (error) {
     console.error('[studio] async sweep query failed:', error.message)
     return out
@@ -2227,6 +2363,13 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
       continue
     }
     if (row.status === 'ready') {
+      // Past the cap, leave it for the next tick rather than run the function out
+      // of time mid-list -- an interrupted tick is what makes the tail starve.
+      if (out.budget.finalizedThisTick >= MAX_FINALIZE_PER_TICK) {
+        out.budget.remaining += 1
+        continue
+      }
+      out.budget.finalizedThisTick += 1
       const res = await finalizeSubmission(id)
       if (res.ok && res.finalized) out.finalized.push(id)
       else if (!res.ok) out.rejected.push({ renderId: id, reason: res.reason })
@@ -2313,6 +2456,7 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
     }
 
     // Overdue: flag for staff, never auto-fail.
+    // (falls through for non-'ready' rows)
     const accepted = Date.parse(String(row.submit_intent_at))
     if (Number.isFinite(accepted) && nowMs - accepted > SUBMISSION_OVERDUE_MS) {
       out.overdue.push(id)
@@ -2322,6 +2466,23 @@ export async function sweepAsyncSubmissions(): Promise<AsyncSweepReport> {
         .eq('studio_application_render_id', id)
         .neq('studio_submission_state', 'finalized')
     }
+  }
+
+  // How many accepted submissions are already done. The sweep only ever sees rows
+  // with finalized_at NULL, so anything counted here was finished by a
+  // participant's own poll (self-finalize) -- the reason the worst-case tick
+  // arithmetic above is a ceiling and not a forecast.
+  const { count: doneCount } = await admin
+    .from('render_jobs')
+    .select('id', { count: 'exact', head: true })
+    .not('submit_intent_at', 'is', null)
+    .not('finalized_at', 'is', null)
+  out.budget.selfFinalized = Math.max(0, (doneCount ?? 0) - out.finalized.length)
+  if (out.budget.remaining > 0) {
+    console.log(
+      `[studio] async sweep: finalized ${out.budget.finalizedThisTick} this tick, ` +
+        `${out.budget.remaining} left for the next one (cap ${MAX_FINALIZE_PER_TICK})`,
+    )
   }
   return out
 }
