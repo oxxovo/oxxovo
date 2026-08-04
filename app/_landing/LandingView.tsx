@@ -13,8 +13,11 @@ import {
   formatPanelLabel,
   formatWeightPercent,
   getIntegrityModel,
+  isApplicationClosed,
   type Season,
 } from '@/lib/seasons'
+import { getCurrentSeasonStage } from '@/app/_actions/season-stage'
+import type { BannerContent } from '@/lib/watch'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { getSessionUser } from '@/app/_actions/auth'
 import { getStudioApplicationFlag } from '@/app/apply/actions'
@@ -35,6 +38,10 @@ export function LandingView() {
   const [season, setSeason] = useState<Season | null>(null)
   const [membership, setMembership] = useState<MembershipLandingData | null>(null)
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(ZERO_TIME)
+  // Lifecycle stage of the current season, from the same resolver /watch uses.
+  // Null until it arrives -- the countdown's own visibility is date-driven and
+  // does not wait for it, so there is no window where a stale state is on screen.
+  const [stage, setStage] = useState<BannerContent | null>(null)
   // When the studio funnel is active (session6 on + studio application round),
   // a direct "Studio" link lets returning participants skip the /apply intro.
   const [studioFunnel, setStudioFunnel] = useState(false)
@@ -45,6 +52,7 @@ export function LandingView() {
       if (s) getStudioApplicationFlag(s.id).then(setStudioFunnel).catch(() => setStudioFunnel(false))
     })
     getMembershipLandingData().then(setMembership).catch(() => setMembership(null))
+    getCurrentSeasonStage().then(setStage).catch(() => setStage(null))
   }, [])
 
   // Reflect the cookie-session sign-in state in the nav.
@@ -57,7 +65,16 @@ export function LandingView() {
     return new Date(season.application_close_at)
   }, [season])
 
-  const SHOW_COUNTDOWN = !!targetDate
+  // The countdown is about ONE deadline: applications closing. Past that instant
+  // it was still rendering "Application Closes In / 00 00 00 00" -- through the
+  // main round, the vote and the results -- under a CTA that already read "Join
+  // the waitlist". Recomputed every render, and the timer below re-renders every
+  // second, so it goes away on the tick the deadline passes.
+  const SHOW_COUNTDOWN = !!targetDate && !!season && !isApplicationClosed(season)
+  // What replaces it: the stage the season is actually in. Same content /watch's
+  // banner shows ('accepting' is the open-applications default, which on the
+  // landing is the countdown above -- nothing extra to say).
+  const stageNote = stage && stage.stage !== 'accepting' ? stage : null
 
   // Hero/nav CTA gates on the application window (same logic as /tournament/[id]).
   // Before the season loads, show a neutral label; once loaded it is date-driven:
@@ -240,6 +257,23 @@ export function LandingView() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {stageNote && (
+              <div className="mt-7 w-[min(100%,500px)] border-t border-white/10 pt-5">
+                <div className="flex items-center gap-4">
+                  <span aria-hidden className="text-[34px] leading-none">{stageNote.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[16px] font-bold leading-snug text-white">{stageNote.title}</p>
+                    <p className="mt-1 text-[13px] leading-relaxed text-white/60">{stageNote.subtitle}</p>
+                  </div>
+                </div>
+                {/* No /watch link here on purpose. These stages tell the audience
+                    to come and watch, so one belongs -- but whether the landing
+                    offers Watch at all is (6)A's flag decision (WATCH_NAV_ENABLED,
+                    line 31), and that is head office's to make. Adding it here
+                    would decide it quietly. It lands with (6)A. */}
               </div>
             )}
 

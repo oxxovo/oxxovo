@@ -1,5 +1,12 @@
 # (6) A~E -- what each one actually is today
 
+> **Dispositions, 2026-08-04 (head office).** B = reading 2, verified and **closed**
+> (see the note at the end of B). C = **on hold**, head office / 제니3: what counts as
+> showcase material is a marketing call, and the relationship between the 20 promo
+> films (hidden until 11/4 21:00) and the 93 `promo_videos` rows is unresolved --
+> do not touch. E-landing = **done**, see the note at the end of E. Remaining order:
+> A (absorbs B reading 1) -> D -> C once head office answers.
+
 Survey only. No code written. App at `16d27e6` (worktree `oxxovo-lane-c`); DB reads
 are the live DB via service role, 2026-08-04; the route table is a local
 `npm run build`. The 2026-07-30 brief's day estimates are **not** carried over --
@@ -77,6 +84,14 @@ renders exactly two permanent nav links, unconditionally, above every filter:
 The shell `/watch` actually renders (`ArenaWatch` -> `ArenaShell`) has six, also
 unconditional (`ArenaShell.tsx:15-22`). **Nothing in either sidebar is hidden by a
 flag.** Under this reading B is already done and the work is zero.
+
+**CLOSED 2026-08-04.** Head office ruled reading 2 -- "왼편" is the sidebar; the
+landing header is 상단, and reading 1's two lines are absorbed by A. Verified at
+`53cb06f`: `WatchShell.tsx:96-97` are the first two children of the `nav` element
+with no enclosing conditional and no props feeding them, and `ArenaShell.tsx:57-59`
+maps `NAV` unconditionally. The only conditional rendering in either sidebar is the
+`showRound` / `showWinners` filter declutter further down WatchShell, which is not
+the nav. Nothing to build.
 
 ## C -- promo showcase
 
@@ -163,6 +178,30 @@ Either way it is inside season 0, not after it.
 
 E's real content is therefore the landing, and the /watch machine is the model to
 follow rather than something to rebuild.
+
+**DONE 2026-08-04.** Not rebuilt, reused. `lib/season-stage.ts` now owns the one
+derivation of the four query-shaped inputs `getBannerStage` needs, `ArenaWatch`
+calls it instead of deriving them inline, and the landing reaches the same resolver
+through a server action (`app/_actions/season-stage.ts`) because the landing is a
+client component and the resolver reads through the service role. One machine, one
+answer, both surfaces.
+
+The countdown is now gated on `isApplicationClosed` instead of "a close date
+exists", and after the close the hero shows the stage note instead.
+
+★**A boundary defect fell out of the sweep test.** `isApplicationClosed` used `>`,
+so at exactly `application_close_at` it still said OPEN -- while `resolveSeasonCta`
+(`now < closeAt`), `getBannerStage` (`t >= close`) and `lib/lobby.ts` (`t >= close`)
+had all already closed it. One instant wide, but it meant the landing ran a
+countdown under "Join the waitlist", and **a submission was accepted after its own
+deadline**: the same predicate gates `/api/apply`, `/apply`, and both studio submit
+paths (`lib/studio.ts:1179`, `:1897`). Now `>=`, consistent with the other three
+rules. **Reported to head office as a rule change that reaches lane A's submission
+path** -- it is one millisecond in the tightening direction, but it is a gate.
+
+`isApplicationClosed` and `resolveSeasonCta` also take an optional `now` now, the
+same way `getThemeDisplay` already did. Without it the deadline instant cannot be
+asserted at all, which is why nobody had.
 
 ---
 
