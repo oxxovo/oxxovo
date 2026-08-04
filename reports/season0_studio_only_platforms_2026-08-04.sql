@@ -128,14 +128,12 @@ ORDER BY s.id;
 
 
 -- =============================================================================
--- STEP R -- 되돌리기. 지금 Run 하지 말 것. 필요할 때만.
--- 코드 롤백 없이 이 한 블록으로 원복된다.
+-- 되돌리기에 대하여
+--
+-- 되돌리기 쿼리를 이 파일에 넣지 않는다. 주석 처리해도, "실행 순서 밖"이라고
+-- 적어도 넣으면 실행된다 -- 2026-08-04 하루에 2회 실증됐다.
+-- 원복이 필요하면 요청할 것. 별도 파일로 따로 낸다.
+--
+-- 복원 근거는 남아 있다: 변경 전 값은 ARRAY['youtube','vimeo','instagram','tiktok'] 이고
+-- STEP 0a 출력이 실행 기록으로 남는다.
 -- =============================================================================
--- WITH rb AS (
---   UPDATE seasons
---      SET allowed_video_platforms = ARRAY['youtube','vimeo','instagram','tiktok']::TEXT[],
---          updated_at = now()
---    WHERE id = 'season_0'
---   RETURNING id, allowed_video_platforms
--- )
--- SELECT id, allowed_video_platforms AS platforms FROM rb;
