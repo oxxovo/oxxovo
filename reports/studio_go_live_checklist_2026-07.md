@@ -225,6 +225,16 @@ switch was made, which is why unifying cost nothing.)
   - Reload the page mid-processing and confirm the "accepted, processing" panel comes
     back from the DB rather than an empty editor.
   - Then remove the test entry.
+- ★AND, on the first submission that finalizes ASYNCHRONOUSLY (accepted while the
+  render was still running, published by a later tick), look at the ENTRY, not the
+  tick's report: `genesis_applications.free_entry_url` must be non-null and
+  `studio_submission_state` must read `finalized`. The tick reporting a render as
+  finalized is a different claim from the entry having the file, and on
+  2026-08-03 they came apart for weeks -- the publish write named a column the
+  table does not have, PostgREST refused the statement, nobody read the error, and
+  the render closed anyway. `free_entry_url IS NOT NULL` is what the scorer reads,
+  so an entry without it scores nothing while every log says success. Fixed, but
+  it is exactly the kind of thing to confirm on the live build rather than trust.
 - Ask this of every launch item, not just this one: not "does the feature work" but
   "can a participant get to the screen where it works, on the build that is live".
 

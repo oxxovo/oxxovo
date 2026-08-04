@@ -5,6 +5,13 @@ export async function resolve(specifier, context, nextResolve) {
   if (specifier === 'server-only') {
     return { url: 'data:text/javascript,export{}', shortCircuit: true }
   }
+  // `next/cache` is part of the Next server runtime and does not resolve here.
+  // lib/watch.ts wraps the public list in unstable_cache, so without this a
+  // harness cannot call the read path a participant actually gets -- it would be
+  // left checking the watch_hold column by hand, which is not the same claim.
+  if (specifier === 'next/cache') {
+    return { url: new URL('./next-cache-stub.mjs', import.meta.url).href, shortCircuit: true }
+  }
   // The `@/` path alias (tsconfig paths -> repo root) is a bundler feature; node
   // sees it as a bare package name and fails. Map it to the repo root, which is
   // this file's parent directory. Without this, any module under test that

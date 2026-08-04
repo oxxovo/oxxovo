@@ -58,7 +58,7 @@ const { data: season } = await admin
   .maybeSingle()
 const { data: clips } = await admin
   .from('generation_jobs')
-  .select('id, duration_seconds')
+  .select('id, duration_seconds, archived_at')
   .eq('user_id', demoId).eq('season_id', season.id).eq('status', 'ready').eq('media_type', 'video')
   .is('deleted_at', null).order('created_at', { ascending: true })
 if (!demoId || !season || !clips?.length) { console.error('fixtures missing'); process.exit(1) }
@@ -77,7 +77,17 @@ function buildEdl() {
   return edl
 }
 
+// ★A successful finalize ARCHIVES the submitter's remaining ready clips -- that is
+// the product behaviour, and it silently disarms the next harness that needs those
+// clips (the reachability run failed 2/7 the morning after this one archived them).
+// So the clips that were live when we started are put back that way.
+const liveClipsAtStart = (clips ?? []).filter((c) => !c.archived_at).map((c) => c.id)
+
 const madeRenders = []
+// Application rows this run creates OUTSIDE the demo address (the cap fixture's
+// second entry). Deleted by id in the finally -- never by a pattern, because this
+// harness runs against the live season.
+const extraAppIds = []
 async function newRender() {
   const res = await createRender({ userId: demoId, seasonId: season.id, edl: buildEdl() })
   if (!res.ok) throw new Error('createRender: ' + res.reason)
@@ -222,6 +232,18 @@ try {
       const refused = !fin.ok || fin.finalized === false
       ok(refused, `${label} -> finalize refused (${fin.ok ? (fin.finalized ? '★FINALIZED' : 'not finalized') : fin.reason})`)
       if (!refused) { console.log('  ★STOPPING: a tampered render finalized'); break }
+      // ★Refusing and RECORDING the refusal are different claims, and only the
+      // second one reaches a human. This half was never asserted, and it was in
+      // fact broken: the flag write carried an `updated_at` column that
+      // genesis_applications does not have, so PostgREST rejected the statement
+      // and nobody read the error (2026-08-03).
+      const { data: flagged } = await admin
+        .from('genesis_applications').select('studio_submission_state')
+        .eq('studio_application_render_id', c.id).maybeSingle()
+      ok(
+        flagged?.studio_submission_state === 'finalize_rejected',
+        `${label} -> the entry is flagged finalize_rejected (state ${flagged?.studio_submission_state ?? 'none'})`,
+      )
     }
 
     // ★The other half of the byte check, and it is not a tamper: an UNREADABLE
@@ -261,18 +283,42 @@ try {
   }
   const capA = await intentThenLand()
   await sleep(1500) // distinct submit_intent_at so "older" is unambiguous
-  // A second accepted submission needs its own application row; the harness's
-  // clearApplication would drop A's, so B reuses the same application (one entry
-  // per season) and we drive the sweep on the render rows themselves.
+  // A second accepted submission needs its OWN entry. It used to be stamped
+  // straight onto the render row with no entry at all, which finalize accepted
+  // silently -- it no longer does (an accepted render with no entry to publish
+  // into now defers and says so), so the fixture supplies one: a clone of A's
+  // row under a distinct address, since one account holds one entry per season.
   const capB = await newRender()
+  const { data: aRow } = await admin
+    .from('genesis_applications').select('*').eq('studio_application_render_id', capA.id).maybeSingle()
+  let capBAppId = null
+  if (aRow) {
+    const clone = { ...aRow }
+    delete clone.id
+    delete clone.created_at
+    clone.email = DEMO_EMAIL.replace('@', '+capb@')
+    // ★user_id null, not a second address: genesis_applications_season_user_uniq
+    // enforces one entry per (season, account) in the DATABASE, which is the rule
+    // the app relies on. The column is nullable (the pre-account rows are like
+    // this), and finalize finds this row by studio_application_render_id anyway.
+    clone.user_id = null
+    clone.studio_application_render_id = capB
+    clone.free_entry_url = null
+    clone.thumbnail_url = null
+    clone.studio_submission_state = 'intent'
+    const { data: ins, error: insErr } = await admin.from('genesis_applications').insert(clone).select('id').maybeSingle()
+    if (insErr) console.log('  ★cap fixture: second entry not created --', insErr.message)
+    capBAppId = ins?.id ?? null
+    if (capBAppId) extraAppIds.push(capBAppId)
+  }
   const bIntent = await admin
     .from('render_jobs')
     .update({ submit_intent_at: new Date().toISOString() })
     .eq('id', capB)
     .select('id')
   const bLanded = await waitReady(capB)
-  if (capA.err || !bIntent.data?.length || !bLanded) {
-    ok(false, `cap fixture not built (${capA.err ?? ''} landed=${bLanded})`)
+  if (capA.err || !bIntent.data?.length || !bLanded || !capBAppId) {
+    ok(false, `cap fixture not built (${capA.err ?? ''} landed=${bLanded} entryB=${capBAppId ? 'yes' : 'no'})`)
   } else {
     const tick1 = await sweepAsyncSubmissions()
     ok(tick1.budget.finalizedThisTick === 1, `tick 1 honoured the cap (finalized ${tick1.budget.finalizedThisTick})`)
@@ -284,14 +330,20 @@ try {
   }
 
 } finally {
-  const removedApps = await clearApplication()
+  const { data: unarchived } = await admin
+    .from('generation_jobs').update({ archived_at: null })
+    .in('id', liveClipsAtStart.length ? liveClipsAtStart : ['-'])
+    .not('archived_at', 'is', null).select('id')
+  for (const id of extraAppIds) await admin.from('genesis_applications').delete().eq('id', id)
+  const removedApps = (await clearApplication()) + extraAppIds.length
   for (const id of madeRenders) await admin.from('render_jobs').delete().eq('id', id)
   const { data: leftovers } = await admin.from('render_jobs').select('id').in('id', madeRenders.length ? madeRenders : ['-'])
   const { count } = await admin.from('render_jobs').select('id', { count: 'exact', head: true })
   const { count: appCount } = await admin
     .from('genesis_applications').select('id', { count: 'exact', head: true }).eq('season_id', season.id)
   console.log(`\ncleanup: ${madeRenders.length} renders deleted (leftover ${leftovers?.length ?? '?'}), ` +
-    `${removedApps} application row(s) removed | render_jobs total ${count} | ${season.id} applications ${appCount}`)
+    `${removedApps} application row(s) removed | ${unarchived?.length ?? 0} clip(s) un-archived | ` +
+    `render_jobs total ${count} | ${season.id} applications ${appCount}`)
   console.log('★orphan R2 objects from these renders remain -- go-live cleanup item')
 }
 

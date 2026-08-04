@@ -31,6 +31,7 @@ import { validateTexts, parseTrademarkBlocklist, findBlockedTrademark, type Text
 import { validateMusicBed, type MusicReason } from '@/lib/music-limits'
 import { isOwnedBy } from '@/lib/studio-sweep-scope'
 import { isMusicEnabled } from '@/lib/music-gate'
+import { shouldHoldPrelim } from '@/lib/watch-hold'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -140,9 +141,10 @@ export type SeasonStudioConfig = {
   // the video caps (media_type='image'). Draft image tier has its own cap.
   maxImageGenerationsPerRound: number
   maxDraftImageGenerationsPerRound: number
+  // Round BOUNDARY only (which round a clip and a submission belong to). The
+  // main round's CLOSE is not here on purpose -- see the note on
+  // canSubmitMainRound below.
   mainRoundStartAt: string | null
-  // S-3: main-round submission window = mainRoundStartAt + submissionHours.
-  submissionHours: number
   // S-7: per-round video-length bounds (seconds). The generation duration must
   // fall within the bounds of the round it belongs to, not just the model's.
   // NOTE: in compose mode a generation is a building-block CLIP whose final
@@ -159,9 +161,6 @@ export type SeasonStudioConfig = {
   // the UI can STATE the rule without hardcoding it. 0 = unset -> caller decides.
   studioComposeMinSeconds: number
   studioComposeMaxSeconds: number
-  // Fairness hold: when true, a prelim submission is held off /watch until the
-  // cohort is released together (anti-copy). Visibility only -- never scoring.
-  prelimHoldEnabled: boolean
 }
 
 // Per-round video-length bounds, resolved from the season config. Application
@@ -177,13 +176,15 @@ export function videoBoundsForRound(
   return { min: cfg.applicationVideoMinSeconds, max: cfg.applicationVideoMaxSeconds }
 }
 
-// S-3: the absolute submission deadline for the main round (ms epoch), or null
-// when the season has no main_round_start_at yet. After this instant a main-
-// round studio submission is refused.
-export function mainRoundDeadlineMs(cfg: SeasonStudioConfig): number | null {
-  if (!cfg.mainRoundStartAt) return null
-  return new Date(cfg.mainRoundStartAt).getTime() + cfg.submissionHours * 3_600_000
-}
+// ★There is no main-round deadline helper here, deliberately. There used to be
+// one (`mainRoundDeadlineMs`, start + submission_hours) that nothing ever called,
+// while the actual gate on both submit paths is canSubmitMainRound in
+// lib/seasons.ts, which reads main_round_end_at. Two definitions of one boundary
+// is the shape that produced the 2026-07-31 defect (a second copy of
+// ASYNC_SUBMIT_STATUSES), and these two DO come apart in the data: season_test
+// has an end 76 minutes off its derived value. main_round_end_at is the
+// authority; submission_hours is the input that computes it once, at season
+// creation (lib/season-schedule.ts).
 
 // Server-authoritative round resolution. For a fixed-round season the setting IS
 // the effective round. For 'both', the schedule decides: before the main round
@@ -363,7 +364,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, submission_hours, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_prelim_hold_enabled')
+    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -374,7 +375,6 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     maxImageGenerationsPerRound: Number(data.studio_max_image_generations_per_round ?? 20),
     maxDraftImageGenerationsPerRound: Number(data.studio_max_draft_image_generations_per_round ?? 40),
     mainRoundStartAt: (data.main_round_start_at as string | null) ?? null,
-    submissionHours: Number(data.submission_hours ?? 48),
     applicationVideoMinSeconds: Number(data.application_video_min_seconds ?? 0),
     applicationVideoMaxSeconds: Number(data.application_video_max_seconds ?? 0),
     mainRoundVideoMinSeconds: Number(data.main_round_video_min_seconds ?? 0),
@@ -382,7 +382,6 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     studioComposeEnabled: Boolean(data.studio_compose_enabled),
     studioComposeMinSeconds: Number(data.studio_compose_min_seconds ?? 0),
     studioComposeMaxSeconds: Number(data.studio_compose_max_seconds ?? 0),
-    prelimHoldEnabled: Boolean(data.studio_prelim_hold_enabled),
   }
 }
 
@@ -1209,7 +1208,7 @@ export async function submitGeneration(args: {
       moderation_flags: mod.categories.length ? mod.categories : null,
       moderation_checked_at: now,
       // Fairness hold (anti-copy), prelim only -- see submitRender. Visibility only.
-      watch_hold: cfg.prelimHoldEnabled,
+      watch_hold: await shouldHoldPrelim(args.seasonId),
       studio_application_job_id: job.id,
       studio_application_signature: job.cryptobind_signature,
       studio_application_submitted_at: now,
@@ -1826,7 +1825,7 @@ export async function submitRender(args: {
   const { data: seasonRow, error: sErr } = await admin
     .from('seasons')
     // Music gate read separately (fail-closed) -- see the note in createRender.
-    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_prelim_hold_enabled')
+    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
@@ -1937,7 +1936,7 @@ export async function submitRender(args: {
       // Fairness hold (anti-copy): when the season enables it, the prelim entry is
       // held off /watch until the cohort is released together (manual/auto). Never
       // blocks scoring -- only public visibility (isPublicRow). Prelim only.
-      watch_hold: !!seasonRow.studio_prelim_hold_enabled,
+      watch_hold: await shouldHoldPrelim(args.seasonId),
       studio_application_render_id: render.id,
       // submitted_at stays the "this account has submitted" marker for every other
       // caller, and it is set at ACCEPT time because that is when the submission was
@@ -2159,6 +2158,29 @@ async function verifyDeliveredBytes(
   return { ok: true }
 }
 
+// Mark the entry behind a render. Refusing a submission and RECORDING why are two
+// different things, and only the second one reaches a human -- so the write is
+// checked. It failed silently for weeks (an `updated_at` column that does not
+// exist on this table), which is why the payload here is only ever columns
+// genesis_applications actually has.
+async function flagEntry(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  renderId: string,
+  state: 'finalize_rejected',
+): Promise<void> {
+  const { data, error } = await admin
+    .from('genesis_applications')
+    .update({ studio_submission_state: state })
+    .eq('studio_application_render_id', renderId)
+    .select('id')
+  if (error || !data?.length) {
+    console.error(
+      `[studio] could NOT flag the entry ${state} for render ${renderId}: ` +
+        (error?.message ?? 'no application row matched'),
+    )
+  }
+}
+
 export type FinalizeResult =
   | { ok: true; finalized: boolean }
   | { ok: false; reason: string; detail?: string }
@@ -2189,10 +2211,7 @@ export async function finalizeSubmission(
   // was swapped between accept and finalize.
   const chain = await verifyComposeChain(admin, render, { userId, seasonId }, true)
   if (!chain.ok) {
-    await admin
-      .from('genesis_applications')
-      .update({ studio_submission_state: 'finalize_rejected', updated_at: new Date().toISOString() })
-      .eq('studio_application_render_id', render.id)
+    await flagEntry(admin, render.id, 'finalize_rejected')
     return { ok: false, reason: chain.reason, detail: chain.detail }
   }
 
@@ -2206,10 +2225,7 @@ export async function finalizeSubmission(
   )
   if (!bytes.ok && bytes.kind === 'mismatch') {
     console.error(`[studio] finalize REFUSED, delivered bytes do not match the signed hash (${render.id}): ${bytes.detail}`)
-    await admin
-      .from('genesis_applications')
-      .update({ studio_submission_state: 'finalize_rejected', updated_at: new Date().toISOString() })
-      .eq('studio_application_render_id', render.id)
+    await flagEntry(admin, render.id, 'finalize_rejected')
     return { ok: false, reason: 'final_bytes_mismatch', detail: bytes.detail }
   }
   if (!bytes.ok) {
@@ -2219,11 +2235,11 @@ export async function finalizeSubmission(
     return { ok: true, finalized: false }
   }
 
-  const { data: seasonRow } = await admin
-    .from('seasons')
-    .select('studio_prelim_hold_enabled')
-    .eq('id', seasonId)
-    .single()
+  // ★The hold decision comes from lib/watch-hold, not from the switch read here.
+  // This is the site where the difference matters: an accepted submission can
+  // finalize up to 24h after the cohort was published, and stamping the switch
+  // put it straight back under the hold -- forever, on the manual release.
+  const holdThisEntry = await shouldHoldPrelim(seasonId)
 
   const now = new Date().toISOString()
   const durationInt = Math.round(Number(render.total_duration_seconds))
@@ -2233,31 +2249,47 @@ export async function finalizeSubmission(
     .eq('studio_application_render_id', render.id)
     .maybeSingle()
 
-  if (appRow) {
-    // Prelim entry: publish the file. The hold flag is stamped HERE (not at accept)
-    // because it gates public visibility of a file that did not exist yet.
-    await admin
-      .from('genesis_applications')
-      .update({
-        free_entry_url: render.video_url,
-        thumbnail_url: render.thumbnail_url,
-        video_duration_seconds: durationInt,
-        watch_hold: !!seasonRow?.studio_prelim_hold_enabled,
-        studio_submission_state: 'finalized',
-        updated_at: now,
-      })
-      .eq('id', appRow.id)
-  } else {
-    // Main round: the render is referenced by studio_main_render_id instead.
-    await admin
-      .from('genesis_applications')
-      .update({
-        main_round_video_url: render.video_url,
-        thumbnail_url: render.thumbnail_url,
-        studio_submission_state: 'finalized',
-        updated_at: now,
-      })
-      .eq('studio_main_render_id', render.id)
+  // ★PUBLISHING THE ENTRY IS THE WHOLE POINT, so its result is checked. This
+  // write used to carry `updated_at`, a column genesis_applications does not
+  // have; PostgREST rejects the entire statement for one unknown column and the
+  // error was never read. Every asynchronously-finalized submission therefore
+  // closed its render row while leaving the entry at its accept-time state with
+  // free_entry_url NULL -- and free_entry_url IS NOT NULL is exactly the contract
+  // the scorer reads, so the entry silently scored nothing. Nothing anywhere
+  // said so: the tick reported the render as finalized.
+  const published = appRow
+    ? // Prelim entry: publish the file. The hold flag is stamped HERE (not at
+      // accept) because it gates public visibility of a file that did not exist yet.
+      await admin
+        .from('genesis_applications')
+        .update({
+          free_entry_url: render.video_url,
+          thumbnail_url: render.thumbnail_url,
+          video_duration_seconds: durationInt,
+          watch_hold: holdThisEntry,
+          studio_submission_state: 'finalized',
+        })
+        .eq('id', appRow.id)
+        .select('id')
+    : // Main round: the render is referenced by studio_main_render_id instead.
+      await admin
+        .from('genesis_applications')
+        .update({
+          main_round_video_url: render.video_url,
+          thumbnail_url: render.thumbnail_url,
+          studio_submission_state: 'finalized',
+        })
+        .eq('studio_main_render_id', render.id)
+        .select('id')
+  if (published.error || !published.data?.length) {
+    // ★DEFER rather than close. The render row stays open, so the next tick tries
+    // again instead of the submission being lost with a success in the log. It
+    // also stays in `remaining`, which is what a human eventually reads.
+    console.error(
+      `[studio] finalize DEFERRED, the entry was not published (${render.id}): ` +
+        (published.error?.message ?? 'no application row matched'),
+    )
+    return { ok: true, finalized: false }
   }
 
   // Close the render out. CAS on finalized_at so two concurrent sweeps cannot both
