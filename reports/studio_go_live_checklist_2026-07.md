@@ -7,6 +7,12 @@ season_0 real data is never touched.
 Canonical domain = **www.oxxovo.ai** (oxxovo.com 308-redirects and would make a
 Stripe webhook silently fail -- see [[reference-canonical-domain]]).
 
+**Not in this document:** the three build-baked items that must change when
+season_1 opens (env season pointer, prerendered /about, partner template). They are
+in `reports/season0_to_season1_transition.md`. They are deliberately not a Phase
+here -- doing them at season_0 launch is wasted work, and burying them among the
+launch steps is how they get missed at the transition.
+
 ---
 
 ## Phase 0 -- already LIVE (verified 2026-07-05, do NOT re-run)
