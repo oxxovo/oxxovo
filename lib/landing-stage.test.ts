@@ -127,6 +127,57 @@ test('the stage the landing shows is the stage /watch shows -- same function, sa
   })
 })
 
+// ── The window with no name ────────────────────────────────────────────────
+// Head office is replacing the 6-stage enum with 9 (draft -> upcoming -> accepting
+// -> judging -> finalists_pending -> main_live -> voting -> ★awaiting_results ->
+// results). The wiring lands later and in one go; nothing here changes yet.
+//
+// The new stage that matters to this file is awaiting_results: voting is over, the
+// winners are not out. It is ~44 hours long (11/15 00:00 -> 11/16 20:00 PT on the
+// shifted calendar; the fixture above has the same 44-hour shape on the pre-shift
+// dates). The warning was that if the swap ships without copy for it, the landing
+// meets no stage for 44 hours.
+//
+// ★It is worse than that today, and this is the finding, not the note: the window
+// already exists and the 6-stage machine already answers it -- with main_live,
+// "The finalists' films are up — come watch and vote." Voting closed at the start
+// of that window. So for 44 hours the landing tells people to do something they
+// cannot do. The banner copy is 제니3's and getBannerStage is not mine to edit, so
+// this pins the window and reports it rather than fixing it.
+test('★the 44h between vote close and awards is answered by main_live -- "come watch and vote", after voting closed', () => {
+  const gapMs = Date.parse(AWARDS) - Date.parse(VOTE_END)
+  assert.equal(gapMs / 3600_000, 44, 'the fixture must keep the real gap shape')
+
+  for (const off of [1, 3600_000, gapMs / 2, gapMs - 1000]) {
+    const at = new Date(Date.parse(VOTE_END) + off)
+    const banner = getBannerStage(stageInputAt(at.getTime()), at)
+    // WHEN THIS FAILS, the 9-stage enum has landed. Check two things before
+    // touching it: awaiting_results has copy, and this window hits it.
+    assert.equal(
+      banner.stage,
+      'main_live',
+      `at ${at.toISOString()} the stage changed -- if it is now awaiting_results, assert its copy instead`,
+    )
+    assert.ok(
+      banner.stage === 'accepting' || banner.subtitle.length > 0,
+      'the window must never be blank, whatever names it',
+    )
+  }
+})
+
+test('the sweep covers the vote-close..awards window at hourly resolution', () => {
+  // The transition instruction was that this sweep is where the 44 hours get
+  // caught. Pinned so a later edit to the fixture cannot quietly narrow the range
+  // past it -- a sweep that no longer crosses the window would still pass every
+  // other test in this file.
+  let hoursInWindow = 0
+  sweep((now) => {
+    const t = now.getTime()
+    if (t >= Date.parse(VOTE_END) && t < Date.parse(AWARDS)) hoursInWindow++
+  })
+  assert.ok(hoursInWindow >= 43, `sweep only visits ${hoursInWindow} instants in the window`)
+})
+
 test('results is gated on real winners, not on the awards date', () => {
   // The landing inherits this from the shared machine. Worth pinning here too: the
   // landing is the surface a stranger sees first, and "the winners have been
