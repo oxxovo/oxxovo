@@ -42,12 +42,20 @@ export async function pingCron() {
 // Compact dashboard of season_test: season dates, derived stage, per-app rows.
 export async function printState(db) {
   const { data: s } = await db.from('seasons').select(
-    'id,status,application_open_at,application_close_at,scoring_complete_at,main_round_start_at,main_round_end_at,community_vote_start_at,community_vote_end_at,awards_announcement_at,advance_pct,advance_min,advance_max,min_participants'
+    'id,status,application_open_at,application_close_at,scoring_start_at,scoring_complete_at,main_round_start_at,main_round_end_at,community_vote_start_at,community_vote_end_at,awards_announcement_at,advance_pct,advance_min,advance_max,min_participants'
   ).eq('id', SEASON).maybeSingle()
   const now = Date.now()
   const past = (v) => (v ? (Date.parse(v) <= now ? 'PAST' : 'future') : 'null')
   console.log(`\n== ${SEASON}  status=${s?.status}  (now=${new Date().toISOString()}) ==`)
-  console.log(`  open=${past(s?.application_open_at)}  close=${past(s?.application_close_at)}  scoringComplete=${past(s?.scoring_complete_at)}`)
+  console.log(`  open=${past(s?.application_open_at)}  close=${past(s?.application_close_at)}  scoringStart=${past(s?.scoring_start_at)}  scoringComplete=${past(s?.scoring_complete_at)}`)
+  // The prelim worker gates on scoring_start_at. If it is future or null the
+  // worker exits with 0 processed and no error -- say so here rather than let
+  // the operator hunt for it.
+  if (s?.scoring_start_at == null) {
+    console.log('  !! scoring_start_at=null -> PRELIM WORKER BLOCKED (run stage `buffer-done`)')
+  } else if (Date.parse(s.scoring_start_at) > now) {
+    console.log(`  !! processing buffer still running until ${s.scoring_start_at} -> PRELIM WORKER BLOCKED`)
+  }
   console.log(`  mainStart=${past(s?.main_round_start_at)}  mainEnd=${past(s?.main_round_end_at)}  voteStart=${past(s?.community_vote_start_at)}  voteEnd=${past(s?.community_vote_end_at)}  awards=${past(s?.awards_announcement_at)}`)
   console.log(`  advance: pct=${s?.advance_pct} min=${s?.advance_min} max=${s?.advance_max}  min_participants=${s?.min_participants}`)
 
