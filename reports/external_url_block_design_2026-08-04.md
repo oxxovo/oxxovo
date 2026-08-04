@@ -144,8 +144,12 @@ i18n 단일 진실원천 유지 (기존 패턴 그대로).
 1. `app/profile/MainRoundCard.tsx:277` 이 `formatVideoPlatforms(...)` 로
    허용 플랫폼을 화면에 찍는다. `['studio']` 면 **"studio"** 라고 그대로 나온다.
    `PLATFORM_DISPLAY_NAMES` 에 `studio: 'OXXOVO Studio'` 추가 권장.
-2. `/apply` 폼 자체를 남길지. 게이트가 서버에서 403 을 주므로 안전은 확보되지만,
-   폼을 그대로 두면 **써 넣고 나서 거절당하는** UX 가 된다.
+2. ★**`/apply` 폼의 외부 URL 입력 경로를 화면에서도 제거한다** (본부 판정,
+   2026-08-04 — 지수2A 판단 사항 아님). 서버 403 만으로 두면 **다 써 넣고 나서
+   거절당하는** UX 가 남는다. 서버 게이트(4-3)는 그대로 유지한다 — 화면에서
+   지우는 것은 UX 이고, 막는 것은 서버다. 둘 다 있어야 한다.
+   **문구와 배선 방식만 지수2A 판단**이다 (입력란 제거 / 폼 전체 대체 /
+   Studio 로 유도하는 안내 등).
    ([[project-studio-prelaunch-apply-moderation]] 의 "/apply 배너 숨김" 과 같은 건)
 
 ### 4-5. 순서 (★[[feedback-migration-before-code-push]])
