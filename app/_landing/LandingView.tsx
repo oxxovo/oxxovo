@@ -17,6 +17,7 @@ import {
   type Season,
 } from '@/lib/seasons'
 import { getCurrentSeasonStage } from '@/app/_actions/season-stage'
+import { getWatchNavVisible } from '@/app/_actions/watch-nav'
 import type { BannerContent } from '@/lib/watch'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { getSessionUser } from '@/app/_actions/auth'
@@ -27,11 +28,6 @@ import { formatFooterStatusLine } from '@/lib/ip-info'
 
 type TimeLeft = { days: string; hours: string; minutes: string; seconds: string }
 const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '00' }
-
-// Landing "Watch" nav entry point. OFF until Season 0 preliminary videos start
-// arriving (after the 7/25 launch). Flip to `true` to re-expose the /watch link
-// in the header nav once there are entries to show.
-const WATCH_NAV_ENABLED = false
 
 export function LandingView() {
   const [user, setUser] = useState<{ email: string } | null>(null)
@@ -45,6 +41,11 @@ export function LandingView() {
   // When the studio funnel is active (session6 on + studio application round),
   // a direct "Studio" link lets returning participants skip the /apply intro.
   const [studioFunnel, setStudioFunnel] = useState(false)
+  // The Watch link. Derived, not declared (lib/watch-nav): Watch has to actually
+  // serve in this environment AND the current season has to have something public
+  // in it. Starts hidden so the first paint never offers a link the rule will take
+  // back a moment later.
+  const [watchNav, setWatchNav] = useState(false)
 
   useEffect(() => {
     getCurrentSeason().then((s) => {
@@ -53,6 +54,7 @@ export function LandingView() {
     })
     getMembershipLandingData().then(setMembership).catch(() => setMembership(null))
     getCurrentSeasonStage().then(setStage).catch(() => setStage(null))
+    getWatchNavVisible().then(setWatchNav).catch(() => setWatchNav(false))
   }, [])
 
   // Reflect the cookie-session sign-in state in the nav.
@@ -139,7 +141,7 @@ export function LandingView() {
           {studioFunnel && (
             <a className="transition hover:text-[#b66cff]" href="/studio">Studio</a>
           )}
-          {WATCH_NAV_ENABLED && (
+          {watchNav && (
             <a className="transition hover:text-[#b66cff]" href="/watch">Watch</a>
           )}
           <a className="transition hover:text-[#b66cff]" href="#how">How It Works</a>
@@ -269,11 +271,18 @@ export function LandingView() {
                     <p className="mt-1 text-[13px] leading-relaxed text-white/60">{stageNote.subtitle}</p>
                   </div>
                 </div>
-                {/* No /watch link here on purpose. These stages tell the audience
-                    to come and watch, so one belongs -- but whether the landing
-                    offers Watch at all is (6)A's flag decision (WATCH_NAV_ENABLED,
-                    line 31), and that is head office's to make. Adding it here
-                    would decide it quietly. It lands with (6)A. */}
+                {/* These stages tell the audience to come and watch, so the link
+                    belongs -- but only under the same rule as the header entry, so
+                    the landing can never invite someone to a 404 or an empty grid.
+                    One rule, two places (lib/watch-nav). */}
+                {watchNav && (
+                  <a
+                    href="/watch"
+                    className="mt-3 inline-flex text-[13px] font-bold text-[#b66cff] transition hover:text-white"
+                  >
+                    Watch the competition →
+                  </a>
+                )}
               </div>
             )}
 

@@ -57,6 +57,47 @@ Where the config would live: `platform_config` (30 keys read live 2026-08-04) ha
 **no watch/nav key**. So this needs one new row (a data INSERT, not a schema
 change) or a `seasons` column (schema -- head office).
 
+**DONE 2026-08-04 -- and it needed no config row at all.** ★The switch already
+existed. In production `/watch` returns `notFound()` unless `isWatchPublic()`
+(`lib/watch-gate.ts`), an env switch (`WATCH_PUBLIC_ENABLED`) TK sets at launch.
+`WATCH_NAV_ENABLED` was a **second, hand-flipped gate on the same fact**, free to
+disagree with it in both directions: forget it and the header links to a 404, flip
+it early and the header links to a 404.
+
+The constant is gone. The rule (`lib/watch-nav.ts`) is now derived from two facts:
+Watch actually serves here, **and** the current season has something public in it.
+The second half is what the old comment ("flip it once entries arrive") was asking
+a human to watch for.
+
+★**The season scope is load-bearing.** Measured through `getWatchVideos` itself on
+2026-08-04: **51 public videos exist and all 51 are `season_test`**
+(`season_test:application` 41, `season_test:main` 10). An unscoped "are there
+videos" would have switched the link on today, on pipeline-test data. Scoped to the
+current season the rule reads **false** right now (`season_0`, 0 public entries --
+measured through the same code path).
+
+It also inherits the fairness hold for free: held prelim entries fail `isPublicRow`,
+so during a hold the count is zero and the link stays away rather than pointing at
+an empty grid. And the count comes from `getCurrentCompetitionStats`, which /watch's
+own hero already reads and which is cached under `WATCH_LIST_TAG` -- no new query,
+and a hold release refreshes the link at the same instant it refreshes Watch.
+
+**Proposed config key (NOT created, no SQL written):** if head office ever needs to
+hide the link while Watch is genuinely public and full -- a case that does not exist
+today -- the row would be `platform_config.watch_nav_enabled`, value `'true'`
+(default true when absent), read the way `lib/watch-home.ts` reads `watch_as_home`,
+ANDed into the rule. Written down in the module, deliberately not built.
+
+★**Still open, and it is not a flag: the landing has no mobile navigation at all.**
+The nav is `max-md:hidden` with no hamburger and no drawer, so on a phone the rule
+turning true changes nothing. "Landing -> Watch unconditionally" is not satisfied on
+mobile by this work, and closing that is a nav build, not a constant.
+
+★**Separate, reported not touched:** those 51 `season_test` videos are *public* -- the
+moment `WATCH_PUBLIC_ENABLED=true` is set at launch, `/watch` shows pipeline-test
+content to the world. Cleanup is TK's call ([[feedback-watch-data-no-delete]]), so it
+is raised here rather than acted on.
+
 ## B -- "left menu, 2 items, always"
 
 The phrase matches two different places and the cost is different for each. Both
