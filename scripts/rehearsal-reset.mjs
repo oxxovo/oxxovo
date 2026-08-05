@@ -44,6 +44,10 @@ console.log('reset 20 apps -> status=pending, no score/award/main-video')
 const { error: sErr } = await db.from('seasons').update({
   status: 'draft',
   application_open_at: iso(-5), application_close_at: iso(360),
+  // scoring_start_at must be cleared too: the prelim worker now gates on it and
+  // a leftover value would either block the next rehearsal outright or let it
+  // score before the buffer phase ran. Both look like "the worker did nothing".
+  scoring_start_at: null,
   scoring_complete_at: null, main_round_start_at: null, main_round_end_at: null,
   community_vote_start_at: null, community_vote_end_at: null, awards_announcement_at: null,
   min_participants: 5, updated_at: new Date().toISOString(),

@@ -56,6 +56,18 @@ node --env-file=.env.local scripts/rehearsal-stage.mjs open
 node --env-file=.env.local scripts/rehearsal-stage.mjs close
 ```
 → active→closed (cron이 날짜 보고 자동).
+★`close`는 **채점을 열지 않는다**. 24h 처리버퍼(렌더·확정·이메일)가 먼저 돌고,
+예선 워커는 `scoring_start_at`에 게이트가 걸린다. 이 단계에서 워커를 돌리면
+**정상적으로 0건**이고 로그에 `처리버퍼 진행 중`이 찍힌다 — 이게 프로덕션 동작이다.
+버퍼 길이는 `REHEARSAL_BUFFER`(분, 기본 = `REHEARSAL_WINDOW`). 기다리기 싫으면 `0`.
+
+### 2.5) 처리버퍼 종료 (수동 — 렌더가 다 내려앉았다고 판단할 때)
+```
+node --env-file=.env.local scripts/rehearsal-stage.mjs buffer-done
+```
+→ `scoring_start_at` 과거 세팅. **여기서부터 예선 워커 게이트가 열린다.**
+**확인:** `rehearsal-status.mjs`에 `scoringStart=PAST`. 아직 future/null이면
+대시보드가 `PRELIM WORKER BLOCKED`를 직접 찍어준다.
 
 ### 3) Triple-AI 예선 채점 — ★워커 수동 실행
 `oxxovo-scoring`에서 (예선 20편, `BATCH_SIZE`는 1잡당 처리량; 20편이면 여러 번 or 크게):

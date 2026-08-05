@@ -5,6 +5,7 @@ import { getAdminOrNull, requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getSeasonById, type Season } from '@/lib/seasons'
+import { evaluateAwardsGate, type AwardsGateBlock } from '@/lib/awards-gate'
 import { computeFinalScore, computeCommunityScore } from '@/lib/scoring'
 import { getMainRoundVoteTally } from '@/lib/watch'
 import {
@@ -356,9 +357,11 @@ type MainRoundRanked = {
   finalScore: number
 }
 
+type MainRoundCounts = { submittedCount: number; scoredCount: number; winnerCount: number }
+
 async function rankMainRound(
   seasonId: string,
-): Promise<{ season: Season; ranked: MainRoundRanked[] } | null> {
+): Promise<{ season: Season; ranked: MainRoundRanked[]; counts: MainRoundCounts } | null> {
   const season = await getSeasonById(seasonId)
   if (!season) return null
 
@@ -407,14 +410,31 @@ async function rankMainRound(
     .filter((r): r is MainRoundRanked => r.finalScore != null)
     .sort((a, b) => b.finalScore - a.finalScore)
 
-  return { season, ranked }
+  // Counts for the approval gate. ★These come from the SAME query the ranking is
+  // built from, so "how many were scored" cannot disagree with "what got ranked".
+  const submittedIds = (appsRes.data ?? []).map((a) => a.id)
+  const submittedSet = new Set(submittedIds)
+  const scoredCount = (scoringRes.data ?? []).filter(
+    (s) => s.judged_status === 'completed' && submittedSet.has(s.application_id),
+  ).length
+  const winnerCount = (appsRes.data ?? []).filter((a) => a.award_rank != null).length
+
+  return {
+    season,
+    ranked,
+    counts: { submittedCount: submittedIds.length, scoredCount, winnerCount },
+  }
 }
 
 export type ApproveAwardsResult =
   | { ok: true; awardedCount: number }
   | {
       ok: false
-      error: 'season_not_found' | 'no_scored_submissions' | 'update_failed'
+      error:
+        | 'season_not_found'
+        | 'no_scored_submissions'
+        | 'update_failed'
+        | AwardsGateBlock
       detail?: string
     }
 
@@ -425,6 +445,42 @@ export async function approveTop3Awards(seasonId: string): Promise<ApproveAwards
   const r = await rankMainRound(seasonId)
   if (!r) return { ok: false, error: 'season_not_found' }
   if (r.ranked.length === 0) return { ok: false, error: 'no_scored_submissions' }
+
+  // ★Three gates before anything is written. Until now requireAdmin() was the
+  // only one, and each missing check failed QUIETLY: a partial scoring set is
+  // silently dropped from the ranking rather than raising, a mid-vote tally still
+  // normalises to something, and no code looked at the calendar at all. All three
+  // produce a plausible podium -- and the payout email that follows cannot be
+  // unsent. Rules + tests live in lib/awards-gate.ts.
+  const gate = evaluateAwardsGate({
+    season: {
+      status: r.season.status,
+      applicationOpenAt: r.season.application_open_at,
+      applicationCloseAt: r.season.application_close_at,
+      // Not on the Season type (the public view carries it, the type does not).
+      // Only feeds isProcessingBuffer, which this gate does not read.
+      scoringStartAt: null,
+      mainRoundStartAt: r.season.main_round_start_at,
+      mainRoundEndAt: r.season.main_round_end_at,
+      voteStartAt: r.season.community_vote_start_at,
+      voteEndAt: r.season.community_vote_end_at,
+      awardsAt: r.season.awards_announcement_at,
+      // Everyone who submitted a main-round film is a finalist. Only used by the
+      // pre-reveal phase, which is long past by the time this button is live.
+      finalistCount: r.counts.submittedCount,
+      winnerCount: r.counts.winnerCount,
+    },
+    submittedCount: r.counts.submittedCount,
+    scoredCount: r.counts.scoredCount,
+    communityVoteWeight: r.season.community_vote_weight,
+    voteEndAt: r.season.community_vote_end_at,
+  })
+  if (!gate.blocked) {
+    console.log(`[awards] ${seasonId} gate passed: ${gate.detail}`)
+  } else {
+    console.warn(`[awards] ${seasonId} BLOCKED (${gate.blocked}): ${gate.detail}`)
+    return { ok: false, error: gate.blocked, detail: gate.detail }
+  }
 
   const supabase = await createSupabaseServer()
   const top3 = r.ranked.slice(0, 3)
