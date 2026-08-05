@@ -85,10 +85,68 @@ in the flow says which season it copied.
 
 ---
 
+## The opposite case -- one thing a DB edit reaches with no deploy at all
+
+Added 2026-08-05 (lane C), measured at `1ef4512`.
+
+T1-T3 share the property that **a DB edit does not reach them**. P1 is here because
+it is the mirror of that, and the mirror is the more dangerous direction: a DB edit
+reaches it **instantly, in production, with no build, no deploy and no review**.
+That is why it needs writing down. Nothing will remind anyone.
+
+### P1. Turning `member_hosted_enabled` on republishes the Partner tier to the public
+
+`platform_config.member_hosted_enabled` is `"false"` live (service-role read,
+2026-08-05). It gates `/host`, `/partner`, the partner cron, the auto-promotion
+email -- and, since `1ef4512`, the Partner column and the "Host tournaments" row on
+`/membership`.
+
+Until that commit `/membership` was the one public member-hosted surface with **no**
+gate on it: a four-column comparison advertising a tier whose own pages return 404,
+in both languages, while the standard rules say season 0 has no partners. Head
+office ruled gate rather than delete, because the copy is needed verbatim when the
+program does open.
+
+So the flag now has a second consequence nobody flipping it will be thinking about.
+The moment it goes true:
+
+- `/membership` gains a fourth column (Partner / 파트너) and a fifth row
+  (Host tournaments / 시합 개설), on desktop **and** on the mobile stacked cards
+- `/profile` starts offering active partners a link back to `/host/new`
+  (`lib/partner-host-link.ts`, added `073dd96`) -- which is only visible to a
+  partner whose `partner_status` is `active`, and there are **0 of those** today
+- `/host` and `/partner` stop 404ing
+
+**Do at transition:** this is the one item on this page that is *not* a redeploy.
+It is a decision plus a look. Before flipping it, confirm the partner program is
+actually meant to be public -- the flag is the whole announcement. After flipping
+it, open `/membership` in a browser, in **both** languages, on **both** viewports.
+
+★**Why the browser check is listed rather than automated.** The gate's rule is unit
+tested in both directions and in both languages (`lib/membership-tiers.test.ts`,
+14/14) -- an off-only test would have been passed by code that shows nothing to
+anybody. What the tests cannot do is render the switched-on page: turning the flag
+on is a DB write, so the only real ON render is the day this happens. The OFF half
+**was** verified end to end at `1ef4512` (production build served locally;
+`Partner`, `파트너`, `hosting right`, `개설 권한`, `Host tournaments`, `시합 개설`
+all 0 occurrences; `colgroup` = 34% + 3x22%). The ON half is this line.
+
+What to look for, since a table that gains a column is where layout breaks: four
+columns still fit without horizontal scrolling at the `min-w-[600px]` table width,
+the Creator column keeps its tint (it is read off the column now, not `ci === 2`),
+and every checkmark is under the right tier -- the matrix used to be two parallel
+arrays and a shifted column would look plausible.
+
+**Not blocked by, and does not block, T1-T3.** No deploy, no order dependency.
+Grouped here only because this is the document someone reads at the transition.
+
+---
+
 ## Order
 
 T1 first (it is the input to T3), then a single production deploy covers T2 and T3.
-One deploy, not three.
+One deploy, not three. P1 is independent of all of it -- a config row, whenever the
+partner program is actually meant to open.
 
 ## Verification after the switch
 
@@ -98,6 +156,11 @@ One deploy, not three.
 4. `npm run test:current-season` (`e2e/current-season-time-travel.mjs`) -> 4/4.
    Read-only; it proves no later-opening season is scheduled to take over
    season_1 the way season_2 was scheduled to take over season_0.
+5. **Only if `member_hosted_enabled` was turned on (P1):** `/membership` in a
+   browser, KO and EN, desktop and mobile. Four columns, Partner present, no
+   horizontal scroll, tint still on Creator, checkmarks under the right tiers.
+   If the flag stays off, there is nothing to check -- the OFF state is already
+   verified and unit tested.
 
 ---
 
