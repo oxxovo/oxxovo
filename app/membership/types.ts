@@ -15,4 +15,10 @@ export type MembershipLandingData = {
   // Cookie-session state -> drives the CTA target (signup / apply / profile).
   signedIn: boolean
   isActiveCreator: boolean
+  // platform_config.member_hosted_enabled -- the same switch that 404s /host and
+  // /partner. False live today, and the standard rules give season 0 no partners,
+  // so the Partner column and the Host tournaments row stay off the page. See
+  // lib/membership-tiers.ts; this is the only surface that was showing a
+  // member-hosted feature without asking the switch.
+  memberHostedEnabled: boolean
 }
