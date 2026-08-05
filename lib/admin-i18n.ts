@@ -605,6 +605,13 @@ type Messages = {
     approve_err_season_not_found: string
     approve_err_no_scored: string
     approve_err_update_failed: string
+    // Three-gate block reasons (lib/awards-gate.ts). Each one says what is
+    // holding AND what to do, because "blocked" with no next step reads as a bug.
+    approve_err_schedule_not_reached: string
+    approve_err_already_awarded: string
+    approve_err_nothing_submitted: string
+    approve_err_scoring_incomplete: string
+    approve_err_vote_window_open: string
     col_rank: string
     col_creator: string
     col_final: string
@@ -1207,6 +1214,15 @@ const MESSAGES_EN: Messages = {
     approve_err_season_not_found: 'Season not found.',
     approve_err_no_scored: 'No scored main-round submissions yet.',
     approve_err_update_failed: 'Failed to set award ranks. Please try again.',
+    approve_err_schedule_not_reached:
+      'Too early. Approval opens once the main round and community voting are both over.',
+    approve_err_already_awarded:
+      'Winners are already recorded. Use the per-entry override (with a reason) to change a rank.',
+    approve_err_nothing_submitted: 'No main-round submissions to rank yet.',
+    approve_err_scoring_incomplete:
+      'Main-round scoring is not finished. Approving now would build the podium from a partial set — unscored entries are dropped, not flagged.',
+    approve_err_vote_window_open:
+      'Community voting has not closed. Votes count toward the final score this season, so the tally would be partial.',
     col_rank: 'Rank',
     col_creator: 'Creator',
     col_final: 'Final',
@@ -1811,6 +1827,15 @@ const MESSAGES_KO: Messages = {
       '최종 점수 상위 3명을 수상자 1/2/3위로 승인할까요? 수상 순위가 설정되고 상금 지급 요청 이메일이 발송됩니다.',
     approve_confirm_btn: '승인',
     approve_cancel_btn: '취소',
+    approve_err_schedule_not_reached:
+      '아직 이릅니다. 본선과 커뮤니티 투표가 모두 끝나야 승인이 열립니다.',
+    approve_err_already_awarded:
+      '이미 수상자가 기록되어 있습니다. 순위를 바꾸려면 개별 override(사유 필수)를 쓰세요.',
+    approve_err_nothing_submitted: '순위를 매길 본선 제출작이 없습니다.',
+    approve_err_scoring_incomplete:
+      '본선 채점이 끝나지 않았습니다. 지금 승인하면 채점 안 된 작품이 경고 없이 빠진 채로 상위 3위가 정해집니다.',
+    approve_err_vote_window_open:
+      '커뮤니티 투표가 아직 안 끝났습니다. 이번 시즌은 투표가 최종점수에 반영되므로 집계가 미완입니다.',
     approve_err_season_not_found: '시즌을 찾을 수 없습니다.',
     approve_err_no_scored: '아직 채점된 본선 제출이 없습니다.',
     approve_err_update_failed: '수상 순위 설정에 실패했습니다. 다시 시도해 주세요.',
