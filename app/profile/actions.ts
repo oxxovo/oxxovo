@@ -9,6 +9,8 @@ import { validateVideoUrl } from '@/lib/video-url'
 import { getMembershipState, isMembershipEnabled } from '@/lib/membership'
 import { getStripe } from '@/lib/stripe'
 import { getDisplayName, setDisplayName, validateNickname } from '@/lib/nickname'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
+import { partnerHostLinkVisible } from '@/lib/partner-host-link'
 import type {
   MembershipDashboard,
   MembershipActionResult,
@@ -354,6 +356,37 @@ export async function loadSmsConsent(): Promise<
       optIn: Boolean(data?.sms_opt_in),
       consentAt: (data?.sms_consent_at as string | null) ?? null,
     },
+  }
+}
+
+// ─── partner host return link ────────────────────────────────────────────
+// An activated partner has no route back to their host area: the only link to
+// /host/new is on /partner/activate, which they pass through once. This supplies
+// the two facts lib/partner-host-link.ts needs and applies the rule there.
+//
+// Fail-closed: any failure to establish both facts hides the link, because the
+// failure mode of showing it is a signed-in user clicking through to a 404
+// (switch off) or to a form that rejects them (not active).
+export async function isHostLinkVisible(): Promise<boolean> {
+  try {
+    const user = await getUserOrNull()
+    if (!user) return false
+    // Switch first: with member-hosted off there is nothing to link to, so the
+    // profiles round-trip would be wasted work on every profile view.
+    if (!(await isMemberHostedEnabled())) return false
+    const admin = createSupabaseAdmin()
+    const { data, error } = await admin
+      .from('profiles')
+      .select('partner_status')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (error || !data) return false
+    return partnerHostLinkVisible({
+      memberHostedEnabled: true,
+      partnerStatus: (data.partner_status as string | null) ?? null,
+    })
+  } catch {
+    return false
   }
 }
 

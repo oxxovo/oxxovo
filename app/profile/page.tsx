@@ -18,12 +18,14 @@ import {
   loadProfileData,
   saveWinnerInfo,
   loadMembershipDashboard,
+  isHostLinkVisible,
   cancelMembership,
   resumeMembership,
   type ProfileApplication,
   type ProfileData,
 } from './actions'
 import type { MembershipDashboard } from './membership-types'
+import { HOST_LINK_HREF } from '@/lib/partner-host-link'
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-white/10 text-white/70 border-white/20',
@@ -69,7 +71,21 @@ function ProfilePageInner() {
   const [season, setSeason] = useState<Season | null>(null)
   const [studioFunnel, setStudioFunnel] = useState(false)
   const [membership, setMembership] = useState<MembershipDashboard | null>(null)
+  const [hostLink, setHostLink] = useState(false)
   const mockOverrides = useMockOverrides()
+
+  // Partner host return link. Server-resolved (member_hosted_enabled AND this
+  // caller is an active partner) -- see lib/partner-host-link.ts. Starts false, so
+  // it can only ever appear, never flash away.
+  useEffect(() => {
+    let cancelled = false
+    isHostLinkVisible().then((v) => {
+      if (!cancelled) setHostLink(v)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Membership dashboard (P4d) — loaded independently of the application data so
   // the card shows for any creator member (incl. those with no application yet).
@@ -195,6 +211,22 @@ function ProfilePageInner() {
           >
             <span className="text-sm font-semibold text-white/90">{lang === 'ko' ? 'OXXOVO Studio에서 제작·제출하기' : 'Create & submit in OXXOVO Studio'}</span>
             <span className="shrink-0 text-sm font-extrabold text-[#b66cff]">Studio →</span>
+          </a>
+        )}
+
+        {/* Host return link. No new copy: the label and the action are the two
+            strings /membership already uses for this tier and this right
+            (col_partner / row_host), so there is nothing here to translate or to
+            keep in sync with a second wording. */}
+        {hostLink && (
+          <a
+            href={HOST_LINK_HREF}
+            className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.08] px-5 py-4 transition hover:bg-[#8b22ff]/[.16]"
+          >
+            <span className="text-sm font-semibold text-white/90">{t.membership.col_partner}</span>
+            <span className="shrink-0 text-sm font-extrabold text-[#b66cff]">
+              {t.membership.row_host} →
+            </span>
           </a>
         )}
 
