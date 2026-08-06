@@ -163,6 +163,63 @@ function report(label, r, state, gated) {
   return { fail }
 }
 
+// A long email local-part is the case the demo account cannot exercise: its own
+// local-part is 11 characters, comfortably inside the cap. The failure this guards
+// is deceptive -- "Hi, {name}" is one unbreakable word, so the row NEVER wraps and
+// the header height never betrays it. Flex sacrifices the siblings instead: at 14
+// characters the Log out label goes to two lines, from 15 the logo starts
+// shrinking, and at 31 the logo is 0px wide. So assert the siblings, not the row.
+const LONG_NAME = 'christopher.alexander' // 21 ch -- past every threshold above
+const UNPRESSURED = { logoW: 84, btnW: 93.3, btnH: 43 }
+
+async function longNameCheck(page) {
+  const r = await page.evaluate((name) => {
+    const header = document.querySelector('header')
+    const a = header.querySelector('a[href="/profile"]')
+    a.textContent = `Hi, ${name}`
+    const img = header.querySelector('a[href="#"] img')
+    const btn = header.querySelector('button')
+    // How much of the string survives the ellipsis -- a cap that shows one letter
+    // would pass a width assertion and still be useless.
+    const probe = document.createElement('span')
+    probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font:${getComputedStyle(a).font}`
+    document.body.appendChild(probe)
+    let readable = 0
+    for (let i = 1; i <= a.textContent.length; i++) {
+      probe.textContent = a.textContent.slice(0, i)
+      if (probe.getBoundingClientRect().width <= a.clientWidth - 8) readable = i
+      else break
+    }
+    probe.remove()
+    return {
+      linkW: +a.getBoundingClientRect().width.toFixed(1),
+      logoW: +img.getBoundingClientRect().width.toFixed(1),
+      btnW: +btn.getBoundingClientRect().width.toFixed(1),
+      btnH: +btn.getBoundingClientRect().height.toFixed(1),
+      headerH: +header.getBoundingClientRect().height.toFixed(1),
+      clipped: a.scrollWidth > a.clientWidth,
+      readable,
+    }
+  }, LONG_NAME)
+
+  console.log(`\n   long local-part "${LONG_NAME}" (${LONG_NAME.length} ch):`)
+  console.log(`     link ${r.linkW}px (clipped=${r.clipped}), ~${r.readable} chars readable`)
+  console.log(`     logo ${r.logoW}px, Log out ${r.btnW}x${r.btnH}, header ${r.headerH}px`)
+  let fail = 0
+  const near = (a, b) => Math.abs(a - b) < 1.5
+  if (!near(r.logoW, UNPRESSURED.logoW)) { console.log(`     ** logo squeezed to ${r.logoW}px (expected ${UNPRESSURED.logoW})`); fail++ }
+  if (!near(r.btnW, UNPRESSURED.btnW)) { console.log(`     ** Log out squeezed to ${r.btnW}px (expected ${UNPRESSURED.btnW})`); fail++ }
+  if (!near(r.btnH, UNPRESSURED.btnH)) { console.log(`     ** Log out label wrapped: ${r.btnH}px tall (expected ${UNPRESSURED.btnH})`); fail++ }
+  if (r.readable < 12) { console.log(`     ** only ~${r.readable} chars readable -- the cap hides who is signed in`); fail++ }
+  if (!fail) console.log(`     siblings untouched and the account is still named`)
+  // Numbers cannot tell you whether an ellipsis reads as a name. Leave the shot.
+  await page.screenshot({
+    path: `${SHOTS}/landing-header-longname-375.png`,
+    clip: { x: 0, y: 0, width: 375, height: 140 },
+  })
+  return fail
+}
+
 mkdirSync(SHOTS, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome' })
 let bad = 0
@@ -187,6 +244,7 @@ try {
       await page.waitForSelector('header', { timeout: 15000 })
       const r = await probe(page)
       bad += report(`${state} @ ${v.name}`, r, state, v.gated).fail
+      if (v.gated && state === 'logged-in') bad += await longNameCheck(page)
       await page.screenshot({
         path: `${SHOTS}/landing-header-${state}-${v.width}.png`,
         clip: { x: 0, y: 0, width: v.width, height: 140 },

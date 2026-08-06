@@ -165,10 +165,24 @@ export function LandingView() {
             <>
               {/* Shown on mobile: this is the only /profile link on the page, and
                   /profile carries the Studio entry (:208, same studioFunnel gate)
-                  and Log out (:317) with no viewport gates of its own. */}
+                  and Log out (:317) with no viewport gates of its own.
+
+                  ★122px is measured, not chosen. An email local-part is one
+                  unbreakable word, so this never wraps -- flex sacrifices its
+                  siblings instead, and the row hides that until it is ugly. Swept
+                  at 375px in Chrome: at 13 characters everything is still at its
+                  natural size (logo 84px, Log out 93x43). At 14 the Log out label
+                  breaks to two lines (43 -> 64px tall). From 15 the logo starts
+                  shrinking, and by 31 it is 0px -- the brand is gone and only then
+                  does anything overflow. 122px is the widest this link measured
+                  while all three were still untouched (13 ch = 122.2px), so the
+                  cap is the last pristine state rather than the first broken one.
+                  It leaves ~17 characters readable, which names the account.
+                  Capped under md only: >=md has its own overflow, which predates
+                  this and belongs with the (6)A drawer work. */}
               <a
                 href="/profile"
-                className="text-[14px] text-white/70 hover:text-white transition cursor-pointer"
+                className="text-[14px] text-white/70 hover:text-white transition cursor-pointer max-md:max-w-[122px] max-md:truncate"
               >
                 Hi, {user.email.split('@')[0]}
               </a>
