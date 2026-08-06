@@ -130,10 +130,20 @@ export function LandingView() {
   return (
     <main className="relative bg-[#030305] text-white">
 
+      {/* The header is one row at h-20 on every viewport -- the hero below hardcodes
+          that 80px (`h-[calc(100vh-80px)]`), so nothing here may change its height.
+          Under md the row has ~327px to spend at the common 375px floor, and the
+          brand alone was taking ~259px of it: the auth controls had no width to be
+          shown in. The two brand shrinks below buy it back, and the header CTA
+          folds away because the hero already renders the same button (see there). */}
       <header className="relative z-30 flex h-20 items-center justify-between px-12 max-md:px-6">
         <a href="#" className="flex items-center gap-3">
-          <img src="/oxxovo_logo.png" alt="OXXOVO" className="h-24 drop-shadow-[0_0_18px_rgba(139,34,255,.6)]" />
-          <span className="text-[26px] font-black tracking-wide text-[#8b22ff]">OXXOVO</span>
+          {/* h-24 is 96px inside an 80px header -- it overflows the row on every
+              viewport. max-md:h-14 both fixes that on mobile and returns ~60px. */}
+          <img src="/oxxovo_logo.png" alt="OXXOVO" className="h-24 max-md:h-14 drop-shadow-[0_0_18px_rgba(139,34,255,.6)]" />
+          {/* Dropping the wordmark under md returns ~115px and the logo still reads
+              as the brand. Same trade ArenaTopBar.tsx:45 already makes at max-sm. */}
+          <span className="text-[26px] font-black tracking-wide text-[#8b22ff] max-md:hidden">OXXOVO</span>
         </a>
 
         <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
@@ -153,12 +163,17 @@ export function LandingView() {
         <div className="flex items-center gap-5">
           {user ? (
             <>
+              {/* Shown on mobile: this is the only /profile link on the page, and
+                  /profile carries the Studio entry (:208, same studioFunnel gate)
+                  and Log out (:317) with no viewport gates of its own. */}
               <a
                 href="/profile"
-                className="text-[14px] text-white/70 hover:text-white max-md:hidden transition cursor-pointer"
+                className="text-[14px] text-white/70 hover:text-white transition cursor-pointer"
               >
                 Hi, {user.email.split('@')[0]}
               </a>
+              {/* Stays hidden under md, deliberately: a fourth item does not fit
+                  (~296px against a ~243px budget). Reached via /profile instead. */}
               {studioFunnel && (
                 <a
                   href="/studio"
@@ -167,20 +182,27 @@ export function LandingView() {
                   Studio
                 </a>
               )}
-              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href={cta.href}>
+              {/* Folded under md -- not removed: the hero renders the same cta.href
+                  and cta.label as a full-width h-[64px] button one screenful down,
+                  ungated. Keeping both costs 191-342px depending on the label, and
+                  the pre-open label alone is wider than the whole mobile row. */}
+              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110 max-md:hidden" href={cta.href}>
                 {cta.label}
               </a>
               <button
                 onClick={handleLogout}
-                className="rounded-lg border border-white/20 px-5 py-2.5 text-[14px] font-bold text-white/80 transition hover:border-[#8b22ff] hover:text-white max-md:hidden"
+                className="rounded-lg border border-white/20 px-5 py-2.5 text-[14px] font-bold text-white/80 transition hover:border-[#8b22ff] hover:text-white"
               >
                 Log out
               </button>
             </>
           ) : (
             <>
-              <a className="text-[14px] text-white/60 max-md:hidden" href="/login">Log in</a>
-              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110" href={cta.href}>
+              {/* Shown on mobile. Without it a phone visitor has no way to sign in
+                  from here whenever the CTA is not /apply -- before the window
+                  opens and after it closes, /pre-register has no login link. */}
+              <a className="text-[14px] text-white/60" href="/login">Log in</a>
+              <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110 max-md:hidden" href={cta.href}>
                 {cta.label}
               </a>
             </>
