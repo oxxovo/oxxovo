@@ -78,19 +78,33 @@ import { parseVideoUrl, validateVideoUrl } from '@/lib/video-url'
 
 ---
 
-## 2. ★배선 전에 확인할 것 하나 — fail-closed 가 전 시즌을 막을 수 있다
+## 2. ✅ 전제 실측 완료 (2026-08-06, 본부 지시) — 통과다
 
 `season` 은 `getSeasonById`/`getCurrentSeason` 이 **`seasons_public` 뷰**에서
 `select('*')` 로 가져온다 (`lib/seasons.ts:259, 297`). 뷰가 이 컬럼을 노출하지
-않으면 `undefined ?? []` → **모든 시즌의 모든 접수가 403** 이 된다.
+않으면 `undefined ?? []` → **모든 시즌의 모든 접수가 403** 이 된다. 게이트는 옳게
+fail-closed 지만, 그 상태로 배포하면 접수가 통째로 멈춘다. 그래서 실측했다.
 
-레포 증거상 뷰는 노출한다 (`reports/seasons_theme_hybrid_migration_2026-06.sql:71`
-의 `CREATE OR REPLACE VIEW` 에 `allowed_video_platforms` 있음). 다만 뷰는 레포 밖에서
-바뀔 수 있는 DB 객체다 ([[feedback-db-object-absence-unprovable-by-repo]]).
+읽기 전용 프로브 (앱과 **같은 anon 경로**, `NEXT_PUBLIC_SUPABASE_ANON_KEY`):
 
-→ **배선 전 1회 실측**: `seasons_public` 을 읽어 `allowed_video_platforms` 가
-배열로 오는지 확인. 안 오면 배선하지 말고 보고. (게이트 자체는 옳게 fail-closed 지만,
-그 상태로 배포하면 접수가 통째로 멈춘다.)
+```
+anon         HTTP 200 | cols 66 | allowed_video_platforms: YES  value=["studio"]
+service_role HTTP 403 | 42501 permission denied for view seasons_public
+```
+
+→ **배선해도 된다.** 컬럼이 있고, 값이 `["studio"]` 로 라이브에 들어와 있는 것까지
+같은 쿼리로 확인됐다.
+
+★**service_role 403 은 별개 사실이고, 어제 Q3 와 같은 계열이다** — `seasons_public`
+은 anon/authenticated 에만 GRANT 돼 있다. `/api/apply` 경로는 anon 클라이언트로
+읽으므로 **영향 없다.** 다만 **서버 코드가 service_role 로 이 뷰를 읽으려 하면
+그 자리에서 42501 로 죽는다.** 새 코드에서 `createSupabaseAdmin()` 으로
+`seasons_public` 을 읽지 마라 — service_role 이 필요한 읽기는 base `seasons` 테이블로.
+
+★뷰 컬럼 66개 중 `main_round_twist` 는 **없다**(비밀 유지 정상). `main_round_theme`
+는 **있다** — 2026-07-12 TK 결정으로 공개 티저가 된 것이라 정상이다
+(`reports/main_round_theme_public_2026-07.sql`). `lib/seasons.ts:255~258` 주석이
+아직 "뷰가 main_round_theme 를 제외한다"고 말하는데 **그 주석이 스테일**이다.
 
 ---
 
@@ -115,12 +129,27 @@ const APPLICATION_ALLOWED_PLATFORMS = ['youtube', 'vimeo']
 → 지금 배선하면 **화면은 통과라고 하고 서버는 403** 인 상태가 된다. 서버 게이트만
 넣고 화면을 안 고치면 그게 최악이다.
 
-**본부 판정(2026-08-04)**: 화면에서도 외부 URL 입력 경로를 제거한다.
-서버 게이트는 그대로 유지한다 — **막는 것은 서버, 지우는 것은 UX. 둘 다 있어야 한다.**
-**문구와 배선 방식(입력란 제거 / 폼 전체 대체 / Studio 유도 안내)은 지수2A 판단**이다.
+**본부 판정(2026-08-04, 2026-08-06 재확인)**: 화면에서도 외부 URL 입력 경로를
+제거한다. 서버 게이트는 그대로 유지한다 — **막는 것은 서버, 지우는 것은 UX.
+둘 다 있어야 한다.**
 
-어떤 안을 고르든 `APPLICATION_ALLOWED_PLATFORMS` 상수는 **없애라.** 남겨두면
-시즌 컬럼과 어긋나는 두 번째 진실원천이 계속 남는다 ([[feedback-no-hardcode]]).
+### ★필수 조건 (판단 사항 아님 — 본부 2026-08-06 승인)
+
+**`APPLICATION_ALLOWED_PLATFORMS` 상수 자체를 삭제한다.** 값을 `['studio']` 로
+바꾸거나, 조건문으로 우회하거나, 주석 처리해 남겨두는 것 전부 아니다. **지운다.**
+
+이유는 UX 가 아니라 정합성이다. 이 상수가 살아 있는 한 "예선에서 무엇이 허용되는가"에
+답이 둘이고, 하나는 DB(시즌별로 변함), 하나는 코드(고정)다. 두 답이 어긋나는 날은
+이미 왔다 — 지금이 그날이다. 시즌1 이 외부 URL 을 다시 열어도 이 상수가 남아 있으면
+같은 사고가 반대 방향으로 난다 ([[feedback-no-hardcode]]).
+
+허용 소스를 화면에 표시할 일이 남으면 `season.allowed_video_platforms` 를 읽어라 —
+`MainRoundCard` 가 이미 그렇게 한다(`:172`, `:277`).
+
+### 판단 사항 (지수2A)
+
+**문구와 배선 방식만** — 입력란 제거 / 폼 전체 대체 / Studio 로 유도하는 안내 중
+무엇을 쓸지, 문구를 뭐라 쓸지.
 
 ---
 
