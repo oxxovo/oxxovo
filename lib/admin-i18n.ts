@@ -88,6 +88,7 @@ type Messages = {
       emails: string
       credits: string
       promo: string
+      actors: string
       messages: string
     }
   }
@@ -685,6 +686,7 @@ const MESSAGES_EN: Messages = {
       emails: 'Emails',
       credits: 'Credits',
       promo: 'Promo videos',
+      actors: 'Actors',
       messages: 'Messages',
     },
   },
@@ -1304,6 +1306,7 @@ const MESSAGES_KO: Messages = {
       emails: '이메일',
       credits: '크레딧',
       promo: '홍보영상',
+      actors: '배우',
       messages: '메시지',
     },
   },
