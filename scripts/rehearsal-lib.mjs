@@ -40,6 +40,56 @@ export async function pingCron() {
 }
 
 // Compact dashboard of season_test: season dates, derived stage, per-app rows.
+/**
+ * ★자산 생존 확인 — 리허설 전에 돌린다.
+ *
+ * 왜: season_test 의 R2 자산 7건이 404 다(2026-08-06 실측, `watch_demo/season_test/`
+ * 의 모델 비교 스터디 클립들). 행에는 URL 이 **남아 있으므로**:
+ *   · 워커는 후보로 집는다 (선정 기준이 `status` + `URL not null` 이다)
+ *   · 추출이 404 로 실패 → 재시도 소진 → judged_status='failed'
+ *   · countUndeliverable 은 **URL 이 null 인 행**을 세므로 이 행들을 못 잡는다
+ * 결과: 리허설은 막히지 않고 **7건 실패가 섞인 채로 완주한다.** 그러면
+ * "버퍼 게이트가 제대로 도는가" 를 읽기가 어려워진다.
+ *
+ * ★거르는 기준은 **URL 이 살아 있는가** 다 — ID 목록을 박지 않는다.
+ * 죽은 자산은 앞으로도 생길 수 있고, 하드코딩한 목록은 그때 조용히 낡는다.
+ * HEAD 요청 한 번씩이라 41행에 몇 초다.
+ *
+ * ★워커는 `watch_hidden` 을 읽지 않는다(실측 0건). 그래서 숨김으로는 못 거른다 —
+ * 그건 Watch 가시성의 답이고, 워커가 그걸 보게 만드는 것은 "숨겨진 작품은 채점하지
+ * 않는다" 는 **프로덕션 채점 정책 변경**이라 별건이다. 숨김은 모더레이션이지 기권이 아니다.
+ *
+ * 반환: 죽은 행 배열. 호출부가 제외하거나, 최소한 사람이 보고 판단한다.
+ */
+export async function checkAssets(db, { round = 'application' } = {}) {
+  const field = round === 'main' ? 'main_round_video_url' : 'free_entry_url'
+  const { data: apps } = await db.from('genesis_applications')
+    .select(`id, creator_name, video_title, status, ${field}`)
+    .eq('season_id', SEASON)
+    .not(field, 'is', null)
+  const dead = []
+  for (const a of apps ?? []) {
+    try {
+      const r = await fetch(a[field], { method: 'HEAD' })
+      if (!r.ok) dead.push({ ...a, httpStatus: r.status })
+    } catch (e) {
+      dead.push({ ...a, httpStatus: `fetch failed: ${e.message}` })
+    }
+  }
+  console.log(`
+== 자산 생존 확인 (${field}) ==`)
+  console.log(`  ${(apps ?? []).length}건 중 죽은 것 ${dead.length}건`)
+  for (const d of dead) {
+    console.log(`  ✗ ${d.httpStatus}  ${String(d.video_title ?? d.creator_name).slice(0, 34)}  ${d.id}`)
+  }
+  if (dead.length) {
+    console.log('  ★이 행들은 채점되면 전부 failed 로 떨어진다. 리허설 결과에 섞인다.')
+    console.log('  ★처분은 TK/본부 판단 — 자동으로 지우거나 status 를 바꾸지 않는다.')
+    console.log('    ([[feedback-watch-data-no-delete]])')
+  }
+  return dead
+}
+
 export async function printState(db) {
   const { data: s } = await db.from('seasons').select(
     'id,status,application_open_at,application_close_at,scoring_start_at,scoring_complete_at,main_round_start_at,main_round_end_at,community_vote_start_at,community_vote_end_at,awards_announcement_at,advance_pct,advance_min,advance_max,min_participants'

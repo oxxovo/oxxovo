@@ -251,11 +251,21 @@ export function getCurrentSeasonId(): string {
 }
 
 export async function getSeasonById(id: string): Promise<Season | null> {
-  // Reads the seasons_public VIEW, not the base table. The view excludes the
-  // secret theme columns (main_round_twist, main_round_theme), so nothing
-  // fetched through this (browser-reachable) path can ever carry the twist
-  // before reveal. Server code that genuinely needs the secret reads the base
-  // table via the service role — see lib/seasons-theme.getRevealedTheme.
+  // Reads the seasons_public VIEW, not the base table. The view excludes
+  // main_round_twist, so nothing fetched through this (browser-reachable) path
+  // can ever carry the twist before reveal. Server code that genuinely needs the
+  // secret reads the base table via the service role — see
+  // lib/seasons-theme.getRevealedTheme.
+  //
+  // main_round_theme is NOT secret and IS on the view: TK ruled it a public
+  // come-back teaser on 2026-07-12, reversing the theme-hybrid posture for that
+  // one column (reports/main_round_theme_public_2026-07.sql). This comment said
+  // otherwise until 2026-08-06, when a column-list probe against the live view
+  // showed 66 columns with main_round_theme present and main_round_twist absent.
+  //
+  // ★The view is granted to anon/authenticated only. A service_role read of
+  // seasons_public gets 42501 permission denied — measured, not assumed. Server
+  // code holding the admin client must read the base seasons table instead.
   const { data, error } = await supabase
     .from('seasons_public')
     .select('*')

@@ -357,7 +357,7 @@ type MainRoundRanked = {
   finalScore: number
 }
 
-type MainRoundCounts = { submittedCount: number; scoredCount: number; winnerCount: number }
+type MainRoundCounts = { submittedCount: number; scoredCount: number; winnerCount: number; maxVotes: number }
 
 async function rankMainRound(
   seasonId: string,
@@ -422,7 +422,7 @@ async function rankMainRound(
   return {
     season,
     ranked,
-    counts: { submittedCount: submittedIds.length, scoredCount, winnerCount },
+    counts: { submittedCount: submittedIds.length, scoredCount, winnerCount, maxVotes },
   }
 }
 
@@ -473,6 +473,8 @@ export async function approveTop3Awards(seasonId: string): Promise<ApproveAwards
     submittedCount: r.counts.submittedCount,
     scoredCount: r.counts.scoredCount,
     communityVoteWeight: r.season.community_vote_weight,
+    // Same number the ranking normalises against -- measured, not assumed.
+    maxVotes: r.counts.maxVotes,
     voteEndAt: r.season.community_vote_end_at,
   })
   if (!gate.blocked) {
