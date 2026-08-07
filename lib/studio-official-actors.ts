@@ -2,8 +2,19 @@
 //
 // These are the platform's own synthetic performers, distinct from the actors a
 // participant registers in Studio (those live per-user; see app/studio/ActorMode).
-// They are never offered to participants as naming examples -- see
-// lib/character-name-examples.ts.
+//
+// ★The roster of names is lib/studio-actors.ts, and it is a ROSTER -- the
+// 2026-08-07 revert of e27f5db settled that (head office: KIRA live / ANNA anime,
+// replacing YUZU / RIN live CF). This table is the ONBOARDING record for those
+// same performers, not a second cast: one row as of 2026-08-07, slug
+// `actor-3-beauty-cf` = actor 3 = RIN, with KIRA and ANNA not onboarded yet.
+//
+// ★Reported, not changed: `ActorMode` renders those same real names into the
+// participant's "name your character" placeholder ("예: KIRA, YUZU"). While they
+// were believed to be invented placeholder text that was nothing; now it means the
+// field suggests OXXOVO's actual performers as examples for a participant's own
+// character. Whether that is intended is head office's, so this file only records
+// it.
 //
 // ★WHY THIS FILE EXISTS AT ALL. The table had zero application readers: the only
 // code that touched it was scripts/onboard-actor-insert.mjs, a one-off. So the
@@ -80,13 +91,17 @@ export const POLICY_LOCKED_FIELDS = ['display_name'] as const
 //   status: only 'draft' has ever existed, meaning "no public exposure"
 //           (scripts/onboard-actor-insert.mjs:4). No second value is named
 //           anywhere in this repo.
-//   kind:   only 'live' has ever existed. A `kind: 'live' | 'anime'` union does
-//           appear in lib/character-name-examples.ts:17 -- but that comment is
-//           describing the SHAPE THAT FILE USED TO HAVE while it was misnamed
-//           lib/studio-actors.ts, and that file was never about this table
-//           ("The two have never shared an id, a slug or a name"). Treating it
-//           as this column's enum would repeat the exact confusion that its
-//           rename existed to end.
+//   kind:   only 'live' has ever been STORED. ★But the `kind: 'live' | 'anime'`
+//           union in lib/studio-actors.ts is no longer dismissable as a stale
+//           shape: head office's 2026-08-07 roster is exactly that distinction
+//           (KIRA live, ANNA anime, RIN live), so those two values are the
+//           best-evidenced vocabulary this column has. That is still not proof
+//           of an enum -- two of the three are not onboarded, so 'anime' has
+//           never reached the table -- and adding a CHECK is 지수 본체's. What
+//           changed is which way the uncertainty leans.
+//           (An earlier note here argued the opposite on the premise that
+//           studio-actors.ts was misnamed UI text. That premise was wrong;
+//           see the revert note at the top of that file.)
 //
 // Nor does the schema settle it by analogy: every neighbouring table has its own
 // vocabulary (seasons active/upcoming/closed/completed, promo_videos ready,
