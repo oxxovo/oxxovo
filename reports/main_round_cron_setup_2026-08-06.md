@@ -162,9 +162,22 @@ Railway 실측(2026-07-26)은 **`BATCH_SIZE=2` · `*/5`** 이고, 30 으로 올�
 
 ## 4. ④ TK님이 누르실 것
 
-★들어갈 곳은 **예선 워커와 같은 프로젝트 `trustworthy-enchantment`** 다
-(실측 2026-07-26: 예선 = `trustworthy-enchantment/oxxovo-scoring`, 렌더 = 별도 프로젝트
-`just-vibrancy/oxxovo-studio`). 같은 프로젝트에 두면 변수 복사가 쉽고 로그가 한자리에 모인다.
+### 들어갈 곳 — Railway CLI 전수 실측 (2026-08-07)
+
+★**`trustworthy-enchantment`** 다. 본부 지적대로 이 프로젝트에 `oxxovo-studio` 와
+`oxxovo-scoring` 이 **둘 다** 있고, 2026-07-26 판 메모("렌더는 별도 프로젝트")는 스테일이었다.
+
+| 프로젝트 | 서비스 | 크론 | 상태 |
+|---|---|---|---|
+| **`trustworthy-enchantment`** | **`oxxovo-scoring`** | **`*/5 * * * *`** | 활성 ← ★**여기 옆에 만든다** |
+| `trustworthy-enchantment` | `oxxovo-studio` | 없음(상주) | RUNNING |
+| `just-vibrancy` | `oxxovo-studio` | 없음(상주) | RUNNING ← ★별건 defect, `duplicate_render_workers_2026-08-07.md` |
+| `charming-recreation` | `oxxovo-studio` | 없음 | CRASHED (죽은 잔재) |
+| `fulfilling-consideration` | `oxxovo-studio` | 없음 | CRASHED (죽은 잔재) |
+
+★**New 를 누르기 전 확인 문구**: 프로젝트 이름이 아니라 **서비스 목록**을 보신다.
+★**`oxxovo-scoring` 이 보이는 프로젝트**가 맞는 곳이다(4개 프로젝트 중 유일하다).
+`oxxovo-studio` 만 보이면 **다른 프로젝트다 — New 를 누르지 않는다.**
 
 1. Railway → 프로젝트 **`trustworthy-enchantment`** → **New → GitHub Repo** → `oxxovo/oxxovo-scoring`
 2. 서비스 이름: **`oxxovo-scoring-main`** (예선 `oxxovo-scoring` 과 구분되게)
