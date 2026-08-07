@@ -10,9 +10,9 @@ export const SEASON_ZONE = 'America/Los_Angeles'
 
 // Every auto-created season inherits the SAME community-vote weight, read by the
 // cron from platform_config.default_community_vote_weight (0.5) and passed in
-// here — there is deliberately NO per-season branching. Only season_0, the
-// hand-seeded bootstrap row, carries a different weight (0), and that lives
-// purely as a data value on that one row; the cron never creates season_0, so it
+// here — there is deliberately NO per-season branching. season_0 used to be the
+// exception (weight 0, Soak), but TK set it to 0.5 on 2026-08-06, so every
+// official season now runs AI 50 / audience 50; the cron never creates season_0, so it
 // never has to special-case it. ai_score_weight is derived as 1 - community so
 // the pair always sums to 1.0 (the seasonSchema invariant). If the policy ever
 // changes, edit the platform_config value, not this code. See
@@ -69,11 +69,27 @@ export function computeSeasonSchedule(
   return {
     application_open_at: toIso(open),
     application_close_at: toIso(close),
-    // Scoring begins the moment applications close.
+    // ★Scoring begins the moment applications close -- i.e. NO processing buffer.
+    //
+    // ★This is not what season_0 does. Its scoring_start_at sits 24h after close,
+    // set by hand, and the worker's buffer gate (oxxovo-scoring src/gate.ts) enforces
+    // that gap: renders land asynchronously, and a cohort that is still arriving must
+    // not be scored. An auto-created season gets close == scoring_start_at, so that
+    // gate passes the instant the window shuts and the protection is silently absent.
+    //
+    // Not changed here: the buffer length is a schedule decision (it moves every
+    // downstream date), so it belongs to whoever owns the calendar, not to this
+    // helper quietly picking a number. Recorded 2026-08-06.
     scoring_start_at: toIso(close),
     scoring_complete_at: toIso(scoringComplete),
     main_round_start_at: toIso(mainStart),
     main_round_end_at: toIso(mainEnd),
+    // ★No community_vote_start_at / _end_at here -- an auto-created season gets
+    // them as NULL while community_vote_weight is 0.5. That is caught rather than
+    // silent: the awards gate refuses with "the window can never close" when the
+    // weight is non-zero and the end date is unset (lib/awards-gate.ts). So an admin
+    // must set the vote window per season, and the failure surfaces at the button
+    // rather than in the podium.
     awards_announcement_at: toIso(awards),
   }
 }
