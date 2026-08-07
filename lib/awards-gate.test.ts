@@ -23,6 +23,7 @@ const READY: AwardsGateInput = {
   submittedCount: 10,
   scoredCount: 10,
   communityVoteWeight: 0,
+  maxVotes: 0,
   voteEndAt: '2026-11-15T08:00:00+00:00',
 }
 
@@ -136,7 +137,11 @@ test('when votes count, an unscheduled vote end blocks -- that window can never 
 })
 
 test('when votes count, the tally must be final', () => {
-  const weighted = { ...READY, communityVoteWeight: 0.7 }
+  // ★maxVotes must be set here. READY carries 0 because it models the weight-0
+  // season, and a weighted season with a closed window and no votes is now its
+  // own block (no_votes_cast) -- this test is about the WINDOW, so give it a
+  // tally and let the other test cover the empty one.
+  const weighted = { ...READY, communityVoteWeight: 0.7, maxVotes: 12 }
   // 11-14 is inside the vote window: schedule gate catches it first.
   assert.equal(evaluateAwardsGate(weighted, new Date('2026-11-14T00:00:00Z')).blocked, 'schedule_not_reached')
   // ...and once closed, the vote gate passes.
@@ -186,4 +191,45 @@ test('a dateless season can never reach the button', () => {
   const r = evaluateAwardsGate(teaser, new Date('2027-01-01T00:00:00Z'))
   assert.equal(r.blocked, 'schedule_not_reached')
   assert.equal(r.phase, 'draft')
+})
+
+// ★2026-08-06: season_0's community_vote_weight went 0 -> 0.5, which made a
+// closed-but-empty vote window reachable for the first time. Before the weight,
+// an uncounted tally could not affect the ranking; with it, computeCommunityScore
+// returns null, computeFinalScore turns that into null for every entry, and the
+// approval writes an empty podium while reporting success.
+test('a weighted season whose window closed with zero votes is blocked', () => {
+  const r = evaluateAwardsGate(
+    { ...READY, communityVoteWeight: 0.5, maxVotes: 0 },
+    new Date('2026-11-16T00:00:00Z'),
+  )
+  assert.equal(r.ok, false)
+  assert.equal(r.blocked, 'no_votes_cast')
+  assert.equal(r.checks.vote, 'fail')
+  // The other two gates genuinely passed -- the operator needs to know it is the
+  // tally that is missing, not the scoring.
+  assert.equal(r.checks.schedule, 'pass')
+  assert.equal(r.checks.scoring, 'pass')
+  // Detail carries the measured numbers, like every other block.
+  assert.match(r.detail, /0 votes/)
+})
+
+test('one vote is enough to clear the tally gate -- the threshold question is separate', () => {
+  const r = evaluateAwardsGate(
+    { ...READY, communityVoteWeight: 0.5, maxVotes: 1 },
+    new Date('2026-11-16T00:00:00Z'),
+  )
+  assert.equal(r.ok, true)
+  assert.equal(r.checks.vote, 'pass')
+})
+
+test('zero votes does NOT block a season where votes do not count', () => {
+  // weight 0 means the tally never enters the score, so there is nothing to wait
+  // for -- the gate stays vacuous rather than inventing a new reason to block.
+  const r = evaluateAwardsGate(
+    { ...READY, communityVoteWeight: 0, maxVotes: 0 },
+    new Date('2026-11-16T00:00:00Z'),
+  )
+  assert.equal(r.ok, true)
+  assert.equal(r.checks.vote, 'not_applicable')
 })

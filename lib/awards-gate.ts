@@ -14,8 +14,12 @@
 //
 // None of those fail loudly. They produce a plausible podium, write award_rank,
 // flip status to 'awarded', and fire the prize-payout email -- and the email is
-// the part that cannot be taken back. So the three assumptions become three
-// gates, stated here and asserted by tests.
+// the part that cannot be taken back. So the assumptions become gates, stated
+// here and asserted by tests.
+//
+// ★A fourth was added on 2026-08-06 when season_0's community_vote_weight went
+// 0 -> 0.5: a vote window can close with nobody having voted, and with a weight
+// that empties the ranking entirely rather than ranking on AI alone.
 //
 // The escape hatch already exists and is deliberately narrower: saveAwardOverride
 // sets one rank at a time and REQUIRES a written reason, which lands in
@@ -35,6 +39,8 @@ export type AwardsGateBlock =
   | 'scoring_incomplete'
   /** Votes count this season, but the vote window is unscheduled or still open. */
   | 'vote_window_open'
+  /** Votes count this season and the window closed, but nobody voted. */
+  | 'no_votes_cast'
 
 export type AwardsGateInput = {
   season: SeasonPhaseInput
@@ -46,6 +52,11 @@ export type AwardsGateInput = {
   communityVoteWeight: number
   /** seasons.community_vote_end_at. */
   voteEndAt: string | null
+  /**
+   * Highest vote count among main-round entries -- the denominator
+   * computeCommunityScore normalises against. 0 = nobody voted.
+   */
+  maxVotes: number
 }
 
 export type AwardsGateResult = {
@@ -150,6 +161,30 @@ export function evaluateAwardsGate(
             : 'community voting is still open — the tally would be partial',
       }
     }
+
+    // ---- Gate 3b: a closed window is not the same as a counted one ----------
+    // ★This one only became reachable on 2026-08-06, when season_0's
+    // community_vote_weight went 0 -> 0.5. While the weight was 0 the tally could
+    // not affect anything, so "the window closed" was the whole question.
+    //
+    // With a weight, computeCommunityScore returns null when maxVotes <= 0, and
+    // computeFinalScore turns that into null for EVERY entry -- so rankMainRound
+    // filters them all out and approveTop3Awards slices an empty list, writes no
+    // rank, sends no mail, and returns { ok: true, awardedCount: 0 }.
+    // A silent success with an empty podium is precisely the failure this file
+    // was written against: "None of those fail loudly."
+    if (input.maxVotes <= 0) {
+      return {
+        ok: false,
+        blocked: 'no_votes_cast',
+        phase,
+        checks: { schedule: 'pass', scoring: 'pass', vote: 'fail' },
+        detail:
+          `community_vote_weight=${input.communityVoteWeight} and the window has closed, ` +
+          `but the top entry has ${input.maxVotes} votes — every final score would be null ` +
+          `and the podium would be empty (${input.scoredCount}/${input.submittedCount} scored)`,
+      }
+    }
   }
 
   return {
@@ -162,7 +197,7 @@ export function evaluateAwardsGate(
       vote: voteApplies ? 'pass' : 'not_applicable',
     },
     detail: voteApplies
-      ? `all three gates pass (${input.scoredCount}/${input.submittedCount} scored, vote closed)`
+      ? `all three gates pass (${input.scoredCount}/${input.submittedCount} scored, vote closed, top entry ${input.maxVotes} votes)`
       : `schedule + scoring pass (${input.scoredCount}/${input.submittedCount} scored); votes do not count this season (weight=0)`,
   }
 }
