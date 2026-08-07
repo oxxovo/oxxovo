@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 
@@ -73,7 +74,14 @@ function LoginInner() {
     <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-black text-[#8b22ff] mb-2">OXXOVO</h1>
+          {/* The wordmark was already here; it just was not a link, so this page
+              had no way back to the site at all. Wiring it beats adding a footer:
+              the card is vertically centred (main is flex items-center), which a
+              footer would fight. While the site gate is on this leads to
+              /coming-soon -- correct, since home genuinely is not open yet. */}
+          <Link href="/" className="inline-block">
+            <h1 className="text-3xl font-black text-[#8b22ff] mb-2">OXXOVO</h1>
+          </Link>
           <p className="text-white/50 text-sm">
             {sent ? 'Check your email' : 'Log in or sign up'}
           </p>

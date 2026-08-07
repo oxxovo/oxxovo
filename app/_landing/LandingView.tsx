@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   getCurrentSeason,
   resolveSeasonCta,
@@ -137,14 +138,22 @@ export function LandingView() {
           shown in. The two brand shrinks below buy it back, and the header CTA
           folds away because the hero already renders the same button (see there). */}
       <header className="relative z-30 flex h-20 items-center justify-between px-12 max-md:px-6">
-        <a href="#" className="flex items-center gap-3">
+        {/* href="#" did nothing anywhere, and this view is not only the root:
+            app/welcome/page.tsx renders the same LandingView, and /welcome is where
+            Watch's sidebar "Tournament" link lands -- so on that URL the brand was
+            simply dead. "/" is what the four existing back-links already use
+            (/tournament, /about, /faq, /guidelines), and it stays correct if
+            watch_as_home is ever turned on: the root becomes Watch, which is then
+            what home means. On the root itself this reloads, which is what a logo
+            does on a homepage. */}
+        <Link href="/" className="flex items-center gap-3">
           {/* h-24 is 96px inside an 80px header -- it overflows the row on every
               viewport. max-md:h-14 both fixes that on mobile and returns ~60px. */}
           <img src="/oxxovo_logo.png" alt="OXXOVO" className="h-24 max-md:h-14 drop-shadow-[0_0_18px_rgba(139,34,255,.6)]" />
           {/* Dropping the wordmark under md returns ~115px and the logo still reads
               as the brand. Same trade ArenaTopBar.tsx:45 already makes at max-sm. */}
           <span className="text-[26px] font-black tracking-wide text-[#8b22ff] max-md:hidden">OXXOVO</span>
-        </a>
+        </Link>
 
         <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
           <a className="transition hover:text-[#b66cff]" href="/tournament">Tournament Info</a>
