@@ -126,6 +126,28 @@ node --env-file=.env.local scripts/rehearsal-approve-awards.mjs
 - `scripts/.rehearsal-stash.json` 삭제 가능.
 - **발사 전 복귀 목록(별도):** ① 테스트 시즌(1000~1006) open/close는 NULL 처리됨 — 유지 or 삭제. ② season_0 draft 해제 + 7/25 오픈(발사 시퀀싱). ③ 워커 `SEASON_REQUIRED_STATUS=''` + Railway 스케줄 등록 확인. ④ (후속) 워커 season 필터.
 
+## ★★리허설 시즌을 새로 만들 때 — 이름/번호 규칙 (2026-08-07)
+
+**공개 로비(`/`의 TOURNAMENTS, `/tournament`)는 리허설 시즌을 코드로 거른다**
+(`isRehearsalFixture`, `lib/lobby.ts`). 규칙은 **둘 중 하나만 맞으면** 걸러진다:
+
+1. **id가** `zz_` · `season_test…` · `season_e2e…` · `season_loadtest…` 로 시작
+2. **`season_number` ≥ 900**
+
+★**둘 다 아니면 그 리허설 시즌은 공개 홈에 뜬다.** 예: `rehearsal_nov`(번호 7)은
+**샌다.** 안 새게 하려면 둘 중 하나를 반드시 지켜라.
+
+★**왜 이런 휴리스틱인가** — 실측(2026-08-07) 결과 `seasons`에 리허설을 표시하는
+컬럼이 **없다**. `is_test`·`visibility`는 존재하지 않고, `host_type`·
+`lobby_featured`·`max_applicants`·`poster_url`은 진짜/픽스처가 **전부 같으며**,
+`total_prize_pool`은 **거꾸로**다(season_0과 픽스처가 3000, 진짜 season_1~4가 0).
+**항구적 해결은 `seasons`에 컬럼 하나이고 그건 DB 변경이라 본부/본체 소관이다.**
+컬럼이 생기면 이 절과 `isRehearsalFixture`를 같이 지운다.
+
+★**번호 대역을 믿지 마라** — `app/host/new/actions.ts`가 새 시즌 번호를
+`max+1`로 잡는다(오늘 기준 **1007**). 대역은 픽스처들 때문에 **이미 오염됐고 계속
+위로 밀린다**. 그래서 id 규약 쪽이 더 안전한 축이다.
+
 ## ★리허설에 반드시 포함 — 좀비 방어 실측 (본부 2026-08-07, 발사 전 필수)
 
 이 리허설은 **일정 자동화**를 검증한다. 그 옆에 **아직 한 번도 관측된 적 없는 방어

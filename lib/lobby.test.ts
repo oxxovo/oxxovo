@@ -30,7 +30,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { deriveLobbyMode, seasonToLobbyCard, tallyWinnerCounts } from './lobby'
+import { deriveLobbyMode, isRehearsalFixture, seasonToLobbyCard, tallyWinnerCounts } from './lobby'
 import { getSeasonPhase, toLobbyMode } from './season-phase'
 
 // ── the live row, written out ───────────────────────────────────────────────
@@ -241,6 +241,84 @@ test('★C-2 BLOCKER: completed with no podium reads live, and 8 seasons are lik
   // With a podium the two agree, so this is about missing evidence, not about
   // the status field.
   assert.equal(toLobbyMode(getSeasonPhase({ ...rehearsal, winnerCount: 3 }, at).phase), 'ended')
+})
+
+// ── A: the fixture filter that has to land before C-2 ───────────────────────
+
+test('A: every season on the lobby today is classified, and the split is the measured one', () => {
+  // The exact population read from the base table on 2026-08-07. Written out so
+  // this is a claim about real rows, not about a rule agreeing with itself.
+  const real = [
+    { id: 'season_0', season_number: 0 },
+    { id: 'season_1', season_number: 1 },
+    { id: 'season_2', season_number: 2 },
+    { id: 'season_3', season_number: 3 },
+    { id: 'season_4', season_number: 4 },
+  ]
+  const fixtures = [
+    { id: 'season_test2', season_number: 998 },
+    { id: 'season_test', season_number: 999 },
+    { id: 'season_1000', season_number: 1000 },
+    { id: 'season_1001', season_number: 1001 },
+    { id: 'season_1002', season_number: 1002 },
+    { id: 'season_1003', season_number: 1003 },
+    { id: 'season_1004', season_number: 1004 },
+    { id: 'season_1005', season_number: 1005 },
+    { id: 'season_1006', season_number: 1006 },
+  ]
+  assert.equal(real.length + fixtures.length, 14)
+  for (const s of real) assert.equal(isRehearsalFixture(s), false, s.id)
+  for (const s of fixtures) assert.equal(isRehearsalFixture(s), true, s.id)
+})
+
+test('A: both clauses are load-bearing -- neither alone covers the population', () => {
+  // season_1000 follows no id convention: the number clause is what catches it.
+  assert.equal(isRehearsalFixture({ id: 'season_1000', season_number: 1000 }), true)
+  // zz_ sits BELOW the band on purpose (e2e/zz-season.mjs picks 997 so it is not
+  // the newest season): the prefix clause is what catches it.
+  assert.equal(isRehearsalFixture({ id: 'zz_deadline_997', season_number: 997 }), true)
+  // ...and 997 is above 900 anyway, which is the point of not cutting at 998.
+  assert.equal(isRehearsalFixture({ id: 'anything', season_number: 997 }), true)
+})
+
+test('A: the harness seasons the E2E files actually use are covered', () => {
+  for (const id of ['season_e2e', 'season_loadtest', 'season_test', 'zz_anything']) {
+    // season_number deliberately low, so only the prefix clause can catch these.
+    assert.equal(isRehearsalFixture({ id, season_number: 5 }), true, id)
+  }
+})
+
+test('★A: the stated limitation is real, and pinned so it is not mistaken for coverage', () => {
+  // A future rehearsal season numbered below 900 with an unrecognised id LEAKS.
+  // This assertion documents the hole rather than papering over it: the durable
+  // fix is a column on seasons (head office), and until then the guard is the
+  // naming/numbering rule written into the rehearsal runbook.
+  assert.equal(isRehearsalFixture({ id: 'rehearsal_nov', season_number: 7 }), false)
+})
+
+test('A: the threshold leaves room that a real season will not reach', () => {
+  // season_0 runs ~2 months end to end. Even at a monthly cadence the boundary is
+  // ~75 years out. Pinned so a future edit has to argue with a number.
+  assert.equal(isRehearsalFixture({ id: 'season_120', season_number: 120 }), false)
+  assert.equal(isRehearsalFixture({ id: 'season_899', season_number: 899 }), false)
+  assert.equal(isRehearsalFixture({ id: 'season_900', season_number: 900 }), true)
+})
+
+test('★A must land before C-2, and this says why in one assertion', () => {
+  // A completed fixture with no podium is 'live' under the canonical. With the
+  // filter it never reaches a card at all, so C-2's tripwire fires for season_0
+  // and not for nine rehearsal rows.
+  const fixture = { id: 'season_1003', season_number: 1003 }
+  assert.equal(isRehearsalFixture(fixture), true)
+  assert.equal(
+    toLobbyMode(
+      getSeasonPhase(
+        { ...phaseInput(0), status: 'completed' },
+        new Date(WHEN.afterAwards),
+      ).phase,
+    ),
+    'live', // what the card WOULD say if the row were still rendered
+  )
 })
 
 // ── tripwire ────────────────────────────────────────────────────────────────

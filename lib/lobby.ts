@@ -150,10 +150,85 @@ function countdownTarget(s: SeasonRow, mode: LobbyMode): string | null {
   }
 }
 
-// Official + publicly visible (not draft). Partner seasons are excluded from v1.
+// ─── rehearsal fixtures must not appear on a public surface ─────────────────
+//
+// ★WHY THIS EXISTS AT ALL, so nobody deletes it asking "why is season_test
+// excluded". Measured 2026-08-07: of the 14 seasons the lobby renders, NINE are
+// rehearsal or pipeline fixtures (season_test, season_test2, season_1000..1006),
+// and eight of those carry status='completed' with zero award_rank rows. Today
+// they read ENDED, which looks harmless. The moment the card asks the canonical
+// machine (C-2), completed-with-no-podium becomes 'awaiting_results' -> 'live',
+// and eight finished rehearsals announce themselves as running tournaments on
+// the home page. The canonical is right; the rows should not be on a public
+// surface in the first place. isOfficialPublic filtered host_type and drafts and
+// nothing else.
+//
+// ★NO COLUMN SAYS THIS, and that was measured before writing a heuristic:
+// is_test and visibility do not exist; host_type, lobby_featured, max_applicants
+// and poster_url are identical across real and fixture rows; total_prize_pool is
+// actively MISLEADING (season_0 and every fixture are 3000, while the real
+// seasons 1-4 are 0). The durable fix is a column on seasons, which is a DB
+// change and belongs to head office. This is the interim rule, and it is a
+// heuristic -- see the limitation at the bottom.
+
+/** Ids we control by written convention. Each entry is a rule someone must follow, not a guess. */
+const FIXTURE_ID_PREFIXES = [
+  'zz_', // one-shot probe rows -- MANDATED by the go-live checklist C7
+  'season_test', // pipeline seasons -- e2e/lib.mjs treats these as untouchable (TK 2026-07-14)
+  'season_e2e', // the E2E harness season -- e2e/lib.mjs SEASON
+  'season_loadtest', // load-test fixtures
+] as const
+
+// ★Everything at or above this is a fixture, and the number is chosen to be
+// absurd rather than tight. season_0 runs about two months end to end (public
+// 9/9 -> winner 11/16), so even at a monthly cadence -- far faster than anything
+// planned -- 900 seasons is ~75 years. It is not "900 weeks": that reading was
+// wrong when this rule was first drafted and is corrected here, because a
+// comment carrying a false justification is how the next person talks themselves
+// into lowering the threshold.
+//
+// It has to cover 997: e2e/zz-season.mjs deliberately picks 997 to sit BELOW the
+// existing 1006 so it is not the newest season. A 998 cut would have leaked it.
+const FIXTURE_SEASON_NUMBER_MIN = 900
+
+/**
+ * A rehearsal / test / harness season rather than a competition we run in public.
+ *
+ * Two clauses because the fixtures do not share one marker: the id-prefix clause
+ * catches the conventions that are actually written down and enforced, and the
+ * number clause catches season_1000..1006, which follow no id convention at all.
+ *
+ * ★LIMITATION, stated plainly: a future rehearsal season numbered below 900 with
+ * an id matching none of the prefixes WILL leak onto the lobby. Nothing at season
+ * creation enforces either convention -- app/host/new/actions.ts even derives
+ * season_number as max+1, which is 1007 today, so the band is already polluted by
+ * the fixtures themselves and keeps drifting up. Until the column exists, the
+ * recurrence guard is procedural and lives in reports/rehearsal_runbook_2026-07.md.
+ */
+export function isRehearsalFixture(s: { id: string; season_number: number }): boolean {
+  if (FIXTURE_ID_PREFIXES.some((p) => s.id.startsWith(p))) return true
+  return Number.isFinite(s.season_number) && s.season_number >= FIXTURE_SEASON_NUMBER_MIN
+}
+
+// Official + publicly visible (not draft) + an actual competition. Partner
+// seasons are excluded from v1.
 function isOfficialPublic(s: SeasonRow): boolean {
   const official = s.host_type == null || s.host_type === 'official'
-  return official && s.status !== 'draft'
+  if (!official || s.status === 'draft') return false
+  if (isRehearsalFixture(s)) {
+    // ★A LIVE season being hidden is worse than a fixture leaking, and the rule
+    // above is a heuristic on names and numbers -- so the one case that must
+    // never pass in silence gets a line. Not logged for the other statuses: the
+    // nine known fixtures would print on every home-page render.
+    if (s.status === 'active') {
+      console.error(
+        `[lobby] ★an ACTIVE season was filtered out as a rehearsal fixture: ${s.id} (#${s.season_number}). ` +
+          'If this is a real competition, its id or season_number matches the fixture rule -- fix the row, not the filter.',
+      )
+    }
+    return false
+  }
+  return true
 }
 
 // Project a seasons row into a lobby card (server-authoritative mode). Exported
