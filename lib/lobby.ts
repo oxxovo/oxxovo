@@ -50,6 +50,65 @@ function ms(v: string | null): number | null {
   return Number.isNaN(t) ? null : t
 }
 
+// ─── winner evidence (C-1) ──────────────────────────────────────────────────
+//
+// ★WHY THE LOBBY HAS TO COUNT SOMETHING. getSeasonPhase reaches 'results' only
+// with winnerCount > 0, because awards_announcement_at passing is not the same
+// event as a podium being approved (award_rank is written by approveTop3Awards,
+// a manual admin action). getBannerStage already applies that honesty rule on
+// Watch; the lobby card does not, and closing that gap needs the count.
+//
+// ★finalistCount is deliberately NOT fetched. 'finalists_pending', 'judging' and
+// 'main_live' all fold to 'live' in toLobbyMode, so it cannot change a card. One
+// query, not two, and the reason is written down rather than rediscovered.
+
+/** Tally award_rank rows per season. Pure, so the shape is testable without a DB. */
+export function tallyWinnerCounts(rows: { season_id: string | null }[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const r of rows) {
+    if (!r.season_id) continue
+    out[r.season_id] = (out[r.season_id] ?? 0) + 1
+  }
+  return out
+}
+
+/**
+ * How many entries carry an award_rank, per season. ONE batched query -- the
+ * lobby renders 14 seasons today (measured 2026-08-07) and a per-card query
+ * would be 14 round trips on the home page.
+ *
+ * ★service_role, and only for this. genesis_applications is not anon-readable,
+ * while the season rows above come from the anon-readable seasons_public view --
+ * and reading seasons_public WITH service_role fails 42501, so the two halves
+ * genuinely need different clients. The admin import is lazy for the reason the
+ * watch-hold release path documents: a top-level server-only import kills every
+ * CLI harness that loads this module.
+ *
+ * ★Fails to an EMPTY map, deliberately, and says so loudly. No evidence of
+ * winners is not evidence of winners -- the same rule getSeasonPhase applies to
+ * a null boundary. The visible consequence of a failed query is a card that has
+ * not announced a result yet, never a card that announces one.
+ */
+export async function fetchWinnerCounts(seasonIds: string[]): Promise<Record<string, number>> {
+  if (seasonIds.length === 0) return {}
+  try {
+    const { createSupabaseAdmin } = await import('./supabase-admin')
+    const { data, error } = await createSupabaseAdmin()
+      .from('genesis_applications')
+      .select('season_id')
+      .not('award_rank', 'is', null)
+      .in('season_id', seasonIds)
+    if (error) {
+      console.error('[lobby] winner count query failed:', error.message)
+      return {}
+    }
+    return tallyWinnerCounts((data ?? []) as { season_id: string | null }[])
+  } catch (e) {
+    console.error('[lobby] winner count unavailable:', e instanceof Error ? e.message : String(e))
+    return {}
+  }
+}
+
 // Server-authoritative mode from the schedule. Boundaries:
 //   no open date set                   -> upcoming  (teaser / "COMING SOON")
 //   now < open                         -> upcoming
@@ -101,7 +160,20 @@ function isOfficialPublic(s: SeasonRow): boolean {
 // so the /tournament gallery can reuse it for the current season, which may be a
 // draft surfaced by getCurrentSeason that getLobbyTournaments filters out. The
 // param is the lobby SeasonRow shape; a full Season satisfies it structurally.
-export function seasonToLobbyCard(s: SeasonRow, now: Date = new Date()): LobbyCard {
+//
+// ★winnerCount defaults to 0, and the default is a POSITION, not a shortcut: 0
+// means "no podium is on record", which is the only direction a default may fail
+// in once C-2 lets this value decide whether the card says a season is over. A
+// caller that does not know cannot be allowed to announce a result. Both call
+// sites pass a real count anyway; the default exists because `now` is optional
+// and TypeScript will not take a required parameter after an optional one.
+// (Inert today: deriveLobbyMode does not read it yet.)
+export function seasonToLobbyCard(
+  s: SeasonRow,
+  now: Date = new Date(),
+  winnerCount: number = 0,
+): LobbyCard {
+  void winnerCount // consumed by toLobbyMode in C-2
   const mode = deriveLobbyMode(s, now)
   return {
     id: s.id,
@@ -128,9 +200,11 @@ export async function getLobbyTournaments(now: Date = new Date()): Promise<Lobby
   }
 
   const rows = (data ?? []) as SeasonRow[]
-  const cards: LobbyCard[] = rows
-    .filter(isOfficialPublic)
-    .map((s) => seasonToLobbyCard(s, now))
+  const visible = rows.filter(isOfficialPublic)
+  // One query for every card, after the filter so we never count a season the
+  // page will not render.
+  const winners = await fetchWinnerCounts(visible.map((s) => s.id))
+  const cards: LobbyCard[] = visible.map((s) => seasonToLobbyCard(s, now, winners[s.id] ?? 0))
 
   // lobby_featured first, then nearest deadline (cards with a countdown target
   // before those without; ended cards sink to the bottom).

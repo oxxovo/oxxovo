@@ -30,7 +30,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { deriveLobbyMode, seasonToLobbyCard } from './lobby'
+import { deriveLobbyMode, seasonToLobbyCard, tallyWinnerCounts } from './lobby'
 import { getSeasonPhase, toLobbyMode } from './season-phase'
 
 // ── the live row, written out ───────────────────────────────────────────────
@@ -176,6 +176,71 @@ test('★C-3 trap: today "live" implies main_round_end_at, which stops being tru
 
   // So C-3 is not cosmetic: the target has to be keyed on the PHASE, and a target
   // already in the past has to become null rather than a countdown to nothing.
+})
+
+// ── C-1: the winner tally, and what it exposed ──────────────────────────────
+
+test('C-1: the tally counts per season and ignores rows with no season', () => {
+  assert.deepEqual(
+    tallyWinnerCounts([
+      { season_id: 'season_0' },
+      { season_id: 'season_0' },
+      { season_id: 'season_0' },
+      { season_id: 'season_1' },
+      { season_id: null },
+    ]),
+    { season_0: 3, season_1: 1 },
+  )
+  assert.deepEqual(tallyWinnerCounts([]), {})
+})
+
+test('C-1: an empty tally cannot make a card claim a result', () => {
+  // fetchWinnerCounts returns {} when the query fails, so this is the shape of
+  // every failure mode: unknown -> 0 -> the season is not 'ended'. The opposite
+  // default would announce a podium nobody approved.
+  const counts = tallyWinnerCounts([])
+  assert.equal(counts['season_0'] ?? 0, 0)
+  assert.equal(canonical(WHEN.afterAwards, counts['season_0'] ?? 0), 'live')
+})
+
+test('★C-2 BLOCKER: completed with no podium reads live, and 8 seasons are like that', () => {
+  // ★MEASURED 2026-08-07, not hypothesised. Across the 14 seasons the lobby
+  // renders, award_rank rows total ZERO -- and eight of them carry
+  // status='completed': season_1000..1006 (rehearsal fixtures) and season_test.
+  //
+  // getSeasonPhase treats status='completed' as authoritative but still asks for
+  // evidence: completed + 0 winners = 'awaiting_results', which toLobbyMode maps
+  // to 'live'. So shipping C-2 today would flip eight finished rehearsal seasons
+  // from ENDED to LIVE on the home page.
+  //
+  // That is the canonical behaving correctly on rows that should not be on the
+  // public lobby at all -- isOfficialPublic filters host_type and drafts, and
+  // nothing filters rehearsal fixtures. Recorded here so C-2 cannot ship without
+  // an answer to it.
+  const rehearsal = {
+    status: 'completed',
+    applicationOpenAt: S0.applicationOpenAt,
+    applicationCloseAt: S0.applicationCloseAt,
+    scoringStartAt: null,
+    mainRoundStartAt: S0.mainRoundStartAt,
+    mainRoundEndAt: S0.mainRoundEndAt,
+    voteStartAt: S0.voteStartAt,
+    voteEndAt: S0.voteEndAt,
+    awardsAt: S0.awardsAt,
+    finalistCount: 0,
+    winnerCount: 0,
+  }
+  const at = new Date(WHEN.afterAwards)
+  assert.equal(getSeasonPhase(rehearsal, at).phase, 'awaiting_results')
+  assert.equal(toLobbyMode(getSeasonPhase(rehearsal, at).phase), 'live')
+
+  // The current rule short-circuits on the status alone, which is why the eight
+  // read ENDED today.
+  assert.equal(deriveLobbyMode({ ...row, status: 'completed' }, at), 'ended')
+
+  // With a podium the two agree, so this is about missing evidence, not about
+  // the status field.
+  assert.equal(toLobbyMode(getSeasonPhase({ ...rehearsal, winnerCount: 3 }, at).phase), 'ended')
 })
 
 // ── tripwire ────────────────────────────────────────────────────────────────

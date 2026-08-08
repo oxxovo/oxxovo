@@ -6,7 +6,13 @@
 // getCurrentSeason so the landing is never empty.
 
 import Link from 'next/link'
-import { getLobbyTournaments, seasonToLobbyCard, type LobbyCard, type LobbyMode } from '@/lib/lobby'
+import {
+  fetchWinnerCounts,
+  getLobbyTournaments,
+  seasonToLobbyCard,
+  type LobbyCard,
+  type LobbyMode,
+} from '@/lib/lobby'
 import { getCurrentSeason } from '@/lib/seasons'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 import { ChatWidget } from '@/app/_components/ChatWidget'
@@ -28,7 +34,12 @@ export default async function TournamentGalleryPage() {
   // filters drafts out; getCurrentSeason surfaces pre-launch season_0).
   let all: LobbyCard[] = cards
   if (current && !all.some((c) => c.id === current.id)) {
-    all = [seasonToLobbyCard(current, now), ...all]
+    // Its own winner count: getLobbyTournaments fetched counts only for the
+    // seasons it returned, and this one is by definition not among them. Passing
+    // 0 here would work today and become a card that can never say "ended" the
+    // moment C-2 lands -- the kind of default that is right by accident.
+    const winners = await fetchWinnerCounts([current.id])
+    all = [seasonToLobbyCard(current, now, winners[current.id] ?? 0), ...all]
   }
 
   return (
