@@ -11,7 +11,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
 import { checkApplyGate } from '@/lib/membership'
 import { sendApplicationReceived, sendWaitlisted } from '@/lib/email/send'
-import { parseVideoUrl } from '@/lib/video-url'
+import { parseVideoUrl, validateVideoUrl } from '@/lib/video-url'
 import { moderateSubmission } from '@/lib/moderation'
 import { upsertCreatorProfile } from '@/lib/profile'
 
@@ -33,6 +33,7 @@ export type ApplyErrorCode =
   | 'title_length'
   | 'description_length'
   | 'duration_range'
+  | 'video_platform_not_allowed'
   | 'season_not_found'
   | 'season_not_open'
   | 'season_closed'
@@ -122,6 +123,33 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApplyResp
     const maxSec = season.application_video_max_seconds
     if (!Number.isFinite(dur) || dur < minSec || dur > maxSec) {
       return NextResponse.json({ error: 'duration_range' }, { status: 400 })
+    }
+
+    // External-URL entry gate. The allowed sources are decided by
+    // seasons.allowed_video_platforms -- season_0 is ['studio'], so every
+    // external platform URL falls through as not_allowed. No hardcode: the code
+    // only reads the column ([[feedback-no-hardcode]]).
+    //
+    // This route (/api/apply) is the external-URL intake. Studio entries come in
+    // through submitRender/submitGeneration and never pass here.
+    //
+    // Placed after duration_range so the season is resolved, and before the
+    // capacity read so a rejected entry never consumes a lookup or a waitlist
+    // slot decision.
+    //
+    // ?? [] is fail-closed: a missing or NULL column rejects everything. The gate
+    // does not assume the value exists. (Measured 2026-08-06: seasons_public does
+    // expose the column, value ["studio"] -- but the gate does not rely on that
+    // staying true.)
+    const urlCheck = validateVideoUrl(
+      String(body.free_entry_url),
+      season.allowed_video_platforms ?? [],
+    )
+    if (!urlCheck.valid) {
+      return NextResponse.json(
+        { error: 'video_platform_not_allowed', detail: urlCheck.error },
+        { status: 403 },
+      )
     }
 
     const currentCount = await getActiveApplicationCount(season.id)

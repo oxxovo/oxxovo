@@ -544,6 +544,9 @@ type Messages = {
     // too long for this slot. (TK 2026-07-15)
     main_round_theme_full_link: string
     main_round_allowed_platforms_label: string
+    // Shown instead of the URL field when the season's allowed sources contain
+    // no linkable platform. Takes the sources so the wording follows the column.
+    main_round_external_url_closed: (allowed: string) => string
     main_round_video_url_label: string
     main_round_video_url_placeholder: string
     main_round_submitted_video_label: string
@@ -568,6 +571,9 @@ type Messages = {
     apply_err_agreements_required: string
     apply_err_statement_length: string
     apply_err_duration_range: (min: number, max: number) => string
+    // Takes the season's allowed sources so the wording cannot name a platform
+    // the column does not ([[feedback-no-hardcode]]).
+    apply_err_video_platform_not_allowed: (allowed: string) => string
     apply_err_season_not_found: string
     apply_err_season_not_open: string
     apply_err_season_closed: string
@@ -1150,6 +1156,8 @@ const MESSAGES_EN: Messages = {
     main_round_theme_label: 'Main Round Theme',
     main_round_theme_full_link: 'Read the full brief →',
     main_round_allowed_platforms_label: 'Allowed Platforms',
+    main_round_external_url_closed: (allowed) =>
+      `${allowed} is the only entry source for this season's main round, so there is no link to submit here.`,
     main_round_video_url_label: 'Video URL',
     main_round_video_url_placeholder: 'YouTube, Vimeo, or other video link',
     main_round_submitted_video_label: 'Submitted Video',
@@ -1174,6 +1182,8 @@ const MESSAGES_EN: Messages = {
     apply_err_statement_length: 'Creator statement must be 150–250 characters.',
     apply_err_duration_range: (min, max) =>
       `Video duration must be between ${min} and ${max} seconds.`,
+    apply_err_video_platform_not_allowed: (allowed) =>
+      `This season accepts entries from ${allowed} only.`,
     apply_err_season_not_found: 'Season configuration not found. Please try again later.',
     apply_err_season_not_open: 'Applications for this season have not opened yet.',
     apply_err_season_closed: 'Applications for this season are closed.',
@@ -1767,6 +1777,8 @@ const MESSAGES_KO: Messages = {
     main_round_theme_label: '본선 테마',
     main_round_theme_full_link: '전체 규정 보기 →',
     main_round_allowed_platforms_label: '허용 플랫폼',
+    main_round_external_url_closed: (allowed) =>
+      `이번 시즌 본선은 ${allowed}에서만 제출할 수 있어, 여기에 입력할 링크가 없습니다.`,
     main_round_video_url_label: '영상 URL',
     main_round_video_url_placeholder: 'YouTube, Vimeo 등 영상 링크',
     main_round_submitted_video_label: '제출한 본선 영상',
@@ -1791,6 +1803,8 @@ const MESSAGES_KO: Messages = {
     apply_err_statement_length: 'Creator Statement는 150~250자 사이여야 합니다.',
     apply_err_duration_range: (min, max) =>
       `영상 길이는 ${min}~${max}초 사이여야 합니다.`,
+    apply_err_video_platform_not_allowed: (allowed) =>
+      `이번 시즌은 ${allowed} 작품만 접수합니다.`,
     apply_err_season_not_found: '시즌 설정을 찾을 수 없습니다. 잠시 후 다시 시도해주세요.',
     apply_err_season_not_open: '이번 시즌 신청이 아직 시작되지 않았습니다.',
     apply_err_season_closed: '이번 시즌 신청이 마감되었습니다.',
