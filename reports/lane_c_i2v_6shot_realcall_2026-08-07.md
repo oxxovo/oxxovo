@@ -195,6 +195,84 @@ fal 스키마도 `reference_image_urls`에 `"1-3 images supported"`라고 적어
 | 4 | **6샷 육안 판정 + 인물 일관성** (프레임·영상 위 4·3절) | 육안은 대표님 |
 | 5 | ⑪ **기법 안내 문구**에 3절 (a) "duration은 예산이지 컷 지점이 아니다" 반영 | ⑪ 안내는 대기 항목 |
 
+## 7b. ★어느 워커가 잡았나 -- 그리고 내가 틀린 것 하나
+
+`railway logs`로 실측(2026-08-07). ⑪B는 **`trustworthy-enchantment` / 서비스
+`oxxovo-studio`**가 잡았다. 그 3시간 창의 로그가 4줄이고 전부 우리 잡이다:
+
+```
+[job 85fdc305…] claimed (status=generating, attempt 1)
+[job 85fdc305…] fal ok (request 019fde78-b4d5-7f93-88f4-2a323a7be69e)
+[job 85fdc305…] uploaded to R2 (…85fdc305….mp4, 16751463 bytes)
+[job 85fdc305…] READY (cost ~$2.0160)
+```
+
+fal_request_id · 바이트 수(내가 내려받은 것과 동일) · 비용 전부 일치. 같은 프로젝트의
+`oxxovo-scoring`도 살아서 `⏸ 채점 게이트 차단 — SKIP: application_close_at(2026-11-04)
+이 미래`를 정상 출력 중이다.
+
+★**dev 모드 아님의 두 번째 독립 증거**: `DEV guard` 로그 **0건**. 워커는 dev 모드 잡마다
+`[job …] DEV guard -> model=… duration=…`을 찍는다(`worker.ts:489`). ⑪A를 잡은 워커도
+같은 grep이 0이다.
+
+### ★정정 -- "경합자가 하나였다"는 내가 틀렸다
+
+처음 보고에서 나는 **"중복 워커 셋이 죽어 있는 것이 ⑪B 클레임 경합자가 1개였던
+이유다"**라고 적었다. **틀렸다.** 배포 상태(`railway status --json`, 로그가 아니라 배포
+레코드)와 타임스탬프를 다시 재서 나온 시간표:
+
+```
+08-02 19:53:19Z  just-vibrancy       render c215c6a5 -> zz_lane_a_hold READY
+08-07 04:39:46Z  just-vibrancy       ★⑪A(88a8e86e) 클레임
+08-07 04:48:01Z  just-vibrancy       ⑪A READY $0.8400  fal 019fda85
+08-07 23:04:40Z  trustworthy-ench.   ⑪B(85fdc305) 클레임
+08-07 23:20:54Z  trustworthy-ench.   ⑪B READY $2.0160  fal 019fde78
+08-07 23:43:23Z  just-vibrancy       "Stopping Container"   ← ⑪B 종료보다 23분 뒤
+```
+
+두 가지가 뒤집힌다.
+
+★**(a) ⑪A는 `just-vibrancy`가, ⑪B는 `trustworthy-enchantment`가 잡았다 -- 서로 다른
+워커다.** ⑪A와 ⑪B 사이에 워커 편성이 바뀌었다. 제니2가 말한 어제의 near-miss에서
+"클레임을 먼저 이긴 프로덕션 워커"의 정체가 `just-vibrancy`다.
+
+★**(b) ⑪B 동안 `just-vibrancy`는 살아 있었다.** 정지 시각이 23:43:23Z이고 ⑪B는
+23:20:54Z에 끝났다 -- **⑪B의 창 내내 살아 있는 워커가 최소 둘이었다.** 즉 경합자가
+하나였던 게 아니라, **CAS 클레임 경쟁에서 한쪽이 이겼을 뿐**이다. 내 원래 문장은 결과
+(클레임 1건)는 맞고 **이유를 틀리게 댔다.**
+
+★**그래서 판정이 바뀌는 것**: 어제의 near-miss 조건은 ⑪B 때 **없어진 게 아니라 여전히
+있었다.** 물리지 않은 이유는 편성이 비어서가 아니라 **살아 있던 두 워커 중 어느 쪽도 dev
+모드가 아니었기 때문**이다(`DEV guard` 0 + `actual == estimated`). 지출 검증 결론 자체는
+그대로 유효하다 -- 근거가 "경합자 없음"에서 "경합자는 있었고 둘 다 프로덕션 설정"으로
+바뀐다.
+
+### 현재 클레임 가능한 워커 (2026-08-07 실측)
+
+| 프로젝트 / 서비스 | activeDeployments | latestDeployment | 지금 잡을 수 있나 |
+|---|---|---|---|
+| **trustworthy-enchantment / oxxovo-studio** | 1 | **SUCCESS** | **된다** |
+| trustworthy-enchantment / oxxovo-scoring | 1 | SUCCESS | (채점) |
+| charming-recreation / oxxovo-studio | **1** | **CRASHED** | 폴링 못 함 |
+| fulfilling-consideration / oxxovo-studio | **1** | **CRASHED** | 폴링 못 함 |
+| just-vibrancy / oxxovo-studio | **0** | 없음 | 배포 제거됨 |
+
+크래시 사유는 둘 다 같다:
+
+```
+Error: WORKER_CONCURRENCY must be set explicitly in production (no default).
+Render capacity is a deploy decision -- see the prelim load structure.
+```
+
+★**fail-closed 가드가 제 일을 했다** -- 그 변수 없이 배포된 워커가 **조용히 동시성 1로
+돌지 않고 부팅을 거부**했다. 조용히 돌았다면 72h 제출 창에서 8배 느린 큐를 아무도
+모르게 얻었을 것이다.
+
+★**단, 그 둘은 `activeDeployments=1`이다** -- Railway가 배포를 여전히 "활성"으로 들고
+있고 상태만 CRASHED다. 즉 **누가 그 프로젝트에 `WORKER_CONCURRENCY`를 세팅하면 그 순간
+부팅해서 클레임 경쟁에 복귀한다.** 3중 경합은 제거된 게 아니라 **환경변수 하나 뒤에
+있다.** 발사 전 확인 대상으로 올린다(배포·env는 대표님 소관).
+
 ## 8. 신고 -- 새 파일 2개
 
 | 파일 | 성격 |
