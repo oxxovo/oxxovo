@@ -342,6 +342,40 @@ is a standing rule for the music switch, not a launch-day step.**
   directly and only the cron sends. That distinction belongs in the report, not
   in the prober's head.
 
+**★C8. WATCH THE ZOMBIE DEFENCE ACTUALLY FIRE. It has never run in production.**
+- WHY this is not paranoia. `render_jobs` was censused on 2026-08-07:
+  **20 rows in the whole project, newest created 2026-07-15, zero activity since.**
+  The claim-token CAS landed in the worker on 2026-08-02 (`2069b8d`). So the
+  defence that stops a revived worker from overwriting the lane that finished
+  -- and overwriting its CryptoBind signature -- **has not processed a single
+  production render.** It is written, reviewed, unit-tested and UNOBSERVED.
+- ★The sentence to stop saying until this step passes: "the zombie defence is
+  in." It is in the build. Whether it fires is a different claim, and after
+  2026-08-03 (a publish write that named a column the table does not have, ran
+  for weeks, and logged success the whole time) that distinction is the whole
+  discipline. Reviewed code is not measured code.
+- HOW, and it costs nothing extra: `npm run test:reachability` already prints
+  the verdict (`e2e/reachability-queued-submit.mjs:199`). Read the line:
+  - `DEPLOY: the running worker stamps claim_token -> it carries the CAS build`
+    -> the defence is live. This is the pass.
+  - `★DEPLOY WARNING: the running worker claimed this row and left claim_token
+    NULL` -> whatever is deployed is NOT the CAS build. Stop and fix the deploy
+    before opening Studio; a second worker on an older image is exactly the
+    2026-08-07 duplicate-service situation, and without the token the older one
+    can trample a finished render.
+- ★A zero is not a pass here. `claim_token IS NULL` on a terminal row only means
+  something if some row in the same window carries one --
+  `scripts/inspect-claim-token-null.mjs` prints that control group and refuses to
+  imply coverage it does not have. Run it after the render above to see a
+  populated token with your own eyes, not an empty result set.
+- ★NOT COVERED, say so rather than let the pass read wider than it is:
+  `generation_jobs.claim_token` is **NULL on all 53 rows** -- neither deployed
+  build writes it (generation-lane tokens arrive in `40fca7f`, not deployed), and
+  `r2_key` cannot tell the builds apart either (`attemptToken` is plumbed into
+  `uploadVideo` only from the render path). **The generation lane has no
+  row-level defence and no row-level forensics.** This step proves the render
+  lane only.
+
 ---
 
 ## Phase D -- E2E (order matters; no prod exposure)
