@@ -29,6 +29,7 @@ import {
 import { verifySourceClipCrypto } from '@/lib/studio-verify'
 import { validateTexts, parseTrademarkBlocklist, findBlockedTrademark, type TextReason } from '@/lib/text-limits'
 import { validateMusicBed, type MusicReason } from '@/lib/music-limits'
+import { musicPickerOrFilter, musicPickerPathOk, isUuid, type MusicScopeRow } from '@/lib/music-picker-scope'
 import { isOwnedBy } from '@/lib/studio-sweep-scope'
 import { isMusicEnabled } from '@/lib/music-gate'
 import { shouldHoldPrelim } from '@/lib/watch-hold'
@@ -1323,26 +1324,68 @@ export type MusicAsset = { id: string; url: string; title: string; mood: string;
 // when the season's studio_music_enabled gate is off (allowlist) -> the editor
 // hides the music panel. Unsigned / not-ready assets are never offered, so a bed
 // the render couldn't verify is never selectable.
+// ★Hard ceiling on one picker read, and it is deliberately ABOVE the planned
+// catalogue (1,000 library tracks + one participant's own AI tracks, capped at
+// seasons.studio_music_max_generations_per_round). It exists so the row count is
+// OURS and not PostgREST's: an implicit db-max-rows cut is silent, this one is
+// detected and reported. Raise it if the catalogue grows; do not remove it.
+const MUSIC_PICKER_MAX_ROWS = 2000
+
 export async function listMusicAssets(
   seasonId: string,
   userId: string,
-): Promise<{ enabled: boolean; assets: MusicAsset[] }> {
+): Promise<{ enabled: boolean; assets: MusicAsset[]; truncated?: boolean }> {
   const admin = createSupabaseAdmin()
   if (!(await isMusicEnabled(seasonId))) return { enabled: false, assets: [] }
+
+  // ★userId reaches PostgREST inside a filter STRING below, so it is checked to be
+  // a uuid first. Every caller passes a session id today; this is the one place
+  // where "today" would not be enough.
+  if (!isUuid(userId)) return { enabled: true, assets: [] }
+
+  // ★THE FILTER IS SQL NOW, AND THERE IS A LIMIT. Until 2026-08-07 this selected
+  // every ready row and narrowed it in JS, ordered by `source` ascending, with no
+  // limit. Under the B plan that was harmless -- there were zero AI rows. Under the
+  // C plan (library + participant generation) it fails in a way nobody can see:
+  //   - 'ai' sorts before 'library', so the rows PostgREST drops at its row ceiling
+  //     are the LIBRARY ones;
+  //   - at a 1,000-track library the ceiling is reached by the library alone, so
+  //     the FIRST participant generation starts pushing songs out of everyone's
+  //     picker;
+  //   - and there is no error, no warning, and no count to compare against.
+  // The ordering hazard is gone (no source ordering), the ceiling is ours and
+  // explicit, and crossing it is reported instead of silently obeyed.
   const { data, error } = await admin
     .from('studio_music_assets')
     .select('id, url, title, mood, source, user_id, active, cryptobind_signature')
     .eq('status', 'ready')
     .not('url', 'is', null)
-    .order('source', { ascending: true })
-    .order('mood', { ascending: true })
+    .or(musicPickerOrFilter(userId))
+    .order('title', { ascending: true })
+    .limit(MUSIC_PICKER_MAX_ROWS)
   if (error || !data) return { enabled: true, assets: [] }
-  const assets: MusicAsset[] = data
-    .filter(
-      (a) =>
-        a.cryptobind_signature &&
-        ((a.source === 'library' && a.active) || (a.source === 'ai' && a.user_id === userId)),
+
+  const truncated = data.length >= MUSIC_PICKER_MAX_ROWS
+  if (truncated) {
+    console.error(
+      `[music] picker read hit MUSIC_PICKER_MAX_ROWS (${MUSIC_PICKER_MAX_ROWS}) for season=${seasonId}. ` +
+        'Tracks are being withheld from participants. Raise the ceiling or filter server-side.',
     )
+  }
+
+  // ★The JS predicate stays as defence in depth, and it must now remove NOTHING --
+  // the SQL says the same thing. A non-zero difference means the two disagree, and
+  // the one that is wrong is whichever one let a row through, so it is reported
+  // rather than quietly applied. (An unsigned asset is still dropped here: that is
+  // a signature check, not a path check, and it has no SQL equivalent.)
+  const pathOk = (a: MusicScopeRow) => musicPickerPathOk(a, userId)
+  const dropped = data.filter((a) => !pathOk(a)).length
+  if (dropped > 0) {
+    console.error(`[music] ${dropped} row(s) passed the SQL path filter but failed the JS one -- the two disagree.`)
+  }
+
+  const assets: MusicAsset[] = data
+    .filter((a) => a.cryptobind_signature && pathOk(a))
     .map((a) => ({
       id: String(a.id),
       url: String(a.url),
@@ -1350,7 +1393,7 @@ export async function listMusicAssets(
       mood: String(a.mood ?? ''),
       source: a.source as 'library' | 'ai',
     }))
-  return { enabled: true, assets }
+  return { enabled: true, assets, truncated }
 }
 
 export type CreateRenderResult =
@@ -1401,7 +1444,18 @@ async function resolveMusicSignature(
   if (asset.status !== 'ready') return { ok: false, reason: 'music_not_ready', detail: String(asset.status) }
   // library beds must be curation-active; AI beds must belong to this participant.
   if (asset.source === 'library' && !asset.active) return { ok: false, reason: 'music_not_found', detail: 'inactive' }
-  if (asset.source === 'ai' && asset.user_id !== userId) return { ok: false, reason: 'music_not_owned' }
+  else if (asset.source === 'ai' && asset.user_id !== userId) return { ok: false, reason: 'music_not_owned' }
+  // ★AND ANYTHING THAT IS NEITHER IS REFUSED. The two branches above enumerate the
+  // two known paths, and before this line a row whose `source` was some third value
+  // fell through both and rendered -- the code could not say which path it was on
+  // and let it pass anyway. Head office's rule (2026-08-07) is the opposite: when
+  // the path cannot be decided, block. A free pass accumulates loss silently; a
+  // refusal shows up immediately. There is no CHECK constraint on this column that
+  // this repo can prove ([[feedback-db-object-absence-unprovable-by-repo]]), so the
+  // third value is not hypothetical enough to leave open.
+  else if (asset.source !== 'library' && asset.source !== 'ai') {
+    return { ok: false, reason: 'music_not_found', detail: `unknown source: ${String(asset.source)}` }
+  }
   const av = verifyMusicAssetBind({
     id: String(asset.id),
     source: String(asset.source),
