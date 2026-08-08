@@ -63,6 +63,13 @@ const row = {
   application_close_at: S0.applicationCloseAt,
   main_round_start_at: S0.mainRoundStartAt,
   main_round_end_at: S0.mainRoundEndAt,
+  // ★Added with C-2. Leaving these off does not fail to compile -- tsconfig
+  // excludes **/*.test.ts -- and the runtime symptom is subtle rather than loud:
+  // with no vote window, getSeasonPhase reads the vote as never scheduled and
+  // the whole voting interval reports 'awaiting_results'. Caught by the C-4
+  // assertion, not by the type system.
+  community_vote_start_at: S0.voteStartAt,
+  community_vote_end_at: S0.voteEndAt,
   awards_announcement_at: S0.awardsAt,
 }
 
@@ -99,24 +106,38 @@ const WHEN = {
   afterAwards: '2026-11-17T05:00:00.000Z', // Nov 16 21:00 PST -- past the awards instant
 }
 
-// ── what the card says TODAY (pinned; this is the defect, not the goal) ─────
+// ── C-2 LANDED. The "CURRENT" blocks that used to live here are gone ────────
+//
+// They pinned deriveLobbyMode's own date rule: ENDED from main_round_end_at
+// onward, and status='completed' ending a season with no podium. That behaviour
+// no longer exists -- deriveLobbyMode is a projection of getSeasonPhase now --
+// so keeping the assertions would have meant asserting against the same function
+// twice and calling it agreement. Deleted, as the tripwire demanded. The history
+// is in the commit that added them; the CANONICAL blocks below are the spec.
 
-test('CURRENT: the card reads ENDED from main_round_end_at onward', () => {
-  assert.equal(current(WHEN.beforeClose), 'accepting')
-  assert.equal(current(WHEN.afterClose), 'live')
-  assert.equal(current(WHEN.mainLive), 'live')
-  // ★From here the home page calls the tournament over.
-  assert.equal(current(WHEN.afterMainEnd), 'ended')
-  assert.equal(current(WHEN.duringVote), 'ended') // voting is OPEN
-  assert.equal(current(WHEN.afterVote), 'ended')
-  assert.equal(current(WHEN.afterAwards), 'ended')
+test('C-2: deriveLobbyMode and the canonical machine are the same answer', () => {
+  // The migration in one assertion: the projection IS the rule, for every
+  // sampled instant and both podium states.
+  for (const at of Object.values(WHEN)) {
+    assert.equal(current(at), canonical(at), at)
+  }
+  assert.equal(deriveLobbyMode(row, new Date(WHEN.afterAwards), 3), 'ended')
+  assert.equal(deriveLobbyMode(row, new Date(WHEN.afterAwards), 0), 'live')
 })
 
-test('CURRENT: no podium changes nothing -- the date alone ends the season', () => {
-  // The card cannot tell "announced" from "the announcement date passed", because
-  // it never looks at award_rank. That is the same honesty gap getBannerStage
-  // already closed on Watch.
-  assert.equal(current(WHEN.afterAwards), 'ended')
+test('C-2: the 4d20h window is closed -- the card stays live through the vote', () => {
+  // The defect this whole file was opened for. Same three instants that used to
+  // read 'ended'.
+  for (const at of [WHEN.afterMainEnd, WHEN.duringVote, WHEN.afterVote]) {
+    assert.equal(current(at), 'live', at)
+  }
+})
+
+test('C-2: completed with no podium no longer ends the season', () => {
+  // The honesty rule arrives as a consequence of delegating, not as a feature.
+  const at = new Date(WHEN.afterAwards)
+  assert.equal(deriveLobbyMode({ ...row, status: 'completed' }, at, 0), 'live')
+  assert.equal(deriveLobbyMode({ ...row, status: 'completed' }, at, 3), 'ended')
 })
 
 // ── what the canonical machine says for the same instants ───────────────────
@@ -137,45 +158,86 @@ test('CANONICAL: ended needs an approved podium, not just the awards date', () =
 
 // ── the delta, as arithmetic ────────────────────────────────────────────────
 
-test('★the disagreement is 116 hours = 4 days 20 hours, and that is the floor', () => {
-  const flipsNow = Date.parse(S0.mainRoundEndAt) // current rule ends here
-  const flipsCanonical = Date.parse(S0.awardsAt) // canonical cannot end before here
-  const hours = (flipsCanonical - flipsNow) / 3_600_000
+test('the window that was wrong measured 116 hours = 4 days 20 hours', () => {
+  // Kept after the fix as the size of what was repaired -- the two columns the
+  // old and new rules ended the season at. Not a behaviour assertion any more.
+  const oldEnd = Date.parse(S0.mainRoundEndAt) // the old rule ended here
+  const honestEnd = Date.parse(S0.awardsAt) // the earliest honest end
+  const hours = (honestEnd - oldEnd) / 3_600_000
   assert.equal(hours, 116)
   assert.equal(Math.floor(hours / 24), 4)
   assert.equal(hours % 24, 20)
 
-  // Every hour in between, the two rules disagree -- sampled at both ends and the
-  // middle so the claim is about the interval, not about three lucky points.
-  for (const at of [WHEN.afterMainEnd, WHEN.duringVote, WHEN.afterVote]) {
-    assert.equal(current(at), 'ended', at)
-    assert.equal(canonical(at), 'live', at)
-  }
-
-  // ★FLOOR, not figure: with no podium approved, the disagreement does not end at
-  // the awards instant. It just keeps going.
-  assert.equal(current(WHEN.afterAwards), 'ended')
+  // And the floor, not the figure: with no podium the card stays live past the
+  // awards instant, which is the point.
   assert.equal(canonical(WHEN.afterAwards, 0), 'live')
+  assert.equal(canonical(WHEN.afterAwards, 3), 'ended')
 })
 
 // ── C-3: the countdown target the migration will break ──────────────────────
 
-test('★C-3 trap: today "live" implies main_round_end_at, which stops being true', () => {
-  // countdownTarget is keyed on the MODE. Today 'live' means exactly
-  // "closed, main round not over", so main_round_end_at is always ahead.
-  const live = seasonToLobbyCard(row, new Date(WHEN.mainLive))
-  assert.equal(live.mode, 'live')
-  assert.equal(live.countdownTargetIso, S0.mainRoundEndAt)
-  assert.ok(Date.parse(live.countdownTargetIso!) > Date.parse(WHEN.mainLive))
+test('★C-3: the countdown follows the phase, and never points backwards', () => {
+  // The trap this replaces: 'live' now spans main_live, voting and
+  // awaiting_results, so a mode-keyed lookup would have handed the client
+  // main_round_end_at during the vote -- an instant already in the past.
+  const card = (at: string, winners = 0) => seasonToLobbyCard(row, new Date(at), winners)
+  const target = (at: string, winners = 0) => card(at, winners).countdownTargetIso
 
-  // After the migration 'live' also covers voting and awaiting-results, and the
-  // same lookup would hand the client an instant IN THE PAST -- the countdown
-  // renders '—'. Proof that the target is stale at that point, computed against
-  // the current code so the trap is recorded rather than predicted:
-  assert.ok(Date.parse(S0.mainRoundEndAt) < Date.parse(WHEN.duringVote))
+  assert.equal(target(WHEN.beforeClose), S0.applicationCloseAt) // accepting -> close
+  assert.equal(target(WHEN.afterClose), S0.mainRoundStartAt) // judging  -> reveal
+  assert.equal(target(WHEN.mainLive), S0.mainRoundEndAt) // main_live -> main end
+  assert.equal(target(WHEN.duringVote), S0.voteEndAt) // voting -> vote end
+  assert.equal(target(WHEN.afterVote), S0.awardsAt) // awaiting -> awards
+  assert.equal(target(WHEN.afterAwards, 3), null) // results -> nothing
 
-  // So C-3 is not cosmetic: the target has to be keyed on the PHASE, and a target
-  // already in the past has to become null rather than a countdown to nothing.
+  // ★The case a phase->boundary map gets wrong. Nov 12 01:00 PST is still
+  // 'main_live' (the films are up) but main_round_end_at is already behind us,
+  // and the vote does not open until Nov 13. A per-phase lookup returns the
+  // stale deadline, the past-guard nulls it, and the card goes blank for a day.
+  // The next-scheduled-moment rule counts down to the vote opening instead.
+  assert.equal(card(WHEN.afterMainEnd).phase, 'main_live')
+  assert.ok(Date.parse(S0.mainRoundEndAt) < Date.parse(WHEN.afterMainEnd))
+  assert.equal(target(WHEN.afterMainEnd), S0.voteStartAt)
+  assert.equal(card(WHEN.afterMainEnd).countdownTargetKind, 'vote_start')
+
+  // The kind is what makes a label possible: one mode, four different targets.
+  assert.equal(card(WHEN.mainLive).countdownTargetKind, 'main_round_end')
+  assert.equal(card(WHEN.duringVote).countdownTargetKind, 'vote_end')
+  assert.equal(card(WHEN.afterVote).countdownTargetKind, 'awards')
+  assert.equal(card(WHEN.afterAwards, 3).countdownTargetKind, null)
+
+  // ★No target is ever in the past. This is the assertion that would have caught
+  // the old behaviour, so it is stated over every sampled instant rather than
+  // only where the bug was.
+  for (const at of Object.values(WHEN)) {
+    for (const winners of [0, 3]) {
+      const iso = target(at, winners)
+      if (iso == null) continue
+      assert.ok(Date.parse(iso) > Date.parse(at), `${at} -> ${iso}`)
+    }
+  }
+})
+
+test('★C-3: a past boundary yields no countdown rather than a stuck timer', () => {
+  // awaiting_results with the awards date already gone: there is no future
+  // instant to count to, and "no countdown" is true where a zeroed timer is not.
+  const late = { ...row, awards_announcement_at: S0.voteEndAt }
+  const card = seasonToLobbyCard(late, new Date(WHEN.afterAwards), 0)
+  assert.equal(card.phase, 'awaiting_results')
+  assert.equal(card.mode, 'live')
+  assert.equal(card.countdownTargetIso, null)
+})
+
+test('★C-4 seam: the card carries the phase the mode collapses', () => {
+  // 'live' covers three phases. The copy needs to tell them apart, so the wiring
+  // hands the phase over; the wording is not decided here.
+  const at = (s: string, w = 0) => seasonToLobbyCard(row, new Date(s), w)
+  assert.equal(at(WHEN.mainLive).phase, 'main_live')
+  assert.equal(at(WHEN.duringVote).phase, 'voting')
+  assert.equal(at(WHEN.afterVote).phase, 'awaiting_results')
+  for (const w of [WHEN.mainLive, WHEN.duringVote, WHEN.afterVote]) {
+    assert.equal(at(w).mode, 'live', w) // one mode, three phases
+  }
 })
 
 // ── C-1: the winner tally, and what it exposed ──────────────────────────────
@@ -203,20 +265,16 @@ test('C-1: an empty tally cannot make a card claim a result', () => {
   assert.equal(canonical(WHEN.afterAwards, counts['season_0'] ?? 0), 'live')
 })
 
-test('★C-2 BLOCKER: completed with no podium reads live, and 8 seasons are like that', () => {
-  // ★MEASURED 2026-08-07, not hypothesised. Across the 14 seasons the lobby
-  // renders, award_rank rows total ZERO -- and eight of them carry
-  // status='completed': season_1000..1006 (rehearsal fixtures) and season_test.
+test('the blocker A was for: completed with no podium reads live, and 8 rows were like that', () => {
+  // ★MEASURED 2026-08-07, before C-2 shipped. Across the 14 seasons the lobby
+  // rendered, award_rank rows totalled ZERO -- and eight carried
+  // status='completed': season_1000..1006 and season_test.
   //
   // getSeasonPhase treats status='completed' as authoritative but still asks for
-  // evidence: completed + 0 winners = 'awaiting_results', which toLobbyMode maps
-  // to 'live'. So shipping C-2 today would flip eight finished rehearsal seasons
-  // from ENDED to LIVE on the home page.
-  //
-  // That is the canonical behaving correctly on rows that should not be on the
-  // public lobby at all -- isOfficialPublic filters host_type and drafts, and
-  // nothing filters rehearsal fixtures. Recorded here so C-2 cannot ship without
-  // an answer to it.
+  // evidence: completed + 0 winners = 'awaiting_results' -> 'live'. So C-2 on its
+  // own would have flipped eight finished rehearsals to LIVE on the home page.
+  // A (isRehearsalFixture) shipped first for exactly this reason; the assertion
+  // below is why that ordering was not optional.
   const rehearsal = {
     status: 'completed',
     applicationOpenAt: S0.applicationOpenAt,
@@ -234,12 +292,12 @@ test('★C-2 BLOCKER: completed with no podium reads live, and 8 seasons are lik
   assert.equal(getSeasonPhase(rehearsal, at).phase, 'awaiting_results')
   assert.equal(toLobbyMode(getSeasonPhase(rehearsal, at).phase), 'live')
 
-  // The current rule short-circuits on the status alone, which is why the eight
-  // read ENDED today.
-  assert.equal(deriveLobbyMode({ ...row, status: 'completed' }, at), 'ended')
+  // ...and A is what keeps them off the surface, so the phase above is never
+  // rendered for one of them.
+  assert.equal(isRehearsalFixture({ id: 'season_1000', season_number: 1000 }), true)
 
-  // With a podium the two agree, so this is about missing evidence, not about
-  // the status field.
+  // With a podium it ends, so this is about missing evidence, not the status
+  // field.
   assert.equal(toLobbyMode(getSeasonPhase({ ...rehearsal, winnerCount: 3 }, at).phase), 'ended')
 })
 
@@ -323,17 +381,26 @@ test('★A must land before C-2, and this says why in one assertion', () => {
 
 // ── tripwire ────────────────────────────────────────────────────────────────
 
-test('★TRIPWIRE: the two rules disagree. When they stop, this file is done', () => {
-  // The moment C-2 lands, deriveLobbyMode delegates to the canonical and this
-  // assertion fails. That failure is the SUCCESS signal, and it is deliberate:
-  //
-  //   1. delete the CURRENT blocks above (they describe behaviour that no longer
-  //      exists),
-  //   2. keep the CANONICAL blocks -- they become the spec,
-  //   3. check that C-3 shipped with it, or the card will count down to a past
-  //      instant for 4 of those 5 days.
-  //
-  // A migration that quietly makes a test pass teaches nobody anything. This one
-  // has to be answered.
-  assert.notEqual(current(WHEN.duringVote), canonical(WHEN.duringVote))
+// ── tripwire: ANSWERED 2026-08-07 ───────────────────────────────────────────
+//
+// It fired when C-2 landed, exactly as designed, and demanded three things:
+//   1. delete the CURRENT blocks -- done, with a note where they stood.
+//   2. keep the CANONICAL blocks as the spec -- done, they are unchanged.
+//   3. confirm C-3 shipped with it -- done, and it is now asserted rather than
+//      confirmed by hand (see the two C-3 tests above).
+//
+// What replaces it is the inverse claim: the two must now AGREE, everywhere. The
+// old tripwire guarded a migration that had not happened; this one guards the
+// one thing that could quietly undo it -- someone reintroducing a second rule.
+
+test('★the lobby has exactly one rule for where a season is', () => {
+  for (const at of Object.values(WHEN)) {
+    for (const winners of [0, 3]) {
+      assert.equal(
+        deriveLobbyMode(row, new Date(at), winners),
+        toLobbyMode(getSeasonPhase(phaseInput(winners), new Date(at)).phase),
+        `${at} winners=${winners}`,
+      )
+    }
+  }
 })

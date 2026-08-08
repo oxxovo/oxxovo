@@ -9,6 +9,7 @@
 // getCurrentSeason.
 
 import { supabase } from './supabase'
+import { getSeasonPhase, toLobbyMode, type SeasonPhase } from './season-phase'
 
 export type LobbyMode = 'upcoming' | 'accepting' | 'live' | 'ended'
 
@@ -20,9 +21,29 @@ export type LobbyCard = {
   prizePool: number
   prizeFirst: number
   mode: LobbyMode
-  // ISO target the client counts down to for this mode (null = no countdown).
+  // The next scheduled public moment, or null when none is ahead. See
+  // countdownTarget -- this is NOT keyed on the mode any more.
   countdownTargetIso: string | null
+  /**
+   * ★Which boundary countdownTargetIso is, so the label can be true. 'live'
+   * alone cannot say it: inside that one mode the target moves from the
+   * main-round deadline to the vote opening to the vote closing to the awards.
+   * null exactly when countdownTargetIso is null. Wording is not decided here.
+   */
+  countdownTargetKind: CountdownKind | null
   lobbyFeatured: boolean
+  /**
+   * ★C-4 seam. `mode` collapses main_live / voting / awaiting_results into one
+   * 'live', so a card cannot tell "voting is open" from "voting closed, waiting
+   * on the podium" -- and the badge and countdown label need that distinction.
+   * The phase is carried so the copy can be written against it. Wording is not
+   * decided here.
+   *
+   * ★Caveat for whoever writes that copy: finalistCount is not fetched (it
+   * cannot change the mode or the target), so this never reports
+   * 'finalists_pending' -- that interval arrives as 'judging'.
+   */
+  phase: SeasonPhase
 }
 
 type SeasonRow = {
@@ -41,6 +62,10 @@ type SeasonRow = {
   application_close_at: string | null
   main_round_start_at: string | null
   main_round_end_at: string | null
+  // Added for C-2: the canonical machine needs the vote window to tell 'voting'
+  // from 'main_live' and 'awaiting_results'. The old date rule never looked.
+  community_vote_start_at: string | null
+  community_vote_end_at: string | null
   awards_announcement_at: string | null
 }
 
@@ -109,45 +134,103 @@ export async function fetchWinnerCounts(seasonIds: string[]): Promise<Record<str
   }
 }
 
-// Server-authoritative mode from the schedule. Boundaries:
-//   no open date set                   -> upcoming  (teaser / "COMING SOON")
-//   now < open                         -> upcoming
-//   open <= now < close                -> accepting
-//   close <= now < mainEnd/awards      -> live  (applications closed; scoring + main round)
-//   now >= mainEnd/awards | completed  -> ended
+// ─── C-2: the lobby stops deciding, and reads the canonical machine ─────────
 //
-// A season with NO application_open_at is a teaser ("coming soon", date TBD), NOT
-// an open one — defaulting a dateless season to 'accepting' would falsely show it
-// as OPEN with an Apply CTA. Only a season whose open date has actually passed
-// (and isn't past close) is 'accepting'.
-export function deriveLobbyMode(s: SeasonRow, now: Date): LobbyMode {
-  const t = now.getTime()
-  const open = ms(s.application_open_at)
-  const close = ms(s.application_close_at)
-  const mainEnd = ms(s.main_round_end_at)
-  const awards = ms(s.awards_announcement_at)
-  const endish = mainEnd ?? awards
+// ★WHAT WAS WRONG. The old rule ended a season at `main_round_end_at ?? awards`.
+// For season_0 that is 2026-11-12 00:00 PST, while the earliest honest end is
+// 2026-11-16 20:00 PST -- 116 hours, 4 days 20 hours, during which the home card
+// read ENDED and greyed itself out while the main-round films were showing and
+// community voting was open. And that is the FLOOR: 'ended' now also needs an
+// approved podium, so a late award_rank used to be invisible here and is not.
+//
+// Two behaviour changes ride along, both deliberate:
+//   1. status='completed' with zero winners is no longer 'ended'. The date
+//      passing is not the announcement; award_rank is a manual admin approval.
+//      getBannerStage has applied that rule on Watch for a while -- the lobby was
+//      the surface still willing to declare a winner nobody approved.
+//   2. the vote window is read at all. The old rule had no idea it existed.
+//
+// The old function keeps its name and stays exported: it is now a projection of
+// the canonical phase, so there is exactly one place that answers "where is this
+// season". Deleting it is a later commit, per the migration rule.
 
-  if (s.status === 'completed') return 'ended'
-  if (endish != null && t >= endish) return 'ended'
-  if (open == null) return 'upcoming' // teaser: announced, open date not set yet
-  if (t < open) return 'upcoming'
-  if (close != null && t >= close) return 'live'
-  // open<=now<close
-  return 'accepting'
+function phaseOf(s: SeasonRow, now: Date, winnerCount: number): SeasonPhase {
+  return getSeasonPhase(
+    {
+      status: s.status,
+      applicationOpenAt: s.application_open_at,
+      applicationCloseAt: s.application_close_at,
+      // Sub-phase only (isProcessingBuffer), which no card reads.
+      scoringStartAt: null,
+      mainRoundStartAt: s.main_round_start_at,
+      mainRoundEndAt: s.main_round_end_at,
+      voteStartAt: s.community_vote_start_at,
+      voteEndAt: s.community_vote_end_at,
+      awardsAt: s.awards_announcement_at,
+      // Not fetched, and it cannot change either output: 'finalists_pending',
+      // 'judging' and 'main_live' all map to 'live' AND to the same countdown
+      // target. One query instead of two, and the reason is written down.
+      finalistCount: 0,
+      winnerCount,
+    },
+    now,
+  ).phase
 }
 
-function countdownTarget(s: SeasonRow, mode: LobbyMode): string | null {
-  switch (mode) {
-    case 'upcoming':
-      return s.application_open_at
-    case 'accepting':
-      return s.application_close_at
-    case 'live':
-      return s.main_round_end_at
-    default:
-      return null
+export function deriveLobbyMode(s: SeasonRow, now: Date, winnerCount: number = 0): LobbyMode {
+  return toLobbyMode(phaseOf(s, now, winnerCount))
+}
+
+// ─── C-3: the countdown follows the phase, never the mode ───────────────────
+//
+// ★WHY THIS HAD TO SHIP WITH C-2, not after. The old target was keyed on the
+// MODE, and 'live' used to mean exactly "closed, main round not over", so
+// main_round_end_at was always ahead of now. C-2 stretches 'live' across voting
+// and awaiting-results, and the same lookup would hand the client an instant in
+// the PAST -- the widget renders an em dash. For season_0 that is 4 of those 5
+// days. lib/lobby.test.ts proved that against the old code before the change.
+//
+// ★A past target becomes null rather than a countdown to nothing. "No countdown"
+// is a true statement; a timer stuck at zero is not.
+//
+// ★AND IT IS NOT A PER-PHASE LOOKUP, for a reason the first draft got wrong. A
+// phase does not always have exactly one boundary ahead of it: season_0 spends
+// 2026-11-12 00:00 -> 11-13 00:00 in 'main_live' with main_round_end_at ALREADY
+// PAST (the films stay up, voting has not opened). A phase->boundary map returns
+// the stale instant there, the past-guard nulls it, and the card shows nothing
+// for a day when it could be counting down to the vote opening. So the rule is
+// the simpler and more honest one: THE NEXT SCHEDULED PUBLIC MOMENT, whichever
+// it is. Missing boundaries are skipped, and when none is ahead there is no
+// countdown -- which is exactly right for 'results'.
+export type CountdownKind =
+  | 'application_open'
+  | 'application_close'
+  | 'main_round_start'
+  | 'main_round_end'
+  | 'vote_start'
+  | 'vote_end'
+  | 'awards'
+
+function countdownTarget(
+  s: SeasonRow,
+  now: Date,
+): { iso: string; kind: CountdownKind } | null {
+  // Chronological by construction -- the schedule's own order.
+  const schedule: [CountdownKind, string | null][] = [
+    ['application_open', s.application_open_at],
+    ['application_close', s.application_close_at],
+    ['main_round_start', s.main_round_start_at],
+    ['main_round_end', s.main_round_end_at],
+    ['vote_start', s.community_vote_start_at],
+    ['vote_end', s.community_vote_end_at],
+    ['awards', s.awards_announcement_at],
+  ]
+  const t = now.getTime()
+  for (const [kind, iso] of schedule) {
+    const at = ms(iso)
+    if (at != null && at > t) return { iso: iso as string, kind }
   }
+  return null
 }
 
 // ─── rehearsal fixtures must not appear on a public surface ─────────────────
@@ -248,9 +331,11 @@ export function seasonToLobbyCard(
   now: Date = new Date(),
   winnerCount: number = 0,
 ): LobbyCard {
-  void winnerCount // consumed by toLobbyMode in C-2
-  const mode = deriveLobbyMode(s, now)
+  const phase = phaseOf(s, now, winnerCount)
+  const mode = toLobbyMode(phase)
+  const countdown = countdownTarget(s, now)
   return {
+    phase,
     id: s.id,
     displayName: s.display_name || s.name,
     theme: s.season_theme,
@@ -258,7 +343,8 @@ export function seasonToLobbyCard(
     prizePool: Number(s.total_prize_pool ?? 0),
     prizeFirst: Number(s.prize_first ?? 0),
     mode,
-    countdownTargetIso: countdownTarget(s, mode),
+    countdownTargetIso: countdown?.iso ?? null,
+    countdownTargetKind: countdown?.kind ?? null,
     lobbyFeatured: !!s.lobby_featured,
   }
 }
@@ -267,7 +353,7 @@ export async function getLobbyTournaments(now: Date = new Date()): Promise<Lobby
   const { data, error } = await supabase
     .from('seasons_public')
     .select(
-      'id, name, display_name, season_number, status, season_theme, poster_url, lobby_featured, host_type, total_prize_pool, prize_first, application_open_at, application_close_at, main_round_start_at, main_round_end_at, awards_announcement_at',
+      'id, name, display_name, season_number, status, season_theme, poster_url, lobby_featured, host_type, total_prize_pool, prize_first, application_open_at, application_close_at, main_round_start_at, main_round_end_at, community_vote_start_at, community_vote_end_at, awards_announcement_at',
     )
   if (error) {
     console.error('[lobby] failed to load seasons:', error.message)

@@ -9,6 +9,8 @@ import { LobbyCardView } from '@/app/_components/LobbySection'
 import { type LobbyCard } from '@/lib/lobby'
 
 // Far-future ISO targets so the countdowns always show a value in the preview.
+// ★phase is set per card because 'live' covers three of them -- the demo picks
+// 'voting' so the C-4 copy work has the ambiguous case on screen to look at.
 const DEMO: LobbyCard[] = [
   {
     id: 'demo-upcoming',
@@ -18,6 +20,8 @@ const DEMO: LobbyCard[] = [
     prizePool: 2000,
     prizeFirst: 1200,
     mode: 'upcoming',
+    phase: 'upcoming',
+    countdownTargetKind: 'application_open',
     countdownTargetIso: '2026-12-01T00:00:00Z',
     lobbyFeatured: true,
   },
@@ -29,6 +33,8 @@ const DEMO: LobbyCard[] = [
     prizePool: 5000,
     prizeFirst: 3000,
     mode: 'accepting',
+    phase: 'accepting',
+    countdownTargetKind: 'application_close',
     countdownTargetIso: '2026-09-15T00:00:00Z',
     lobbyFeatured: false,
   },
@@ -40,6 +46,8 @@ const DEMO: LobbyCard[] = [
     prizePool: 10000,
     prizeFirst: 6000,
     mode: 'live',
+    phase: 'voting',
+    countdownTargetKind: 'vote_end',
     countdownTargetIso: '2026-10-01T00:00:00Z',
     lobbyFeatured: false,
   },
@@ -51,6 +59,8 @@ const DEMO: LobbyCard[] = [
     prizePool: 3000,
     prizeFirst: 1800,
     mode: 'ended',
+    phase: 'results',
+    countdownTargetKind: null,
     countdownTargetIso: null,
     lobbyFeatured: false,
   },
