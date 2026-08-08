@@ -30,7 +30,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { deriveLobbyMode, isRehearsalFixture, seasonToLobbyCard, tallyWinnerCounts } from './lobby'
+import { isRehearsalFixture, seasonToLobbyCard, tallyWinnerCounts } from './lobby'
 import { getSeasonPhase, toLobbyMode } from './season-phase'
 
 // ── the live row, written out ───────────────────────────────────────────────
@@ -93,7 +93,11 @@ const phaseInput = (winnerCount: number) => ({
 
 const canonical = (at: string, winnerCount = 0) =>
   toLobbyMode(getSeasonPhase(phaseInput(winnerCount), new Date(at)).phase)
-const current = (at: string) => deriveLobbyMode(row, new Date(at))
+// ★Goes through the CARD, not through a helper. deriveLobbyMode is gone (C-2
+// follow-up): the only way to ask "what does the lobby say" is now to build the
+// thing the lobby actually renders, which is also what the page does.
+const current = (at: string, winnerCount = 0) =>
+  seasonToLobbyCard(row, new Date(at), winnerCount).mode
 
 // Sample instants, one per meaningful segment of season_0's calendar.
 const WHEN = {
@@ -106,23 +110,29 @@ const WHEN = {
   afterAwards: '2026-11-17T05:00:00.000Z', // Nov 16 21:00 PST -- past the awards instant
 }
 
-// ── C-2 LANDED. The "CURRENT" blocks that used to live here are gone ────────
+// ── C-2 LANDED, and deriveLobbyMode has now been REMOVED ────────────────────
 //
-// They pinned deriveLobbyMode's own date rule: ENDED from main_round_end_at
-// onward, and status='completed' ending a season with no podium. That behaviour
-// no longer exists -- deriveLobbyMode is a projection of getSeasonPhase now --
-// so keeping the assertions would have meant asserting against the same function
-// twice and calling it agreement. Deleted, as the tripwire demanded. The history
-// is in the commit that added them; the CANONICAL blocks below are the spec.
+// Two deletions, one commit apart, both deliberate.
+//
+// The "CURRENT" blocks pinned deriveLobbyMode's own date rule: ENDED from
+// main_round_end_at onward, and status='completed' ending a season with no
+// podium. Once the function delegated, asserting them meant asserting a function
+// against itself and calling it agreement. Deleted when the tripwire fired.
+//
+// Then the function itself: after C-2 it was a one-line projection with zero
+// production callers (the card builder computes the phase directly). Keeping a
+// named alternative route to the same answer is exactly the second-rule shape
+// this whole stage existed to remove. The tests below reach the answer the way
+// the page does -- through the card.
 
-test('C-2: deriveLobbyMode and the canonical machine are the same answer', () => {
-  // The migration in one assertion: the projection IS the rule, for every
+test('C-2: the card and the canonical machine are the same answer', () => {
+  // The migration in one assertion: the card IS the projection, for every
   // sampled instant and both podium states.
   for (const at of Object.values(WHEN)) {
     assert.equal(current(at), canonical(at), at)
   }
-  assert.equal(deriveLobbyMode(row, new Date(WHEN.afterAwards), 3), 'ended')
-  assert.equal(deriveLobbyMode(row, new Date(WHEN.afterAwards), 0), 'live')
+  assert.equal(current(WHEN.afterAwards, 3), 'ended')
+  assert.equal(current(WHEN.afterAwards, 0), 'live')
 })
 
 test('C-2: the 4d20h window is closed -- the card stays live through the vote', () => {
@@ -135,9 +145,10 @@ test('C-2: the 4d20h window is closed -- the card stays live through the vote', 
 
 test('C-2: completed with no podium no longer ends the season', () => {
   // The honesty rule arrives as a consequence of delegating, not as a feature.
+  const done = { ...row, status: 'completed' }
   const at = new Date(WHEN.afterAwards)
-  assert.equal(deriveLobbyMode({ ...row, status: 'completed' }, at, 0), 'live')
-  assert.equal(deriveLobbyMode({ ...row, status: 'completed' }, at, 3), 'ended')
+  assert.equal(seasonToLobbyCard(done, at, 0).mode, 'live')
+  assert.equal(seasonToLobbyCard(done, at, 3).mode, 'ended')
 })
 
 // ── what the canonical machine says for the same instants ───────────────────
@@ -397,7 +408,7 @@ test('★the lobby has exactly one rule for where a season is', () => {
   for (const at of Object.values(WHEN)) {
     for (const winners of [0, 3]) {
       assert.equal(
-        deriveLobbyMode(row, new Date(at), winners),
+        seasonToLobbyCard(row, new Date(at), winners).mode,
         toLobbyMode(getSeasonPhase(phaseInput(winners), new Date(at)).phase),
         `${at} winners=${winners}`,
       )

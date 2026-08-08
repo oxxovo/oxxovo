@@ -98,8 +98,8 @@ export type ComposeEditorProps = {
   // the music panel entirely (createRender also rejects music with music_disabled).
   musicEnabled?: boolean
   // AI music generation (Stage 6). aiEnabled=false -> the editor shows the library
-  // picker only (no generate UI), so a half-wired button never appears while
-  // Beatoven is not live. creditCost = whole credits per generation; promptMax =
+  // picker only (no generate UI), so a half-wired button never appears while no
+  // provider is live. creditCost = whole credits per generation; promptMax =
   // the prompt char cap. onGenerateMusic/pollMusic are omitted in the demo.
   musicAiEnabled?: boolean
   musicCreditCost?: number

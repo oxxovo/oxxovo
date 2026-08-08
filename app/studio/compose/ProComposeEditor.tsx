@@ -1714,7 +1714,8 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                     )
                   })()}
                   {/* AI generation (Stage 6) -- shown only when the season's AI-music
-                      switch is on, so no half-wired generate UI appears before Beatoven. */}
+                      switch is on. Season 0 ships library-only, so this stays unrendered
+                      and no half-wired generate UI appears without a provider. */}
                   {props.musicAiEnabled && props.onGenerateMusic && (
                     <div className="mt-3 space-y-2 rounded-lg border border-[#8b22ff]/20 bg-[#8b22ff]/[.04] p-2.5">
                       <p className="text-[11px] font-semibold text-[#b66cff]">{t.music_ai_title}</p>

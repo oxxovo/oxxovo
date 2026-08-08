@@ -10,10 +10,12 @@
 //   library picker  = master
 //   AI generation   = master AND ai
 //
-// master ON + ai OFF is a real operating state, not a leftover: it is the
-// pre-generated-library fallback. OXXOVO generates the beds on its own account
-// and participants only pick, so no API access is passed through to a third
-// party (ElevenLabs Music API Terms 3.A). Do not collapse the two.
+// ★master ON + ai OFF is not a fallback any more -- it is SEASON 0's shipping
+// configuration. TK settled it 2026-08-07 (plan B, library only): season 0 does
+// not turn participant-facing AI generation on at all. OXXOVO pre-generates the
+// beds on its own account and participants pick from them, so no API access is
+// passed through to a third party. Do not collapse the two switches: season 1
+// may open generation, and the day it does the gate must already be two.
 //
 // FAIL-CLOSED is the whole point, exactly like lib/watch-scores.ts. Every
 // failure mode -- column not migrated yet, query error, unknown season, null --
@@ -22,7 +24,11 @@
 //   UPDATE seasons SET studio_music_enabled = true WHERE id = 'season_0';           -- library only
 //   UPDATE seasons SET studio_music_enabled = true, studio_music_ai_enabled = true  -- + AI
 //     WHERE id = 'season_0';
-// The ON signal comes from head office, after the ElevenLabs written reply.
+// ★The second line is NOT for season 0. An earlier version of this comment said
+// the AI signal was waiting on a written reply from ElevenLabs; that vendor was
+// dropped and the question was closed by decision, not by an answer arriving.
+// Leaving it as "pending" would have kept a settled item on a waiting list --
+// which is how a closed decision gets re-litigated a month later.
 
 import 'server-only'
 import { createSupabaseAdmin } from './supabase-admin'

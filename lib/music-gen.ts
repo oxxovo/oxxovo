@@ -10,13 +10,16 @@
 //   5. finalize -- worker downloads the audio, uploads R2, then this signs (v1m) + ready
 //   6. refund  -- provider fails/times out -> refund the charge, mark asset 'failed'
 //
-// The provider (Beatoven.ai) API shape/pricing is NOT asserted here -- it is a
-// pure interface (MusicProvider) so the actual HTTP call slots in once TK confirms
-// it (실측), exactly as we deferred fal concurrency. getMusicProvider() returns a
-// stub that refuses until then, so nothing silently pretends to generate.
+// ★NO VENDOR IS NAMED HERE, and that is the current state rather than an
+// omission. Two were considered and both are gone -- Beatoven (shape never
+// confirmed), then ElevenLabs (dropped) -- and on 2026-08-07 TK settled season 0
+// on plan B: LIBRARY ONLY, no participant-facing AI generation. So this file is
+// a seam kept for a later season, not a task waiting on a reply.
+// getMusicProvider() returns a stub that REFUSES, so nothing can silently pretend
+// to generate while that is true.
 //
 // -------------------------------------------------------------------------
-// WORKER CONTRACT (oxxovo-studio, mirror repo -- next task, after Beatoven 실측):
+// WORKER CONTRACT (oxxovo-studio, mirror repo -- unbuilt, and not season 0 work):
 //   poll studio_music_assets WHERE status='queued' AND source='ai'
 //     -> markMusicGenerating(id)
 //     -> provider.generate({ prompt, durationSeconds, assetId })
@@ -41,8 +44,8 @@ import {
 } from '@/lib/music-limits'
 
 // ===========================================================================
-// Provider interface -- the Beatoven boundary. The API shape is deferred (실측),
-// so the caller only knows: given a prompt + duration, eventually get audio bytes.
+// Provider interface -- the vendor boundary, deliberately vendor-free. The caller
+// only knows: given a prompt + duration, eventually get audio bytes.
 // The provider owns whatever sync/async/polling the real API needs.
 // ===========================================================================
 
@@ -65,8 +68,9 @@ export interface MusicProvider {
   generate(params: MusicGenParams): Promise<MusicGenOutput>
 }
 
-// Placeholder until Beatoven's API is confirmed. Refuses so a mis-config never
-// silently "succeeds" with empty audio.
+// The only implementation there is. Refuses, so a mis-config can never silently
+// "succeed" with empty audio -- and with season 0 on library-only, refusing IS
+// the correct behaviour rather than a temporary state.
 export const stubMusicProvider: MusicProvider = {
   id: 'stub',
   async generate(): Promise<MusicGenOutput> {
@@ -74,8 +78,8 @@ export const stubMusicProvider: MusicProvider = {
   },
 }
 
-// Factory. The Beatoven impl slots in here (switch on STUDIO_MUSIC_PROVIDER)
-// once its request/response shape + auth are confirmed. Stub until then.
+// Factory. A real impl would slot in here (switch on STUDIO_MUSIC_PROVIDER) if a
+// later season opens AI generation. There is no vendor selected today.
 export function getMusicProvider(): MusicProvider {
   // e.g. if (process.env.STUDIO_MUSIC_PROVIDER === 'beatoven') return beatovenProvider()
   return stubMusicProvider

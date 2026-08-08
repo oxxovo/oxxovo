@@ -150,9 +150,11 @@ export async function fetchWinnerCounts(seasonIds: string[]): Promise<Record<str
 //      the surface still willing to declare a winner nobody approved.
 //   2. the vote window is read at all. The old rule had no idea it existed.
 //
-// The old function keeps its name and stays exported: it is now a projection of
-// the canonical phase, so there is exactly one place that answers "where is this
-// season". Deleting it is a later commit, per the migration rule.
+// ★deriveLobbyMode is GONE. It delegated for one commit -- the migration rule --
+// and then had zero production callers, because the card builder resolves the
+// phase directly. Keeping a named second route to the same answer is the exact
+// shape this stage existed to remove: two entry points drift, and the one that
+// drifts is always the one nobody is looking at.
 
 function phaseOf(s: SeasonRow, now: Date, winnerCount: number): SeasonPhase {
   return getSeasonPhase(
@@ -177,9 +179,6 @@ function phaseOf(s: SeasonRow, now: Date, winnerCount: number): SeasonPhase {
   ).phase
 }
 
-export function deriveLobbyMode(s: SeasonRow, now: Date, winnerCount: number = 0): LobbyMode {
-  return toLobbyMode(phaseOf(s, now, winnerCount))
-}
 
 // ─── C-3: the countdown follows the phase, never the mode ───────────────────
 //
@@ -325,7 +324,7 @@ function isOfficialPublic(s: SeasonRow): boolean {
 // caller that does not know cannot be allowed to announce a result. Both call
 // sites pass a real count anyway; the default exists because `now` is optional
 // and TypeScript will not take a required parameter after an optional one.
-// (Inert today: deriveLobbyMode does not read it yet.)
+// (Live since C-2: it decides whether the card may say a season is over.)
 export function seasonToLobbyCard(
   s: SeasonRow,
   now: Date = new Date(),

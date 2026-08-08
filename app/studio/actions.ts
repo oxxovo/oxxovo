@@ -273,9 +273,10 @@ export type CreateMusicGenResult =
 
 // Enqueue an AI music bed. Gate + prompt guard + imitation block + moderation +
 // credit charge all live in createMusicGeneration; the worker (oxxovo-studio)
-// generates via the provider and finalizes/refunds. Provider is stubbed until
-// Beatoven is confirmed, so this returns music_ai_disabled while the config
-// switch stays off.
+// generates via the provider and finalizes/refunds. ★Season 0 ships library-only
+// (TK 2026-08-07), so the season switch stays off and this returns
+// music_ai_disabled -- and the provider is a refusing stub behind it, which means
+// the path is closed by two independent things rather than one.
 export async function generateMusicAction(
   token: string,
   input: { prompt: string; durationSeconds: number },
