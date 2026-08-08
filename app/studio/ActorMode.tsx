@@ -89,6 +89,9 @@ const DICT = {
     err_duration: '길이 합계가 모델 허용 범위를 벗어났습니다.',
     err_i2v: '영상 생성 실패',
     err_not_i2v: '이 모델은 배우 샷 촬영을 지원하지 않습니다. 다른 모델을 선택하세요.',
+    // ★Says what to DO, not that something failed -- nothing was generated and
+    // nothing was charged, and the participant can fix it in one step.
+    err_no_reference: '이 배우에는 참조 컷이 없어 샷 촬영을 할 수 없습니다. ② 내 배우에서 참조 컷을 1장 이상 추가해 주세요. (크레딧은 차감되지 않았습니다.)',
     err_insufficient: '크레딧이 부족합니다.',
     err_generic: '생성 실패',
     // status
@@ -153,6 +156,7 @@ const DICT = {
     err_duration: 'Total length is outside the model range.',
     err_i2v: 'Video generation failed',
     err_not_i2v: 'This model cannot shoot actor shots. Pick another model.',
+    err_no_reference: 'This actor has no reference cut, so shots cannot be shot from it. Add at least one reference cut in ② My actors. (You have not been charged.)',
     err_insufficient: 'Not enough credits.',
     err_generic: 'Generation failed',
     st_queued: 'Queued', st_generating: 'Generating', st_uploading: 'Uploading', st_ready: 'Ready', st_failed: 'Failed',
@@ -634,6 +638,9 @@ function Shots({
       // reporting it as a generation failure, because nothing was generated.
       case 'not_i2v_model':
       case 'not_video_model': return t.err_not_i2v
+      // Refused before any charge (fal would 422 on an empty reference list), so
+      // this must not fall through to "generation failed".
+      case 'character_no_reference': return t.err_no_reference
       default: return t.err_i2v
     }
   }

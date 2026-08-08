@@ -27,6 +27,7 @@
     "test:hold": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/prelim-hold.mjs",
     "test:tamper": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/tamper-compose.mjs",
     "test:theme-leak": "node scripts/theme-leak-check.mjs",
+    "test:i2v-ref-guard": "node --env-file=.env.local --import ./scripts/test-register.mjs e2e/i2v-reference-guard.mjs",
     "r2:orphans": "node --env-file=.env.local --env-file=../oxxovo-studio/.env scripts/r2-orphan-sweep.mjs",
     "deploy:prod": "node scripts/deploy-prod.mjs"
   },

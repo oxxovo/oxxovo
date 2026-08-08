@@ -231,7 +231,7 @@ export type CreateGenResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'unknown_preset' | 'invalid_param' | 'disabled' | 'failed' | 'not_image_model' | 'not_video_model' | 'not_i2v_model' | 'character_not_found' | 'parent_not_found' | 'parent_not_ready' | 'parent_not_image' | 'bad_shots'
+      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'unknown_preset' | 'invalid_param' | 'disabled' | 'failed' | 'not_image_model' | 'not_video_model' | 'not_i2v_model' | 'character_not_found' | 'character_no_reference' | 'parent_not_found' | 'parent_not_ready' | 'parent_not_image' | 'bad_shots'
       detail?: string
     }
 

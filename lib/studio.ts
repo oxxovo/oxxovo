@@ -461,6 +461,11 @@ export type CreateGenerationResult =
         // "wrong medium", this one says "right medium, wrong capability".
         | 'not_i2v_model'
         | 'character_not_found'
+        // ★The actor exists but carries no reference angle, so elements[] would go
+        // out with reference_image_urls: []. Measured to be a guaranteed fal 422 --
+        // see createI2vGeneration. Distinct from 'character_not_found' because the
+        // actor IS there and the participant can fix this (add a reference cut).
+        | 'character_no_reference'
         | 'parent_not_found'
         | 'parent_not_ready'
         | 'parent_not_image'
@@ -968,6 +973,22 @@ export async function createI2vGeneration(args: {
   if (cErr) return { ok: false, reason: 'failed', detail: cErr.message }
   if (!charRow || !charRow.frontal_image_job_id) return { ok: false, reason: 'character_not_found' }
   const refIds = ((charRow.reference_image_job_ids as string[] | null) ?? []) as string[]
+  // ★REFUSE FOR FREE WHAT fal WILL REFUSE FOR MONEY. With no reference angle the
+  // i2vInput below sends `elements[0].reference_image_urls: []`, and fal's schema
+  // documents that field as "1-3 images supported". Measured 2026-08-07 against two
+  // real calls that differ in nothing else: job 649ed536 sent [] and came back
+  // Unprocessable Entity; dd118b00, 44 minutes later with the SAME 3x5s shots and
+  // references attached, came back ready. So without this the participant is
+  // charged, the worker fails the job, refundFailedJob gives the credits back, and
+  // they are told "generation failed" for a request that could never have worked --
+  // a charge-fail-refund roundtrip plus a misleading message.
+  // ★The UI does not prevent it: registering an actor asks for a frontal and calls
+  // extra reference cuts optional (ActorMode `pick_refs`), which is correct for the
+  // character library and wrong as an i2v precondition. Fixing the copy there is a
+  // separate decision; refusing here is the server half either way.
+  if (refIds.length === 0) {
+    return { ok: false, reason: 'character_no_reference', detail: 'i2v needs >=1 reference image (fal: 1-3 supported)' }
+  }
   const parentIds = [...new Set([charRow.frontal_image_job_id as string, ...refIds])]
 
   const loaded = await loadOwnedReadyImages(admin, parentIds, args.userId, args.seasonId)
