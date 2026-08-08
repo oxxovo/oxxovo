@@ -90,7 +90,14 @@ const DICT = {
     preset_clear: '해제',
     preset_group_action: '액션',
     preset_group_drama: '드라마',
-    preset_group_beauty: '뷰티/제품',
+    // ★A MOOD, NOT A PRODUCT CATEGORY. This pill used to read '뷰티/제품' --
+    // an industry/product-category word on the participant's screen, which is
+    // exactly what the main-round theme must not be leaked by. Its two siblings
+    // are moods ('액션'/'드라마'), so the odd one out was also the leaky one.
+    // The DB key stays `group_id='beauty'` (internal, never rendered); only the
+    // label moved. Keep this a mood or a camera behaviour -- never a product
+    // type, an industry, or "광고"/"CF".
+    preset_group_beauty: '엘레강스',
     preset_labels: {
       A1: 'FPV 체이스', A2: '휩팬 리빌', A3: '아크 오빗',
       D1: '슬로우 푸시인', D2: '핸드헬드 긴장',
@@ -216,7 +223,7 @@ const DICT = {
     preset_clear: 'Clear',
     preset_group_action: 'Action',
     preset_group_drama: 'Drama',
-    preset_group_beauty: 'Beauty/Product',
+    preset_group_beauty: 'Elegant', // mood, not a product category -- see the KO note
     preset_labels: {} as Record<string, string>, // en falls back to DB label_en
     preset_example_badge: 'Example',
     preset_example_note:

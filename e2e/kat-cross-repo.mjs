@@ -86,16 +86,36 @@ const v1Edl = [
   { jobId: 'clipA', startMs: 0, endMs: 5000 },
   { jobId: 'clipB', startMs: 250, endMs: 7250 },
 ]
+// ★FIELD NAMES ARE THE TEST HERE. Fixed 2026-08-07: FOUR of this fixture's seven
+// canonical sections were hollow because the field names were invented rather than
+// taken from the types, and a hollow section is INVISIBLE in a mirror test -- both
+// repos serialise the same `NaN`, so `same()` was comparing NaN to NaN and passing.
+// Measured before the fix, this object canonicalised to:
+//
+//   clipA:0:5000;spd=1250;fit=cover        <- no `fx=`: `brightness` is not an
+//                                             EffectParams key and contrast -0.05
+//                                             rounds to 0 (= neutral = dropped)
+//   G:                                     <- empty: `grade` is not a key either
+//   TX:...:center:NaN:NaN:0:2000:0:0        <- `x`/`y`; the fields are xNorm/yNorm
+//   MU:lib_elegant_01::NaN:NaN:0:0:500:800 <- no `source`; no volume/clipVolume
+//
+// So this harness verified the version, ids, trims, speed, fit, transitions and
+// aspect -- and verified NOTHING about effects, global grade, text position or the
+// music bed, which are four of the things it exists to protect. Every value below
+// is now a real field of a real type, and every one of them is deliberately
+// DIFFERENT from the per-repo unit KAT samples (see the note above): a shared
+// golden cannot reveal that the two repos' own samples drifted, but a shared INPUT
+// can, and that only works if the input actually reaches the code.
 const v2Edl = {
   segments: [
-    { jobId: 'clipA', startMs: 0, endMs: 5000, speed: 1.25, effects: { brightness: 0.1, contrast: -0.05 }, fit: 'cover' },
+    { jobId: 'clipA', startMs: 0, endMs: 5000, speed: 1.25, effects: { exposure: 12, contrast: -6 }, fit: 'cover' },
     { jobId: 'clipB', startMs: 250, endMs: 7250 },
   ],
   transitions: [{ afterIndex: 0, type: 'dissolve', durationMs: 500 }],
-  global: { grade: 'warm' },
+  global: { temperature: 7, saturation: -4 },
   aspect: '9:16',
-  texts: [{ content: 'OXXOVO', startMs: 0, endMs: 2000, x: 0.5, y: 0.1, sizePct: 8, color: '#ffffff', font: 'inter', align: 'center' }],
-  music: { assetId: 'lib_elegant_01', gain: 0.6, startMs: 0, fadeInMs: 500, fadeOutMs: 800 },
+  texts: [{ content: 'OXXOVO', startMs: 0, endMs: 2000, xNorm: 0.5, yNorm: 0.1, sizePct: 8, color: '#ffffff', font: 'inter', align: 'center' }],
+  music: { assetId: 'lib_elegant_01', source: 'library', volume: 60, clipVolume: 35, startMs: 250, endMs: 4800, fadeInMs: 400, fadeOutMs: 700 },
 }
 
 // ── 1. pure canonicalisation + hashing (no secret involved) ─────────────────

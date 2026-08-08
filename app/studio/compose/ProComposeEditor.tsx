@@ -205,7 +205,12 @@ const DICT = {
     music_wysiwyg: '미리보기에서 들리는 그대로 최종본에 들어갑니다.',
     // --- AI music generation (Stage 6) ---
     music_ai_title: 'AI로 음악 생성',
-    music_ai_ph: '분위기를 설명하세요 (예: 밝고 경쾌한 일렉트로팝, 화장품 광고). 특정 가수·곡을 흉내내는 요청은 거절됩니다.',
+    // ★GENRE AND MOOD ONLY. This example used to end in '화장품 광고' -- a
+    // product category on the participant's screen, which is the one thing the
+    // main-round theme must not leak through. Never name a product type, an
+    // industry, '광고'/'CF', or a brand here; two genre/mood examples do the same
+    // job of showing what a usable prompt looks like.
+    music_ai_ph: '분위기를 설명하세요 (예: 밝고 경쾌한 일렉트로팝, 잔잔한 솔로 피아노). 특정 가수·곡을 흉내내는 요청은 거절됩니다.',
     music_ai_generate: '생성',
     music_ai_generating: '생성 중… 잠시 기다려 주세요.',
     music_ai_cost: (n: number) => `${n} 크레딧`,
@@ -399,7 +404,8 @@ const DICT = {
     music_wysiwyg: 'What you hear in the preview is what ships in the final.',
     // --- AI music generation (Stage 6) ---
     music_ai_title: 'Generate music with AI',
-    music_ai_ph: 'Describe the mood (e.g. bright upbeat electro-pop for a skincare ad). Requests that imitate a specific artist or song are refused.',
+    // Genre and mood only -- see the KO note. No product category, no industry.
+    music_ai_ph: 'Describe the mood (e.g. bright upbeat electro-pop, or a calm solo piano). Requests that imitate a specific artist or song are refused.',
     music_ai_generate: 'Generate',
     music_ai_generating: 'Generating… please wait.',
     music_ai_cost: (n: number) => `${n} credits`,
