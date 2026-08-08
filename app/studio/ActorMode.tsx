@@ -79,10 +79,20 @@ const DICT = {
     // ★⑪ 기법 안내. 전부 2026-08-07 실호출 1건(6샷 x 2s, 12.042s 산출)에서 측정한
     // 것이고, 첫 줄이 그 실호출의 핵심 발견이다. 추측·일반론은 넣지 않는다 --
     // 참가자가 이 문장을 근거로 편집 계획을 세우기 때문이다.
+    //
+    // ★2026-08-08 정정. 초판의 둘째 줄은 "연달아 비슷한 프레이밍을 쓰면 두 샷이 한
+    // 샷처럼 이어집니다"였다. 그 문장의 근거는 씬 검출이 6샷에서 컷을 4개만 잡은
+    // 것이었는데, TK 육안 확인 결과 **프레임 6장이 서로 다른 장면**이었다 -- 컷은
+    // 6개 다 있고 검출 도구가 못 가른 것이다. 즉 내가 측정 도구의 한계를 모델의
+    // 거동으로 읽었고, 그 추론은 반증됐다.
+    // ★그래서 부드럽게 고치지 않고 **지웠다.** "샷이 합쳐진다"는 참가자에게 틀린
+    // 조언이고("6샷을 시켰는데 5샷이 될 수 있다"로 읽힌다), 남는 craft 조언
+    // ("프레이밍을 바꿔라")은 이 블록이 약속한 '실측' 밖의 일반론이다. 측정으로
+    // 뒷받침되는 사실 -- 6샷은 6샷으로 나온다 -- 로 대체한다.
     shots_tips_title: '알아두면 결과가 달라지는 것',
     shots_tips: [
       '길이는 예산이지 컷 지점이 아닙니다. 합계는 정확히 지켜지지만, 모델이 실제로 컷을 넣는 지점은 입력한 초에 맞지 않습니다. (실측: 2초씩 6샷 → 총 12.0초는 정확, 컷은 1.6·3.7·7.6·10.0초) 편집에서 "3번째 샷은 4~6초"로 계산하지 마세요.',
-      '연달아 비슷한 프레이밍을 쓰면 두 샷이 한 샷처럼 이어집니다. 샷마다 거리(클로즈업↔와이드)나 각도를 분명히 바꿔야 컷이 컷으로 보입니다.',
+      '샷 개수는 지켜집니다. 6샷을 시키면 6개 장면이 나옵니다 — 다만 위처럼 각 장면이 시작되는 시각은 입력한 초와 다릅니다.',
       '배우에 참조 컷이 1장 이상 있어야 촬영됩니다. 정면만 있으면 생성이 시작되지 않습니다(크레딧은 차감되지 않습니다).',
       '영상의 가로세로 비율은 배우 시트가 결정합니다. 세로 시트로 만든 배우는 세로 영상이 나옵니다 — 최종 비율은 편집기에서 맞추게 됩니다.',
       '같은 프롬프트를 다시 넣어도 같은 영상이 나오지 않습니다. 마음에 드는 결과는 그 자리에서 확보해 두세요.',
@@ -157,7 +167,7 @@ const DICT = {
     shots_tips_title: 'Worth knowing before you shoot',
     shots_tips: [
       'Length is a budget, not a cut point. The total is honoured exactly, but the model does not place its cuts at the seconds you typed. (Measured: 6 shots of 2s gave exactly 12.0s, with cuts at 1.6 / 3.7 / 7.6 / 10.0s.) Do not plan your edit around "shot 3 is 4-6s".',
-      'Consecutive shots with similar framing read as one shot. Change the distance (close-up vs wide) or the angle between shots so a cut looks like a cut.',
+      'The shot COUNT is honoured. Ask for 6 shots and you get 6 scenes -- but, as above, each one starts at a different second than the one you typed.',
       'Your actor needs at least one reference cut. With a frontal only, the generation will not start (and you are not charged).',
       "The video's aspect ratio comes from the actor sheet. An actor built from a portrait sheet produces portrait video -- you set the final ratio in the editor.",
       'The same prompt will not give you the same video twice. When you get a take you like, keep it.',
