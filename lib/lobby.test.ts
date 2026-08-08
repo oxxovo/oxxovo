@@ -1,0 +1,196 @@
+// C-0. The home TOURNAMENTS card says a season has ENDED while its main round is
+// showing and community voting is open. Recorded here BEFORE it is fixed.
+//
+// ★WHY A TEST AND NOT A NOTE. The C-stage migration (deriveLobbyMode ->
+// toLobbyMode(getSeasonPhase)) is going to change what the card says on the most
+// visible surface we have. If the only record of the old behaviour is prose, the
+// migration lands and nobody can tell a fix from a regression. So both answers
+// are pinned as executable facts, and the disagreement between them is pinned
+// too -- see the tripwire at the bottom.
+//
+// ★THE DELTA, and where the number comes from (jenny2 asked for the arithmetic).
+// One line: the two rules end the season at DIFFERENT COLUMNS.
+//
+//   current  deriveLobbyMode: endish = main_round_end_at ?? awards_announcement_at
+//                             t >= endish              -> 'ended'
+//   canonical toLobbyMode:    'ended' only from phase 'results', and getSeasonPhase
+//                             reaches 'results' only at awards_announcement_at
+//                             AND with winnerCount > 0
+//
+// season_0, measured from the live row 2026-08-07:
+//   main_round_end_at      2026-11-12 00:00 PST   <- current card flips to ENDED
+//   awards_announcement_at 2026-11-16 20:00 PST   <- earliest canonical 'ended'
+//   difference             116 hours = 4 days 20 hours
+//
+// Both endpoints are after the 2026-11-01 fall-back, so both are PST and the
+// subtraction needs no DST correction (see lib/dst-boundaries.test.ts). And 116h
+// is the FLOOR, not the figure: 'results' also needs an approved podium, so if
+// award_rank is written late the wrong state runs on past the awards date --
+// indefinitely, since nothing else moves the card.
+
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { deriveLobbyMode, seasonToLobbyCard } from './lobby'
+import { getSeasonPhase, toLobbyMode } from './season-phase'
+
+// ── the live row, written out ───────────────────────────────────────────────
+// Values transcribed from season_0 on 2026-08-07, in UTC so the offsets are
+// visible rather than implied. PT equivalents are in the comments.
+const S0 = {
+  applicationOpenAt: '2026-07-25T07:00:00.000Z', // Jul 25 00:00 PDT
+  applicationCloseAt: '2026-11-04T08:00:00.000Z', // Nov  4 00:00 PST
+  mainRoundStartAt: '2026-11-09T08:00:00.000Z', // Nov  9 00:00 PST
+  mainRoundEndAt: '2026-11-12T08:00:00.000Z', // Nov 12 00:00 PST
+  voteStartAt: '2026-11-13T08:00:00.000Z', // Nov 13 00:00 PST
+  voteEndAt: '2026-11-16T08:00:00.000Z', // Nov 16 00:00 PST
+  awardsAt: '2026-11-17T04:00:00.000Z', // Nov 16 20:00 PST
+}
+
+// The lobby's row shape (schedule columns only -- it never reads counts today).
+const row = {
+  id: 'season_0',
+  name: 'SEASON 0',
+  display_name: 'SEASON 0 - THE LAST HOPE',
+  season_number: 0,
+  status: 'active',
+  season_theme: null,
+  poster_url: null,
+  lobby_featured: true,
+  host_type: 'official',
+  total_prize_pool: 0,
+  prize_first: 0,
+  application_open_at: S0.applicationOpenAt,
+  application_close_at: S0.applicationCloseAt,
+  main_round_start_at: S0.mainRoundStartAt,
+  main_round_end_at: S0.mainRoundEndAt,
+  awards_announcement_at: S0.awardsAt,
+}
+
+// The canonical machine needs the two evidence counts the lobby does not read
+// today. finalistCount is genuinely irrelevant HERE -- 'finalists_pending',
+// 'judging' and 'main_live' all fold to 'live' -- so it stays 0 and the tests
+// below only vary winnerCount, which does change the answer.
+const phaseInput = (winnerCount: number) => ({
+  status: 'active',
+  applicationOpenAt: S0.applicationOpenAt,
+  applicationCloseAt: S0.applicationCloseAt,
+  scoringStartAt: null,
+  mainRoundStartAt: S0.mainRoundStartAt,
+  mainRoundEndAt: S0.mainRoundEndAt,
+  voteStartAt: S0.voteStartAt,
+  voteEndAt: S0.voteEndAt,
+  awardsAt: S0.awardsAt,
+  finalistCount: 0,
+  winnerCount,
+})
+
+const canonical = (at: string, winnerCount = 0) =>
+  toLobbyMode(getSeasonPhase(phaseInput(winnerCount), new Date(at)).phase)
+const current = (at: string) => deriveLobbyMode(row, new Date(at))
+
+// Sample instants, one per meaningful segment of season_0's calendar.
+const WHEN = {
+  beforeClose: '2026-11-01T08:00:00.000Z', // Nov  1 00:00 PDT -- accepting
+  afterClose: '2026-11-06T08:00:00.000Z', // Nov  6 -- judging
+  mainLive: '2026-11-10T08:00:00.000Z', // Nov 10 -- main round showing
+  afterMainEnd: '2026-11-12T09:00:00.000Z', // Nov 12 01:00 PST -- films up, vote not open
+  duringVote: '2026-11-14T08:00:00.000Z', // Nov 14 -- COMMUNITY VOTING OPEN
+  afterVote: '2026-11-16T12:00:00.000Z', // Nov 16 04:00 PST -- vote closed, no podium
+  afterAwards: '2026-11-17T05:00:00.000Z', // Nov 16 21:00 PST -- past the awards instant
+}
+
+// ── what the card says TODAY (pinned; this is the defect, not the goal) ─────
+
+test('CURRENT: the card reads ENDED from main_round_end_at onward', () => {
+  assert.equal(current(WHEN.beforeClose), 'accepting')
+  assert.equal(current(WHEN.afterClose), 'live')
+  assert.equal(current(WHEN.mainLive), 'live')
+  // ★From here the home page calls the tournament over.
+  assert.equal(current(WHEN.afterMainEnd), 'ended')
+  assert.equal(current(WHEN.duringVote), 'ended') // voting is OPEN
+  assert.equal(current(WHEN.afterVote), 'ended')
+  assert.equal(current(WHEN.afterAwards), 'ended')
+})
+
+test('CURRENT: no podium changes nothing -- the date alone ends the season', () => {
+  // The card cannot tell "announced" from "the announcement date passed", because
+  // it never looks at award_rank. That is the same honesty gap getBannerStage
+  // already closed on Watch.
+  assert.equal(current(WHEN.afterAwards), 'ended')
+})
+
+// ── what the canonical machine says for the same instants ───────────────────
+
+test('CANONICAL: the season stays live through the main round, the vote, and the wait', () => {
+  assert.equal(canonical(WHEN.beforeClose), 'accepting')
+  assert.equal(canonical(WHEN.afterClose), 'live')
+  assert.equal(canonical(WHEN.mainLive), 'live')
+  assert.equal(canonical(WHEN.afterMainEnd), 'live')
+  assert.equal(canonical(WHEN.duringVote), 'live')
+  assert.equal(canonical(WHEN.afterVote), 'live') // awaiting_results is not 'ended'
+})
+
+test('CANONICAL: ended needs an approved podium, not just the awards date', () => {
+  assert.equal(canonical(WHEN.afterAwards, 0), 'live') // date passed, no winners
+  assert.equal(canonical(WHEN.afterAwards, 3), 'ended') // winners recorded
+})
+
+// ── the delta, as arithmetic ────────────────────────────────────────────────
+
+test('★the disagreement is 116 hours = 4 days 20 hours, and that is the floor', () => {
+  const flipsNow = Date.parse(S0.mainRoundEndAt) // current rule ends here
+  const flipsCanonical = Date.parse(S0.awardsAt) // canonical cannot end before here
+  const hours = (flipsCanonical - flipsNow) / 3_600_000
+  assert.equal(hours, 116)
+  assert.equal(Math.floor(hours / 24), 4)
+  assert.equal(hours % 24, 20)
+
+  // Every hour in between, the two rules disagree -- sampled at both ends and the
+  // middle so the claim is about the interval, not about three lucky points.
+  for (const at of [WHEN.afterMainEnd, WHEN.duringVote, WHEN.afterVote]) {
+    assert.equal(current(at), 'ended', at)
+    assert.equal(canonical(at), 'live', at)
+  }
+
+  // ★FLOOR, not figure: with no podium approved, the disagreement does not end at
+  // the awards instant. It just keeps going.
+  assert.equal(current(WHEN.afterAwards), 'ended')
+  assert.equal(canonical(WHEN.afterAwards, 0), 'live')
+})
+
+// ── C-3: the countdown target the migration will break ──────────────────────
+
+test('★C-3 trap: today "live" implies main_round_end_at, which stops being true', () => {
+  // countdownTarget is keyed on the MODE. Today 'live' means exactly
+  // "closed, main round not over", so main_round_end_at is always ahead.
+  const live = seasonToLobbyCard(row, new Date(WHEN.mainLive))
+  assert.equal(live.mode, 'live')
+  assert.equal(live.countdownTargetIso, S0.mainRoundEndAt)
+  assert.ok(Date.parse(live.countdownTargetIso!) > Date.parse(WHEN.mainLive))
+
+  // After the migration 'live' also covers voting and awaiting-results, and the
+  // same lookup would hand the client an instant IN THE PAST -- the countdown
+  // renders '—'. Proof that the target is stale at that point, computed against
+  // the current code so the trap is recorded rather than predicted:
+  assert.ok(Date.parse(S0.mainRoundEndAt) < Date.parse(WHEN.duringVote))
+
+  // So C-3 is not cosmetic: the target has to be keyed on the PHASE, and a target
+  // already in the past has to become null rather than a countdown to nothing.
+})
+
+// ── tripwire ────────────────────────────────────────────────────────────────
+
+test('★TRIPWIRE: the two rules disagree. When they stop, this file is done', () => {
+  // The moment C-2 lands, deriveLobbyMode delegates to the canonical and this
+  // assertion fails. That failure is the SUCCESS signal, and it is deliberate:
+  //
+  //   1. delete the CURRENT blocks above (they describe behaviour that no longer
+  //      exists),
+  //   2. keep the CANONICAL blocks -- they become the spec,
+  //   3. check that C-3 shipped with it, or the card will count down to a past
+  //      instant for 4 of those 5 days.
+  //
+  // A migration that quietly makes a test pass teaches nobody anything. This one
+  // has to be answered.
+  assert.notEqual(current(WHEN.duringVote), canonical(WHEN.duringVote))
+})
