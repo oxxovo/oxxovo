@@ -127,8 +127,15 @@ export type Season = {
   // hold was actually lifted. Keeping the two apart is the scoring_complete_at
   // lesson: one column that meant both "planned" and "done" let the planned
   // value silently disable the done check, and season_0 would never have
-  // produced a Top N. Base table only -- NOT on seasons_public (measured
-  // 2026-08-08: the view is a fixed 66-column list, not SELECT *).
+  // produced a Top N.
+  // ★ON seasons_public since 2026-08-09 (the view went 66 -> 68 columns). It was
+  // base-table-only for one day, and that mattered: getCurrentSeason and
+  // getSeasonById read the view with select('*'), which does NOT fail on a
+  // missing column -- it returns a row that silently lacks it. The immediate
+  // submission receipt renders its bullets from this row, so the one date head
+  // office had just engraved would have been omitted rather than shown, and the
+  // email-tick sweep (which reads the base table) could not have repaired it:
+  // executeSend's dedup treats the receipt as already sent.
   prelim_results_announcement_at: string | null
   // Community vote window. On the seasons_public view since
   // main_round_theme_public_2026-07 (a schedule, not a secret). Drives the
@@ -175,9 +182,11 @@ export type Season = {
   // Visibility is derived from it (see lib/lobby.ts isFixtureSeason). DEFAULT
   // true in the DB, so a season is a fixture until a human writes false --
   // forgetting hides a season instead of leaking a rehearsal onto the lobby.
-  // Optional here because the base row predates the column and because the
-  // seasons_public view does not carry it; `undefined` therefore means "this
-  // read could not see the column", which is a different thing from `false`.
+  // ★Optional, and the reason narrowed on 2026-08-09: seasons_public carries it
+  // now (66 -> 68 columns), so the view is no longer why it can be missing. What
+  // is left is a select list that does not name it. `undefined` therefore still
+  // means "this read could not see the column", which is a different thing from
+  // `false` -- so it stays optional rather than becoming a required boolean.
   is_fixture?: boolean | null
 
   created_at: string
