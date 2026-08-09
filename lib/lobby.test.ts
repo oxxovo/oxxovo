@@ -504,6 +504,38 @@ test('★the lobby fetches is_fixture and asks the column, not the heuristic', (
   )
 })
 
+// ★ONE DEFINITION OF "IS THIS A REAL COMPETITION", pinned across the two
+// surfaces that act on the answer.
+//
+// email-tick's own comment has always said why: "a second definition of 'is this
+// a real competition' is how one of them would eventually receive production
+// mail". On 2026-08-09 that is precisely what happened -- the lobby moved to the
+// column and the mailer was left on the heuristic, so for a few hours the warning
+// described the code it was written in. This test is the thing that would have
+// caught it.
+//
+// ★And the two surfaces are not symmetric, which is why the mailer matters more.
+// The lobby being wrong shows a card or hides one. The mailer being wrong sends
+// mail from a rehearsal to real addresses, and mail does not come back.
+test('★the mailer and the lobby ask the same question', () => {
+  const tick = readFileSync(
+    new URL('../app/api/cron/email-tick/route.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    tick,
+    /if \(!isFixtureSeason\(season\)\)/,
+    'email-tick no longer gates ⑥F/⑤ on isFixtureSeason -- the two definitions have split again',
+  )
+  assert.doesNotMatch(
+    tick,
+    /isRehearsalFixture\(/,
+    'email-tick calls the heuristic directly. The row it holds came from the base table with ' +
+      "select('*'), so the column is fetched and then ignored -- and the direction it can be " +
+      'wrong in is real mail from a rehearsal.',
+  )
+})
+
 test('★nextNumber over the real band: 4 -> 5, not 1006 -> 1007', () => {
   // The population measured on 2026-08-08, ids and numbers as they actually are.
   const rows = [

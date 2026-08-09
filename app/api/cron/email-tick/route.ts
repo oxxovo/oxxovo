@@ -44,7 +44,7 @@ import {
   type VideoLiveRound,
 } from '@/lib/video-live'
 import { getDisplayNames } from '@/lib/nickname'
-import { isRehearsalFixture } from '@/lib/lobby'
+import { isFixtureSeason } from '@/lib/lobby'
 import { sendSubmissionReceipts, type ReceiptTally } from '@/lib/email/submission-receipts'
 import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { isMembershipEnabled } from '@/lib/membership'
@@ -232,10 +232,26 @@ async function handle(request: NextRequest) {
     }
 
     // ⑥F. ★Rehearsal fixtures are excluded by the SAME predicate the lobby uses
-    // (lib/lobby.isRehearsalFixture) -- season_test and the zz_ probes carry real
+    // (lib/lobby.isFixtureSeason) -- season_test and the zz_ probes carry real
     // addresses, and a second definition of "is this a real competition" is how
     // one of them would eventually receive production mail.
-    if (!isRehearsalFixture(season)) {
+    //
+    // ★2026-08-09: that sentence stopped being true for a few hours and this is
+    // the repair. The lobby moved to the is_fixture COLUMN and this line was
+    // still asking the id/number heuristic -- so the two definitions had in fact
+    // split, exactly as the sentence above warns. The column was already on this
+    // row: the tick reads the base table with select('*'), so it was fetched and
+    // then ignored.
+    //
+    // ★WHY THIS DIRECTION IS NOT A TRADE. The heuristic can only be wrong by
+    // clearing a rehearsal (a season numbered below 900 with an unconventional
+    // id), which sends real mail to test addresses and cannot be taken back. The
+    // column can only be wrong by holding a real season's mail, which is visible
+    // and fixable -- and it is now hard to reach at all: /admin/seasons requires
+    // the answer, season-tick's clone inherits it, host/new writes it. The
+    // heuristic remains as isFixtureSeason's fallback for a read that did not
+    // carry the column, which this one always does.
+    if (!isFixtureSeason(season)) {
       for (const r of await fireVideoLive(season, now)) {
         report.videoLive.push({ season: season.id, ...r })
       }
