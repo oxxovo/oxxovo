@@ -25,6 +25,7 @@ export type SeasonSchedule = {
   main_round_start_at: string
   main_round_end_at: string
   awards_announcement_at: string
+  prelim_results_announcement_at: string
 }
 
 // Given a season's opening Monday (00:00 PT, week 1) as a zoned DateTime, derive
@@ -50,6 +51,16 @@ export function computeSeasonSchedule(
     .plus({ days: 6 })
     .set({ hour: 23, minute: 59, second: 0, millisecond: 0 })
   const scoringComplete = open.plus({ weeks: 1 })
+  // ★Noon PT on the day scoring completes. This IS a number picked here, unlike
+  // the scoring buffer below which deliberately is not -- and the difference is
+  // whether it moves anything. The buffer shifts every downstream date, so it
+  // belongs to whoever owns the calendar. An announcement instant sits inside an
+  // interval that already exists (scoring completes Monday 00:00, the main round
+  // opens Wednesday 21:00) and moves nothing, so declining to pick one would not
+  // be caution: it would leave the column NULL and the result mail would simply
+  // never fire, silently. Noon is the convention season_0 set by hand (11/8
+  // 12:00 PT); changing a season is one UPDATE, no deploy.
+  const prelimResultsAnnouncement = scoringComplete.set({ hour: 12 })
   const mainStart = open
     .plus({ weeks: 1, days: 2 })
     .set({ hour: 21, minute: 0, second: 0, millisecond: 0 })
@@ -82,6 +93,7 @@ export function computeSeasonSchedule(
     // helper quietly picking a number. Recorded 2026-08-06.
     scoring_start_at: toIso(close),
     scoring_complete_at: toIso(scoringComplete),
+    prelim_results_announcement_at: toIso(prelimResultsAnnouncement),
     main_round_start_at: toIso(mainStart),
     main_round_end_at: toIso(mainEnd),
     // ★No community_vote_start_at / _end_at here -- an auto-created season gets
@@ -136,6 +148,10 @@ const NON_CLONED_KEYS = [
   // fresh season.
   'application_defer_count',
   'awards_announcement_at',
+  // Same rule as every other date: a schedule belongs to its own season. Left
+  // cloned, season 1 would have inherited season 0's literal 2026-11-08 noon and
+  // announced its preliminary results in the past.
+  'prelim_results_announcement_at',
   'ai_score_weight',
   'community_vote_weight',
 ] as const
@@ -162,8 +178,20 @@ export function buildNextSeasonRow(prev: Season, communityVoteWeight: number): N
   // Round to 4 decimals to avoid 1 - 0.7 = 0.30000000000000004 floating drift.
   const ai_score_weight = Math.round((1 - communityVoteWeight) * 10000) / 10000
 
-  const clone: Record<string, unknown> = { ...(prev as unknown as Record<string, unknown>) }
+  const prevRow = prev as unknown as Record<string, unknown>
+  const clone: Record<string, unknown> = { ...prevRow }
   for (const key of NON_CLONED_KEYS) delete clone[key]
+
+  // ★The newest schedule field is only named in the INSERT when the source row
+  // proves the database has the column. `prev` comes from `select('*')`, so the
+  // key is present exactly when the column is. PostgREST rejects an INSERT that
+  // names a column it does not know, so without this, create-ahead would stop
+  // dead in the window between this code shipping and the migration being run --
+  // the ordering hazard the repo has now been bitten by twice.
+  const scheduleForInsert: Record<string, unknown> = { ...schedule }
+  if (!('prelim_results_announcement_at' in prevRow)) {
+    delete scheduleForInsert.prelim_results_announcement_at
+  }
 
   return {
     ...clone,
@@ -180,6 +208,12 @@ export function buildNextSeasonRow(prev: Season, communityVoteWeight: number): N
     main_round_theme_label: null,
     community_vote_weight: communityVoteWeight,
     ai_score_weight,
-    ...schedule,
+    ...scheduleForInsert,
+    // is_fixture is NOT in NON_CLONED_KEYS on purpose. An auto-created official
+    // season is a real competition, and it inherits that assertion from the real
+    // season it was cloned from -- season-tick now refuses to clone a fixture at
+    // all. Before the migration the key is simply absent from `prev`, the INSERT
+    // does not name it, and the DB default (true) applies: the season is filed as
+    // a fixture until someone says otherwise, which is the safe direction.
   }
 }

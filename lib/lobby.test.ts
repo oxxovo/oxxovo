@@ -30,7 +30,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isRehearsalFixture, seasonToLobbyCard, tallyWinnerCounts } from './lobby'
+import { isFixtureSeason, isRehearsalFixture, seasonToLobbyCard, tallyWinnerCounts } from './lobby'
 import { getSeasonPhase, toLobbyMode } from './season-phase'
 
 // ── the live row, written out ───────────────────────────────────────────────
@@ -414,4 +414,84 @@ test('★the lobby has exactly one rule for where a season is', () => {
       )
     }
   }
+})
+
+// ── is_fixture: the column, and what its absence is allowed to mean ─────────
+
+test('★isFixtureSeason: the column decides; undefined is not false', () => {
+  // 1. When a boolean is present it wins outright -- including against the
+  //    heuristic, in both directions. That is the point of writing it down.
+  assert.equal(
+    isFixtureSeason({ id: 'season_1000', season_number: 1000, is_fixture: false }),
+    false,
+    'a row a human vouched for is real even though the heuristic would condemn it',
+  )
+  assert.equal(
+    isFixtureSeason({ id: 'season_2', season_number: 2, is_fixture: true }),
+    true,
+    'a row marked test data is test data even though the heuristic would clear it',
+  )
+
+  // 2. ★undefined means "this read could not see the column" -- migration not
+  //    run, or the row came through seasons_public, which is a fixed 66-column
+  //    list that does not carry it (measured 2026-08-08). It must NOT collapse
+  //    to false; that would publish all nine rehearsal seasons at once.
+  for (const s of [
+    { id: 'season_test', season_number: 999 },
+    { id: 'season_1006', season_number: 1006 },
+  ]) {
+    assert.equal(isFixtureSeason(s), true, `${s.id}: unseen column falls back, not through`)
+    assert.equal(isFixtureSeason({ ...s, is_fixture: null }), true, `${s.id}: NULL behaves like unseen`)
+  }
+
+  // 3. And with the column unseen the answer is today's answer, exactly -- the
+  //    helper changes no surface until its caller's read carries the column.
+  for (const s of [
+    { id: 'season_0', season_number: 0 },
+    { id: 'season_4', season_number: 4 },
+    { id: 'season_test2', season_number: 998 },
+    { id: 'season_1000', season_number: 1000 },
+    { id: 'anything', season_number: 5 },
+  ]) {
+    assert.equal(isFixtureSeason(s), isRehearsalFixture(s), s.id)
+  }
+})
+
+test('★nextNumber over the real band: 4 -> 5, not 1006 -> 1007', () => {
+  // The population measured on 2026-08-08, ids and numbers as they actually are.
+  const rows = [
+    { id: 'season_0', season_number: 0, is_fixture: false },
+    { id: 'season_1', season_number: 1, is_fixture: false },
+    { id: 'season_2', season_number: 2, is_fixture: false },
+    { id: 'season_3', season_number: 3, is_fixture: false },
+    { id: 'season_4', season_number: 4, is_fixture: false },
+    { id: 'season_test2', season_number: 998, is_fixture: true },
+    { id: 'season_test', season_number: 999, is_fixture: true },
+    ...[1000, 1001, 1002, 1003, 1004, 1005, 1006].map((n) => ({
+      id: `season_${n}`,
+      season_number: n,
+      is_fixture: true,
+    })),
+  ]
+  assert.equal(rows.length, 14, 'the measured row count')
+
+  const next = (rs: typeof rows) => {
+    const real = rs.filter((s) => !isFixtureSeason(s)).map((s) => s.season_number)
+    return (real.length ? Math.max(...real) : 0) + 1
+  }
+  assert.equal(next(rows), 5)
+
+  // The unfiltered rule, kept here so the defect stays visible rather than
+  // becoming a number nobody can explain.
+  assert.equal(Math.max(...rows.map((s) => s.season_number)) + 1, 1007)
+
+  // ★And with the column absent the same computation still lands on 5, because
+  // the heuristic covers this exact population. The migration is what makes the
+  // rule dependable; it is not what makes it correct today.
+  const unmigrated = rows.map(({ id, season_number }) => ({ id, season_number }))
+  assert.equal(next(unmigrated as typeof rows), 5)
+
+  // Every row is one or the other -- no row is silently uncounted.
+  assert.equal(rows.filter((s) => isFixtureSeason(s)).length, 9)
+  assert.equal(rows.filter((s) => !isFixtureSeason(s)).length, 5)
 })

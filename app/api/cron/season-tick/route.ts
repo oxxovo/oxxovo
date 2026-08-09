@@ -39,6 +39,7 @@ import {
   type PricingHealthReport,
 } from '@/lib/pricing-health'
 import type { Season } from '@/lib/seasons'
+import { isFixtureSeason } from '@/lib/lobby'
 
 // Run at request time — a prerendered 'now' would silently ignore time-based
 // triggers.
@@ -138,10 +139,33 @@ async function handle(request: NextRequest) {
   let created: SeasonTickReport['created'] = null
   let skippedCreation: string | undefined
 
-  const latest = [...seasons].sort((a, b) => b.season_number - a.season_number)[0]
+  // ★Fixtures are excluded before "latest" is picked, and that one filter fixes
+  // all four things `latest` is used for: the next number, the next id, the
+  // teaser check, and the row buildNextSeasonRow clones from.
+  //
+  // Measured 2026-08-08: max(season_number) over ALL rows is 1006, because nine
+  // rehearsal seasons (season_test2 #998, season_test #999, season_1000..1006)
+  // sit in the table. So the unfiltered rule made the next real season #1007 --
+  // and it would then have been cloned from season_1006, a rehearsal row, and
+  // published as season_1007 on the lobby. Over the real rows the max is 4, so
+  // the next season is season_5.
+  const realSeasons = seasons.filter((s) => !isFixtureSeason(s))
+  const latest = [...realSeasons].sort((a, b) => b.season_number - a.season_number)[0]
   if (!latest) {
-    skippedCreation = 'no seasons exist yet — nothing to clone from'
-    errors.push('season-tick: seasons table is empty; cannot bootstrap season_0')
+    // Distinguish "no rows at all" from "rows, but every one of them is a
+    // fixture". The second is not a bootstrap failure, it is a table that has
+    // only rehearsal data in it, and calling it "empty" would send someone
+    // looking for the wrong problem.
+    if (seasons.length === 0) {
+      skippedCreation = 'no seasons exist yet — nothing to clone from'
+      errors.push('season-tick: seasons table is empty; cannot bootstrap season_0')
+    } else {
+      skippedCreation = `all ${seasons.length} seasons are fixtures — no real season to clone from`
+      errors.push(
+        `season-tick: every season row is is_fixture=true (${seasons.length} rows); ` +
+          'create-ahead refuses to clone a rehearsal into a public season',
+      )
+    }
   } else if (!latest.application_open_at) {
     // The latest season is a teaser with no open date set yet (e.g. an
     // announced "COMING SOON" season whose schedule is still TBD). That is a

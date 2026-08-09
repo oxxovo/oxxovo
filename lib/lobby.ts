@@ -292,6 +292,33 @@ export function isRehearsalFixture(s: { id: string; season_number: number }): bo
   return Number.isFinite(s.season_number) && s.season_number >= FIXTURE_SEASON_NUMBER_MIN
 }
 
+/**
+ * Is this season test data? The COLUMN when the read could see one, the old
+ * heuristic when it could not.
+ *
+ * ★The two branches are not a fallback chain, they are two different questions
+ * being answered by whatever evidence the caller actually has:
+ *   - `is_fixture` is a boolean a human wrote. It is the truth, and it is
+ *     fail-closed (DB default true), so a season nobody vouched for is a
+ *     fixture rather than a leak.
+ *   - `undefined` does NOT mean false. It means this particular read could not
+ *     see the column -- either the migration has not run yet, or the row came
+ *     through seasons_public, which is a fixed 66-column list that does not
+ *     carry it (measured 2026-08-08). Guessing `false` there would publish
+ *     every rehearsal season the moment the lobby switched over.
+ * So `undefined` falls back to the name/number heuristic, which is exactly the
+ * behaviour that is live today -- no surface changes until its read is moved to
+ * a source that has the column.
+ */
+export function isFixtureSeason(s: {
+  id: string
+  season_number: number
+  is_fixture?: boolean | null
+}): boolean {
+  if (typeof s.is_fixture === 'boolean') return s.is_fixture
+  return isRehearsalFixture(s)
+}
+
 // Official + publicly visible (not draft) + an actual competition. Partner
 // seasons are excluded from v1.
 function isOfficialPublic(s: SeasonRow): boolean {

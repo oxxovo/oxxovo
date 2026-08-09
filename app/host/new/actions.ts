@@ -13,6 +13,7 @@ import {
   type PartnerTournamentInput,
 } from '@/lib/partner-tournament-schema'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
+import { isFixtureSeason } from '@/lib/lobby'
 
 export type HostFormState = {
   ok: boolean
@@ -121,14 +122,38 @@ export async function createPartnerTournament(
   }
   const template = templateRaw as Season
 
-  // Next season_number (display ordering only).
-  const { data: maxRow } = await db
-    .from('seasons')
-    .select('season_number')
-    .order('season_number', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const nextNumber = ((maxRow?.season_number as number | undefined) ?? 0) + 1
+  // Next season_number (display ordering only) -- over the REAL seasons.
+  //
+  // ★Measured 2026-08-08: max(season_number) over all rows is 1006, because nine
+  // rehearsal seasons live in the table. A partner tournament created today was
+  // therefore numbered #1007, which is not a display number, it is a rehearsal
+  // number -- and lib/lobby.ts's number heuristic treats anything >= 900 as a
+  // fixture. Over the real rows the max is 4, so the next one is #5.
+  //
+  // The is_fixture column is requested and, if this database has not been
+  // migrated yet, the select is retried without it. That is not defensive
+  // padding: PostgREST fails the WHOLE select on one unknown column (42703), so
+  // asking for a column that may not be there is how a partner-creation flow
+  // dies completely instead of degrading. isFixtureSeason then falls back to the
+  // name/number heuristic, which is today's behaviour exactly.
+  let numberRows: { id: string; season_number: number; is_fixture?: boolean | null }[] = []
+  const withFlag = await db.from('seasons').select('id, season_number, is_fixture')
+  const hasFixtureColumn = !withFlag.error
+  if (withFlag.error) {
+    if (withFlag.error.code !== '42703') {
+      return { ok: false, errorMessage: `Season numbering unavailable: ${withFlag.error.message}` }
+    }
+    console.warn('[host/new] seasons.is_fixture not present yet — falling back to the id/number heuristic')
+    const plain = await db.from('seasons').select('id, season_number')
+    if (plain.error) {
+      return { ok: false, errorMessage: `Season numbering unavailable: ${plain.error.message}` }
+    }
+    numberRows = (plain.data ?? []) as typeof numberRows
+  } else {
+    numberRows = (withFlag.data ?? []) as typeof numberRows
+  }
+  const realNumbers = numberRows.filter((s) => !isFixtureSeason(s)).map((s) => s.season_number)
+  const nextNumber = (realNumbers.length ? Math.max(...realNumbers) : 0) + 1
 
   const id = `partner_${crypto.randomUUID()}`
   const nowIso = new Date().toISOString()
@@ -140,6 +165,12 @@ export async function createPartnerTournament(
     display_name: input.theme,
     season_number: nextNumber,
     status: 'draft', // not public until escrow paid (TK beta policy)
+    // ★A partner tournament is a real competition, so it has to say so. The
+    // column is fail-closed (DEFAULT true), which means omitting it would file
+    // every partner season as test data. Only sent when the column exists:
+    // PostgREST rejects an INSERT naming a column it does not know, and the
+    // partner would get "creation failed" for a flag they never set.
+    ...(hasFixtureColumn ? { is_fixture: false } : {}),
 
     // partner-configured
     max_applicants: input.max_applicants,
