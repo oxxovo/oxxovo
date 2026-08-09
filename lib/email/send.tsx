@@ -90,6 +90,12 @@ import {
   subjectFor as videoLiveMainSubject,
   type VideoLiveMainProps,
 } from './templates/VideoLiveMain'
+import {
+  SubmissionReceived,
+  subjectFor as submissionReceivedSubject,
+  type SubmissionReceivedProps,
+} from './templates/SubmissionReceived'
+import type { SubmissionFileState } from '@/lib/submission-receipt'
 import { buildShareUrl } from '@/lib/share-kit'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
@@ -661,6 +667,48 @@ export async function sendMembershipFoundingExpiry(
     language: lang,
     subject: membershipFoundingExpirySubject(props),
     element: <MembershipFoundingExpiry {...props} />,
+  })
+}
+
+// ─── ⑤ submission receipt ──────────────────────────────────────────────────
+// Application-scoped -> executeSend's per-application dedup makes it once-only.
+// Fired from the Studio submit action for the participant's own row, and swept
+// by email-tick for anything that send missed -- both go through the same dedup,
+// so the sweep is a no-op whenever the immediate send worked.
+
+type SendSubmissionReceivedInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  videoTitle: string | null
+  submittedAtLabel: string | null
+  fileState: SubmissionFileState
+  applicationId: string
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendSubmissionReceived(
+  input: SendSubmissionReceivedInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: SubmissionReceivedProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    videoTitle: input.videoTitle,
+    submittedAtLabel: input.submittedAtLabel,
+    fileState: input.fileState,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'studio_submission_received',
+    language: lang,
+    subject: submissionReceivedSubject(props),
+    element: <SubmissionReceived {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
   })
 }
 

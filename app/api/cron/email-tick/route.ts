@@ -39,6 +39,7 @@ import {
 } from '@/lib/video-live'
 import { getDisplayNames } from '@/lib/nickname'
 import { isRehearsalFixture } from '@/lib/lobby'
+import { sendSubmissionReceipts, type ReceiptTally } from '@/lib/email/submission-receipts'
 import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { isMembershipEnabled } from '@/lib/membership'
 import { getPlatformConfigMap } from '@/lib/partners'
@@ -95,6 +96,9 @@ type TickReport = {
     failed: number
     deferred: number
   }[]
+  // ⑤ submission receipts the immediate send missed. Empty on a healthy tick --
+  // a non-empty entry here means the submit action's own send is failing.
+  submissionReceipts: ({ season: string } & ReceiptTally)[]
   // P4e membership notices (profile-scoped, not per-season). Absent when the
   // membership master switch is off (dark launch).
   membershipNotices?: {
@@ -152,6 +156,7 @@ async function handle(request: NextRequest) {
     resultsAnnounced: [],
     finalistResults: [],
     videoLive: [],
+    submissionReceipts: [],
   }
 
   for (const season of seasons) {
@@ -223,6 +228,18 @@ async function handle(request: NextRequest) {
     if (!isRehearsalFixture(season)) {
       for (const r of await fireVideoLive(season, now)) {
         report.videoLive.push({ season: season.id, ...r })
+      }
+
+      // ⑤ retry net. The receipt is sent by the submit action itself; this picks
+      // up the ones that send did not manage -- a Resend outage, a function
+      // killed mid-await, or a submission that reached the row through a path
+      // nobody wired to the mailer. Same dedup, so it is a no-op otherwise.
+      const receipts = await sendSubmissionReceipts({
+        seasonId: season.id,
+        seasonName: season.display_name,
+      })
+      if (receipts.sent || receipts.failed || receipts.deferred) {
+        report.submissionReceipts.push({ season: season.id, ...receipts })
       }
     }
   }

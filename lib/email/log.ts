@@ -22,6 +22,11 @@ export type TemplateKey =
   // application per round). Application-scoped -> executeSend dedup applies.
   | 'video_live_prelim'
   | 'video_live_main'
+  // ⑤/⑪ submission receipts. Studio split "applying" from "submitting a film";
+  // application_received only covers the first. Application-scoped -> the
+  // executeSend dedup + the partial unique index make them once-only per round.
+  | 'studio_submission_received'
+  | 'main_round_submission_received'
   // P4e membership notices (profile-scoped; dedup via profiles.
   // membership_renewal_notified_at, not email_logs). Logged for transparency.
   | 'membership_renewal'
