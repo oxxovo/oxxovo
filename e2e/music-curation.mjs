@@ -41,7 +41,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('  PASS', m) } else { fail++
 
 const created = { userIds: [], assetIds: [] }
 
-async function seed({ label, source, userId = null, active = true, title, signed = true }) {
+async function seed({ label, source, userId = null, active = true, title, signed = true, score }) {
   const id = `zz_cur_${label}_${randomUUID().slice(0, 8)}`
   const audio = Buffer.from(`zz-curation-${id}`)
   const bind = signed
@@ -50,8 +50,17 @@ async function seed({ label, source, userId = null, active = true, title, signed
   const { error } = await admin.from('studio_music_assets').insert({
     id, source, user_id: userId, title, mood: 'calm', duration_seconds: 95,
     r2_key: `zz/${id}.m4a`, url: `https://example.invalid/${id}.m4a`,
-    status: 'ready', active, license_type: 'library_licensed', provider: 'zz-test-vendor', ...bind,
+    status: 'ready', active, license_type: 'library_licensed', provider: 'zz-test-vendor',
+    // ★Omitted, not defaulted. `score: undefined` leaves screening_score NULL, which is
+    // the case section 6 is actually about -- writing 0 for "unscored" is the bug this
+    // harness exists to catch, not something the fixture should quietly do for us.
+    ...(score === undefined ? {} : { screening_score: score }),
+    ...bind,
   })
+  // ★A seed failure is a FAILURE OF THE PREMISE, not a skipped case. If the insert is
+  // refused (an unmigrated column, a CHECK) the rows are simply absent, every negative
+  // assertion below becomes vacuously true, and the run reports PASS having measured
+  // nothing ([[feedback-fixture-seed-failure-vacuous-pass]]).
   if (error) throw new Error(`seed(${label}): ${error.message}`)
   created.assetIds.push(id)
   return id
@@ -86,9 +95,12 @@ async function main() {
     'a participant AI row is NOT in the curation list (curation is library-only)')
   ok(all.tracks.every((t) => t.source === 'library'), 'every returned row is source=library')
 
-  // ★The ordering contract, executed. title ascending, so Alpha precedes Bravo.
+  // ★The ordering contract, executed. These four rows are all UNSCORED, so they tie on
+  // screening_score and fall through to title -- which is why this assertion still
+  // reads the same after the score became the leading term. Section 6 is where the two
+  // orders are made to DISAGREE; on its own this line cannot tell them apart.
   const titles = all.tracks.map((t) => t.title)
-  ok(titles.indexOf('ZZ Alpha') < titles.indexOf('ZZ Bravo'), `ordered by title ascending [${titles.join(' | ')}]`)
+  ok(titles.indexOf('ZZ Alpha') < titles.indexOf('ZZ Bravo'), `unscored rows tie and fall to title ascending [${titles.join(' | ')}]`)
 
   // ★The column set is real: if any selected column did not exist, these would be
   // undefined rather than values, and the empty table would have hidden it.
@@ -155,6 +167,70 @@ async function main() {
     const dupes = await setMusicActive([aTrack, aTrack], false)
     ok(dupes.ok === true && dupes.changed === 1, `a duplicated id counts once [${JSON.stringify(dupes)}]`)
   }
+
+  // ------------------------------------------------- 6. the audition order --
+  //
+  // ★THIS IS THE MEASUREMENT THE 100-TRACK BATCH DEPENDS ON. Curation's method is
+  // "listen in descending score, stop at the quota". If the order is wrong, 대표님
+  // auditions the wrong tracks and the conclusion drawn from the batch -- go to 1,000,
+  // or fix the prompts -- is drawn from the wrong sample. Everything else here can be
+  // wrong and cost a re-run; this cannot.
+  //
+  // ★AND THE TITLES ARE CHOSEN SO SCORE ORDER AND TITLE ORDER DISAGREE ON EVERY ROW.
+  // Until today reviewScore was hard-coded to null, so the list came back in title
+  // order -- and a fixture whose two orders happen to agree would have PASSED against
+  // exactly that defect. Read down the score column and up the alphabet:
+  //
+  //     title              score      by score   by title
+  //     ZZ Ord Zulu         90           1st        4th
+  //     ZZ Ord Sierra       55           2nd        3rd
+  //     ZZ Ord Mike         10           3rd        2nd
+  //     ZZ Ord Alfa        NULL          4th        1st        <- exact reversal
+  //
+  // So title order is the precise reverse of the expected answer. There is no
+  // arrangement of these four rows that satisfies both hypotheses.
+  console.log('\n6. ★the audition order -- score DESC, unscored last')
+  {
+    const top = await seed({ label: 'ordz', source: 'library', title: 'ZZ Ord Zulu', score: 90, active: false })
+    const mid = await seed({ label: 'ords', source: 'library', title: 'ZZ Ord Sierra', score: 55, active: false })
+    const low = await seed({ label: 'ordm', source: 'library', title: 'ZZ Ord Mike', score: 10, active: false })
+    const none = await seed({ label: 'orda', source: 'library', title: 'ZZ Ord Alfa', active: false })
+
+    const page = await listMusicForCuration({ q: 'ZZ Ord ' })
+    const order = page.tracks.map((t) => t.id)
+    const shown = page.tracks.map((t) => `${t.title}=${t.reviewScore}`).join(' | ')
+
+    // ★The premise, asserted before anything is concluded from the order. Four rows in,
+    // fewer than four back means the ordering result below is about a different set.
+    ok(page.tracks.length === 4, `all four seeded rows come back [${page.tracks.length}] ${shown}`)
+
+    ok(
+      order.join() === [top, mid, low, none].join(),
+      `descending score, unscored last [${shown}]`,
+    )
+
+    // ★The scores are REAL VALUES, not the hard-coded null this replaces. Without this,
+    // the order assertion above could pass on title order alone in some other fixture.
+    const byId = new Map(page.tracks.map((t) => [t.id, t]))
+    ok(byId.get(top)?.reviewScore === 90 && byId.get(low)?.reviewScore === 10,
+      `screening_score arrives as a number [top=${byId.get(top)?.reviewScore}, low=${byId.get(low)?.reviewScore}]`)
+
+    // ★NULL, not 0. An unscreened track sorting among the rejects instead of after them
+    // is how a track nobody measured gets read as a track that measured badly
+    // ([[feedback-absent-is-not-zero]]).
+    ok(byId.get(none)?.reviewScore === null,
+      `an unscreened row reads as null, not 0 [${byId.get(none)?.reviewScore}]`)
+    ok(order[order.length - 1] === none, 'and it sorts LAST -- after the scored rejects, not among them')
+
+    // ★NEGATIVE CONTROL. If the harness cannot distinguish the two hypotheses it proves
+    // nothing, so state the rejected one and check it was in fact rejected. Title
+    // ascending would have produced the exact reverse.
+    const titleOrder = [...page.tracks].sort((x, y) => (x.title ?? '').localeCompare(y.title ?? '')).map((t) => t.id)
+    ok(titleOrder.join() !== order.join(),
+      'title order and score order genuinely differ here -- the fixture can tell them apart')
+    ok(titleOrder.join() === [none, low, mid, top].join(),
+      'and title order is the exact reversal, which is what the previous (null-score) code returned')
+  }
 }
 
 async function cleanup() {
@@ -179,15 +255,20 @@ main()
   })
   .then(() => {
     console.log(`\n== music curation: ${pass} pass, ${fail} fail ==`)
-    console.log('NOT covered: the score ordering END TO END. ★The column EXISTS as of 2026-08-09')
-    console.log('             (screening_score; music_score/score/screen_score return 42703) and the')
-    console.log('             worker now supplies it from the manifest, so the reason this was uncovered')
-    console.log('             -- "nothing can persist a score" -- is gone. What IS measured: the rule in')
-    console.log("             lib/music-curation-order.test.ts, and PostgREST's NULL placement, checked")
-    console.log('             against the live table (DESC default -> NULLs FIRST; nullsFirst:false ->')
-    console.log('             NULLs last). What is NOT: a seeded batch of scored rows read back through')
-    console.log('             listMusicForCuration in score order. ★Write that before the 100-track batch')
-    console.log('             is auditioned -- descending score IS the audition method.')
-    console.log('             Also not covered: paging past one page (needs more rows than a test should create).')
+    console.log('COVERED as of 2026-08-09: the audition order end to end (section 6) -- scored rows')
+    console.log('             read back through listMusicForCuration in DESCENDING score with unscored')
+    console.log('             last, on a fixture whose title order is the exact REVERSE, so the two')
+    console.log('             hypotheses cannot both be satisfied. Verified to fail: removing the')
+    console.log('             screening_score term from musicCurationOrderTerms() turns 3 of those')
+    console.log("             assertions red. PostgREST's NULL placement was measured separately")
+    console.log('             (DESC default -> NULLs FIRST; nullsFirst:false -> NULLs last).')
+    console.log('★NOT covered: paging past one page -- the order is only proven WITHIN one page, and')
+    console.log('             page 2 of a 1,000-track catalogue is where an unstable sort actually')
+    console.log('             bites (a row seen twice while another is never seen). Needs more rows')
+    console.log('             than a test should create against the live table; the id tie-break that')
+    console.log('             guards it is asserted in lib/music-curation-order.test.ts only.')
+    console.log('             Also not covered: the worker->column path (seed:music:batch writing a')
+    console.log('             transcribed screeningScore) -- that is dry-run verified in the worker,')
+    console.log('             not exercised end to end from a manifest to this list.')
     process.exit(fail ? 1 : 0)
   })
