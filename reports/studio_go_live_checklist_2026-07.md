@@ -364,6 +364,12 @@ is a standing rule for the music switch, not a launch-day step.**
   2026-08-03 (a publish write that named a column the table does not have, ran
   for weeks, and logged success the whole time) that distinction is the whole
   discipline. Reviewed code is not measured code.
+- ★PRECONDITION, check it before you run anything: **a worker must be up, and it
+  must be the Railway one.** This step is only valid if something claims the row.
+  With no worker running you get the third verdict below, which is not a result --
+  and it is the state the render lane has actually been in since 2026-07-15.
+  Confirm the Railway service is running FIRST, then run the harness; otherwise
+  you spend the step and learn nothing.
 - HOW, and it costs nothing extra: `npm run test:reachability` already prints
   the verdict (`e2e/reachability-queued-submit.mjs:199`). Read the line:
   - `DEPLOY: the running worker stamps claim_token -> it carries the CAS build`

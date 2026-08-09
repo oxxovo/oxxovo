@@ -278,6 +278,13 @@ type Messages = {
     segment_waitlist: string
     segment_awarded: string
     segment_rejected: string
+    // Judging axis -- orthogonal to the competition-status segments above.
+    judging_axis_label: string
+    judging_all: string
+    judging_unjudged: string
+    judging_in_progress: string
+    judging_failed: string
+    judging_completed: string
     segment_count: (n: number) => string
     search_placeholder: string
     sort_label: string
@@ -885,6 +892,12 @@ const MESSAGES_EN: Messages = {
     segment_waitlist: 'Waitlist',
     segment_awarded: 'Awarded',
     segment_rejected: 'Rejected',
+    judging_axis_label: 'Judging',
+    judging_all: 'Any',
+    judging_unjudged: '★Never enqueued',
+    judging_in_progress: 'In progress',
+    judging_failed: 'Failed',
+    judging_completed: 'Judged',
     segment_count: (n) => `(${n})`,
     search_placeholder: 'Search name, email, channel…',
     sort_label: 'Sort',
@@ -1508,6 +1521,12 @@ const MESSAGES_KO: Messages = {
     segment_waitlist: '대기자',
     segment_awarded: '시상자',
     segment_rejected: '탈락',
+    judging_axis_label: '심사',
+    judging_all: '전체',
+    judging_unjudged: '★미채점',
+    judging_in_progress: '진행 중',
+    judging_failed: '실패',
+    judging_completed: '완료',
     segment_count: (n) => `(${n})`,
     search_placeholder: '이름, 이메일, 채널 검색…',
     sort_label: '정렬',

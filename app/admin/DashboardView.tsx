@@ -12,6 +12,12 @@ export type ScoringStats = {
   completed: number
   in_progress: number
   failed: number
+  // ⑥G gap 1. `scorable` is the denominator the other three never had, and
+  // `unjudged` is entries with NO scoring row at all -- absent, not pending.
+  // See lib/scoring-coverage.ts for why it is an intersection.
+  scorable: number
+  judged: number
+  unjudged: number
 }
 
 export function DashboardView({
@@ -190,6 +196,10 @@ function ScoringStatsBlock({
 }) {
   const totalJudged = stats.completed
   const hasUrgent = flaggedCount > 0
+  // ★An entry the scorer never received is the only kind an operator can still
+  // do something about while judging is running, so it gets the loud tone --
+  // louder than 'failed', which at least means the pipeline saw it.
+  const hasGap = stats.unjudged > 0
   return (
     <section className="mb-10">
       <div className="flex items-baseline justify-between mb-3">
@@ -206,9 +216,22 @@ function ScoringStatsBlock({
         )}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MiniStat label="Judged" value={totalJudged} tone="default" />
+        <MiniStat label={`Judged / ${stats.scorable} with a film`} value={totalJudged} tone="default" />
         <MiniStat label="In progress" value={stats.in_progress} tone="indigo" />
         <MiniStat label="Failed" value={stats.failed} tone="red-soft" />
+        <MiniStat
+          label="★Never enqueued"
+          value={stats.unjudged}
+          tone={hasGap ? 'red' : 'default'}
+        />
+      </div>
+      {hasGap && (
+        <p className="mt-2 text-xs text-red-300">
+          {stats.unjudged}편이 영상은 있는데 채점 행이 없습니다 — 실패가 아니라 <strong>큐에 들어가지
+          않은 것</strong>입니다. 실패 목록에는 나타나지 않습니다.
+        </p>
+      )}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
         <MiniStat label="Flagged" value={flaggedCount} tone={hasUrgent ? 'red' : 'default'} />
       </div>
       <div className="grid grid-cols-4 gap-3 mt-3">
