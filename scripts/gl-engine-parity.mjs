@@ -105,6 +105,14 @@ const signalErr = (plain, ff, gl) => {
   for (let i = 0; i < n; i++) { num += Math.abs(gl[i] - ff[i]); den += Math.abs(ff[i] - plain[i]) }
   return den === 0 ? 0 : num / den
 }
+// The floor expressed in `signalErr` units: sum|roundTrip - plain| / sum|ff - plain|.
+// "Of the signal this row is measured against, this fraction is the pipeline moving
+// pixels on its own."
+const sumRatio = (plain, ff, roundTrip) => {
+  let num = 0, den = 0
+  for (let i = 0; i < plain.length; i++) { num += Math.abs(roundTrip[i] - plain[i]); den += Math.abs(ff[i] - plain[i]) }
+  return den === 0 ? 0 : num / den
+}
 const diff = (a, b) => { const n = Math.min(a.length, b.length); let s = 0; for (let i = 0; i < n; i++) s += Math.abs(a[i] - b[i]); return s / n / 255 * 100 }
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage()
@@ -289,6 +297,17 @@ for (const c of CASES) results[c.name] = []
 for (const it of items) {
   const b64 = (await readFile(it.png)).toString('base64')
   const plain = await raw(it.png)
+  // ★THE PIPELINE'S OWN FLOOR, on this content. An RGB->yuv444p->RGB round trip with NO
+  // effect at all: measured 2026-08-08 at 0.124-0.130% on real frames while the whole
+  // sharpen only moves them 0.53-0.65%, i.e. the irreducible quantisation is a FIFTH to a
+  // QUARTER of the effect being measured. yuv444p is the format the graph already
+  // negotiates (verified byte-identical to leaving it alone), so this is the real floor
+  // and not a hypothetical one.
+  // ★It is REPORTED BESIDE the ratio, never subtracted. Subtracting would assume the
+  // floor and the shader's error are independent, and there is no evidence for that -- a
+  // free-floating term can cancel real error and erase it. Same reason the absolute gate
+  // needed magnitude beside it rather than folded into it.
+  const roundTrip = await raw(it.png, 'format=yuv444p,format=rgb24')
   for (const c of CASES) {
     const outPng = `${it.png.replace(/\.png$/, '')}.eng.${c.name}.png`
     await writeFile(outPng, await c.gl(b64))
@@ -299,7 +318,10 @@ for (const it of items) {
     // 0.18% one, and the second case is a shader that could be doing nothing.
     const mag = diff(plain, ffOut)
     const sig = signalErr(plain, ffOut, await raw(outPng))
-    results[c.name].push({ content: it.name, d, mag, sig })
+    // The floor in the SAME units as `sig`: how much of the signal we are measuring
+    // against is pipeline noise rather than effect.
+    const floor = signalErr(plain, ffOut, roundTrip) === 0 ? 0 : sumRatio(plain, ffOut, roundTrip)
+    results[c.name].push({ content: it.name, d, mag, sig, floor })
   }
 }
 
@@ -385,6 +407,16 @@ for (const c of CASES) {
       (c.copied ? '  ★COPIED filter' : ''),
   )
   console.log('         ' + rows.map((x) => `${x.content}=${judge(x, c.gate).band ?? 'UNMEASURABLE'}`).join('  '))
+  // ★floor / ratio / floor-as-a-share-of-ratio, side by side. The VERDICT is the ratio
+  // alone; these three are how a reader tells how much of that ratio is the pipeline
+  // rather than the shader. Nothing is subtracted -- see the note on `sumRatio`.
+  console.log(
+    '         floor|ratio|share  ' +
+      rows.map((x) => {
+        const share = x.sig > 0 ? (x.floor / x.sig) : 0
+        return `${x.content}=${x.floor.toFixed(3)}|${x.sig.toFixed(3)}|${(share * 100).toFixed(0)}%`
+      }).join('  '),
+  )
   for (const x of unmeasurable) {
     console.log(
       `         ★${x.r.content}: effect magnitude ${x.r.mag.toFixed(2)}% <= floor ${FLOOR_PCT.toFixed(2)}%` +
