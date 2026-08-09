@@ -86,8 +86,7 @@ function Korean(p: NotSelectedProps) {
       <Heading style={headingStyle}>안녕하세요, {p.creatorName}님</Heading>
       <Text style={paragraph}>
         OXXOVO {p.seasonName}에 참가해 주셔서 감사합니다. 귀하의 작품에 대한 공식
-        Triple-AI 평가가 완료되었습니다. 이번 시즌에는 아쉽게도 본선 진출작으로
-        선정되지는 않았습니다.
+        Triple-AI 평가가 완료되었습니다. 이번 시즌 본선에는 오르지 못했습니다.
       </Text>
       <Text style={paragraph}>
         하지만 이것이 끝은 아닙니다. 모든 훌륭한 감독은 우승하기 전에 먼저

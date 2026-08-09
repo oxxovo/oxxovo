@@ -280,6 +280,13 @@ type Messages = {
     segment_waitlist: string
     segment_awarded: string
     segment_rejected: string
+    // Judging axis -- orthogonal to the competition-status segments above.
+    judging_axis_label: string
+    judging_all: string
+    judging_unjudged: string
+    judging_in_progress: string
+    judging_failed: string
+    judging_completed: string
     segment_count: (n: number) => string
     search_placeholder: string
     sort_label: string
@@ -888,7 +895,13 @@ const MESSAGES_EN: Messages = {
     segment_top50: 'Top 50',
     segment_waitlist: 'Waitlist',
     segment_awarded: 'Awarded',
-    segment_rejected: 'Rejected',
+    segment_rejected: 'Not advanced',
+    judging_axis_label: 'Judging',
+    judging_all: 'Any',
+    judging_unjudged: '★Never enqueued',
+    judging_in_progress: 'In progress',
+    judging_failed: 'Failed',
+    judging_completed: 'Judged',
     segment_count: (n) => `(${n})`,
     search_placeholder: 'Search name, email, channel…',
     sort_label: 'Sort',
@@ -1042,7 +1055,7 @@ const MESSAGES_EN: Messages = {
     template_application_received: 'Application received',
     template_waitlisted: 'Waitlisted',
     template_selected_top50: 'Selected (Top 50)',
-    template_not_selected: 'Not selected',
+    template_not_selected: 'Season result — not advanced',
     template_main_round_start: 'Main round start',
     template_submission_deadline: 'Submission deadline',
     template_results_announced: 'Results announced',
@@ -1513,7 +1526,13 @@ const MESSAGES_KO: Messages = {
     segment_top50: 'Top 50',
     segment_waitlist: '대기자',
     segment_awarded: '시상자',
-    segment_rejected: '탈락',
+    segment_rejected: '미진출',
+    judging_axis_label: '심사',
+    judging_all: '전체',
+    judging_unjudged: '★미채점',
+    judging_in_progress: '진행 중',
+    judging_failed: '실패',
+    judging_completed: '완료',
     segment_count: (n) => `(${n})`,
     search_placeholder: '이름, 이메일, 채널 검색…',
     sort_label: '정렬',
@@ -1667,7 +1686,7 @@ const MESSAGES_KO: Messages = {
     template_application_received: '신청 접수',
     template_waitlisted: '대기자 등록',
     template_selected_top50: '본선 진출 (Top 50)',
-    template_not_selected: '탈락 통보',
+    template_not_selected: '예선 결과 안내 (미진출)',
     template_main_round_start: '본선 시작',
     template_submission_deadline: '제출 마감 임박',
     template_results_announced: '결과 발표',
@@ -1745,7 +1764,7 @@ const MESSAGES_KO: Messages = {
     status_selected_msg: '축하합니다 — Top 50에 선발되셨습니다.',
     status_awarded_msg:
       '축하합니다! 시상자로 선정되셨습니다. 상금/상패 발송을 위해 아래 연락처를 입력해주세요.',
-    status_rejected_msg: '이번 시즌은 아쉽게 탈락하셨습니다. 다음 시즌에서 다시 만나뵙길 바랍니다.',
+    status_rejected_msg: '이번 시즌 본선에는 오르지 못했습니다. 다음 시즌에서 다시 만나요.',
     scoring_placeholder: 'Triple-AI 채점 결과는 3차 통합 후 표시됩니다.',
     winner_form_intro:
       '상금/상패 발송을 위해 전화번호와 우편 주소가 필요합니다. 메신저 ID는 선택 사항이며, 긴급한 연락이 필요한 경우에만 사용됩니다.',

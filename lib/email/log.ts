@@ -22,6 +22,11 @@ export type TemplateKey =
   // application per round). Application-scoped -> executeSend dedup applies.
   | 'video_live_prelim'
   | 'video_live_main'
+  // ⑤/⑪ submission receipts. Studio split "applying" from "submitting a film";
+  // application_received only covers the first. Application-scoped -> the
+  // executeSend dedup + the partial unique index make them once-only per round.
+  | 'studio_submission_received'
+  | 'main_round_submission_received'
   // P4e membership notices (profile-scoped; dedup via profiles.
   // membership_renewal_notified_at, not email_logs). Logged for transparency.
   | 'membership_renewal'
@@ -116,17 +121,24 @@ export async function canSend(
   templateKey: TemplateKey,
   reminderHour?: number,
 ): Promise<SendVerdict> {
-  if (await alreadySent(applicationId, templateKey, reminderHour)) {
-    return { ok: false, reason: 'already_sent' }
-  }
-
+  // ★ONE query, not two. This used to call alreadySent() and then run a second
+  // near-identical select for the failed rows -- same table, same two filters,
+  // differing only in `status`. At 450 recipients that second round trip is 450
+  // round trips, and the 11/8 finalist tick has a 300s ceiling it is not
+  // comfortably inside (see the budget in the email-tick route). Asking for both
+  // statuses at once costs nothing and gives the same two answers.
+  //
+  // ★alreadySent() itself is NOT removed and executeSend still calls it. That
+  // call is the last-line dedup for every non-cron sender and for the race
+  // between this verdict and the actual send; deleting it to save the same round
+  // trip would trade a duplicate query for a duplicate email.
   const admin = createSupabaseAdmin()
   let q = admin
     .from('email_logs')
-    .select('sent_at, metadata')
+    .select('status, sent_at, metadata')
     .eq('application_id', applicationId)
     .eq('template_key', templateKey)
-    .eq('status', 'failed')
+    .in('status', ['sent', 'failed'])
     .order('sent_at', { ascending: false })
 
   if (templateKey === 'submission_deadline' && reminderHour != null) {
@@ -139,13 +151,20 @@ export async function canSend(
     return { ok: true } // fail open — don't block on a transient log query error
   }
 
-  const failedCount = data?.length ?? 0
+  const rows = data ?? []
+  if (rows.some((r) => r.status === 'sent')) {
+    return { ok: false, reason: 'already_sent' }
+  }
+  // Already newest-first from the order above, so [0] is the most recent failure.
+  const failures = rows.filter((r) => r.status === 'failed')
+
+  const failedCount = failures.length
   if (failedCount === 0) return { ok: true }
   if (failedCount >= RETRY_BACKOFF_MINUTES.length + 1) {
     return { ok: false, reason: 'gave_up' }
   }
 
-  const lastFailedAt = data?.[0]?.sent_at as string | undefined
+  const lastFailedAt = failures[0]?.sent_at as string | undefined
   if (!lastFailedAt) return { ok: true }
 
   const backoffMinutes = RETRY_BACKOFF_MINUTES[failedCount - 1]

@@ -31,6 +31,11 @@ import { buildNextSeasonRow } from '@/lib/season-schedule'
 import { releasePrelimHoldCore } from '@/lib/watch-hold'
 import { sweepAsyncSubmissions, type AsyncSweepReport } from '@/lib/studio'
 import { sweepStudioLeases, type StudioLeaseReport } from '@/lib/studio-lease'
+import {
+  watchScoringLeases,
+  stuckAlertHtml,
+  type ScoringLeaseWatchReport,
+} from '@/lib/scoring-lease-watch'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
 import {
   reportPricingHealth,
@@ -39,6 +44,7 @@ import {
   type PricingHealthReport,
 } from '@/lib/pricing-health'
 import type { Season } from '@/lib/seasons'
+import { isFixtureSeason } from '@/lib/lobby'
 
 // Run at request time — a prerendered 'now' would silently ignore time-based
 // triggers.
@@ -95,6 +101,11 @@ type SeasonTickReport = {
   // music, and renders nobody submitted. Ownership is declared in
   // lib/studio-sweep-scope.ts and pinned by lib/studio-sweep-scope.test.ts.
   leaseSweep?: StudioLeaseReport
+  // ★The other half of the scoring lease: the worker reclaims its own stale
+  // claims, but cannot notice that it is not running. Always present so the
+  // threshold this tick used is readable next to the worker's own -- two repos
+  // cannot share a constant, so they are compared instead of assumed equal.
+  scoringLeases?: ScoringLeaseWatchReport
   // Always present, alert or not: the tick's JSON is the one place ops can read
   // the CURRENT pricing state on demand, rather than waiting for the mail that
   // only fires on a change.
@@ -138,10 +149,33 @@ async function handle(request: NextRequest) {
   let created: SeasonTickReport['created'] = null
   let skippedCreation: string | undefined
 
-  const latest = [...seasons].sort((a, b) => b.season_number - a.season_number)[0]
+  // ★Fixtures are excluded before "latest" is picked, and that one filter fixes
+  // all four things `latest` is used for: the next number, the next id, the
+  // teaser check, and the row buildNextSeasonRow clones from.
+  //
+  // Measured 2026-08-08: max(season_number) over ALL rows is 1006, because nine
+  // rehearsal seasons (season_test2 #998, season_test #999, season_1000..1006)
+  // sit in the table. So the unfiltered rule made the next real season #1007 --
+  // and it would then have been cloned from season_1006, a rehearsal row, and
+  // published as season_1007 on the lobby. Over the real rows the max is 4, so
+  // the next season is season_5.
+  const realSeasons = seasons.filter((s) => !isFixtureSeason(s))
+  const latest = [...realSeasons].sort((a, b) => b.season_number - a.season_number)[0]
   if (!latest) {
-    skippedCreation = 'no seasons exist yet — nothing to clone from'
-    errors.push('season-tick: seasons table is empty; cannot bootstrap season_0')
+    // Distinguish "no rows at all" from "rows, but every one of them is a
+    // fixture". The second is not a bootstrap failure, it is a table that has
+    // only rehearsal data in it, and calling it "empty" would send someone
+    // looking for the wrong problem.
+    if (seasons.length === 0) {
+      skippedCreation = 'no seasons exist yet — nothing to clone from'
+      errors.push('season-tick: seasons table is empty; cannot bootstrap season_0')
+    } else {
+      skippedCreation = `all ${seasons.length} seasons are fixtures — no real season to clone from`
+      errors.push(
+        `season-tick: every season row is is_fixture=true (${seasons.length} rows); ` +
+          'create-ahead refuses to clone a rehearsal into a public season',
+      )
+    }
   } else if (!latest.application_open_at) {
     // The latest season is a teaser with no open date set yet (e.g. an
     // announced "COMING SOON" season whose schedule is still TBD). That is a
@@ -451,6 +485,28 @@ async function handle(request: NextRequest) {
     errors.push(`studioLease: ${e instanceof Error ? e.message : String(e)}`)
   }
 
+  // ★Watch, do not reclaim. The scoring worker reclaims its own claims at the
+  // top of every batch; what it cannot do is notice that it is not running. A
+  // row stuck in_progress is invisible to every counter (not 'failed', skipped
+  // by pickPending as already claimed), so the preliminary just never finalizes.
+  // Isolated like the sweeps above: this must not cost the tick its other work.
+  let scoringLeases: ScoringLeaseWatchReport | undefined
+  try {
+    scoringLeases = await watchScoringLeases(now)
+    if (scoringLeases.error) errors.push(`scoringLeaseWatch: ${scoringLeases.error}`)
+    if (scoringLeases.stuck.length > 0) {
+      // ★Repeats hourly while it lasts, deliberately. This only fires when the
+      // scoring fleet is down during a scoring window, which is an outage, and
+      // an outage that stops mentioning itself is one nobody finishes fixing.
+      await sendAdminAlert(
+        `[OXXOVO] scoring worker not reclaiming — ${scoringLeases.stuck.length} row(s) stuck in_progress`,
+        stuckAlertHtml(scoringLeases),
+      )
+    }
+  } catch (e) {
+    errors.push(`scoringLeaseWatch: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   const report: SeasonTickReport = {
     ok: true,
     ranAt: now.toISOString(),
@@ -462,6 +518,7 @@ async function handle(request: NextRequest) {
     ...(skippedCreation ? { skippedCreation } : {}),
     ...(asyncSweep ? { asyncSweep } : {}),
     ...(leaseSweep ? { leaseSweep } : {}),
+    ...(scoringLeases ? { scoringLeases } : {}),
     ...(pricingHealth
       ? {
           pricing: {

@@ -112,10 +112,24 @@ export type Season = {
 
   application_open_at: string | null
   application_close_at: string | null
+  // ★Declared 2026-08-08. The COLUMN has existed since season0_3stage (it is in
+  // the seasons_public select list too) -- what was missing was this line, so
+  // nothing downstream could read it and the submission receipt was reported as
+  // blocked on a column that already existed. Absence from a type is not
+  // absence from the database.
+  scoring_start_at: string | null
   scoring_complete_at: string | null
   main_round_start_at: string | null
   main_round_end_at: string | null
   awards_announcement_at: string | null
+  // ★When the preliminary result mail goes out. A SCHEDULE, not a marker --
+  // prelim_released_at (already on the base table) is the marker that says the
+  // hold was actually lifted. Keeping the two apart is the scoring_complete_at
+  // lesson: one column that meant both "planned" and "done" let the planned
+  // value silently disable the done check, and season_0 would never have
+  // produced a Top N. Base table only -- NOT on seasons_public (measured
+  // 2026-08-08: the view is a fixed 66-column list, not SELECT *).
+  prelim_results_announcement_at: string | null
   // Community vote window. On the seasons_public view since
   // main_round_theme_public_2026-07 (a schedule, not a secret). Drives the
   // Watch "voting" banner stage + the 🔥 vote badge window.
@@ -156,6 +170,15 @@ export type Season = {
   // lobby_featured pins the card first.
   poster_url: string | null
   lobby_featured: boolean
+
+  // ★Is this row test data? ONE fact, and not the same claim as "hide it".
+  // Visibility is derived from it (see lib/lobby.ts isFixtureSeason). DEFAULT
+  // true in the DB, so a season is a fixture until a human writes false --
+  // forgetting hides a season instead of leaking a rehearsal onto the lobby.
+  // Optional here because the base row predates the column and because the
+  // seasons_public view does not carry it; `undefined` therefore means "this
+  // read could not see the column", which is a different thing from `false`.
+  is_fixture?: boolean | null
 
   created_at: string
   updated_at: string

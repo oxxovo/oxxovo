@@ -55,6 +55,7 @@ import { getBalance, getStudioPricing, getStudioPurchaseConfig, creditsForCostOr
 import { isSession6Enabled } from '@/lib/session6'
 import { getCreatorProfile } from '@/lib/profile'
 import { getDisplayName } from '@/lib/nickname'
+import { sendSubmissionReceipts, type ReceiptSeasonRef } from '@/lib/email/submission-receipts'
 
 export type PurchaseOptions = { enabled: boolean; packUsd: number[]; creditUsdValue: number }
 
@@ -412,6 +413,26 @@ export async function pollJobsAction(token: string): Promise<PollResult> {
   return { ok: true, jobs, balance, generationsUsed: used, draftGenerationsUsed: draftUsed }
 }
 
+// ⑤ -- the receipt for a Studio submission, sent from the act that produced it.
+//
+// ★Awaited, not fired and forgotten. A dangling promise in a server action can be
+// killed when the function returns, which is exactly the failure this is fixing:
+// a submission that produced no mail and no record of having tried. It costs one
+// Resend round trip on a path that already does a dozen.
+//
+// ★And it can never fail the submission. The entry is already committed at this
+// point -- the CAS above won it -- so a mail problem is logged (email_logs writes
+// a 'failed' row) and the season sweep retries it. Turning a delivered submission
+// into an error the participant sees would be a far worse bug than a late
+// receipt.
+async function receiptFor(season: ReceiptSeasonRef, email: string) {
+  try {
+    await sendSubmissionReceipts({ season, email })
+  } catch (e) {
+    console.error('[studio] submission receipt failed (non-fatal):', e instanceof Error ? e.message : String(e))
+  }
+}
+
 export type SubmitGenResult =
   | { ok: true }
   | {
@@ -458,6 +479,7 @@ export async function submitGenerationAction(
     applicant,
   })
   if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
+  await receiptFor(season, auth.email)
   return { ok: true }
 }
 
@@ -940,5 +962,6 @@ export async function submitRenderAction(
     applicant,
   })
   if (!res.ok) return { ok: false, error: res.reason, detail: res.detail }
+  await receiptFor(season, auth.email)
   return { ok: true }
 }

@@ -13,6 +13,27 @@ in `reports/season0_to_season1_transition.md`. They are deliberately not a Phase
 here -- doing them at season_0 launch is wasted work, and burying them among the
 launch steps is how they get missed at the transition.
 
+## ★How to read a number on this list (added 2026-08-08, HQ)
+
+Two rules, both learned from defects that had already shipped and were reading
+as green.
+
+**1. A number that reads the same for full coverage and for half coverage is not
+answering the question.** Before trusting any count on this list -- or building
+one -- write down WHICH TWO INPUTS have to produce different outputs. The
+scoring panel counted completed / in_progress / failed, all three being counts
+of rows that EXIST, so an entry nobody enqueued was in none of them: full
+coverage and half coverage printed the same thing. Applied here: "0 failed" is
+not "everything scored", "no warning" is not "the step ran", and an empty result
+set is not a pass (C8 says the same thing about `claim_token IS NULL`).
+
+**2. Prefer the check that cannot cancel itself out.** Where a total can be
+reached two ways, take the intersection, not the subtraction. Subtracting rows
+from entries assumes every row still has an entry behind it; one stray row then
+CANCELS a genuinely missing one, and the count comes out clean. ★The failure is
+silent and in the reassuring direction -- and that is the direction that gets
+shipped, because nobody investigates a number that looks fine.
+
 ---
 
 ## Phase 0 -- already LIVE (verified 2026-07-05, do NOT re-run)
@@ -226,8 +247,18 @@ switch was made, which is why unifying cost nothing.)
   - Sign in as the test account, open `/studio/compose`, and confirm the submit form
     is present for a render whose status is `queued` (not only `ready`). The statuses
     that must show it are `ASYNC_SUBMIT_STATUSES` = queued / rendering / uploading /
-    ready / failed (`lib/studio.ts`; the editor keeps its own mirrored copy, so a
-    change to one and not the other reproduces exactly the 2026-07-31 defect).
+    ready / failed.
+  - ★CORRECTION 2026-08-08: "the editor keeps its own mirrored copy" is no longer
+    true, and leaving it here would send an operator hunting for a divergence that
+    cannot exist. The list lives once in `lib/studio-shared.ts:63`; both
+    `lib/studio.ts` and `app/studio/compose/ProComposeEditor.tsx` import
+    `isSubmittableRenderStatus` from it, and `lib/studio-shared.test.ts:56`
+    **fails the build if either file declares the literal list again** or stops
+    referencing the shared one. That test is in the `npm test` list. So the
+    2026-07-31 defect can no longer be reproduced by divergence -- ★but the walk
+    below still has to happen, because "the gate is correct" and "a participant
+    reaches the control the gate protects" remain different claims, and that
+    distinction is what this whole step exists for.
   - Reload the page mid-processing and confirm the "accepted, processing" panel comes
     back from the DB rather than an empty editor.
   - Then remove the test entry.
@@ -360,6 +391,12 @@ is a standing rule for the music switch, not a launch-day step.**
   2026-08-03 (a publish write that named a column the table does not have, ran
   for weeks, and logged success the whole time) that distinction is the whole
   discipline. Reviewed code is not measured code.
+- ★PRECONDITION, check it before you run anything: **a worker must be up, and it
+  must be the Railway one.** This step is only valid if something claims the row.
+  With no worker running you get the third verdict below, which is not a result --
+  and it is the state the render lane has actually been in since 2026-07-15.
+  Confirm the Railway service is running FIRST, then run the harness; otherwise
+  you spend the step and learn nothing.
 - HOW, and it costs nothing extra: `npm run test:reachability` already prints
   the verdict (`e2e/reachability-queued-submit.mjs:199`). Read the line:
   - `DEPLOY: the running worker stamps claim_token -> it carries the CAS build`
@@ -369,6 +406,19 @@ is a standing rule for the music switch, not a launch-day step.**
     before opening Studio; a second worker on an older image is exactly the
     2026-08-07 duplicate-service situation, and without the token the older one
     can trample a finished render.
+  - ★`DEPLOY: row not claimed during the run -- no statement about the deployed
+    build` -> **NEITHER of the above.** Added 2026-08-08 after reading
+    `e2e/reachability-queued-submit.mjs:205`: the verdict has THREE branches and
+    this runbook listed two. It is the branch you will actually hit first,
+    because the render lane has had no activity since 2026-07-15 -- most likely
+    no worker was running at all. It is not a pass and not a failure; it means
+    the step did not execute. Start the worker and run it again. ★Recording it
+    as "ran, no warning" is how an unobserved defence gets signed off.
+- ★RUNNING THIS COSTS PRODUCTION WORK. The harness enqueues a real render row,
+  and whichever worker is up will claim it and spend vendor money on it. It is
+  not a read-only check: schedule it with the rehearsal and against the Railway
+  worker, never against a local dev worker
+  ([[feedback-local-dev-worker-hijacks-prod-jobs]]).
 - ★A zero is not a pass here. `claim_token IS NULL` on a terminal row only means
   something if some row in the same window carries one --
   `scripts/inspect-claim-token-null.mjs` prints that control group and refuses to

@@ -13,9 +13,21 @@ export type HeldSeason = {
   seasonId: string
   displayName: string
   heldCount: number
+  // ⑤E. Present whether or not anything is still held -- after the release these
+  // three are the only record an operator has that it ran.
+  cohortCount: number
+  lateCount: number
+  releasedAt: string | null
   holdEnabled: boolean
   autoPublish: boolean
   closeAt: string | null
+}
+
+// UTC, minute precision, matching the close-time line above it. Deliberately not
+// localised: an operator comparing this against a cron log needs the same clock
+// the log is in.
+function stamp(iso: string): string {
+  return `${new Date(iso).toISOString().slice(0, 16).replace('T', ' ')} UTC`
 }
 
 function ReleaseButton({ s }: { s: HeldSeason }) {
@@ -79,8 +91,19 @@ export function PrelimHoldPanel({ seasons }: { seasons: HeldSeason[] }) {
               <p className="font-bold text-white">{s.displayName}</p>
               <p className="mt-0.5 text-white/40">
                 보류 {s.heldCount}편
-                {s.closeAt && ` · 신청 마감 ${new Date(s.closeAt).toISOString().slice(0, 16).replace('T', ' ')} UTC`}
+                {s.closeAt && ` · 신청 마감 ${stamp(s.closeAt)}`}
               </p>
+              {s.releasedAt ? (
+                <p className="mt-0.5 text-emerald-300/80">
+                  공개됨 {stamp(s.releasedAt)} · 코호트 {s.cohortCount}편
+                  {' · '}
+                  <span className={s.lateCount > 0 ? 'font-bold text-amber-300' : ''}>
+                    공개 이후 유입 {s.lateCount}편
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-0.5 text-white/40">아직 공개되지 않음</p>
+              )}
               <p className="mt-0.5 text-white/40">
                 {s.autoPublish
                   ? '자동 공개 ON — 마감 시각 이후 첫 정시 cron이 자동으로 공개합니다'
@@ -88,7 +111,13 @@ export function PrelimHoldPanel({ seasons }: { seasons: HeldSeason[] }) {
                 {!s.holdEnabled && ' · 신규 제출은 더 이상 보류되지 않음(hold OFF)'}
               </p>
             </div>
-            <ReleaseButton s={s} />
+            {/* ★The button goes away when there is nothing to release; the row
+                does not. A released season stays on the page as the record. */}
+            {s.heldCount > 0 ? (
+              <ReleaseButton s={s} />
+            ) : (
+              <span className="text-xs text-white/30">보류 없음</span>
+            )}
           </li>
         ))}
       </ul>
