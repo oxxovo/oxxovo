@@ -39,6 +39,12 @@ import { TextFitReadout } from './TextFit'
 import { maxFittingSizePct } from '@/lib/text-metrics'
 import { createMusicPreview, type MusicPreview, type MusicBed } from './music-preview'
 import {
+  MIN_SPLIT_MS,
+  splitPointFromPlayhead,
+  splitSegmentAt,
+  type SplitReason,
+} from '@/lib/edl-split'
+import {
   availableFacets,
   filterMusicAssets,
   genreLabel,
@@ -205,6 +211,16 @@ const DICT = {
     music_title: '음악',
     music_none_assets: '음악 라이브러리 준비 중입니다.',
     music_need_clip: '먼저 타임라인에 클립을 올리세요.',
+    // ★④-E 분할. 규칙과 상수는 lib/edl-split.ts에 있다.
+    split: '분할',
+    split_hint: '플레이헤드 위치에서 클립을 둘로 나눕니다. 전체 길이는 변하지 않습니다.',
+    split_need_inside: '클립 안쪽에 플레이헤드를 두세요 (경계에서는 나눌 것이 없습니다).',
+    split_why: (r: SplitReason, maxClips: number) =>
+      r === 'too_many_clips'
+        ? `클립 수 상한(${maxClips})에 도달했습니다. 분할도 클립 한 칸을 씁니다.`
+        : r === 'too_short'
+          ? `양쪽 조각이 최소 ${MIN_SPLIT_MS}ms는 되어야 합니다.`
+          : '이 위치에서는 나눌 수 없습니다.',
     music_pick: '음악 선택',
     music_loading: '불러오는 중…',
     // ★[4] 필터·미리듣기. 장르·무드 라벨 자체는 lib/music-grid-labels.ts에 있다 —
@@ -410,6 +426,16 @@ const DICT = {
     music_title: 'Music',
     music_none_assets: 'Music library coming soon.',
     music_need_clip: 'Add a clip to the timeline first.',
+    // ★④-E split. The rule and the constant live in lib/edl-split.ts.
+    split: 'Split',
+    split_hint: 'Cut the clip in two at the playhead. Total length does not change.',
+    split_need_inside: 'Put the playhead inside a clip (there is nothing to cut on a boundary).',
+    split_why: (r: SplitReason, maxClips: number) =>
+      r === 'too_many_clips'
+        ? `You have reached the clip limit (${maxClips}). A split spends a clip slot too.`
+        : r === 'too_short'
+          ? `Each piece has to be at least ${MIN_SPLIT_MS}ms.`
+          : 'This position cannot be split.',
     music_pick: 'Pick music',
     music_loading: 'Loading…',
     // ★[4] filter + preview. The genre/mood wording itself lives in
@@ -1009,6 +1035,39 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     lastCommit.current = { key: '', t: 0 }
     setCanUndo(true); setCanRedo(redoRef.current.length > 0)
   }
+  // ---- ④-E clip split ------------------------------------------------------
+  // ★The RULE is lib/edl-split.ts, not here: a rule inside a component is a rule no
+  // test can execute (same reason text-track-lanes / music-picker-scope exist). This
+  // holds only the wiring and the refusal message.
+  const [splitNote, setSplitNote] = useState<SplitReason | null>(null)
+  const splitPoint = useMemo(() => splitPointFromPlayhead(segments, playheadMs), [segments, playheadMs])
+  // Enabled only when a split would actually succeed, so the button is not an offer
+  // that fails. The refusal path still exists for the keyboard route.
+  const canSplit = useMemo(() => {
+    if (!splitPoint) return false
+    return splitSegmentAt(segments, transitions, splitPoint.index, splitPoint.sourceCutMs, {
+      maxClips: props.maxClips,
+      newUid: () => 'probe',
+    }).ok
+  }, [segments, transitions, splitPoint, props.maxClips])
+
+  const splitAtPlayhead = () => {
+    if (!splitPoint) { setSplitNote('cut_outside'); return }
+    const res = splitSegmentAt(segments, transitions, splitPoint.index, splitPoint.sourceCutMs, {
+      maxClips: props.maxClips,
+      newUid: nextUid,
+    })
+    if (!res.ok) { setSplitNote(res.reason); return }
+    // ★ONE commit, and NOT coalesced. The segment insert and the transition shift must
+    // undo together, and two splits in a row must be two undo steps -- 2026-08-02 had a
+    // coalesce key that made one undo revert two separate edits.
+    commit('split')
+    setSegments(res.segments)
+    setTransitions(res.transitions)
+    setSel(res.selectUid)
+    setSplitNote(null)
+  }
+
   // ---- text/title overlay helpers -------------------------------------------
   const addText = () => {
     if (texts.length >= TEXT_LIMITS.MAX_TEXTS || totalMs <= 0) return
@@ -1492,8 +1551,19 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                 <button onClick={fitZoom} disabled={!segments.length} title={t.fit}
                   className="ml-0.5 flex h-6 items-center rounded px-1.5 text-[10px] font-bold text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-30">{t.fit}</button>
               </div>
+              {/* ★④-E split at the playhead. Disabled unless the split would actually
+                  succeed -- and the title says WHY when it would not, because a dead
+                  control with no reason reads as a broken editor. */}
+              <button type="button" onClick={splitAtPlayhead} disabled={!canSplit}
+                title={canSplit ? t.split_hint : splitPoint ? t.split_why(splitNote ?? 'too_many_clips', props.maxClips) : t.split_need_inside}
+                className="flex h-6 items-center rounded border border-white/10 px-2 text-[10px] font-bold text-white/60 transition hover:border-white/30 hover:text-white disabled:opacity-30">
+                {t.split}
+              </button>
               <span className="text-[10px] text-white/30">{t.clip_count(segments.length, props.maxClips)}</span>
             </div>
+            {splitNote && (
+              <p className="mt-1 text-[10px] text-amber-300/80">{t.split_why(splitNote, props.maxClips)}</p>
+            )}
           </div>
           <div ref={tlRef} className="min-h-[150px] flex-1 overflow-x-auto p-4"
             onDragOver={(e) => e.preventDefault()}
