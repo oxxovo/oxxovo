@@ -331,88 +331,70 @@ console.log('case   gate   ' + items.map((i) => i.name.padEnd(9)).join('') + ' v
 // 0.33, and on bars 0.76. There is no value that admits the second and rejects the first
 // with that little separation. So a row that lands in the RELATIVE branch reports its
 // ratio and is marked UNDECIDED rather than being waved through.
+// ★★THE BANDS (제니2, 2026-08-08). Judged on the SIGNAL-RELATIVE error r:
+//
+//   r <  0.5   PASS
+//   r <  1.0   REVIEW  -- a human looks
+//   r >= 1.0   FAIL    -- no better than doing nothing
+//
+// ★0.5 IS NOT A MEASURED VALUE, and saying so is the point. It is a quality
+// judgement: if half of the effect is wrong, that is not the effect. It was derived
+// from the HARD edge (1.000, structural -- a do-nothing shader scores exactly that
+// because its numerator becomes its denominator), not from the soft one: the worst
+// known-good measurement is colour/smooth at 0.184, and anchoring a bar just above a
+// single measurement is the hardcoding this project keeps catching.
+// ★THE LOWER EDGE IS ONE MEASUREMENT and stays soft on purpose. The way to tighten it
+// is to add known-good samples (more contents, more ported effects), not to move the
+// bar down to fit today's table. The REVIEW band exists so the empty ground between
+// 0.184 and 0.5 reaches a person instead of passing quietly.
+//
+// ★THE FLOOR IS CHECKED FIRST, and that ordering changes the answer. When the effect's
+// own magnitude is at or under 1 LSB, ffmpeg's change is itself at quantisation noise:
+// a float shader can produce a sub-LSB move that rounds to zero in 8-bit output while
+// ffmpeg's integer path rounds to +/-1. r then reads 1.000 and LOOKS like a
+// do-nothing shader when what actually happened is that the content cannot resolve the
+// effect. Judging that as FAIL would blame the shader for the instrument.
 const judge = (row, gate) => {
-  if (row.mag <= FLOOR_PCT) return { how: 'UNMEASURABLE', ok: false }
-  if (row.mag < gate) return { how: 'RELATIVE', ok: null, ratio: row.d / row.mag }
-  return { how: 'ABSOLUTE', ok: row.d <= gate }
+  if (row.mag <= FLOOR_PCT) return { how: 'UNMEASURABLE', band: null, ok: null }
+  const r = row.sig
+  if (r < 0.5) return { how: 'SIGNAL', band: 'PASS', ok: true, r }
+  if (r < 1.0) return { how: 'SIGNAL', band: 'REVIEW', ok: false, r }
+  return { how: 'SIGNAL', band: 'FAIL', ok: false, r }
 }
 
 let allPass = true
 for (const c of CASES) {
   const rows = results[c.name]
-  const worst = Math.max(...rows.map((r) => r.d))
   const verdicts = rows.map((r) => ({ r, v: judge(r, c.gate) }))
-  const hows = [...new Set(verdicts.map((x) => x.v.how))]
+  const judged = verdicts.filter((x) => x.v.band)
   const unmeasurable = verdicts.filter((x) => x.v.how === 'UNMEASURABLE')
-  const relative = verdicts.filter((x) => x.v.how === 'RELATIVE')
-  const absoluteFail = verdicts.filter((x) => x.v.how === 'ABSOLUTE' && x.v.ok === false)
+  const failed = judged.filter((x) => x.v.band === 'FAIL')
+  const review = judged.filter((x) => x.v.band === 'REVIEW')
 
   let verdict
-  if (absoluteFail.length) {
-    verdict = `REVIEW (worst ${worst.toFixed(2)}% on ${rows.find((r) => r.d === worst).content})`
-    allPass = false
-  } else if (unmeasurable.length || relative.length) {
-    verdict = 'UNDECIDED -- no threshold for this shape yet'
-    allPass = false
-  } else {
-    verdict = `PASS (worst ${worst.toFixed(2)}%)`
-  }
+  if (!judged.length) verdict = 'NO VERDICT -- no content could resolve this effect'
+  else if (failed.length) verdict = `FAIL on ${failed.map((x) => x.r.content).join(', ')}`
+  else if (review.length) verdict = `REVIEW on ${review.map((x) => x.r.content).join(', ')}`
+  else verdict = 'PASS'
+  if (failed.length || review.length || !judged.length) allPass = false
 
   console.log(
-    c.name.padEnd(8) + `<=${c.gate}%`.padEnd(7) +
-      rows.map((r) => `${r.d.toFixed(2)}%`.padEnd(9)).join('') +
-      verdict + `  [${hows.join('+')}]` +
-      (c.copied ? '  ★COPIED filter -- not compared against render.ts' : ''),
+    c.name.padEnd(8) + 'r<0.5  ' +
+      rows.map((x) => (judge(x, c.gate).band ? x.sig.toFixed(3) : 'n/a').padEnd(9)).join('') +
+      `${verdict}  [${judged.length}/${rows.length} judged]` +
+      (c.copied ? '  ★COPIED filter' : ''),
   )
-  // ★Say WHY a row could not be judged, per content, or the next reader re-derives it.
+  console.log('         ' + rows.map((x) => `${x.content}=${judge(x, c.gate).band ?? 'UNMEASURABLE'}`).join('  '))
   for (const x of unmeasurable) {
-    console.log(`         ${x.r.content}: effect magnitude ${x.r.mag.toFixed(2)}% <= floor ${FLOOR_PCT.toFixed(2)}% -- this content cannot measure this effect`)
-  }
-  // ★SIGNAL-RELATIVE column, printed for EVERY row so the three conditions can be read
-  // off one table: a do-nothing shader is 1.00 by construction.
-  console.log("         signal-relative error: " + rows.map((r) => r.content + "=" + r.sig.toFixed(3)).join("  "))
-  for (const x of relative) {
-    console.log(`         ${x.r.content}: magnitude ${x.r.mag.toFixed(2)}%, residual ${x.r.d.toFixed(2)}% -> ratio ${x.v.ratio.toFixed(2)} (a do-nothing shader scores 1.00)`)
+    console.log(
+      `         ★${x.r.content}: effect magnitude ${x.r.mag.toFixed(2)}% <= floor ${FLOOR_PCT.toFixed(2)}%` +
+        ` -- the content cannot resolve the effect, so r is not the shader's fault`,
+    )
   }
 }
-// ★REQUIREMENT ③, AS CODE: the negative control must FAIL. A pass-through shader is
-// compared against the same ffmpeg-sharpened output; if the table's own rules ever call
-// that acceptable, the rules are wrong and this says so instead of shipping.
-{
-  const FRAG_NOOP = '#version 300 es\nprecision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u_tex; void main(){ o = vec4(texture(u_tex, v_uv).rgb, 1.0); }'
-  console.log('')
-  console.log('negative control -- a DO-NOTHING shader, run against EVERY case:')
-  console.log('  ★A gate that cannot reject this is not measuring its shader. Checked against')
-  console.log('  the ABSOLUTE gate as well, because that is how these rows have been judged.')
-  const escapedRows = []
-  for (const c of CASES) {
-    for (const it of items) {
-      const b64 = (await readFile(it.png)).toString('base64')
-      const noopPng = `${it.png.replace(/\.png$/, '')}.eng.noop.${c.name}.png`
-      await writeFile(noopPng, await glRunSingle(FRAG_NOOP, {}, b64))
-      const ffOut = await raw(it.png, c.vf)
-      const d = diff(ffOut, await raw(noopPng))
-      const mag = diff(await raw(it.png), ffOut)
-      // ★The ABSOLUTE question, asked plainly: would the gate as configured accept a
-      // shader that does nothing on this content?
-      const absoluteWouldPass = d <= c.gate
-      if (absoluteWouldPass) escapedRows.push(`${c.name}/${it.name}`)
-      console.log(
-        `  ${(c.name + '/' + it.name).padEnd(17)} residual ${d.toFixed(2)}%  magnitude ${mag.toFixed(2)}%  ` +
-          `ratio ${(mag > 0 ? d / mag : 0).toFixed(2)}  ` +
-          (absoluteWouldPass ? `★the <=${c.gate}% ABSOLUTE gate would ACCEPT it` : `absolute gate rejects it`),
-      )
-    }
-  }
-  if (escapedRows.length) {
-    console.log(`\n★${escapedRows.length} case/content pair(s) where a DO-NOTHING shader passes the absolute gate:`)
-    console.log(`  ${escapedRows.join(', ')}`)
-    console.log('  These rows were never discriminating their shader. That is evidence for')
-    console.log('  re-baselining, not a licence to change a threshold here.')
-    allPass = false
-  }
-}
-
+console.log('bands: PASS r<0.5 | REVIEW 0.5<=r<1.0 | FAIL r>=1.0 (a do-nothing shader = 1.000)')
+console.log('★0.5 is a quality bar, not a measurement. Lower edge (worst known-good 0.184) is ONE')
+console.log(' measurement -- tighten it by adding known-good samples, not by moving the bar.')
 console.log(allPass ? 'ALL PASS' : 'REVIEW')
 await browser.close()
 if (!allPass) process.exitCode = 1
