@@ -144,7 +144,25 @@ A쪽 실제 위치(참고): `deriveLobbyMode` = `lib/lobby.ts` + `lib/season-pha
 | `assignLanes` / `laneCount` (`lib/text-track-lanes.ts`) | `readonly {startMs,endMs}[]`를 받는 **순수 함수**, 타입명이 `LaneWindow`(텍스트 타입 아님), 불변식 테스트 보유 | **D의 키프레임 트랙 · E의 분할 결과 표시 · 음악 레인** 전부에 **새 줄 0**으로 |
 | `updateText` 코얼레스 패턴 | `commit(\`${coalesceKey}:${i}\`)` — ★**키에 레이어 인덱스가 들어간다**(`f871cdb`에서 고친 그 결함) | D의 키프레임 드래그·E의 분할처럼 **여러 항목을 빠르게 끄는** 조작에 같은 패턴. 레이어별 undo 병합 문제는 이미 해결돼 있다 |
 | 폰트 어드밴스 골든 (`gen:text-advances` / `test:text-advances`) | 폰트 메트릭 골든 테이블 | **D의 텍스트 이동/애니메이션**에서 프리뷰↔렌더 폭 일치의 기준 |
-| 파리티 하니스 4종 | `test:parity:engine` · `test:parity:transition` · `test:text-parity` · 워커 `music-parity` | ★**G와 D의 게이트가 이미 존재한다.** 새 효과·전환은 `gl-engine-parity`/`gl-engine-transition`을 통과해야 노출되고, 그 하니스는 실패 시 **exit 1**로 막는다 |
+| 파리티 하니스 4종 | `test:parity:engine` · `test:parity:transition` · `test:text-parity` · 워커 `music-parity` | ★★**정정 2026-08-08 — 아래 참조. 게이트는 "있었지만" 판별하지 못했다** |
+
+★★**정정 (2026-08-08 저녁) — 위 줄의 "게이트가 이미 존재한다"는 근거로 쓸 수 없다.**
+`test:parity:engine`의 **"ALL PASS"가 무효 통과였다.** 무동작(pass-through) 셰이더를
+전 케이스에 돌려 실측한 결과, **절대 게이트를 그냥 통과하는 조합이 9쌍**이다:
+**LUT 4/4 · glow/testsrc · sharpen 4/4.** 게이트 값(3%·5%·2.5%)이 **효과 자체의 크기**
+(1.34~2.61% · 2.04% · 0.18~0.72%)보다 **커서**, 아무것도 안 하는 셰이더를 못 거른다.
+`color`만 정상이다(무동작 잔차 5~9% vs 2.5% → 모든 content에서 거부).
+
+★**셰이더가 틀렸다는 뜻이 아니다** — LUT 셰이더의 상대 ratio는 0.01~0.04(효과의 96~99%
+재현)로 훌륭하다. **틀린 것은 게이트**이고, 그래서 "통과했다"가 셰이더에 대한 증거가 아니었다.
+★그리고 **"실패 시 exit 1로 막는다"도 그 자체로는 안전을 뜻하지 않는다** — 거를 수 없는
+기준으로 exit 1을 걸면 **막는 척하는 게이트**가 된다.
+
+★이 문서의 G 관련 크기 판단은 그 전제 위에 있었으므로 **판별 가능한 게이트가 생긴 뒤에
+다시 읽어야 한다.** 상세·재현: `scripts/gl-engine-parity.mjs`의 negative control 절과
+`reports/lane_c_state_2026-08-08.md`.
+★**미확인**: 같은 질문을 `test:parity:transition`·`test:text-parity`·워커 `music-parity`에는
+**아직 하지 않았다.** 전환 표의 "9종 worst ≤0.30%"도 같은 계열일 수 있고, 그 하니스는 A 소관이다.
 
 ★**추가로 재사용 가치가 있는 어제 산출물 1건**: `lib/music-picker-scope.ts`가 보여준
 **"규칙을 필터 문자열/컴포넌트에서 빼내 순수 함수로 두고 양방향 테스트"** 패턴. D·E가
