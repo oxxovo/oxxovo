@@ -27,17 +27,26 @@ test('the same instant is stated in the clock each audience plans against', () =
 // evening in California is Nov 17 afternoon in Seoul. A formatter that rendered
 // one date for both languages would tell half the audience the wrong day.
 test('★a single instant can be two different days, and both must be right', () => {
-  assert.equal(formatScheduleMoment(AWARDS, 'en'), 'Nov 16, 8:00 PM PST')
+  assert.equal(formatScheduleMoment(AWARDS, 'en'), 'Nov 16, 8:00 PM PT')
   assert.equal(formatScheduleMoment(AWARDS, 'ko'), '11월 17일 오후 1시(한국 시간)')
 })
 
-// ★The zone abbreviation comes from Intl, never typed. Season 0 runs after the
-// 2026-11-01 change so it is PST; a July season is PDT and a hardcoded string
-// would be an hour wrong with nothing to catch it.
-test('the zone label follows the date, not the season', () => {
+// ★Outward copy says PT and only PT (HQ, 2026-08-08). PT is true in every
+// season; a fixed "PST" is an hour wrong for a season that runs in July, and
+// the same receipt's received-at line already prints PT.
+test('★participant copy says PT in both seasons, never PST or PDT', () => {
   const july = '2026-07-15T03:00:00.000Z' // Jul 14 20:00 PDT
-  assert.match(formatScheduleMoment(july, 'en') ?? '', /PDT$/)
-  assert.match(formatScheduleMoment(AWARDS, 'en') ?? '', /PST$/)
+  assert.equal(formatScheduleMoment(july, 'en'), 'Jul 14, 8:00 PM PT')
+  assert.equal(formatScheduleMoment(AWARDS, 'en'), 'Nov 16, 8:00 PM PT')
+})
+
+// ★The operator-facing spelling still follows the DATE, from Intl, never typed.
+// Two instants six months apart must produce two different abbreviations -- a
+// hardcoded label cannot pass this.
+test('the exact label follows the date, not the season', () => {
+  const july = '2026-07-15T03:00:00.000Z'
+  assert.match(formatScheduleMoment(july, 'en', 'exact') ?? '', /PDT$/)
+  assert.match(formatScheduleMoment(AWARDS, 'en', 'exact') ?? '', /PST$/)
 })
 
 test('a whole hour drops its minutes in Korean, per the copy', () => {
@@ -90,7 +99,7 @@ test('the main receipt sources both of its bullets', () => {
   )
   assert.deepEqual(lines, [
     { label: 'Audience voting', value: 'Nov 13 – Nov 16' },
-    { label: 'Winners', value: 'Nov 16, 8:00 PM PST' },
+    { label: 'Winners', value: 'Nov 16, 8:00 PM PT' },
   ])
 })
 
@@ -105,4 +114,39 @@ test('one missing column removes one bullet, not both', () => {
   )
   assert.equal(onlyVote.length, 1)
   assert.equal(onlyVote[0].label, '관객 투표')
+})
+
+// ── AI judging bullet: the column existed all along ────────────────────────
+
+const JUDGE_START = '2026-11-05T08:00:00.000Z' // Nov 5 00:00 PT
+const JUDGE_END = '2026-11-08T08:00:00.000Z' // Nov 8 00:00 PT
+
+test('both ends known: the bullet is a range', () => {
+  const [, judging] = prelimReceiptLines(
+    { application_close_at: CLOSE, scoring_start_at: JUDGE_START, scoring_complete_at: JUDGE_END },
+    'ko',
+  )
+  assert.deepEqual(judging, { label: 'AI 심사', value: '11월 5일 ~ 11월 8일' })
+})
+
+// ★Each end alone must read as that end, not as the other. "through Nov 8" and
+// "from Nov 5" are different promises, and a fallback that printed one when it
+// had the other would be a wrong date rather than a missing one.
+test('one end known: it says WHICH end', () => {
+  const onlyEnd = prelimReceiptLines({ scoring_complete_at: JUDGE_END }, 'en')
+  assert.deepEqual(onlyEnd, [{ label: 'AI judging', value: 'through Nov 8' }])
+  const onlyStart = prelimReceiptLines({ scoring_start_at: JUDGE_START }, 'en')
+  assert.deepEqual(onlyStart, [{ label: 'AI judging', value: 'from Nov 5' }])
+})
+
+// ★The results bullet stays absent. scoring_complete_at is Nov 8 00:00 and the
+// announcement is Nov 8 12:00 -- twelve hours apart. If this ever returns three
+// lines, someone has reused the judging end as the results time.
+test('★no results bullet until its own column exists', () => {
+  const lines = prelimReceiptLines(
+    { application_close_at: CLOSE, scoring_start_at: JUDGE_START, scoring_complete_at: JUDGE_END },
+    'ko',
+  )
+  assert.equal(lines.length, 2)
+  assert.deepEqual(lines.map((l) => l.label), ['공개', 'AI 심사'])
 })

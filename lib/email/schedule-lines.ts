@@ -52,10 +52,20 @@ function wallClock(d: Date, zone: string): Wall {
 
 const EN_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-// The zone abbreviation is the one thing that must come from Intl -- it is the
-// only part that changes with the date rather than with the locale (PST vs PDT),
-// and it is an English string in both languages' copy.
-function zoneAbbrev(d: Date, zone: string): string {
+// ★TWO ZONE LABELS, and which one you get depends on WHO IS READING.
+//
+// 'canonical' -> "PT". Outward copy uses PT and only PT (HQ, 2026-08-08): it is
+// true in every season, whereas a fixed "PST" is an hour wrong for a season that
+// runs in July. Rendering the exact abbreviation to participants would also put
+// two spellings in one email -- formatDeadlinePT already prints "PT" on the
+// received-at line of the same receipt.
+//
+// 'exact' -> "PST" / "PDT" from Intl, which changes with the DATE. Kept for
+// operator-facing surfaces, where being precise about which offset was in force
+// beats being uniform.
+export type ZoneLabel = 'canonical' | 'exact'
+
+export function zoneAbbrev(d: Date, zone: string): string {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'short' }).formatToParts(d)
   return parts.find((p) => p.type === 'timeZoneName')?.value ?? ''
 }
@@ -74,7 +84,11 @@ export function formatScheduleDay(iso: string | null | undefined, lang: Lang): s
 // after the 2026-11-01 DST change so they are PST -- but a season that runs in
 // July is PDT, and a hardcoded "PST" would be wrong for it by an hour with
 // nothing to catch it.
-export function formatScheduleMoment(iso: string | null | undefined, lang: Lang): string | null {
+export function formatScheduleMoment(
+  iso: string | null | undefined,
+  lang: Lang,
+  zoneLabel: ZoneLabel = 'canonical',
+): string | null {
   const d = parse(iso)
   if (!d) return null
   const w = wallClock(d, ZONE[lang])
@@ -88,7 +102,8 @@ export function formatScheduleMoment(iso: string | null | undefined, lang: Lang)
     const time = w.minute === 0 ? `${period} ${h12}시` : `${period} ${h12}시 ${mm}분`
     return `${day} ${time}(한국 시간)`
   }
-  return `${day}, ${h12}:${mm} ${w.hour < 12 ? 'AM' : 'PM'} ${zoneAbbrev(d, ZONE.en)}`
+  const zone = zoneLabel === 'exact' ? zoneAbbrev(d, ZONE.en) : 'PT'
+  return `${day}, ${h12}:${mm} ${w.hour < 12 ? 'AM' : 'PM'} ${zone}`
 }
 
 // "11월 13일 ~ 11월 15일" / "Nov 13-15". Null unless BOTH ends are known -- half
@@ -106,6 +121,7 @@ export function formatScheduleRange(
 
 export type ReceiptSeason = {
   application_close_at?: string | null
+  scoring_start_at?: string | null
   scoring_complete_at?: string | null
   community_vote_start_at?: string | null
   community_vote_end_at?: string | null
@@ -114,11 +130,15 @@ export type ReceiptSeason = {
 
 // ⑤ preliminary receipt.
 //
-// ★Two of Jenny3's four bullets cannot be sourced yet and are therefore absent:
-//   - "AI 심사 11/5 ~ 11/7" -- there is no scoring START column, only
-//     scoring_complete_at, so only the end can be stated truthfully.
-//   - "결과 안내 11/8" -- head office is still adding that column
-//     (the 11/8 12:00 marker). When it lands, add one entry here.
+// ★One of Jenny3's four bullets still cannot be sourced and is therefore absent:
+// "결과 안내 11/8 12:00" has no column -- scoring_complete_at is 11/8 00:00, a
+// different instant by twelve hours, and using it would put a wrong time in
+// front of every participant. Head office is adding the column; one entry comes
+// back here when it lands.
+//
+// The AI-judging bullet WAS reported as unsourceable on the morning of the same
+// day. That was wrong: scoring_start_at existed in the database and in the
+// seasons_public view all along, and only the TypeScript type was missing it.
 export function prelimReceiptLines(season: ReceiptSeason, lang: Lang): ScheduleLine[] {
   const lines: ScheduleLine[] = []
   const live = formatScheduleDay(season.application_close_at, lang)
@@ -131,12 +151,21 @@ export function prelimReceiptLines(season: ReceiptSeason, lang: Lang): ScheduleL
           : `from ${live}, as each entry clears verification`,
     })
   }
-  const judged = formatScheduleDay(season.scoring_complete_at, lang)
-  if (judged) {
-    lines.push({
-      label: lang === 'ko' ? 'AI 심사' : 'AI judging',
-      value: lang === 'ko' ? `${judged}까지` : `through ${judged}`,
-    })
+  // Both ends when both are known; otherwise whichever end is, phrased so it
+  // cannot be mistaken for the other.
+  const judging =
+    formatScheduleRange(season.scoring_start_at, season.scoring_complete_at, lang) ??
+    (formatScheduleDay(season.scoring_complete_at, lang)
+      ? lang === 'ko'
+        ? `${formatScheduleDay(season.scoring_complete_at, lang)}까지`
+        : `through ${formatScheduleDay(season.scoring_complete_at, lang)}`
+      : formatScheduleDay(season.scoring_start_at, lang)
+        ? lang === 'ko'
+          ? `${formatScheduleDay(season.scoring_start_at, lang)}부터`
+          : `from ${formatScheduleDay(season.scoring_start_at, lang)}`
+        : null)
+  if (judging) {
+    lines.push({ label: lang === 'ko' ? 'AI 심사' : 'AI judging', value: judging })
   }
   return lines
 }

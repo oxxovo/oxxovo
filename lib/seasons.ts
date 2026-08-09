@@ -112,6 +112,12 @@ export type Season = {
 
   application_open_at: string | null
   application_close_at: string | null
+  // ★Declared 2026-08-08. The COLUMN has existed since season0_3stage (it is in
+  // the seasons_public select list too) -- what was missing was this line, so
+  // nothing downstream could read it and the submission receipt was reported as
+  // blocked on a column that already existed. Absence from a type is not
+  // absence from the database.
+  scoring_start_at: string | null
   scoring_complete_at: string | null
   main_round_start_at: string | null
   main_round_end_at: string | null
