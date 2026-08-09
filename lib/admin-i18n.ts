@@ -168,6 +168,10 @@ type Messages = {
     field_name: string
     field_season_number: string
     field_status: string
+    field_is_fixture: string
+    option_is_fixture_real: string
+    option_is_fixture_rehearsal: string
+    hint_is_fixture: string
     field_max_applicants: string
     field_top_n: string
     group_advancement: string
@@ -779,6 +783,11 @@ const MESSAGES_EN: Messages = {
     field_name: 'Name',
     field_season_number: 'Season #',
     field_status: 'Status',
+    field_is_fixture: 'Is this a real competition? (required)',
+    option_is_fixture_real: 'Real competition — show it publicly and mail its entrants',
+    option_is_fixture_rehearsal: 'Rehearsal / test — keep it off the lobby and send no mail',
+    hint_is_fixture:
+      'No default, on purpose: pick one. This single answer controls the public lobby and the mailer, so a wrong "real" sends mail that cannot be recalled.',
     field_max_applicants: 'Max applicants',
     field_top_n: 'Top N advance (computed result)',
     group_advancement: 'Advancement & deferral (2-stage)',
@@ -1408,6 +1417,11 @@ const MESSAGES_KO: Messages = {
     field_name: '이름',
     field_season_number: '시즌 번호',
     field_status: '상태',
+    field_is_fixture: '이건 진짜 시합입니까? (필수)',
+    option_is_fixture_real: '진짜 시합 — 공개면에 노출하고 참가자에게 메일을 보낸다',
+    option_is_fixture_rehearsal: '리허설 / 테스트 — 로비에 안 띄우고 메일도 안 보낸다',
+    hint_is_fixture:
+      '기본값을 일부러 두지 않았습니다. 하나를 고르십시오. 이 한 번의 답이 공개 로비와 메일 발송 양쪽을 결정하고, "진짜"로 잘못 고르면 되돌릴 수 없는 메일이 나갑니다.',
     field_max_applicants: '최대 지원자',
     field_top_n: '본선 진출자 수 (자동 산출 결과)',
     group_advancement: '진출 및 연기 정책 (2단계)',

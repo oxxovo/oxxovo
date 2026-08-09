@@ -17,6 +17,32 @@ export const seasonSchema = z
     season_number: z.coerce.number().int().nonnegative(),
     status: z.enum(['draft', 'upcoming', 'active', 'closed', 'completed']),
 
+    // ★IS THIS A REAL COMPETITION? A REQUIRED CHOICE WITH NO DEFAULT.
+    //
+    // Every other boolean on this form defaults (see lobby_featured: undefined
+    // becomes false). This one must not, and the reason is that BOTH wrong
+    // defaults are real:
+    //   default false -> a rehearsal created through this form is filed as a
+    //     real competition. It appears on the public lobby and, once email-tick
+    //     reads the same column, mails its test addresses as if they were
+    //     entrants. Not recoverable -- the mail has left.
+    //   default true  -> a real season is filed as test data. It is hidden from
+    //     the lobby and silently skipped by the mailer. Recoverable, but silent.
+    // The DB DEFAULT is true because for a row created by some OTHER path the
+    // fail-closed direction is the only sane one. Here there is a human in the
+    // loop, so the honest option is to make them say which it is. Absence is a
+    // validation error, not a value.
+    //
+    // ★So there is deliberately no z.undefined() branch and no .default().
+    // z.enum over the two literal strings a radio group posts, then to boolean.
+    is_fixture: z
+      .enum(['true', 'false'], {
+        error:
+          'choose real competition or rehearsal/test -- this field has no default, ' +
+          'because both possible defaults are wrong in a different direction',
+      })
+      .transform((v) => v === 'true'),
+
     max_applicants: z.coerce.number().int().positive(),
     top_n_advance: z.coerce.number().int().positive(),
 
@@ -139,7 +165,22 @@ export const seasonSchema = z
 
 export type SeasonInput = z.infer<typeof seasonSchema>
 
-export const DEFAULT_SEASON: SeasonInput = {
+/**
+ * What the FORM starts from -- which is not the same shape as what it must SUBMIT.
+ *
+ * ★is_fixture is optional here and required in SeasonInput, and that gap is the
+ * feature. DEFAULT_SEASON is the initial state of the new-season form; if it
+ * carried a value, one radio would arrive pre-selected and an admin could submit
+ * without ever deciding, which is exactly what a required choice is meant to
+ * prevent. `undefined` means "nobody has said yet" and renders as neither option
+ * checked. The edit page passes the row's real value, so editing an existing
+ * season shows what it currently is rather than asking again from scratch.
+ */
+export type SeasonFormInitial = Omit<SeasonInput, 'is_fixture'> & {
+  is_fixture?: boolean | null
+}
+
+export const DEFAULT_SEASON: SeasonFormInitial = {
   name: 'NEW SEASON',
   season_number: 1,
   status: 'draft',
