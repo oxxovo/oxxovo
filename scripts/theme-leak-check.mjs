@@ -38,12 +38,20 @@ const SCOPE = join(ROOT, 'app', 'studio')
 //   both  <- new   : '제품' / 'product' / '커머셜'. The camera-preset pill that
 //                    started this rule literally read '뷰티/제품' -- the fix shipped,
 //                    but '제품' was never actually BANNED, so the regression was free.
+// ★'luxury' / '럭셔리' ADDED 2026-08-09 (head office), and it is the SAME SHAPE as
+// '제품' was. 제니3 refused 'luxury' as a grid label on 2026-08-08 (a product-GRADE
+// word implies an industry) and replaced it with 'elegant' -- but refusing one
+// candidate label is not a rule, so nothing stopped the next person proposing it
+// again, in a preset name, a tag, a filename or a seeder string. A decision that
+// lives only in the minutes of the meeting that made it regresses for free.
 const BANNED = [
   '화장품', '코스메틱', '코스메', '스킨케어', '스킨 케어', '뷰티', '메이크업', '립스틱',
   'cosmetic', 'cosmetics', 'skincare', 'skin care', 'makeup', 'make-up', 'lipstick', 'beauty',
   // product-category words: naming the product type leaks the theme as surely as
   // naming the industry does.
   '제품', 'product',
+  // product-GRADE words: a grade implies the kind of thing being graded.
+  'luxury', '럭셔리', '명품',
   // ad-format words: the theme is a COMMERCIAL, so naming the format leaks it too
   '광고', 'CF', 'commercial', '커머셜', 'ad',
 ]
