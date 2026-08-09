@@ -29,12 +29,34 @@ const SCOPE = join(ROOT, 'app', 'studio')
 // Product categories / industries / ad-format words. The main-round theme is a
 // cosmetics commercial film, so these are the words that give it away.
 // APPEND-ONLY in spirit: adding a term can only make the guard stricter.
+// ★RECONCILED WITH THE WORKER'S LIST 2026-08-08, when the grid vocabulary was
+// confirmed (제니3 asked for the two to be compared). src/music-grid.ts guards the DATA
+// that becomes UI text; this guards the UI text. Neither is a superset of the other, so
+// both grew:
+//   here <- worker : 'beauty' (English -- only '뷰티' was banned, so an English
+//                    string would have passed), and 'ad'
+//   both  <- new   : '제품' / 'product' / '커머셜'. The camera-preset pill that
+//                    started this rule literally read '뷰티/제품' -- the fix shipped,
+//                    but '제품' was never actually BANNED, so the regression was free.
 const BANNED = [
   '화장품', '코스메틱', '코스메', '스킨케어', '스킨 케어', '뷰티', '메이크업', '립스틱',
-  'cosmetic', 'cosmetics', 'skincare', 'skin care', 'makeup', 'make-up', 'lipstick',
+  'cosmetic', 'cosmetics', 'skincare', 'skin care', 'makeup', 'make-up', 'lipstick', 'beauty',
+  // product-category words: naming the product type leaks the theme as surely as
+  // naming the industry does.
+  '제품', 'product',
   // ad-format words: the theme is a COMMERCIAL, so naming the format leaks it too
-  '광고', 'CF', 'commercial',
+  '광고', 'CF', 'commercial', '커머셜', 'ad',
 ]
+
+// ★'브랜드' / 'brand' ARE NOT HERE, though head office named them. Measured against
+// the real strings first, and both live uses are legitimate:
+//   - the trademark refusal has to SAY it ('상표·브랜드명은 사용할 수 없어요' /
+//     'Trademarks / brand names are not allowed') -- banning the word deletes the one
+//     sentence that tells a participant what they did wrong;
+//   - `brand: 'OXXOVO'` is the logo's alt text: our own name, not a product category.
+// Neither lets anyone infer a cosmetics commercial, which is what this list is for. A
+// ban suppressed at both of its real call sites is a ban the next person deletes, so it
+// is reported to 제니2 rather than added and worked around.
 
 // Allowed because they are not the leak:
 //  - `preset_group_beauty` / `group_id === 'beauty'` are INTERNAL keys, never
@@ -66,12 +88,21 @@ const isComment = (line) => {
   return t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')
 }
 
+// ★A TRAILING comment is the same class as a whole-line one, and it became load-bearing
+// when '제품'/'product' were added: the line that FIXED the original leak is
+//     preset_group_beauty: 'Elegant', // mood, not a product category -- see the KO note
+// which is a code line whose comment has to name the banned word to explain itself. The
+// fix's own explanation must not fail the guard that fix exists for.
+// `(?<!:)//` so a URL's `https://` is left alone; the terms are what we scan for, and a
+// banned word inside a URL would still be caught because only the comment is removed.
+const stripTrailingComment = (line) => line.replace(/(?<!:)\/\/.*$/, '')
+
 const findings = []
 for (const file of walk(SCOPE)) {
   const lines = readFileSync(file, 'utf8').split(/\r?\n/)
   lines.forEach((line, i) => {
     if (isComment(line)) return
-    let probe = line
+    let probe = stripTrailingComment(line)
     for (const ok of ALLOWED_SUBSTRINGS) probe = probe.split(ok).join('')
     for (const term of BANNED) {
       // whole-word for the short ASCII ones so 'CF' does not match 'CFG' and

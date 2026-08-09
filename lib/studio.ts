@@ -1317,7 +1317,28 @@ export async function submitGeneration(args: {
 // (a later step) verifies the full v1s chain. The render is the SCORED artifact.
 // ===========================================================================
 
-export type MusicAsset = { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }
+export type MusicAsset = {
+  id: string
+  url: string
+  title: string
+  mood: string
+  source: 'library' | 'ai'
+  /**
+   * ★Grid facets for the picker filter. OPTIONAL because the columns are not migrated:
+   * `genre` / `bpm` do not exist on studio_music_assets yet (지수 본체's migration), so
+   * they are absent today and the picker offers no genre or tempo control as a result
+   * (lib/music-grid-labels.ts availableFacets -- a filter over a column that is not
+   * there would return nothing and read as "there is no cinematic music").
+   *
+   * ★DO NOT ADD THEM TO THE SELECT BELOW UNTIL THE MIGRATION HAS RUN. PostgREST refuses
+   * a statement containing one unknown column SILENTLY, taking the whole read with it
+   * ([[feedback-postgrest-unknown-column-silent]], which cost a submission with no file
+   * on 2026-08-03) -- so naming them early empties the picker rather than erroring.
+   * Flipping this on is two lines: the select list, and the two fields in the map.
+   */
+  genre?: string | null
+  bpm?: number | null
+}
 
 // List the music beds a participant can pick for a season: the platform library
 // (active, ready, SIGNED) + the participant's own ready AI tracks. `enabled=false`

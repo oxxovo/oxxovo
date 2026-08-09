@@ -38,6 +38,18 @@ import { TextTrack } from './TextTrack'
 import { TextFitReadout } from './TextFit'
 import { maxFittingSizePct } from '@/lib/text-metrics'
 import { createMusicPreview, type MusicPreview, type MusicBed } from './music-preview'
+import {
+  availableFacets,
+  filterMusicAssets,
+  genreLabel,
+  moodLabel,
+  musicPickerLine,
+  presentGenreKeys,
+  presentMoodKeys,
+  presentTempoKeys,
+  tempoLabel,
+  type MusicFilterSelection,
+} from '@/lib/music-grid-labels'
 
 // effects/speed are populated by the effect UI (E); undefined in C (no effect UI
 // yet), which keeps the composition effect-free -> the raw preview stays accurate.
@@ -195,6 +207,12 @@ const DICT = {
     music_need_clip: '먼저 타임라인에 클립을 올리세요.',
     music_pick: '음악 선택',
     music_loading: '불러오는 중…',
+    // ★[4] 필터·미리듣기. 장르·무드 라벨 자체는 lib/music-grid-labels.ts에 있다 —
+    // 키는 워커가 쓰고 읽는 말은 앱이 가진다.
+    music_filter_clear: '필터 해제',
+    music_filter_none: '이 조건에 맞는 곡이 없습니다. 필터를 해제해 보세요.',
+    music_use_this: '이 곡 사용',
+    music_preview_close: '닫기',
     music_change: '변경',
     music_volume: '음악 볼륨',
     music_balance: '원본 소리',
@@ -394,6 +412,12 @@ const DICT = {
     music_need_clip: 'Add a clip to the timeline first.',
     music_pick: 'Pick music',
     music_loading: 'Loading…',
+    // ★[4] filter + preview. The genre/mood wording itself lives in
+    // lib/music-grid-labels.ts -- the worker owns the keys, the app owns the words.
+    music_filter_clear: 'Clear filters',
+    music_filter_none: 'No tracks match these filters. Try clearing them.',
+    music_use_this: 'Use this track',
+    music_preview_close: 'Close',
     music_change: 'Change',
     music_volume: 'Music volume',
     music_balance: 'Original audio',
@@ -477,7 +501,18 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const musicEnabled = props.musicEnabled ?? false
   // Freshly-generated AI tracks (this session) merged into the picker so a
   // just-finished generation is immediately selectable without a full reload.
-  type PickAsset = { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }
+  // ★genre/bpm are optional: the columns are not migrated, so they are absent today and
+  // the facet controls below stay hidden until the data carries them (see
+  // lib/music-grid-labels.ts availableFacets and the note on MusicAsset).
+  type PickAsset = {
+    id: string
+    url: string
+    title: string
+    mood: string
+    source: 'library' | 'ai'
+    genre?: string | null
+    bpm?: number | null
+  }
   const [extraMusic, setExtraMusic] = useState<PickAsset[]>([])
   // ★Lazily-loaded library. See ComposeEditorProps.loadMusicAssets: the beds are
   // no longer shipped with the page, so they arrive here the first time the
@@ -507,6 +542,28 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // before the first fetch reads as "library coming soon", which is a lie.
   const musicListReady = props.musicAssets !== undefined || loadedMusic !== null
   const musicUrl = music ? (musicAssets.find((a) => a.id === music.assetId)?.url ?? null) : null
+
+  // ---- [4] picker facets + preview ----------------------------------------
+  // ★The facet rule is in lib/music-grid-labels.ts, not here, so it can be executed by
+  // a test instead of eyeballed through a component. This holds only the selection.
+  const [musicFacets, setMusicFacets] = useState<MusicFilterSelection>({})
+  // Which controls may render AT ALL. With genre/bpm unmigrated every asset lacks them,
+  // so those chips do not appear -- a filter that returns nothing would read as "there
+  // is no cinematic music" rather than "this is not wired up yet". They light up on
+  // their own once rows carry the columns.
+  const musicFacetsAvailable = useMemo(() => availableFacets(musicAssets), [musicAssets])
+  const musicFilterActive = !!(musicFacets.genre || musicFacets.mood || musicFacets.tempo)
+  const visibleMusicAssets = useMemo(
+    () => filterMusicAssets(musicAssets, musicFacets),
+    [musicAssets, musicFacets],
+  )
+  // ★Preview is its own element, not the timeline's audio: auditioning a candidate must
+  // not disturb the composition or the bed already selected. `preload="none"` so opening
+  // the panel does not fetch a thousand files.
+  const [musicPreviewId, setMusicPreviewId] = useState<string | null>(null)
+  const musicPreviewUrl = musicPreviewId
+    ? (musicAssets.find((a) => a.id === musicPreviewId)?.url ?? null)
+    : null
   // ★A restored draft can already have a bed selected, and then the list is not
   // optional: without it the panel shows a bare asset id instead of the track
   // name, and the preview has no URL to play. So a selected bed loads the list
@@ -1808,22 +1865,117 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                   {musicListReady && musicAssets.length === 0 ? (
                     <p className="py-2 text-[11px] text-white/35">{t.music_none_assets}</p>
                   ) : !music ? (
-                    // ★The list loads on first contact with this control, not on
-                    // page load. Focus fires for the keyboard too, so this is not
-                    // a mouse-only affordance.
-                    <select value="" onFocus={loadMusic} onMouseDown={loadMusic}
-                      onChange={(e) => { const a = musicAssets.find((x) => x.id === e.target.value); if (a) pickMusic(a.id, a.source) }}
-                      className="w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none">
-                      <option value="">{musicLoading ? t.music_loading : `${t.music_pick}…`}</option>
-                      {musicAssets.map((a) => <option key={a.id} value={a.id}>{a.mood} — {a.title}</option>)}
-                    </select>
+                    <div className="space-y-2">
+                      {/* ★Facet chips. Each group renders only when the LOADED data
+                          carries that facet, and only the values actually present are
+                          offered -- so a filter can never come back empty for a reason
+                          the participant cannot see. genre/tempo are absent until the
+                          columns are migrated. */}
+                      {(musicFacetsAvailable.genre || musicFacetsAvailable.mood || musicFacetsAvailable.tempo) && (
+                        <div className="space-y-1.5">
+                          {musicFacetsAvailable.genre && (
+                            <div className="flex flex-wrap gap-1">
+                              {presentGenreKeys(musicAssets).map((k) => (
+                                <button key={k} type="button"
+                                  onClick={() => setMusicFacets((s) => ({ ...s, genre: s.genre === k ? null : k }))}
+                                  className={`rounded px-2 py-0.5 text-[10px] transition ${musicFacets.genre === k ? 'bg-[#8b22ff] text-white' : 'border border-white/15 text-white/55 hover:border-white/35'}`}>
+                                  {genreLabel(k, props.lang)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {musicFacetsAvailable.mood && (
+                            <div className="flex flex-wrap gap-1">
+                              {presentMoodKeys(musicAssets).map((k) => (
+                                <button key={k} type="button"
+                                  onClick={() => setMusicFacets((s) => ({ ...s, mood: s.mood === k ? null : k }))}
+                                  className={`rounded px-2 py-0.5 text-[10px] transition ${musicFacets.mood === k ? 'bg-[#8b22ff] text-white' : 'border border-white/15 text-white/55 hover:border-white/35'}`}>
+                                  {moodLabel(k, props.lang)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {musicFacetsAvailable.tempo && (
+                            <div className="flex flex-wrap gap-1">
+                              {presentTempoKeys(musicAssets).map((k) => (
+                                <button key={k} type="button"
+                                  onClick={() => setMusicFacets((s) => ({ ...s, tempo: s.tempo === k ? null : k }))}
+                                  className={`rounded px-2 py-0.5 text-[10px] transition ${musicFacets.tempo === k ? 'bg-[#8b22ff] text-white' : 'border border-white/15 text-white/55 hover:border-white/35'}`}>
+                                  {tempoLabel(k, props.lang)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {musicFilterActive && (
+                            <button type="button" onClick={() => setMusicFacets({})}
+                              className="text-[10px] text-white/40 underline transition hover:text-white/70">
+                              {t.music_filter_clear} ({visibleMusicAssets.length}/{musicAssets.length})
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ★The list loads on first contact with this control, not on
+                          page load. Focus fires for the keyboard too, so this is not
+                          a mouse-only affordance. */}
+                      <select value="" onFocus={loadMusic} onMouseDown={loadMusic}
+                        onChange={(e) => {
+                          const a = musicAssets.find((x) => x.id === e.target.value)
+                          // ★Auditioning is separate from choosing: selecting in the
+                          // list previews it, and the bed is only committed by the
+                          // button below. Picking straight from a dropdown made the
+                          // only way to hear a track an edit to the composition.
+                          if (a) setMusicPreviewId(a.id)
+                        }}
+                        className="w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none">
+                        <option value="">{musicLoading ? t.music_loading : `${t.music_pick}…`}</option>
+                        {visibleMusicAssets.map((a) => (
+                          <option key={a.id} value={a.id}>{musicPickerLine(a, props.lang) || a.id}</option>
+                        ))}
+                      </select>
+
+                      {/* ★Filter matched nothing: say so, rather than showing an empty
+                          dropdown that reads as an empty library. */}
+                      {musicListReady && musicFilterActive && visibleMusicAssets.length === 0 && (
+                        <p className="text-[11px] text-white/35">{t.music_filter_none}</p>
+                      )}
+
+                      {/* ★[4] preview. Its own element, so auditioning never touches the
+                          timeline or the selected bed. preload="none": opening the panel
+                          must not fetch a thousand files. */}
+                      {musicPreviewUrl && (() => {
+                        const prev = musicAssets.find((a) => a.id === musicPreviewId)
+                        return (
+                          <div className="space-y-1.5 rounded-lg border border-white/10 bg-white/[.02] p-2">
+                            <p className="truncate text-[11px] text-white/70">
+                              {prev ? musicPickerLine(prev, props.lang) || prev.id : ''}
+                            </p>
+                            <audio controls preload="none" src={musicPreviewUrl} className="h-7 w-full" />
+                            <div className="flex gap-2">
+                              <button type="button"
+                                onClick={() => { if (prev) { pickMusic(prev.id, prev.source); setMusicPreviewId(null) } }}
+                                className="rounded bg-[#8b22ff] px-2.5 py-1 text-[10px] font-bold text-white transition hover:bg-[#a04dff]">
+                                {t.music_use_this}
+                              </button>
+                              <button type="button" onClick={() => setMusicPreviewId(null)}
+                                className="rounded border border-white/15 px-2.5 py-1 text-[10px] text-white/55 transition hover:border-white/35">
+                                {t.music_preview_close}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
                   ) : (() => {
                     const selm = musicAssets.find((a) => a.id === music.assetId)
                     const span = (music.endMs ?? totalMs) - (music.startMs ?? 0)
                     return (
                       <div className="space-y-2.5 rounded-lg border border-white/10 bg-white/[.02] p-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-[12px] text-white">{selm ? `${selm.mood} — ${selm.title}` : music.assetId}</span>
+                          {/* ★Localised, not the raw key: `mood` used to be printed
+                              straight through, and with the vocabulary confirmed that
+                              value is English ('elegant'). */}
+                          <span className="truncate text-[12px] text-white">{selm ? musicPickerLine(selm, props.lang) || selm.id : music.assetId}</span>
                           <button type="button" onClick={removeMusic} className="shrink-0 text-[10px] text-white/40 transition hover:text-[#ff8888]">✕ {t.music_remove}</button>
                         </div>
                         <label className="block">

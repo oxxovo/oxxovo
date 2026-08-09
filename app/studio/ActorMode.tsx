@@ -127,7 +127,10 @@ const DICT = {
     models_pending: 'Image models are not active yet. Available soon.',
     model_label: 'Model',
     prompt_label: 'Actor description prompt',
-    prompt_ph: 'e.g. East Asian woman, mid-20s, dewy skin, a beauty mark below the left eye, small gold hoop earrings, soft studio light',
+    // ★'a beauty mark' -> 'a small mole': same facial feature, and the KO placeholder
+    // already said '점'. The word was the only reason 'beauty' could not be added to
+    // the theme-leak ban list, and it bought nothing here.
+    prompt_ph: 'e.g. East Asian woman, mid-20s, dewy skin, a small mole below the left eye, small gold hoop earrings, soft studio light',
     tip: 'Make one frontal face first, then press "More of this actor" on it to generate more shots that keep the same face.',
     ref_on: 'Generating from this actor',
     ref_clear: 'Clear',
