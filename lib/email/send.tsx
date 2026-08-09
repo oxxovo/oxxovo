@@ -95,6 +95,11 @@ import {
   subjectFor as submissionReceivedSubject,
   type SubmissionReceivedProps,
 } from './templates/SubmissionReceived'
+import {
+  MainRoundSubmissionReceived,
+  subjectFor as mainRoundSubmissionReceivedSubject,
+  type MainRoundSubmissionReceivedProps,
+} from './templates/MainRoundSubmissionReceived'
 import type { SubmissionFileState } from '@/lib/submission-receipt'
 import { buildShareUrl } from '@/lib/share-kit'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
@@ -707,6 +712,29 @@ export async function sendSubmissionReceived(
     language: lang,
     subject: submissionReceivedSubject(props),
     element: <SubmissionReceived {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+export async function sendMainRoundSubmissionReceived(
+  input: SendSubmissionReceivedInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: MainRoundSubmissionReceivedProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    videoTitle: input.videoTitle,
+    submittedAtLabel: input.submittedAtLabel,
+    fileState: input.fileState,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'main_round_submission_received',
+    language: lang,
+    subject: mainRoundSubmissionReceivedSubject(props),
+    element: <MainRoundSubmissionReceived {...props} />,
     applicationId: input.applicationId,
     seasonId: input.seasonId,
   })

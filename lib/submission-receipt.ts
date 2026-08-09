@@ -42,12 +42,21 @@ export type SubmissionReceiptRow = {
   // /api/apply, which is the whole point -- see the header.
   studio_application_submitted_at: string | null
   free_entry_url: string | null
+  // ★The main round is NOT restricted to the Studio columns the way the prelim
+  // is. There is no "applying" step in the main round -- being a Finalist is the
+  // place, and submitting the film is the only act -- so every path that sets
+  // this column (Studio compose, Studio single clip, and the URL form in
+  // app/profile/actions.saveMainRoundSubmission) is a submission nobody has
+  // confirmed. All three get the same receipt.
+  main_round_submitted_at: string | null
+  main_round_video_url: string | null
 }
 
 // Which rounds of this entry have an accepted submission that deserves a receipt.
 export function submissionReceiptRounds(row: SubmissionReceiptRow): SubmissionRound[] {
   const rounds: SubmissionRound[] = []
   if (row.studio_application_submitted_at) rounds.push('application')
+  if (row.main_round_submitted_at) rounds.push('main')
   return rounds
 }
 
@@ -59,6 +68,6 @@ export function submissionFileState(
   row: SubmissionReceiptRow,
   round: SubmissionRound,
 ): SubmissionFileState {
-  const url = round === 'application' ? row.free_entry_url : null
+  const url = round === 'application' ? row.free_entry_url : row.main_round_video_url
   return url?.trim() ? 'complete' : 'processing'
 }

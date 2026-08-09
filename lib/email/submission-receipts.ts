@@ -16,7 +16,7 @@
 import 'server-only'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { canSend } from './log'
-import { sendSubmissionReceived } from './send'
+import { sendSubmissionReceived, sendMainRoundSubmissionReceived } from './send'
 import {
   submissionReceiptRounds,
   submissionReceiptTemplate,
@@ -39,6 +39,8 @@ type ReceiptRow = {
   video_title: string | null
   studio_application_submitted_at: string | null
   free_entry_url: string | null
+  main_round_submitted_at: string | null
+  main_round_video_url: string | null
 }
 
 export async function sendSubmissionReceipts(opts: {
@@ -58,12 +60,14 @@ export async function sendSubmissionReceipts(opts: {
   let q = admin
     .from('genesis_applications')
     .select(
-      'id, email, creator_name, country, video_title, studio_application_submitted_at, free_entry_url',
+      'id, email, creator_name, country, video_title, studio_application_submitted_at, free_entry_url, main_round_submitted_at, main_round_video_url',
     )
     .eq('season_id', opts.seasonId)
     // The rule still runs per row; this only keeps the sweep from reading every
-    // application in the season on every tick.
-    .not('studio_application_submitted_at', 'is', null)
+    // application in the season on every tick. ★Both columns, or the main-round
+    // receipt would never reach a Finalist who submitted through the URL form
+    // and therefore has no studio_application_submitted_at.
+    .or('studio_application_submitted_at.not.is.null,main_round_submitted_at.not.is.null')
   if (opts.applicationId) q = q.eq('id', opts.applicationId)
   if (opts.email) q = q.ilike('email', opts.email)
 
@@ -85,7 +89,7 @@ export async function sendSubmissionReceipts(opts: {
       .from('email_logs')
       .select('application_id, template_key')
       .eq('season_id', opts.seasonId)
-      .eq('template_key', 'studio_submission_received')
+      .in('template_key', ['studio_submission_received', 'main_round_submission_received'])
       .eq('status', 'sent')
     for (const r of (sentRaw ?? []) as { application_id: string; template_key: string }[]) {
       already.add(`${r.application_id}:${r.template_key}`)
@@ -112,7 +116,7 @@ export async function sendSubmissionReceipts(opts: {
       }
       budget--
 
-      const result = await sendSubmissionReceived({
+      const input = {
         toEmail: row.email,
         country: row.country,
         // creator_name is what the entry publishes under; the address local part
@@ -120,11 +124,19 @@ export async function sendSubmissionReceipts(opts: {
         creatorName: row.creator_name?.trim() || row.email.split('@')[0],
         seasonName: opts.seasonName,
         videoTitle: row.video_title?.trim() || null,
-        submittedAtLabel: formatDeadlinePT(row.studio_application_submitted_at),
+        // ★Per round. Stamping a main-round receipt with the preliminary
+        // submission time would put a date a week earlier on it.
+        submittedAtLabel: formatDeadlinePT(
+          round === 'main' ? row.main_round_submitted_at : row.studio_application_submitted_at,
+        ),
         fileState: submissionFileState(row, round),
         applicationId: row.id,
         seasonId: opts.seasonId,
-      })
+      }
+      const result =
+        round === 'main'
+          ? await sendMainRoundSubmissionReceived(input)
+          : await sendSubmissionReceived(input)
       if (!result.ok) tally.failed++
       else if ('skipped' in result && result.skipped) tally.skipped++
       else tally.sent++

@@ -9,6 +9,7 @@ import { validateVideoUrl } from '@/lib/video-url'
 import { getMembershipState, isMembershipEnabled } from '@/lib/membership'
 import { getStripe } from '@/lib/stripe'
 import { getDisplayName, setDisplayName, validateNickname } from '@/lib/nickname'
+import { sendSubmissionReceipts } from '@/lib/email/submission-receipts'
 import type {
   MembershipDashboard,
   MembershipActionResult,
@@ -527,6 +528,24 @@ export async function saveMainRoundSubmission(
   // 8. revalidate admin caches
   revalidatePath('/admin/applications')
   revalidatePath(`/admin/applications/${input.applicationId}`)
+
+  // ⑪ -- the receipt for a main-round submission, sent from the act that
+  // produced it. Awaited, and never able to fail the submission: the row is
+  // already committed by the CAS above, so a mail error is logged and the
+  // email-tick sweep retries it. The Studio paths reach the same function from
+  // app/studio/actions.
+  try {
+    await sendSubmissionReceipts({
+      seasonId: season.id,
+      seasonName: season.display_name,
+      applicationId: input.applicationId,
+    })
+  } catch (e) {
+    console.error(
+      '[profile] main-round receipt failed (non-fatal):',
+      e instanceof Error ? e.message : String(e),
+    )
+  }
 
   return { ok: true }
 }
