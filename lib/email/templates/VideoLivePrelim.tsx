@@ -26,7 +26,26 @@ export type VideoLivePrelimProps = {
   aiImprove: string
 }
 
+// ★Two modes, decided by one field: `score == null` means the cohort has been
+// published but not judged yet.
+//
+// The template was written on 2026-07-12, when "released" and "scored" were the
+// same moment. The canonical schedule separated them: the films go public as they
+// pass, and judging runs for days afterwards. So the scored copy -- subject line,
+// headline, "OXXOVO publishes every entry's score" -- would go out over three
+// dashes and two empty critique lines. An email that announces a score it does
+// not carry is worse than one that does not mention it, so the unscored mode
+// drops those blocks entirely rather than rendering them empty.
+function isScored(p: VideoLivePrelimProps): boolean {
+  return p.score != null
+}
+
 export function subjectFor(p: VideoLivePrelimProps): string {
+  if (!isScored(p)) {
+    return p.lang === 'ko'
+      ? `🎬 ${p.videoTitle} — 작품이 공개됐습니다`
+      : `🎬 ${p.videoTitle} — your film is live on OXXOVO`
+  }
   return p.lang === 'ko'
     ? `🎬 ${p.videoTitle} — 작품과 점수가 공개됐습니다`
     : `🎬 ${p.videoTitle} — your film & score are live on OXXOVO`
@@ -34,32 +53,41 @@ export function subjectFor(p: VideoLivePrelimProps): string {
 
 export function VideoLivePrelim(p: VideoLivePrelimProps) {
   const ko = p.lang === 'ko'
+  const scored = isScored(p)
   const t = ko
     ? {
         head: 'PRELIMINARY',
-        badge: '✓ PUBLISHED · SCORED',
-        title: ['당신의 작품과 점수가', '공개됐습니다'],
-        sub: 'OXXOVO는 예선부터 모든 참가작의 점수를 공개합니다.',
+        badge: scored ? '✓ PUBLISHED · SCORED' : '✓ PUBLISHED',
+        title: scored ? ['당신의 작품과 점수가', '공개됐습니다'] : ['당신의 작품이', '공개됐습니다'],
+        sub: scored
+          ? 'OXXOVO는 예선부터 모든 참가작의 점수를 공개합니다.'
+          : '점수와 Triple-AI 심사평은 심사를 마친 뒤 별도로 안내됩니다.',
         watch: '▶ Watch your film',
         share: '팬들에게 공유하기',
         critique: 'Triple-AI 심사평',
         strength: '강점',
         improve: '개선',
         report: '전체 리포트 보기 →',
-        closer: ['당신의 실력이 점수로 공개됐습니다.', '팬들에게 보여주세요.'],
+        closer: scored
+          ? ['당신의 실력이 점수로 공개됐습니다.', '팬들에게 보여주세요.']
+          : ['당신의 작품이 공개됐습니다.', '팬들에게 보여주세요.'],
       }
     : {
         head: 'PRELIMINARY',
-        badge: '✓ PUBLISHED · SCORED',
-        title: ['Your film and score', 'are now public'],
-        sub: 'OXXOVO publishes every entry’s score, from the preliminary round on.',
+        badge: scored ? '✓ PUBLISHED · SCORED' : '✓ PUBLISHED',
+        title: scored ? ['Your film and score', 'are now public'] : ['Your film', 'is now live'],
+        sub: scored
+          ? 'OXXOVO publishes every entry’s score, from the preliminary round on.'
+          : 'Your score and Triple-AI notes follow separately, once judging is done.',
         watch: '▶ Watch your film',
         share: 'Share with your fans',
         critique: 'Triple-AI notes',
         strength: 'Strength',
         improve: 'Improve',
         report: 'See the full report →',
-        closer: ['Your skill is public, in numbers.', 'Show it to your fans.'],
+        closer: scored
+          ? ['Your skill is public, in numbers.', 'Show it to your fans.']
+          : ['Your film is out in the world.', 'Show it to your fans.'],
       }
 
   return (
@@ -107,58 +135,65 @@ export function VideoLivePrelim(p: VideoLivePrelimProps) {
               </td>
             </tr>
 
-            {/* score / percentile / rank */}
-            <tr>
-              <td style={{ padding: '20px 24px 16px' }}>
-                <table width="100%" cellPadding={0} cellSpacing={0} border={0}>
-                  <tbody>
-                    <tr>
-                      <Stat label="OXXOVO SCORE" value={p.score != null ? p.score.toFixed(2) : '—'} accent />
-                      <td width="2%"></td>
-                      <Stat label="TOP" value={p.percentile != null ? `${p.percentile}%` : '—'} />
-                      <td width="2%"></td>
-                      <Stat label="RANK" value={p.rank != null ? String(p.rank) : '—'} />
-                    </tr>
-                  </tbody>
-                </table>
-              </td>
-            </tr>
+            {/* score / percentile / rank -- omitted entirely before judging */}
+            {scored && (
+              <tr>
+                <td style={{ padding: '20px 24px 16px' }}>
+                  <table width="100%" cellPadding={0} cellSpacing={0} border={0}>
+                    <tbody>
+                      <tr>
+                        <Stat label="OXXOVO SCORE" value={(p.score as number).toFixed(2)} accent />
+                        <td width="2%"></td>
+                        <Stat label="TOP" value={p.percentile != null ? `${p.percentile}%` : '—'} />
+                        <td width="2%"></td>
+                        <Stat label="RANK" value={p.rank != null ? String(p.rank) : '—'} />
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            )}
 
             {/* CTAs */}
             <tr>
-              <td style={{ padding: '0 24px 8px' }}>
+              <td style={{ padding: scored ? '0 24px 8px' : '20px 24px 8px' }}>
                 <Ctas watchUrl={p.watchUrl} shareUrl={p.shareUrl} watchLabel={t.watch} shareLabel={t.share} />
               </td>
             </tr>
 
-            {/* Triple-AI critique */}
-            <tr>
-              <td style={{ padding: '16px 24px 20px' }}>
-                <table width="100%" cellPadding={0} cellSpacing={0} border={0} style={{ background: C.card, borderRadius: 12 }}>
-                  <tbody>
-                    <tr>
-                      <td style={{ padding: 18 }}>
-                        <p style={{ color: C.gray, fontSize: 12, margin: '0 0 10px' }}>{t.critique}</p>
-                        <p style={{ margin: '0 0 12px' }}>
-                          <Chip>Claude</Chip>
-                          <Chip>GPT</Chip>
-                          <Chip>Gemini</Chip>
-                        </p>
-                        <p style={critiqueLine}>
-                          <span style={{ color: C.green }}>{t.strength}</span> — {p.aiStrength}
-                        </p>
-                        <p style={{ ...critiqueLine, margin: '0 0 14px' }}>
-                          <span style={{ color: C.amber }}>{t.improve}</span> — {p.aiImprove}
-                        </p>
-                        <a href={p.reportUrl} style={{ color: C.purple, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-                          {t.report}
-                        </a>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </td>
-            </tr>
+            {/* Triple-AI critique -- the report link points at a report that does
+                not exist until judging finishes, so it goes with the score */}
+            {scored && (
+              <tr>
+                <td style={{ padding: '16px 24px 20px' }}>
+                  <table width="100%" cellPadding={0} cellSpacing={0} border={0} style={{ background: C.card, borderRadius: 12 }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ padding: 18 }}>
+                          <p style={{ color: C.gray, fontSize: 12, margin: '0 0 10px' }}>{t.critique}</p>
+                          <p style={{ margin: '0 0 12px' }}>
+                            <Chip>Claude</Chip>
+                            <Chip>GPT</Chip>
+                            <Chip>Gemini</Chip>
+                          </p>
+                          <p style={critiqueLine}>
+                            <span style={{ color: C.green }}>{t.strength}</span> — {p.aiStrength}
+                          </p>
+                          <p style={{ ...critiqueLine, margin: '0 0 14px' }}>
+                            <span style={{ color: C.amber }}>{t.improve}</span> — {p.aiImprove}
+                          </p>
+                          <a href={p.reportUrl} style={{ color: C.purple, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                            {t.report}
+                          </a>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            )}
+
+            {!scored && <tr><td height={16}></td></tr>}
 
             <Footer closer={t.closer} />
           </tbody>
