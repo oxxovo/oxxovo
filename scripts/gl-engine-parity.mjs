@@ -21,7 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { register } from 'node:module'
 import { chromium } from 'playwright-core'
 import { FFMPEG, ffmpegBanner } from './ffmpeg-bin.mjs'
-import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, colorUniforms, glowStages, parseCube, tileCube } from '../lib/gl-effects.ts'
+import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_UNSHARP, colorUniforms, glowStages, unsharpAmount, parseCube, tileCube } from '../lib/gl-effects.ts'
 import { resolveWorkerRepo } from './worker-repo.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -132,6 +132,40 @@ async function glRun(spec, testB64) {
   return Buffer.from(url.split(',')[1], 'base64')
 }
 
+// ★④-G: a SINGLE-pass runner, deliberately separate from glRun. glRun's pipeline is
+// the one the colour/LUT/glow rows already passed on, and threading a new shader
+// through it would edit a parity-critical path to test something that does not need
+// it. This one just draws one fragment shader over the image, with the texel size the
+// unsharp kernel needs.
+async function glRunSingle(frag, uniforms, testB64) {
+  const url = await page.evaluate(async ({ testB64, frag, uniforms, VERT }) => {
+    const img = new Image(); img.src = 'data:image/png;base64,' + testB64; await img.decode()
+    const W = img.width, H = img.height
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H
+    const gl = cv.getContext('webgl2', { premultipliedAlpha: false, preserveDrawingBuffer: true })
+    const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o }
+    const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VERT)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, frag)); gl.linkProgram(p)
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p))
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+    gl.useProgram(p)
+    const a = gl.getAttribLocation(p, 'a_pos'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0)
+    const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex)
+    // ★CLAMP_TO_EDGE is not incidental: vf_unsharp clamps at the borders, so the
+    // sampler has to do the same or every edge pixel disagrees.
+    for (const [k, v] of [['WRAP_S', 'CLAMP_TO_EDGE'], ['WRAP_T', 'CLAMP_TO_EDGE'], ['MIN_FILTER', 'NEAREST'], ['MAG_FILTER', 'NEAREST']]) gl.texParameteri(gl.TEXTURE_2D, gl['TEXTURE_' + k], gl[v])
+    gl.activeTexture(gl.TEXTURE0); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+    gl.uniform1i(gl.getUniformLocation(p, 'u_tex'), 0)
+    gl.uniform2f(gl.getUniformLocation(p, 'u_texel'), 1 / W, 1 / H)
+    for (const [k, v] of Object.entries(uniforms)) gl.uniform1f(gl.getUniformLocation(p, 'u_' + k), v)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H)
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    return cv.toDataURL('image/png')
+  }, { testB64, frag, uniforms, VERT })
+  return Buffer.from(url.split(',')[1], 'base64')
+}
+
 const shadersCL = { cl: FRAG_COLOR_LUT }
 const shadersGlow = { cl: FRAG_COLOR_LUT, blur: FRAG_BLUR, screen: FRAG_SCREEN, copy: '#version 300 es\nprecision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u; void main(){ o=texture(u,v_uv); }' }
 
@@ -152,6 +186,9 @@ if (argPngs.length) {
 // numbers, two engines, no third transcription in the middle.
 const COLOR_SLIDERS = { exposure: 10, contrast: 30, saturation: -20 }
 const LUT_ID = 'teal-orange'
+// ★A mid slider, not an extreme: the amount is sh/50, so 50 -> 1.0, which is the
+// strength a creator is most likely to sit at.
+const SHARPEN_SLIDERS = { sharpen: 50 }
 const ff = (e) => effectVideoFilters(e).join(',')
 
 const CASES = [
@@ -191,6 +228,34 @@ const CASES = [
     copied: true,
     vf: 'split[a][b];[b]gblur=sigma=6.250[c];[a][c]blend=all_mode=screen:all_opacity=0.500,format=rgb24',
     gl: async (b64) => glRun({ shaders: shadersGlow, U: colorUniforms(), stages: glowStages({ glow: 50 }) }, b64),
+  },
+  {
+    // ★④-G sharpen. Measured against the WORKER's own filter string
+    // (unsharp=5:5:sh/50:5:5:0), not a copy, so a change in render.ts moves this number.
+    //
+    // ★★DO NOT READ THIS ROW AS A LICENCE TO EXPOSE SHARPEN. It says PASS, and the pass
+    // is close to meaningless, which scripts/negctl-sharpen.mjs is what showed:
+    //
+    //   content   the effect's OWN magnitude   this row's residual
+    //   smooth    0.18%                        0.18%   <- residual == the whole effect
+    //   mandel    0.72%                        0.18%
+    //   bars      0.33%                        0.08%
+    //   testsrc   0.71%                        0.15%
+    //
+    // On smooth the residual EQUALS the effect, i.e. a shader that did nothing at all
+    // would score the same -- a vacuous pass. Across the others the residual sits at
+    // roughly a quarter of the magnitude, which is a systematic mismatch (it scales
+    // with detail), not noise. The 2.5% gate was calibrated for the colour grade, which
+    // moves an image by percent; an effect that only moves it by 0.2-0.7% cannot be
+    // discriminated by an ABSOLUTE 2.5% threshold at all.
+    // So sharpen stays OUT of EXPOSED_SLIDER_KEYS, and what this row currently earns is
+    // a regression tripwire on the shader, not a parity verdict. Two things are needed
+    // before exposure, and the second is not mine: finish the kernel match, and decide
+    // the gate SHAPE for low-magnitude effects (relative to magnitude, not absolute).
+    name: 'sharpen',
+    gate: 2.5,
+    vf: `${ff(SHARPEN_SLIDERS)},format=rgb24`,
+    gl: async (b64) => glRunSingle(FRAG_UNSHARP, { amount: unsharpAmount(SHARPEN_SLIDERS) }, b64),
   },
 ]
 

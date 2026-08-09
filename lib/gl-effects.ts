@@ -257,3 +257,76 @@ export function tileCube(lut: ParsedCube): { W: number; H: number; px: Uint8Arra
   }
   return { W, H, px }
 }
+
+// ---------------------------------------------------------------------------
+// ④-G  sharpen -- mirrors the render's `unsharp=5:5:amount:5:5:0`.
+//
+// ★WHAT ffmpeg's unsharp ACTUALLY DOES, because guessing it would have produced a
+// plausible shader that fails the gate. vf_unsharp builds its blur from CASCADED
+// 2-tap running sums, not a single box: with msize 5 the cascade runs 2*steps = 4
+// times per axis, which is a 2-tap box convolved with itself 4 times = the width-5
+// BINOMIAL kernel (1,4,6,4,1)/16. Both axes give 16 x 16 = 256, and that is exactly
+// the filter's own `scalebits = (steps_x + steps_y) * 2 = 8` (divide by 1<<8) --
+// the two numbers agreeing is the check that this reading is right. A uniform 5x5 box
+// would be a different operator, softer in the middle and wrong at the edges of detail.
+//
+// ★LUMA ONLY. The render passes chroma_amount=0, so U and V are copied through
+// untouched. And unsharp is a YUV filter, so the sharpen has to happen on Y in
+// BT.601 LIMITED range -- the same model the colour grade needed
+// (see FRAG_COLOR_LUT: doing it in RGB is a different operator entirely).
+//
+// ★Edges are CLAMP-to-edge in vf_unsharp (`x <= 0 ? src[0] : x >= width ? src[width-1]`),
+// which is what the sampler is already configured for, so no border special-case.
+//
+// amount comes from unsharpAmount() below, which mirrors render.ts's `sh / 50`.
+export const FRAG_UNSHARP = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex;
+uniform vec2 u_texel;
+uniform float u_amount;
+const float KR = 0.299, KG = 0.587, KB = 0.114;
+vec3 rgbToYuv601Limited(vec3 c) {
+  float y = dot(c, vec3(KR, KG, KB));
+  return vec3(16.0 + 219.0 * y,
+              128.0 + 224.0 * (c.b - y) / 1.772,
+              128.0 + 224.0 * (c.r - y) / 1.402);
+}
+vec3 yuv601LimitedToRgb(vec3 t) {
+  float y = (t.x - 16.0) / 219.0;
+  float u = (t.y - 128.0) / 224.0;
+  float v = (t.z - 128.0) / 224.0;
+  float r = y + 1.402 * v;
+  float b = y + 1.772 * u;
+  float g = (y - KR * r - KB * b) / KG;
+  return clamp(vec3(r, g, b), 0.0, 1.0);
+}
+float lumaAt(vec2 uv) { return rgbToYuv601Limited(texture(u_tex, uv).rgb).x; }
+void main() {
+  vec3 yuv = rgbToYuv601Limited(texture(u_tex, v_uv).rgb);
+  // separable binomial (1,4,6,4,1); 16 x 16 = 256 == 1 << scalebits
+  float w[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
+  float sum = 0.0;
+  for (int j = 0; j < 5; j++) {
+    for (int i = 0; i < 5; i++) {
+      vec2 off = vec2(float(i - 2) * u_texel.x, float(j - 2) * u_texel.y);
+      sum += w[i] * w[j] * lumaAt(v_uv + off);
+    }
+  }
+  float blurY = sum / 256.0;
+  yuv.x = clamp(yuv.x + (yuv.x - blurY) * u_amount, 0.0, 255.0);
+  o = vec4(yuv601LimitedToRgb(yuv), 1.0);
+}`
+
+/**
+ * Slider -> unsharp `luma_amount`. ★Mirrors render.ts (`unsharp=5:5:${sh/50}:5:5:0`)
+ * and nothing else: if that mapping changes, the parity row moves rather than quietly
+ * still passing. 0 means the render emits no unsharp at all.
+ */
+export function unsharpAmount(seg?: EffectParams, global?: EffectParams): number {
+  const v = seg?.sharpen ?? global?.sharpen ?? 0
+  const n = Math.round(Number(v))
+  if (!Number.isFinite(n) || n === 0) return 0
+  return n / 50
+}
