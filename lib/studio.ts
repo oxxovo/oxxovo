@@ -1425,7 +1425,19 @@ export type CreateRenderResult =
 // on both sides. Returns { ok:true, signature:null } when the EDL has no music
 // (music-free renders keep their exact bundle -- append-only). Season gate is
 // checked by the caller (it holds the season row) via `musicEnabled`.
-async function resolveMusicSignature(
+//
+// ★EXPORTED FOR THE BOUNDARY HARNESS, and the reason is the render-jobs table.
+// This is the ONLY place the render side decides whether a bed may be used --
+// ownership, curation `active`, and the third-`source` refusal all live here and
+// nowhere else. Reaching it through createRender means satisfying compose config
+// and signed clip rows first, and the ACCEPT case then inserts a queued
+// render_jobs row -- which the deployed worker claims within seconds, because the
+// worker is season-blind. So a test that proved the guard lets a valid bed through
+// would also start a real render of placeholder clips. Calling this directly
+// tests both directions with zero render rows. e2e/music-boundary.mjs is the
+// caller; the refusal path is additionally checked through createRender there, so
+// the wiring is not taken on trust either.
+export async function resolveMusicSignature(
   admin: ReturnType<typeof createSupabaseAdmin>,
   music: MusicBed | undefined,
   userId: string,

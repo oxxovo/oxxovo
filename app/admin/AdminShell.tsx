@@ -18,6 +18,7 @@ type NavItemKey =
   | 'credits'
   | 'promo'
   | 'actors'
+  | 'music'
   | 'messages'
 
 const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean }> = [
@@ -32,6 +33,7 @@ const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean 
   { href: '/admin/credits', key: 'credits', emoji: '💳' },
   { href: '/admin/promo', key: 'promo', emoji: '🎬' },
   { href: '/admin/actors', key: 'actors', emoji: '🎭' },
+  { href: '/admin/music', key: 'music', emoji: '🎵' },
   { href: '/admin/messages', key: 'messages', emoji: '💬' },
 ]
 
