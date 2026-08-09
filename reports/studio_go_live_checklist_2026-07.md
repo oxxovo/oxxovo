@@ -220,8 +220,18 @@ switch was made, which is why unifying cost nothing.)
   - Sign in as the test account, open `/studio/compose`, and confirm the submit form
     is present for a render whose status is `queued` (not only `ready`). The statuses
     that must show it are `ASYNC_SUBMIT_STATUSES` = queued / rendering / uploading /
-    ready / failed (`lib/studio.ts`; the editor keeps its own mirrored copy, so a
-    change to one and not the other reproduces exactly the 2026-07-31 defect).
+    ready / failed.
+  - ★CORRECTION 2026-08-08: "the editor keeps its own mirrored copy" is no longer
+    true, and leaving it here would send an operator hunting for a divergence that
+    cannot exist. The list lives once in `lib/studio-shared.ts:63`; both
+    `lib/studio.ts` and `app/studio/compose/ProComposeEditor.tsx` import
+    `isSubmittableRenderStatus` from it, and `lib/studio-shared.test.ts:56`
+    **fails the build if either file declares the literal list again** or stops
+    referencing the shared one. That test is in the `npm test` list. So the
+    2026-07-31 defect can no longer be reproduced by divergence -- ★but the walk
+    below still has to happen, because "the gate is correct" and "a participant
+    reaches the control the gate protects" remain different claims, and that
+    distinction is what this whole step exists for.
   - Reload the page mid-processing and confirm the "accepted, processing" panel comes
     back from the DB rather than an empty editor.
   - Then remove the test entry.
@@ -363,6 +373,19 @@ is a standing rule for the music switch, not a launch-day step.**
     before opening Studio; a second worker on an older image is exactly the
     2026-08-07 duplicate-service situation, and without the token the older one
     can trample a finished render.
+  - ★`DEPLOY: row not claimed during the run -- no statement about the deployed
+    build` -> **NEITHER of the above.** Added 2026-08-08 after reading
+    `e2e/reachability-queued-submit.mjs:205`: the verdict has THREE branches and
+    this runbook listed two. It is the branch you will actually hit first,
+    because the render lane has had no activity since 2026-07-15 -- most likely
+    no worker was running at all. It is not a pass and not a failure; it means
+    the step did not execute. Start the worker and run it again. ★Recording it
+    as "ran, no warning" is how an unobserved defence gets signed off.
+- ★RUNNING THIS COSTS PRODUCTION WORK. The harness enqueues a real render row,
+  and whichever worker is up will claim it and spend vendor money on it. It is
+  not a read-only check: schedule it with the rehearsal and against the Railway
+  worker, never against a local dev worker
+  ([[feedback-local-dev-worker-hijacks-prod-jobs]]).
 - ★A zero is not a pass here. `claim_token IS NULL` on a terminal row only means
   something if some row in the same window carries one --
   `scripts/inspect-claim-token-null.mjs` prints that control group and refuses to
