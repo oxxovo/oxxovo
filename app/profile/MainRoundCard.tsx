@@ -10,7 +10,7 @@ import {
   type Season,
   type SubmitBlockReason,
 } from '@/lib/seasons'
-import { formatVideoPlatforms, validateVideoUrl } from '@/lib/video-url'
+import { acceptsExternalUrl, formatVideoPlatforms, validateVideoUrl } from '@/lib/video-url'
 import {
   getMessage,
   type SystemMessageKey,
@@ -173,6 +173,13 @@ function SubmitFormCard({
     [videoUrl, season.allowed_video_platforms],
   )
 
+  // ★Same predicate, same column as /apply. When the season's allowed sources
+  // contain no linkable platform (season_0 = ['studio']) this form cannot
+  // produce a valid submission: validateVideoUrl rejects every input, so the URL
+  // field and the submit button are a dead end that still reads "paste a link".
+  // Hide the dead controls rather than leaving them permanently disabled.
+  const takesExternalUrl = acceptsExternalUrl(season.allowed_video_platforms)
+
   // Theme is a PUBLIC brief now (TK 2026-07-12, "A") -- shown as soon as the
   // operator sets it, the same moment the audience sees it on Watch. No 60-min
   // reveal gate: it would be pointless when the theme is already public there.
@@ -278,7 +285,19 @@ function SubmitFormCard({
         </span>
       </div>
 
+      {/* 링크 접수가 없는 시즌 — 죽은 입력란 대신 사실만 */}
+      {!takesExternalUrl && (
+        <div className="mb-5 rounded-lg border border-white/10 bg-white/[.03] px-4 py-3">
+          <p className="text-sm text-white/60 leading-relaxed">
+            {t.profile.main_round_external_url_closed(
+              formatVideoPlatforms(season.allowed_video_platforms),
+            )}
+          </p>
+        </div>
+      )}
+
       {/* 영상 URL 입력 */}
+      {takesExternalUrl && (
       <label className="block mb-4">
         <div className="text-[11px] uppercase tracking-wider text-white/60 mb-1.5">
           {t.profile.main_round_video_url_label}
@@ -306,6 +325,7 @@ function SubmitFormCard({
           </p>
         )}
       </label>
+      )}
 
       {/* 영상 임베드 미리보기 — valid URL일 때만 */}
       {validation.valid && (
@@ -332,15 +352,17 @@ function SubmitFormCard({
         </div>
       )}
 
-      {/* 제출 버튼 */}
-      <button
-        type="button"
-        disabled={!validation.valid || submitting}
-        onClick={() => setConfirmOpen(true)}
-        className="w-full px-5 py-3 rounded bg-gradient-to-br from-[#7d23ff] to-[#6220dc] text-white font-bold text-sm uppercase tracking-wider hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        {submitting ? t.profile.main_round_submitting : t.profile.main_round_submit_btn}
-      </button>
+      {/* 제출 버튼 — 링크 접수가 없는 시즌에서는 영원히 disabled라 렌더하지 않는다 */}
+      {takesExternalUrl && (
+        <button
+          type="button"
+          disabled={!validation.valid || submitting}
+          onClick={() => setConfirmOpen(true)}
+          className="w-full px-5 py-3 rounded bg-gradient-to-br from-[#7d23ff] to-[#6220dc] text-white font-bold text-sm uppercase tracking-wider hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {submitting ? t.profile.main_round_submitting : t.profile.main_round_submit_btn}
+        </button>
+      )}
 
       {/* 확인 모달 */}
       <ConfirmModal

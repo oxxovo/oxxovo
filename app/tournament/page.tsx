@@ -6,7 +6,14 @@
 // getCurrentSeason so the landing is never empty.
 
 import Link from 'next/link'
-import { getLobbyTournaments, seasonToLobbyCard, type LobbyCard, type LobbyMode } from '@/lib/lobby'
+import {
+  fetchWinnerCounts,
+  getLobbyTournaments,
+  isRehearsalFixture,
+  seasonToLobbyCard,
+  type LobbyCard,
+  type LobbyMode,
+} from '@/lib/lobby'
 import { getCurrentSeason } from '@/lib/seasons'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 import { ChatWidget } from '@/app/_components/ChatWidget'
@@ -26,9 +33,19 @@ export default async function TournamentGalleryPage() {
 
   // Ensure the current season appears even if it is a draft (getLobbyTournaments
   // filters drafts out; getCurrentSeason surfaces pre-launch season_0).
+  // ★The merge below bypasses getLobbyTournaments' filtering entirely -- it
+  // exists to surface a DRAFT current season, and a draft is exactly what that
+  // filter drops. So the fixture rule has to be applied here too, or a rehearsal
+  // season that getCurrentSeason happens to pick lands on the public gallery
+  // through the one door that has no lock.
   let all: LobbyCard[] = cards
-  if (current && !all.some((c) => c.id === current.id)) {
-    all = [seasonToLobbyCard(current, now), ...all]
+  if (current && !isRehearsalFixture(current) && !all.some((c) => c.id === current.id)) {
+    // Its own winner count: getLobbyTournaments fetched counts only for the
+    // seasons it returned, and this one is by definition not among them. Passing
+    // 0 here would work today and become a card that can never say "ended" the
+    // moment C-2 lands -- the kind of default that is right by accident.
+    const winners = await fetchWinnerCounts([current.id])
+    all = [seasonToLobbyCard(current, now, winners[current.id] ?? 0), ...all]
   }
 
   return (

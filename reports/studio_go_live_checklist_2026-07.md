@@ -348,7 +348,41 @@ is a standing rule for the music switch, not a launch-day step.**
   directly and only the cron sends. That distinction belongs in the report, not
   in the prober's head.
 
-**★C8. `MUSIC_CONCURRENCY` STAYS UNSET. Setting it "just in case" stops the
+**★C8. WATCH THE ZOMBIE DEFENCE ACTUALLY FIRE. It has never run in production.**
+- WHY this is not paranoia. `render_jobs` was censused on 2026-08-07:
+  **20 rows in the whole project, newest created 2026-07-15, zero activity since.**
+  The claim-token CAS landed in the worker on 2026-08-02 (`2069b8d`). So the
+  defence that stops a revived worker from overwriting the lane that finished
+  -- and overwriting its CryptoBind signature -- **has not processed a single
+  production render.** It is written, reviewed, unit-tested and UNOBSERVED.
+- ★The sentence to stop saying until this step passes: "the zombie defence is
+  in." It is in the build. Whether it fires is a different claim, and after
+  2026-08-03 (a publish write that named a column the table does not have, ran
+  for weeks, and logged success the whole time) that distinction is the whole
+  discipline. Reviewed code is not measured code.
+- HOW, and it costs nothing extra: `npm run test:reachability` already prints
+  the verdict (`e2e/reachability-queued-submit.mjs:199`). Read the line:
+  - `DEPLOY: the running worker stamps claim_token -> it carries the CAS build`
+    -> the defence is live. This is the pass.
+  - `★DEPLOY WARNING: the running worker claimed this row and left claim_token
+    NULL` -> whatever is deployed is NOT the CAS build. Stop and fix the deploy
+    before opening Studio; a second worker on an older image is exactly the
+    2026-08-07 duplicate-service situation, and without the token the older one
+    can trample a finished render.
+- ★A zero is not a pass here. `claim_token IS NULL` on a terminal row only means
+  something if some row in the same window carries one --
+  `scripts/inspect-claim-token-null.mjs` prints that control group and refuses to
+  imply coverage it does not have. Run it after the render above to see a
+  populated token with your own eyes, not an empty result set.
+- ★NOT COVERED, say so rather than let the pass read wider than it is:
+  `generation_jobs.claim_token` is **NULL on all 53 rows** -- neither deployed
+  build writes it (generation-lane tokens arrive in `40fca7f`, not deployed), and
+  `r2_key` cannot tell the builds apart either (`attemptToken` is plumbed into
+  `uploadVideo` only from the render path). **The generation lane has no
+  row-level defence and no row-level forensics.** This step proves the render
+  lane only.
+
+**★C9. `MUSIC_CONCURRENCY` STAYS UNSET. Setting it "just in case" stops the
 renders. Standing rule, not a launch-day step.**
 - THE RULE: **do not set `MUSIC_CONCURRENCY` on Railway.** Unset (or 0) is the
   correct production value today and stays correct for the whole of season 0.
@@ -364,9 +398,11 @@ renders. Standing rule, not a launch-day step.**
   cause is a music variable on a platform where music is off. Nothing else in the
   worker fails this way.
 - ★It is also the WRONG variable for season 0 in the first place. 대표님 confirmed
-  on 2026-08-02 that season 0 music is the **pre-generated library** -- OXXOVO
-  seeds 300 tracks and participants only pick. There is no participant generation
-  to give a lane to. `MUSIC_CONCURRENCY` belongs to season 1's plan C.
+  on 2026-08-02, and re-confirmed on 2026-08-08 after a two-day round trip, that
+  season 0 music is the **pre-generated library ONLY** -- OXXOVO seeds **1,000**
+  tracks (revised up from 300 on 2026-08-08) and participants only pick. There is
+  no participant generation to give a lane to. `MUSIC_CONCURRENCY` belongs to
+  season 1's plan C.
 - WHICH SWITCH goes with it (and read C6 with this): the season 0 configuration
   is `studio_music_enabled = true` (library picker) with
   `studio_music_ai_enabled` left **false**. Measured 2026-08-02: with the AI

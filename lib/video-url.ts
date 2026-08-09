@@ -71,6 +71,34 @@ export function parseVideoUrl(url: string | null | undefined): ParsedVideo {
   return { kind: 'external', href: trimmed }
 }
 
+// The platforms parseVideoUrl can actually recognise. Kept beside the parser it
+// describes: adding a platform above without adding it here would make the
+// predicate below quietly wrong.
+export const PARSEABLE_PLATFORMS: readonly VideoPlatform[] = [
+  'youtube',
+  'vimeo',
+  'instagram',
+  'tiktok',
+]
+
+// Does this season accept an external video URL at all?
+//
+// A season whose allowed_video_platforms contains none of the parseable
+// platforms can never produce a valid validateVideoUrl() result, whatever the
+// input -- season_0 is exactly that case (['studio'], set 2026-08-04), because
+// Studio entries arrive through submitRender/submitGeneration and never through
+// a URL field. Screens call this to decide whether to render a URL input at all,
+// so the screen and the server gate in /api/apply derive from the SAME column
+// instead of from two lists that drift.
+//
+// ★Fail-closed. The column is typed string[], but the value reaches us from the
+// seasons_public view via select('*') -- "the view did not expose the column" is
+// a real runtime state, and it must never read as "everything is allowed".
+export function acceptsExternalUrl(allowedPlatforms: string[] | null | undefined): boolean {
+  if (!Array.isArray(allowedPlatforms)) return false
+  return allowedPlatforms.some((p) => (PARSEABLE_PLATFORMS as readonly string[]).includes(p))
+}
+
 export type VideoUrlValidation =
   | { valid: true; platform: VideoPlatform; embedSrc: string | null; href: string }
   | { valid: false; error: 'empty' | 'unknown_platform' | 'not_allowed' }
@@ -98,10 +126,31 @@ const PLATFORM_DISPLAY_NAMES: Record<string, string> = {
   vimeo: 'Vimeo',
   instagram: 'Instagram',
   tiktok: 'TikTok',
+  // Not a parseable URL platform -- it is the in-platform source. It appears in
+  // allowed_video_platforms (season_0 = ['studio']), so anything that prints
+  // that column needs a name for it or the screen shows lowercase "studio".
+  studio: 'OXXOVO Studio',
 }
 
 // English brand names in both ko/en — platform names are universally recognized
 // in their English form (matches lib/seasons.ts formatModelName pattern).
 export function formatVideoPlatforms(platforms: string[]): string {
   return platforms.map((p) => PLATFORM_DISPLAY_NAMES[p] ?? p).join(' · ')
+}
+
+// Sample URLs, purely to fill an input's placeholder. Display data like
+// PLATFORM_DISPLAY_NAMES above -- it does NOT decide what is allowed, so a
+// platform missing here costs an example, never an acceptance.
+const PLATFORM_URL_EXAMPLES: Record<string, string> = {
+  youtube: 'https://youtube.com/watch?v=…',
+  vimeo: 'https://vimeo.com/…',
+  instagram: 'https://instagram.com/reel/…',
+  tiktok: 'https://tiktok.com/@user/video/…',
+}
+
+// Placeholder built from whatever the season actually allows. Two examples at
+// most: the field is one line, and the label already carries the full list.
+export function formatVideoUrlPlaceholder(platforms: string[]): string {
+  const examples = platforms.map((p) => PLATFORM_URL_EXAMPLES[p]).filter(Boolean).slice(0, 2)
+  return examples.length ? examples.join('  or  ') : 'https://…'
 }

@@ -14,7 +14,12 @@ import {
   formatDeadlinePT,
   type Season,
 } from '@/lib/seasons'
-import { formatVideoPlatforms, validateVideoUrl } from '@/lib/video-url'
+import {
+  acceptsExternalUrl,
+  formatVideoPlatforms,
+  formatVideoUrlPlaceholder,
+  validateVideoUrl,
+} from '@/lib/video-url'
 import { useT } from '@/lib/admin-i18n'
 import type { ApplyErrorCode } from '@/app/api/apply/route'
 import { getSessionUser } from '@/app/_actions/auth'
@@ -38,10 +43,6 @@ const STATEMENT_MAX = 250
 // from the graded creator_statement).
 const TITLE_MAX = 100
 const DESCRIPTION_MAX = 600
-
-// Application stage accepts youtube/vimeo only — main round policy lives in
-// seasons.allowed_video_platforms and is a separate decision.
-const APPLICATION_ALLOWED_PLATFORMS = ['youtube', 'vimeo']
 
 type Mode = 'loading' | 'closed' | 'waitlist' | 'open'
 
@@ -118,10 +119,20 @@ export default function ApplyPage() {
     init()
   }, [reloadKey])
 
+  // ★The allowed sources come from the season row, never from a constant here.
+  // This page used to carry its own ['youtube','vimeo'] list, which meant
+  // "what may a prelim entry be?" had two answers: the DB (per season) and the
+  // code (fixed). The day they disagreed arrived when season_0 became ['studio']
+  // — the screen said the URL was fine and the server rejected it. One column,
+  // one answer ([[feedback-no-hardcode]]).
+  const allowedPlatforms = season?.allowed_video_platforms ?? []
+  const allowedLabel = formatVideoPlatforms(allowedPlatforms)
   const platform = useMemo(() => {
-    const v = validateVideoUrl(videoUrl, APPLICATION_ALLOWED_PLATFORMS)
+    const v = validateVideoUrl(videoUrl, allowedPlatforms)
     return v.valid ? v.platform : null
-  }, [videoUrl])
+    // allowedPlatforms is a fresh array each render; the season row is what
+    // actually changes, so key the memo on that.
+  }, [videoUrl, season?.allowed_video_platforms])
   const statementLen = statement.length
   const statementValid = statementLen >= STATEMENT_MIN && statementLen <= STATEMENT_MAX
   const abstractHit = useMemo(() => {
@@ -203,6 +214,12 @@ export default function ApplyPage() {
           title_length: 'Title is too long.',
           description_length: 'Description is too long.',
           duration_range: t.profile.apply_err_duration_range(minSec, maxSec),
+          // Near-unreachable by design: when the season allows no external
+          // platform this page does not render a URL field at all. Kept because
+          // the server gate is the one that decides, and a client that got here
+          // anyway (stale tab, changed column) must be told the truth.
+          video_platform_not_allowed:
+            t.profile.apply_err_video_platform_not_allowed(allowedLabel),
           season_not_found: t.profile.apply_err_season_not_found,
           season_not_open: t.profile.apply_err_season_not_open,
           season_closed: t.profile.apply_err_season_closed,
@@ -272,6 +289,20 @@ export default function ApplyPage() {
   // Studio-based application round (session6 ON) -> funnel into /studio.
   if (studioApplication) {
     return <FunnelScreen email={user.email} season={season} mode={mode} count={count} />
+  }
+
+  // ★The season accepts no external video URL (allowed_video_platforms carries
+  // no parseable platform — season_0 is ['studio']). The form below would be a
+  // form the server always 403s: every field fillable, submit rejected at the
+  // end. Blocking is the server's job and this is the UX half of it — both are
+  // required, and both read the same column.
+  //
+  // Reaching here also means the studio funnel above did NOT fire, so there is
+  // no path from this page at all. The copy therefore promises nothing: no date,
+  // no "check back", and no /studio link (with session6 off that door is shut
+  // too, and two closed doors is worse than one honest one).
+  if (!acceptsExternalUrl(season?.allowed_video_platforms)) {
+    return <NoExternalEntryScreen email={user.email} seasonName={season?.name ?? 'OXXOVO'} />
   }
 
   if (submitted) {
@@ -369,18 +400,18 @@ export default function ApplyPage() {
             </h2>
             <div className="space-y-5">
               <div>
-                <label className="block text-sm text-white/60 mb-1.5">Video URL (YouTube / Vimeo)</label>
+                <label className="block text-sm text-white/60 mb-1.5">Video URL ({allowedLabel})</label>
                 <input
                   type="url"
                   value={videoUrl}
                   onChange={(e) => setVideoUrl(e.target.value)}
-                  placeholder="https://youtube.com/watch?v=… or https://vimeo.com/…"
+                  placeholder={formatVideoUrlPlaceholder(allowedPlatforms)}
                   required
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition"
                 />
                 {videoUrl && !platform && (
                   <p className="text-amber-400 text-xs mt-1.5">
-                    Only YouTube or Vimeo URLs are accepted.
+                    Only {allowedLabel} URLs are accepted.
                   </p>
                 )}
                 {platform && (
@@ -665,6 +696,30 @@ function ApplyHeader({ email }: { email?: string }) {
         </span>
       )}
     </header>
+  )
+}
+
+// The season takes no external video link and the studio funnel is not
+// available either, so this page has nothing to offer. It says exactly that and
+// stops. Deliberately absent: a date, a "soon", and a /studio link — none of the
+// three is true here, and [[project-message-policy]] rules out asserting what we
+// cannot guarantee. The season name comes from the row, not from a literal.
+function NoExternalEntryScreen({ email, seasonName }: { email: string; seasonName: string }) {
+  return (
+    <main className="min-h-screen bg-[#030305] text-white">
+      <ApplyHeader email={email} />
+      <section className="max-w-md mx-auto px-6 py-20 text-center">
+        <p className="inline-flex items-center gap-2.5 mb-4 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
+          <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
+          {seasonName}
+        </p>
+        <h1 className="text-3xl md:text-4xl font-black mb-4">Entries are not accepted on this page</h1>
+        <p className="text-white/55 leading-relaxed mb-8">
+          {seasonName} does not accept external video links.
+        </p>
+        <Link href="/" className="text-white/40 text-sm hover:text-white/70">← Back to Home</Link>
+      </section>
+    </main>
   )
 }
 
