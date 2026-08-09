@@ -21,6 +21,7 @@ import { getDisplayNameReadOnly, getDisplayNames } from './nickname'
 import { formatDeadlinePT } from './seasons'
 import { WATCH_LIST_TAG, WATCH_LIST_TTL } from './watch-cache'
 import { publicScoreSeasons, areScoresPublic } from './watch-scores'
+import { isRowPublic } from './watch-visibility'
 
 export type WatchRound = 'application' | 'main'
 export type WatchSort = 'trending' | 'latest' | 'award'
@@ -76,23 +77,10 @@ export type WatchSeasonGroup = {
 // 'rejected' (scored but didn't advance) is NOT hidden: eliminated entries stay
 // public on Watch, which the NotSelected email explicitly promises ("your work
 // stays public"). Hiding them would break that link. (TK/advisor 2026-07-11)
-const HIDDEN_STATUSES = new Set(['flagged'])
-
-// A video is PUBLIC only when: competition status isn't hidden, an admin hasn't
-// hidden it (watch_hidden), AND AI pre-moderation approved it. New submissions
-// start moderation_status='pending' (not public) until the scan passes -- the
-// content-safety gate (TK 2026-06-28, Patent 3). Existing rows default
-// 'approved' so nothing already present disappears.
-function isPublicRow(row: Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status' | 'watch_hold'>): boolean {
-  if (HIDDEN_STATUSES.has(row.status)) return false
-  if (row.watch_hidden) return false
-  // Fairness hold (anti-copy): held prelim entries are invisible to EVERYONE until
-  // the cohort is released (manual admin or scheduled auto). Orthogonal to the
-  // bad-content hide (watch_hidden) and the safety scan (moderation_status).
-  if (row.watch_hold) return false
-  if (row.moderation_status !== 'approved') return false
-  return true
-}
+// ★The rule itself lives in lib/watch-visibility.ts, not here. The growth-engine
+// email fires on the moment this flips to true, and it must read the same rule
+// rather than a copy of it. This alias keeps the call sites below unchanged.
+const isPublicRow = isRowPublic
 
 type AppRow = {
   id: string
