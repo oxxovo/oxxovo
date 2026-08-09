@@ -86,6 +86,25 @@ const TMPDIR = (process.env.TEMP || '/tmp').split(String.fromCharCode(92)).join(
 const argPngs = process.argv.slice(2)
 const run = (args) => new Promise((res, rej) => { const p = spawn(FFMPEG, args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-200))))); p.on('error', rej) })
 const raw = (png, vf) => run(['-y', '-i', png, ...(vf ? ['-vf', vf] : []), '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
+// ★④-G SIGNAL-RELATIVE ERROR. Normalises the residual by the effect's OWN per-pixel
+// signal instead of by the frame: sum|gl-ff| / sum|ff-plain|.
+//
+// ★WHY THE FRAME MEAN WAS THE WRONG INSTRUMENT. A whole-frame mean assumes the effect
+// touches the whole frame. The colour grade does -- every pixel moves, so the mean
+// represents it and an absolute gate works. A sharpen only moves pixels near edges, so
+// flat regions sit in the denominator contributing nothing but weight, and the effect's
+// measured magnitude is pushed down toward the 1 LSB floor. That is why neither a
+// different threshold nor stronger content fixed it: synthetic and real AI footage both
+// land at 0.5-0.7%.
+// Here flat regions drop out of BOTH sums, so the number is 'how much of the effect did
+// we get wrong, where the effect happens'. A do-nothing shader scores exactly 1.00 by
+// construction (gl == plain, so the numerator becomes the denominator).
+const signalErr = (plain, ff, gl) => {
+  const n = Math.min(plain.length, ff.length, gl.length)
+  let num = 0, den = 0
+  for (let i = 0; i < n; i++) { num += Math.abs(gl[i] - ff[i]); den += Math.abs(ff[i] - plain[i]) }
+  return den === 0 ? 0 : num / den
+}
 const diff = (a, b) => { const n = Math.min(a.length, b.length); let s = 0; for (let i = 0; i < n; i++) s += Math.abs(a[i] - b[i]); return s / n / 255 * 100 }
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage()
@@ -279,7 +298,8 @@ for (const it of items) {
     // scale: a 0.18% residual is excellent against a 5% effect and worthless against a
     // 0.18% one, and the second case is a shader that could be doing nothing.
     const mag = diff(plain, ffOut)
-    results[c.name].push({ content: it.name, d, mag })
+    const sig = signalErr(plain, ffOut, await raw(outPng))
+    results[c.name].push({ content: it.name, d, mag, sig })
   }
 }
 
@@ -348,6 +368,9 @@ for (const c of CASES) {
   for (const x of unmeasurable) {
     console.log(`         ${x.r.content}: effect magnitude ${x.r.mag.toFixed(2)}% <= floor ${FLOOR_PCT.toFixed(2)}% -- this content cannot measure this effect`)
   }
+  // ★SIGNAL-RELATIVE column, printed for EVERY row so the three conditions can be read
+  // off one table: a do-nothing shader is 1.00 by construction.
+  console.log("         signal-relative error: " + rows.map((r) => r.content + "=" + r.sig.toFixed(3)).join("  "))
   for (const x of relative) {
     console.log(`         ${x.r.content}: magnitude ${x.r.mag.toFixed(2)}%, residual ${x.r.d.toFixed(2)}% -> ratio ${x.v.ratio.toFixed(2)} (a do-nothing shader scores 1.00)`)
   }
