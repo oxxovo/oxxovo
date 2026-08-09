@@ -28,14 +28,24 @@ const diff = (a, b) => {
 }
 const TMPDIR = (process.env.TEMP || '/tmp').split(String.fromCharCode(92)).join('/')
 
-console.log('effect magnitude = how far unsharp=5:5:1:5:5:0 moves the image at all')
-console.log('(compare with the sharpen row of npm run test:parity:engine)\n')
+// ★Two amounts, because the threshold has to be DERIVED and the derivation needs to
+// know whether the effect can be made large enough to measure at all. The measurement
+// floor is ~1 LSB (~0.39% of 255) -- the colour work established that ffmpeg's own
+// identity RGB->YUV->RGB round trip is lossy by that much -- so an effect whose whole
+// magnitude sits near the floor cannot be judged on that content by ANY threshold.
+console.log('effect magnitude = how far unsharp moves the image at all')
+console.log('floor = ~0.39% (1 LSB); a magnitude at or under the floor is unmeasurable\n')
+console.log('content   sharpen=50 (amt 1.0)   sharpen=100 (amt 2.0)')
 for (const c of ['smooth', 'mandel', 'bars', 'testsrc']) {
   const png = `${TMPDIR}/parity_${c}.png`
   try {
     const plain = await run(['-y', '-i', png, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
-    const sharp = await run(['-y', '-i', png, '-vf', 'unsharp=5:5:1.0000:5:5:0,format=rgb24', '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
-    console.log(`  ${c.padEnd(8)} ${diff(plain, sharp).toFixed(2)}%`)
+    const cols = []
+    for (const amt of ['1.0000', '2.0000']) {
+      const sharp = await run(['-y', '-i', png, '-vf', `unsharp=5:5:${amt}:5:5:0,format=rgb24`, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
+      cols.push(`${diff(plain, sharp).toFixed(2)}%`)
+    }
+    console.log(`  ${c.padEnd(8)} ${cols[0].padEnd(21)} ${cols[1]}`)
   } catch (e) {
     console.log(`  ${c.padEnd(8)} SKIP (${png} not present -- run the parity harness first)`)
   }

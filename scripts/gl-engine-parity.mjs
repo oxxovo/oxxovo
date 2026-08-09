@@ -259,15 +259,27 @@ const CASES = [
   },
 ]
 
+// ★MEASUREMENT FLOOR = 1 LSB. The colour port established that ffmpeg's own identity
+// RGB->YUV->RGB round trip is lossy by up to one code value, so nothing below this is
+// measurable by this harness -- and an EFFECT whose whole magnitude sits at or under it
+// cannot be judged on that content by any threshold, however the threshold is shaped.
+const FLOOR_PCT = 100 / 255 // 0.392%
+
 const results = {}
 for (const c of CASES) results[c.name] = []
 for (const it of items) {
   const b64 = (await readFile(it.png)).toString('base64')
+  const plain = await raw(it.png)
   for (const c of CASES) {
     const outPng = `${it.png.replace(/\.png$/, '')}.eng.${c.name}.png`
     await writeFile(outPng, await c.gl(b64))
-    const d = diff(await raw(it.png, c.vf), await raw(outPng))
-    results[c.name].push({ content: it.name, d })
+    const ffOut = await raw(it.png, c.vf)
+    const d = diff(ffOut, await raw(outPng))
+    // ★How far the EFFECT moves the image at all. Without this the residual has no
+    // scale: a 0.18% residual is excellent against a 5% effect and worthless against a
+    // 0.18% one, and the second case is a shader that could be doing nothing.
+    const mag = diff(plain, ffOut)
+    results[c.name].push({ content: it.name, d, mag })
   }
 }
 
@@ -281,19 +293,103 @@ console.log(`worker repo: ${WORKER_REPO}`)
 console.log(`filters    : color+LUT imported from the worker; glow = LOCAL COPY (drift NOT detected)`)
 console.log('ENGINE parity -- one row per case, one column per content')
 console.log('case   gate   ' + items.map((i) => i.name.padEnd(9)).join('') + ' verdict')
+// ★WHICH GATE JUDGED A ROW IS PART OF THE RESULT. The condition is in code, not a
+// per-effect list, so it splits by itself:
+//
+//   magnitude <= FLOOR        -> UNMEASURABLE. The content cannot judge this effect at
+//                                all. NOT a pass -- that is exactly the smooth/sharpen
+//                                vacuous PASS this rule exists to stop.
+//   magnitude <  the gate     -> RELATIVE. An absolute percentage cannot discriminate an
+//                                effect smaller than the percentage itself.
+//   otherwise                 -> ABSOLUTE, unchanged. colour / LUT / glow were baselined
+//                                against it and re-baselining needs its own evidence.
+//
+// ★The relative THRESHOLD is deliberately absent (`relGate` unset). It has to be
+// derived, and the derivation currently says it cannot be: a no-op shader scores
+// ratio 1.00, while a CORRECT shader is bounded below by FLOOR/magnitude -- which on the
+// strongest content available here (mandel/testsrc, ~1.18% at sharpen=100) is already
+// 0.33, and on bars 0.76. There is no value that admits the second and rejects the first
+// with that little separation. So a row that lands in the RELATIVE branch reports its
+// ratio and is marked UNDECIDED rather than being waved through.
+const judge = (row, gate) => {
+  if (row.mag <= FLOOR_PCT) return { how: 'UNMEASURABLE', ok: false }
+  if (row.mag < gate) return { how: 'RELATIVE', ok: null, ratio: row.d / row.mag }
+  return { how: 'ABSOLUTE', ok: row.d <= gate }
+}
+
 let allPass = true
 for (const c of CASES) {
   const rows = results[c.name]
   const worst = Math.max(...rows.map((r) => r.d))
-  const ok = worst <= c.gate
-  if (!ok) allPass = false
+  const verdicts = rows.map((r) => ({ r, v: judge(r, c.gate) }))
+  const hows = [...new Set(verdicts.map((x) => x.v.how))]
+  const unmeasurable = verdicts.filter((x) => x.v.how === 'UNMEASURABLE')
+  const relative = verdicts.filter((x) => x.v.how === 'RELATIVE')
+  const absoluteFail = verdicts.filter((x) => x.v.how === 'ABSOLUTE' && x.v.ok === false)
+
+  let verdict
+  if (absoluteFail.length) {
+    verdict = `REVIEW (worst ${worst.toFixed(2)}% on ${rows.find((r) => r.d === worst).content})`
+    allPass = false
+  } else if (unmeasurable.length || relative.length) {
+    verdict = 'UNDECIDED -- no threshold for this shape yet'
+    allPass = false
+  } else {
+    verdict = `PASS (worst ${worst.toFixed(2)}%)`
+  }
+
   console.log(
-    c.name.padEnd(7) + `<=${c.gate}%`.padEnd(7) +
+    c.name.padEnd(8) + `<=${c.gate}%`.padEnd(7) +
       rows.map((r) => `${r.d.toFixed(2)}%`.padEnd(9)).join('') +
-      (ok ? `PASS (worst ${worst.toFixed(2)}%)` : `REVIEW (worst ${worst.toFixed(2)}% on ${rows.find((r) => r.d === worst).content})`) +
+      verdict + `  [${hows.join('+')}]` +
       (c.copied ? '  ★COPIED filter -- not compared against render.ts' : ''),
   )
+  // ★Say WHY a row could not be judged, per content, or the next reader re-derives it.
+  for (const x of unmeasurable) {
+    console.log(`         ${x.r.content}: effect magnitude ${x.r.mag.toFixed(2)}% <= floor ${FLOOR_PCT.toFixed(2)}% -- this content cannot measure this effect`)
+  }
+  for (const x of relative) {
+    console.log(`         ${x.r.content}: magnitude ${x.r.mag.toFixed(2)}%, residual ${x.r.d.toFixed(2)}% -> ratio ${x.v.ratio.toFixed(2)} (a do-nothing shader scores 1.00)`)
+  }
 }
+// ★REQUIREMENT ③, AS CODE: the negative control must FAIL. A pass-through shader is
+// compared against the same ffmpeg-sharpened output; if the table's own rules ever call
+// that acceptable, the rules are wrong and this says so instead of shipping.
+{
+  const FRAG_NOOP = '#version 300 es\nprecision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u_tex; void main(){ o = vec4(texture(u_tex, v_uv).rgb, 1.0); }'
+  console.log('')
+  console.log('negative control -- a DO-NOTHING shader, run against EVERY case:')
+  console.log('  ★A gate that cannot reject this is not measuring its shader. Checked against')
+  console.log('  the ABSOLUTE gate as well, because that is how these rows have been judged.')
+  const escapedRows = []
+  for (const c of CASES) {
+    for (const it of items) {
+      const b64 = (await readFile(it.png)).toString('base64')
+      const noopPng = `${it.png.replace(/\.png$/, '')}.eng.noop.${c.name}.png`
+      await writeFile(noopPng, await glRunSingle(FRAG_NOOP, {}, b64))
+      const ffOut = await raw(it.png, c.vf)
+      const d = diff(ffOut, await raw(noopPng))
+      const mag = diff(await raw(it.png), ffOut)
+      // ★The ABSOLUTE question, asked plainly: would the gate as configured accept a
+      // shader that does nothing on this content?
+      const absoluteWouldPass = d <= c.gate
+      if (absoluteWouldPass) escapedRows.push(`${c.name}/${it.name}`)
+      console.log(
+        `  ${(c.name + '/' + it.name).padEnd(17)} residual ${d.toFixed(2)}%  magnitude ${mag.toFixed(2)}%  ` +
+          `ratio ${(mag > 0 ? d / mag : 0).toFixed(2)}  ` +
+          (absoluteWouldPass ? `★the <=${c.gate}% ABSOLUTE gate would ACCEPT it` : `absolute gate rejects it`),
+      )
+    }
+  }
+  if (escapedRows.length) {
+    console.log(`\n★${escapedRows.length} case/content pair(s) where a DO-NOTHING shader passes the absolute gate:`)
+    console.log(`  ${escapedRows.join(', ')}`)
+    console.log('  These rows were never discriminating their shader. That is evidence for')
+    console.log('  re-baselining, not a licence to change a threshold here.')
+    allPass = false
+  }
+}
+
 console.log(allPass ? 'ALL PASS' : 'REVIEW')
 await browser.close()
 if (!allPass) process.exitCode = 1
