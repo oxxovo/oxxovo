@@ -46,26 +46,43 @@ export type CurationSortRow = {
 export const MUSIC_CURATION_PAGE_SIZE = 100
 
 /**
- * Columns the curation query may ORDER BY today.
+ * Columns the curation query may ORDER BY.
  *
- * ★`title` and `id` only, and that is not a placeholder for score -- it is the
- * complete set of ordering columns this repo can prove exist on
- * studio_music_assets, because lib/studio.ts selects both in listMusicAssets. When
- * the score column is migrated, it joins this list and the comparator below already
- * knows what to do with it -- the producer is already written (the worker's
- * screenMusic), so the remaining step is storage, not logic.
+ * ★`screening_score` JOINED THE LIST 2026-08-09, when the column turned out to
+ * already exist. Probed read-only against the live table (`select(col).limit(0)`;
+ * PostgREST returns 42703 for an absent column): `screening_score` EXISTS, while
+ * `music_score` / `score` / `screen_score` return 42703 -- which is also how the
+ * name was established rather than guessed. The comparator below already knew what
+ * to do with it; only storage was missing, and it was not.
+ *
+ * The rule this list enforces is unchanged: an unmigrated column makes PostgREST
+ * refuse the whole statement SILENTLY, so nothing goes in here on the strength of a
+ * migration someone says they ran ([[feedback-postgrest-unknown-column-silent]]).
  */
-export const CURATION_ORDER_COLUMNS: readonly string[] = ['title', 'id']
+export const CURATION_ORDER_COLUMNS: readonly string[] = ['screening_score', 'title', 'id']
 
 /** PostgREST `order` terms, in precedence order. */
-export function musicCurationOrderTerms(): Array<{ column: string; ascending: boolean }> {
-  // id is the tie-break, so paging is stable: without it two rows with the same
-  // title can swap between pages and a track is seen twice while another is never
-  // seen at all -- the failure mode of a paged list that curators would blame on
+export function musicCurationOrderTerms(): Array<{ column: string; ascending: boolean; nullsFirst: boolean }> {
+  // ★Score first and DESCENDING, because that IS the method: audition downward and
+  // stop at the quota. Sorted by title instead, a reviewer works alphabetically
+  // through 1,000 tracks and the screen has bought them nothing.
+  //
+  // ★nullsFirst: false is load-bearing, not a default worth taking -- MEASURED against
+  // the live database on 2026-08-09, three rows (90 / NULL / 50), read back both ways:
+  //   .order('screening_score', {ascending:false})                  -> NULL, 90, 50
+  //   .order('screening_score', {ascending:false, nullsFirst:false}) -> 90, 50, NULL
+  // So the default opens page 1 with every track nobody has screened, presented as the
+  // top of a ranked list: unmeasured reading as best. Unscored rows go last, because
+  // not measured is not the same as measured badly ([[feedback-absent-is-not-zero]]).
+  //
+  // id is the tie-break, so paging is stable: without it two rows with the same score
+  // and title can swap between pages, and a track is seen twice while another is
+  // never seen at all -- the failure mode of a paged list that curators blame on
   // themselves.
   return [
-    { column: 'title', ascending: true },
-    { column: 'id', ascending: true },
+    { column: 'screening_score', ascending: false, nullsFirst: false },
+    { column: 'title', ascending: true, nullsFirst: false },
+    { column: 'id', ascending: true, nullsFirst: false },
   ]
 }
 

@@ -1378,7 +1378,14 @@ export async function listMusicAssets(
   // explicit, and crossing it is reported instead of silently obeyed.
   const { data, error } = await admin
     .from('studio_music_assets')
-    .select('id, url, title, mood, source, user_id, active, cryptobind_signature')
+    // ★`genre` / `bpm` JOINED 2026-08-09. They were deliberately absent from this list
+    // while the migration was outstanding, because ONE unknown column makes PostgREST
+    // refuse the whole select silently and the picker would have gone empty with no
+    // error ([[feedback-postgrest-unknown-column-silent]]). Both were probed read-only
+    // against the live table before being named here (42703 = absent; neither returned
+    // it). The picker's facet chips render only for values the loaded rows actually
+    // carry, so they light up from this line alone -- no UI change.
+    .select('id, url, title, mood, source, user_id, active, cryptobind_signature, genre, bpm')
     .eq('status', 'ready')
     .not('url', 'is', null)
     .or(musicPickerOrFilter(userId))
@@ -1413,6 +1420,12 @@ export async function listMusicAssets(
       title: String(a.title ?? ''),
       mood: String(a.mood ?? ''),
       source: a.source as 'library' | 'ai',
+      // ★undefined, not '' / 0. MusicAsset declares both optional and the picker
+      // EXCLUDES a track from a facet it has no value for, rather than matching it
+      // against everything -- an unclassified track that answers every filter looks
+      // classified. Coercing to '' or 0 would defeat exactly that.
+      ...(a.genre === null || a.genre === undefined ? {} : { genre: String(a.genre) }),
+      ...(a.bpm === null || a.bpm === undefined ? {} : { bpm: Number(a.bpm) }),
     }))
   return { enabled: true, assets, truncated }
 }

@@ -21,11 +21,32 @@ test('the SQL order terms name ONLY columns that are known to exist', () => {
   }
 })
 
-test('the order terms do NOT mention a review score -- that column is not migrated', () => {
-  const cols = musicCurationOrderTerms().map((t) => t.column).join(',')
-  for (const forbidden of ['review_score', 'score', 'sort_order', 'genre', 'bpm']) {
-    assert.ok(!cols.includes(forbidden), `'${forbidden}' must not reach PostgREST until its migration has run`)
+// ★THIS TEST USED TO ASSERT THE OPPOSITE, and it failing is what it was for. Until
+// 2026-08-09 it read "the order terms do NOT mention a review score -- that column is
+// not migrated". The column turned out to exist (probed read-only against the live
+// table; `screening_score` returns rows, `music_score` / `score` / `screen_score`
+// return 42703), so the assertion had to be inverted rather than deleted -- what it
+// guards is unchanged: no column reaches PostgREST on the strength of a migration
+// someone SAYS has run.
+test('★the score column is now ordered by -- and the still-unproven names are still refused', () => {
+  const cols = musicCurationOrderTerms().map((t) => t.column)
+  assert.ok(cols.includes('screening_score'), 'screening_score exists and IS the audition order')
+  // These are not synonyms for it. Two are absent from the table (42703) and
+  // sort_order has no reader in either repo, so naming any of them here would kill
+  // the whole statement silently for nothing.
+  for (const forbidden of ['review_score', 'music_score', 'screen_score', 'sort_order', 'genre', 'bpm']) {
+    assert.ok(!cols.includes(forbidden), `'${forbidden}' must not reach PostgREST -- it is not a proven ORDER BY column`)
   }
+})
+
+test('★score leads, DESCENDING, with unscored rows LAST', () => {
+  const terms = musicCurationOrderTerms()
+  assert.equal(terms[0].column, 'screening_score')
+  assert.equal(terms[0].ascending, false, 'audition the best first -- that is the whole method')
+  // ★PostgREST puts NULLs FIRST on a DESC order by default. Taking that default would
+  // open page 1 with every track nobody screened, while presenting it as the top of a
+  // ranked list -- unmeasured reading as best.
+  assert.equal(terms[0].nullsFirst, false, 'unscored rows sort after scored ones, including scored rejects')
 })
 
 test('id is the last term, so paging is stable', () => {

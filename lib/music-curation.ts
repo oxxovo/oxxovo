@@ -84,7 +84,7 @@ export async function listMusicForCuration(opts: {
       // ★Every column named here is one listMusicAssets or the worker's
       // seedLibraryTrack already reads or writes. Nothing speculative: an
       // unmigrated column would make PostgREST refuse this select SILENTLY.
-      'id, title, mood, source, status, active, url, duration_seconds, license_type, provider, cryptobind_signature',
+      'id, title, mood, source, status, active, url, duration_seconds, license_type, provider, cryptobind_signature, screening_score',
       { count: 'exact' },
     ).eq('source', 'library')
     if (filter === 'active') sel = sel.eq('active', true)
@@ -108,7 +108,7 @@ export async function listMusicForCuration(opts: {
 
   let query = base().range(from, from + pageSize - 1)
   for (const term of musicCurationOrderTerms()) {
-    query = query.order(term.column, { ascending: term.ascending })
+    query = query.order(term.column, { ascending: term.ascending, nullsFirst: term.nullsFirst })
   }
   const { data, error } = await query
   if (error) throw new Error('listMusicForCuration: ' + error.message)
@@ -143,9 +143,12 @@ export async function listMusicForCuration(opts: {
     licenseType: (r.license_type as string | null) ?? null,
     provider: (r.provider as string | null) ?? null,
     signed: !!r.cryptobind_signature,
-    // ★No score yet. The field is here so the ordering rule and the view already
-    // handle it; [2.5]'s migration is what starts filling it.
-    reviewScore: null,
+    // ★The score is REAL as of 2026-08-09 -- the column existed and this mapping was
+    // still hard-coded to null, so the ordering rule was running over a field that was
+    // always absent and could only ever produce title order.
+    // ★`?? null`, never `?? 0`: a track nobody screened must sort after the tracks that
+    // were screened and rejected, not among them ([[feedback-absent-is-not-zero]]).
+    reviewScore: r.screening_score === null || r.screening_score === undefined ? null : Number(r.screening_score),
   }))
 
   return {
