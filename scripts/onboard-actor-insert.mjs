@@ -1,7 +1,28 @@
 // Official actor onboarding -- step 5: INSERT the actor row (service_role, RLS
 // stays locked). Archives the full provenance + a CryptoBind signature over the
-// canonical sheet + source, so the synthetic origin can be proven later. Public
-// name deferred (display_name = null, status = draft = no public exposure).
+// canonical sheet + source, so the synthetic origin can be proven later.
+// status = draft = no public exposure. That part still holds.
+//
+// ★THIS FILE IS THE RECORD OF THE ORIGINAL INSERT, NOT THE CURRENT ROW.
+// Three things below were true when it ran (2026-08) and are no longer true.
+// Measured 2026-08-09, service_role, 1 row in official_actors:
+//
+//   slug         actor-3-beauty-cf  ->  rin
+//   display_name null               ->  'RIN'      <- NOT deferred any more.
+//                                                     RIN is the settled value.
+//   the four R2 URLs / cryptobind_hash / cryptobind_signature
+//                                    ->  re-signed over the new slug + URLs
+//
+// All of that was done by reports/hq_actor_slug_2026-08-08.sql (BLOCK 2), over
+// the UNCHANGED provenance -- so the `clip` path inside `provenance` below still
+// spells the old slug on purpose, and the provenance hash is therefore still the
+// one the live signature was computed from. Do not "fix" it: editing provenance
+// changes provHash and invalidates the signature on the live row.
+//
+// ★So the signature this file computes is the ORIGINAL one and no longer matches
+// the database. The authority for the current one is:
+//   OLD_ACTOR_SLUG=rin node --env-file=.env.local scripts/actor-rename-plan.mjs
+//
 //   node --env-file=.env.local scripts/onboard-actor-insert.mjs
 import { createClient } from '@supabase/supabase-js'
 import { createHash, createHmac } from 'node:crypto'
@@ -73,8 +94,17 @@ const cryptobind_algo = 'HMAC-SHA256-v1actor-stable'
 
 const admin = createClient(URL, KEY, { auth: { persistSession: false } })
 
-// Idempotent: skip if the slug already exists.
-const { data: existing } = await admin.from('official_actors').select('id,status').eq('slug', SLUG).maybeSingle()
+// Idempotent: skip if the row already exists -- under EITHER slug.
+// ★The renamed slug has to be in this check. Keyed on SLUG alone, this script
+// stopped being idempotent the moment the rename landed: the old slug matches
+// nothing, so a re-run would INSERT A SECOND ROW carrying the four old
+// actor-3-beauty-cf URLs -- re-creating exactly the leak the rename removed.
+const RENAMED_SLUG = 'rin'
+const { data: existing } = await admin
+  .from('official_actors')
+  .select('id,slug,display_name,status')
+  .in('slug', [SLUG, RENAMED_SLUG])
+  .maybeSingle()
 if (existing) {
   console.log(JSON.stringify({ note: 'already exists', ...existing }, null, 2))
   process.exit(0)
@@ -82,7 +112,10 @@ if (existing) {
 
 const { error } = await admin.from('official_actors').insert({
   slug: SLUG,
-  display_name: null, // public name deferred (TK/HQ/jenny3 alignment)
+  // null was correct at insert time; the row now reads 'RIN' (set by the
+  // 08-08 rename SQL). Left as null because this is the historical insert and
+  // the guard above means it never runs again -- see the header.
+  display_name: null,
   kind: 'live',
   status: 'draft',
   provenance,
