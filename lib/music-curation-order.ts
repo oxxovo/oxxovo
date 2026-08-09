@@ -10,11 +10,22 @@
 // screen is not an independent screen -- it is `active` toggles laid over [2.5]'s
 // score-ordered output.
 //
-// ★AND [2.5] DOES NOT EXIST YET. Measured 2026-08-08: there is no score column
-// anywhere in either repo (grepped review_score / audition / machine_review /
-// loudness / lufs -- zero hits), and studio_music_assets holds 0 rows. So the rule
-// below carries a score SLOT that nothing fills yet, and the SQL half deliberately
-// does not name it.
+// ★[2.5] IS BUILT. THE COLUMN TO PUT IT IN IS NOT. Checked in BOTH repos on
+// 2026-08-08 (the first check covered only this one, which is how the screen was
+// nearly missed): the worker holds `screenMusic()` in src/music-screen.ts, shipped
+// 2026-08-07 in fb42108, and it returns a 0-100 `score` for EVERY track -- rejects
+// included, a dead file scoring 0 -- precisely so the audition can run downward and
+// stop at the quota. What does not exist is anywhere to persist it:
+// studio_music_assets has no score column (the design's migration list is
+// genre / bpm / sort_order, and it is 지수 본체's to run), and the table holds 0 rows.
+//
+// So the score below is a SLOT with a known producer and no storage yet. The SQL
+// half deliberately does not name it.
+//
+// ★`reviewScore` is this side's DTO name for the worker's `screenMusic().score`.
+// Same direction (higher is better) and same range. It is NOT the same thing as an
+// absent value -- see the unscored note on compareForCuration, which matters
+// exactly because the worker scores rejects rather than skipping them.
 //
 // ★WHY THE SQL HALF MUST NOT NAME IT. PostgREST refuses a statement containing one
 // unknown column SILENTLY, taking the whole statement with it
@@ -40,8 +51,9 @@ export const MUSIC_CURATION_PAGE_SIZE = 100
  * ★`title` and `id` only, and that is not a placeholder for score -- it is the
  * complete set of ordering columns this repo can prove exist on
  * studio_music_assets, because lib/studio.ts selects both in listMusicAssets. When
- * the [2.5] migration lands, its column joins this list and the comparator below
- * already knows what to do with it.
+ * the score column is migrated, it joins this list and the comparator below already
+ * knows what to do with it -- the producer is already written (the worker's
+ * screenMusic), so the remaining step is storage, not logic.
  */
 export const CURATION_ORDER_COLUMNS: readonly string[] = ['title', 'id']
 

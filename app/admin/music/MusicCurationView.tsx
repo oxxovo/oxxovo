@@ -17,7 +17,8 @@ const DICT = {
       'Curation: which library tracks participants may choose from. `active` is the participant-facing switch — turning it off removes the track from every picker immediately.',
     waiting: 'Waiting on two things, and neither is this screen:',
     waitLoad: 'the track load itself (stage 1 — 1,000 tracks, worker `seed:music:batch`)',
-    waitScore: 'machine review [2.5], which supplies the score this list will be ordered by',
+    waitScore:
+      'a column to store machine review [2.5]’s score, which this list will be ordered by. The screening itself is already written in the worker.',
     noneYet: 'The library is empty, so there is nothing to curate yet.',
     noneMatch: 'No tracks match this filter.',
     orderNote: 'Ordered by title. Once [2.5] lands, the highest-scoring tracks come first and this note goes away.',
@@ -62,7 +63,8 @@ const DICT = {
       '큐레이션 — 참가자가 고를 수 있는 라이브러리 곡을 정합니다. `active`가 참가자에게 보이는 스위치이고, 끄면 즉시 모든 피커에서 사라집니다.',
     waiting: '두 가지를 기다리는 중이고, 둘 다 이 화면이 아닙니다:',
     waitLoad: '곡 적재 자체 (1단계 — 1,000곡, 워커 `seed:music:batch`)',
-    waitScore: '기계 심사 [2.5] — 이 목록의 정렬 기준이 될 점수를 공급합니다',
+    waitScore:
+      '기계 심사 [2.5] 점수를 담을 컬럼 — 이 목록의 정렬 기준입니다. 심사 자체는 워커에 이미 구현되어 있습니다.',
     noneYet: '라이브러리가 비어 있어 큐레이션할 대상이 없습니다.',
     noneMatch: '이 조건에 맞는 곡이 없습니다.',
     orderNote: '제목순 정렬입니다. [2.5]가 들어오면 점수 높은 곡이 먼저 오고 이 안내는 사라집니다.',
