@@ -31,6 +31,11 @@ import { buildNextSeasonRow } from '@/lib/season-schedule'
 import { releasePrelimHoldCore } from '@/lib/watch-hold'
 import { sweepAsyncSubmissions, type AsyncSweepReport } from '@/lib/studio'
 import { sweepStudioLeases, type StudioLeaseReport } from '@/lib/studio-lease'
+import {
+  watchScoringLeases,
+  stuckAlertHtml,
+  type ScoringLeaseWatchReport,
+} from '@/lib/scoring-lease-watch'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
 import {
   reportPricingHealth,
@@ -96,6 +101,11 @@ type SeasonTickReport = {
   // music, and renders nobody submitted. Ownership is declared in
   // lib/studio-sweep-scope.ts and pinned by lib/studio-sweep-scope.test.ts.
   leaseSweep?: StudioLeaseReport
+  // ★The other half of the scoring lease: the worker reclaims its own stale
+  // claims, but cannot notice that it is not running. Always present so the
+  // threshold this tick used is readable next to the worker's own -- two repos
+  // cannot share a constant, so they are compared instead of assumed equal.
+  scoringLeases?: ScoringLeaseWatchReport
   // Always present, alert or not: the tick's JSON is the one place ops can read
   // the CURRENT pricing state on demand, rather than waiting for the mail that
   // only fires on a change.
@@ -475,6 +485,28 @@ async function handle(request: NextRequest) {
     errors.push(`studioLease: ${e instanceof Error ? e.message : String(e)}`)
   }
 
+  // ★Watch, do not reclaim. The scoring worker reclaims its own claims at the
+  // top of every batch; what it cannot do is notice that it is not running. A
+  // row stuck in_progress is invisible to every counter (not 'failed', skipped
+  // by pickPending as already claimed), so the preliminary just never finalizes.
+  // Isolated like the sweeps above: this must not cost the tick its other work.
+  let scoringLeases: ScoringLeaseWatchReport | undefined
+  try {
+    scoringLeases = await watchScoringLeases(now)
+    if (scoringLeases.error) errors.push(`scoringLeaseWatch: ${scoringLeases.error}`)
+    if (scoringLeases.stuck.length > 0) {
+      // ★Repeats hourly while it lasts, deliberately. This only fires when the
+      // scoring fleet is down during a scoring window, which is an outage, and
+      // an outage that stops mentioning itself is one nobody finishes fixing.
+      await sendAdminAlert(
+        `[OXXOVO] scoring worker not reclaiming — ${scoringLeases.stuck.length} row(s) stuck in_progress`,
+        stuckAlertHtml(scoringLeases),
+      )
+    }
+  } catch (e) {
+    errors.push(`scoringLeaseWatch: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   const report: SeasonTickReport = {
     ok: true,
     ranAt: now.toISOString(),
@@ -486,6 +518,7 @@ async function handle(request: NextRequest) {
     ...(skippedCreation ? { skippedCreation } : {}),
     ...(asyncSweep ? { asyncSweep } : {}),
     ...(leaseSweep ? { leaseSweep } : {}),
+    ...(scoringLeases ? { scoringLeases } : {}),
     ...(pricingHealth
       ? {
           pricing: {

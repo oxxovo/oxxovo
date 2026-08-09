@@ -89,34 +89,54 @@ exhausted = judged_status = 'failed' AND processing_attempts >= MAX_RETRIES
 ★**sweep 은 `processing_attempts` 를 올리지 않는다.** 죽은 그 시도는 잡을 때
 **이미 카운트됐다.** sweep 이 또 올리면 크래시 한 번이 재시도 예산을 두 칸 먹는다.
 
-### 2-3. staleMs = 15분 — 유도 과정을 적는다
+### 2-3. staleMs — ★착수하며 15분에서 46분으로 정정됐다
+
+설계 단계에서 실측 분포(최장 성공 106초)만 보고 **15분**을 냈다. 그건 틀렸다.
+①에서 마감을 실제로 걸고 나니 **선언된 상한의 합**이 나왔고, lease 는
+분포가 아니라 **그 상한 위**에 있어야 한다 — 안 그러면 sweep 이 살아 있는
+작업을 회수한다. 유도는 `scorer.ts` 의 `ITEM_DEADLINE_MS` 가 계산한다:
 
 ```
-한 건 최장 성공 벽시계 (실측 51건)                       106초
-+ yt-dlp 최악 (120초 x 2회 + 백오프) 이 그 안에 없었을 경우   ~300초
-= 현실적 최악의 "정상" 한 건                              ~7분
-x 2 (렌더 lease 와 같은 규칙: 마감이 먼저, lease 는 그 두 배)  ~14분
--> 15분 (SCORING_LEASE_STALE_MS, env 로 조정 가능)
+yt-dlp     3회 x 120s + 3s/6s 선형 backoff        369s
+ffprobe    30s (이번에 추가 — 유일하게 무제한이었다)  30s
+ffmpeg     프레임 21장 x 30s (interval=max(2,dur/20)) 630s
+LLM 3아암  180s x 2회, ★세 아암은 Promise.all 병렬    360s
+                                                    -----
+                                        ITEM_DEADLINE  1389s = 23.1분
+                                        LEASE_STALE x2 2778s = 46.3분
 ```
 
-★**두 배인 이유는 여유가 아니라 순서다.** 워커 자신이 먼저 실패로 마감해야 하고
-sweep 은 **정리 못 하고 죽은 것만** 줍는 것이어야 한다. 살아 있는 작업을 회수하면
-좀비 두 마리가 같은 행을 쓴다 — 2-2 의 CAS 가 그걸 안전하게 만들지만,
-안전한 것과 안 일어나는 것은 다르다.
+★**합인 이유가 있다: `spawnSync` 가 이벤트 루프를 막는다.** yt-dlp·ffprobe·ffmpeg
+는 Promise.race 로 감쌀 수 없어서 각 호출의 `timeout:` 이 유일한 상한이다.
+"항목 전체에 마감 하나"는 **여기서 구현이 불가능**하고, 그런 척하면 lease 가
+아무도 강제하지 않는 숫자를 근거로 삼게 된다.
 
-★그리고 **2-3 은 2-4 가 없으면 근거가 반쪽이다**: LLM 호출에 마감이 없으므로
-"정상 한 건"의 상한이 실측 분포일 뿐 보장이 아니다.
+★**ffmpeg 항(630s)이 지배적이고, 46분이 길면 그게 레버다.** 정상 프레임 추출은
+1초 미만이라 장당 30초는 엄청난 여유다. 다만 **느린 경우를 아무도 안 재봤으므로**
+낮추지 않았다 — 추측으로 낮추면 긴 영상이 추출에서 실패하기 시작한다.
 
-### 2-4. ★선행 권고 — 세 LLM 호출에 마감을 건다
+`SCORING_LEASE_STALE_MS` 로 덮어쓸 수 있다.
 
-lease 를 넣기 전에 `scorer.ts` 의 세 클라이언트에 명시적 timeout 을 준다.
-지금은 SDK 기본값에 맡겨져 있고, **그 값은 우리가 고른 적이 없고 벤더가 바꿀 수 있다.**
-p90 이 77초이므로 호출당 180초면 정상 건을 자르지 않는다.
+### 2-4. 세 LLM 호출에 마감 — 무엇을 걸었나
 
-이게 들어가면 2-3 의 유도가 "실측 분포"가 아니라 **"우리가 건 마감의 두 배"** 가 되고,
-렌더 lease 와 같은 근거 형태가 된다.
+`SCORING_LLM_TIMEOUT_MS=180000`, `SCORING_LLM_MAX_RETRIES=1`.
 
----
+★**재시도를 1로 내린 것이 timeout 만큼 중요하다.** Anthropic/OpenAI SDK 기본은 2회이고,
+Anthropic 문서가 직접 적어 놨다 — *"request timeouts are retried by default, so in a
+worst-case scenario you may wait much longer than this timeout"*.
+즉 **바깥 층이 1회라고 믿는 시도 안에서 벽시계와 토큰 지출이 3배**가 된다.
+재시도 정책은 `batch.ts` 의 `MAX_RETRIES`(틱 간, DB 에 영속)가 소유해야 하고
+SDK 는 일시적 딸꾹질 한 번만 흡수하면 된다.
+
+★Gemini 는 `getGenerativeModel(modelParams, **requestOptions**)` 의 **둘째 인자**다.
+modelParams 안에 넣으면 **조용히 무시되고, 아암은 무제한인 채로 제한된 것처럼 보인다.**
+이 SDK 는 자체 재시도가 없어 180초가 곧 전체 벽시계다.
+
+★그리고 `extractor.ts:144` 의 ffprobe 가 **이 파일에서 유일하게 timeout 이 없는
+spawn** 이었다 — 즉 틱을 무한정 매달 수 있는 유일한 호출. 30초를 걸었다.
+
+180초 근거: 완료 51건에서 **전체 실행** 최장이 106.2초(p90 77.0초)다. 한 아암 하나에
+180초면 정상 호출을 자를 수 없다.
 
 ## 3. 어디에 두나 — ★둘로 나눈다
 
@@ -140,14 +160,30 @@ p90 이 77초이므로 호출당 180초면 정상 건을 자르지 않는다.
 
 ---
 
-## 4. 착수 단위 (승인 주시면 이 순서)
+## 4. 착수 — ✅네 단계 전부 완료 (2026-08-08, 본부 승인)
 
-1. **`scorer.ts` 세 호출에 timeout 180초** — 단독으로도 이득이고, 2-3 의 근거가 된다.
-2. **CAS 두 줄** — 결과 write 에 `(A)(B)` 조건. 0행이면 좌초 로그.
-   ★이게 회수보다 먼저다. 회수가 열어 주는 창을 닫는 것이 CAS 이므로,
-   순서가 바뀌면 회수를 넣는 순간 덮어쓰기 창이 열린다.
-3. **워커 회수** — `batch.ts` 시작 시 stale `in_progress` -> `failed`.
-4. **앱 경보** — `season-tick` 에서 lease 초과 행 카운트 + 어드민 메일.
+| | 무엇 | 어디 |
+|---|---|---|
+| ① | LLM 180초 x 재시도 1 + ffprobe 30초 | `oxxovo-scoring/src/scorer.ts`, `extractor.ts` |
+| ② | CAS 두 줄 — 성공 write **와** `handleFailure` 둘 다 | `src/batch.ts` |
+| ③ | `reclaimStaleLeases` — 배치 시작 시 1회 | `src/batch.ts` |
+| ④ | `watchScoringLeases` + 어드민 메일 | `oxxovo/lib/scoring-lease-watch.ts` → `season-tick` |
+
+★**②가 ③보다 먼저인 이유가 실제로 있었다**: `handleFailure` 에도 같은 CAS 를 걸어야 했다.
+안 걸면 되살아난 워커가 **회수 후 다시 잡아 정상 채점 중인 시도를 남의 실패로 죽인다.**
+결과 write 만 보호하면 절반만 닫힌다.
+
+★**③ 은 예선에서 `genesis_applications.status` 도 되돌린다.** `handleFailure` 가 하던 일인데
+그게 못 돌아서 행이 남은 것이므로, 안 하면 회수해도 `pickPending` 의 후보 쿼리
+(`status='pending'`)에 다시 안 들어온다. **회수했는데 아무도 안 집는 상태**가 된다.
+
+★**④ 는 회수하지 않는다.** 앱이 워커의 행에 쓰면 한 메커니즘에 저자가 둘이 되고,
+CAS 는 애초에 한 번에 한 소유자만 쓰라고 있는 것이다. 앱의 역할은 **말하는 것**이다.
+임계는 60분(워커 46.3분 회수보다 위 — 워커가 스스로 고칠 행을 메일로 보내지 않기 위해).
+두 레포가 상수를 공유할 수 없으므로 **틱 리포트에 자기가 쓴 임계를 같이 싣는다** —
+값이 어긋나면 조용히 흘러가지 않고 출력에서 부딪힌다.
+
+검증: `lib/scoring-lease-watch.test.ts` 7개(경계 포함 · NULL `started_at` = 만료 처리).
 
 **마이그레이션 없음.** 1·2 는 워커 레포 `src/` 안이고 레인 C 와 겹치지 않는다
 (레인 C 의 워커 작업은 `oxxovo-studio` 이지 `oxxovo-scoring` 이 아니다).
