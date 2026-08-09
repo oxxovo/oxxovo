@@ -12,10 +12,11 @@
 
 | | HEAD |
 |---|---|
-| 앱 (`oxxovo`) | **`cb022f9`** |
-| 워커 (`oxxovo-studio`) | **`fb42108`** (오늘 무변경, upstream 일치) |
+| 앱 (`oxxovo`) | **`5d38e66`** |
+| 워커 (`oxxovo-studio`) | **`52faee1`** |
 
-★**오늘 종료 시점 = ③b에서 격자 값에 안 걸리는 것 소진. 전부 대기다** (6절).
+★**오늘 종료 시점 = ③b 전부 종료.** 격자 어휘가 저녁에 확정되어 `[0]`·`[4]`까지 끝났다.
+★**남은 ③b는 전부 마이그·스위치 대기**이고, ★**다음 착수는 ④**(이관됨, 6절 끝).
 
 ---
 
@@ -26,16 +27,31 @@
 | `3097c11` | (머지) A 수용 — `feat/studio-budget-guard` `3bd5b24`. 충돌 2건 해소(4절) |
 | `b4b7f14` | ① 경계 테스트 4건 + ② 큐레이션 화면 + `resolveMusicSignature` export + 설계 §4c 정정 |
 | `cb022f9` | ★정정 — `[2.5]`는 워커에 이미 있었다. 코드 동작 변경 0, 주석·문구·문서만 |
+| `706a7a0` | ★규율 §7-0 — 오늘 세 번의 오류가 한 계열("근거의 범위")이라는 것 |
+| `5d38e66` | ③ 격자 어휘 앱측(라벨·필터·미리듣기) + 금지어 대조 + 크로스레포 파리티 |
 
-워커: **커밋 0.** ★단 어제 저녁 워커에 `fb42108`(기계 심사 `[2.5]`)이 들어와 있었고,
-**내가 그것을 오늘 늦게까지 몰랐다** — 3절-(4).
+워커 (오늘 커밋 1건):
+
+| 해시 | 내용 |
+|---|---|
+| `52faee1` | 격자 어휘 값 채움 + ★**아무도 읽지 않던 파일 배선**(`loadMusicGrid`) + 금지어 대조 |
+
+★어제 저녁 워커에 `fb42108`(기계 심사 `[2.5]`)이 들어와 있었고 **내가 오늘 늦게까지
+몰랐다** — 3절-(4). 오늘 워커 작업은 그 위에 얹혔다.
 
 ### 검증 (전부 로컬. CI는 별도 표기)
 
-앱 `npx tsc --noEmit` **0** · `npm test` **347/347** · `test:kat` **35/35 ALL PASS** ·
-`test:theme-leak` **PASS** · `npm run build` **OK** (`/admin/music` 라우트 등록 확인) ·
-`test:music-boundary` **29 pass / 0 fail** · `test:music-curation` **28 pass / 0 fail**
-GitHub Actions `checks`: `b4b7f14` **success** / `cb022f9` **success**
+앱 `npx tsc --noEmit` **0** · `npm test` **367/367** · `test:kat` **35/35 ALL PASS** ·
+`test:theme-leak` **PASS (23 terms)** · `npm run build` **OK**
+(`/admin/music`·`/studio/compose` 등록 확인) · `test:music-boundary` **29/0** ·
+`test:music-curation` **28/0** (leftover 0) · `test:music-grid-parity` **10/0**
+워커 `npx tsc --noEmit` **0** · `npm test` **80/80**
+GitHub Actions `checks`: `b4b7f14` · `cb022f9` · `706a7a0` **전부 success**
+(`5d38e66`는 push 시점 in_progress → 별도 확인)
+
+★적재기 배선은 **테스트 말고 실제 dry run으로** 확인했다(업로드 0·쓰기 0):
+라벨 수용(80칸, 미영속 2/3 경고) / 미지 장르 → 매니페스트 전량 거부 / 누출 무드 → 전량 거부 /
+오염된 어휘 파일 → 적재 거부(`grid_banned_term`).
 
 ★KAT 골든 무변화 — v1m canonical 밖만 건드렸다.
 ★**안 돌린 것을 적어 둔다**(돌렸다고 읽히지 않게): `test:e2e-music`, `test:i2v-guard`,
@@ -45,22 +61,28 @@ GitHub Actions `checks`: `b4b7f14` **success** / `cb022f9` **success**
 ### 새로 생긴 명령
 
 ```
-npm run test:music-boundary    ③b 4절 경계 4건 (라이브 DB, season_test에만 쓰기, 정리 확인 출력)
-npm run test:music-curation    [3] 큐레이션 읽기 + active 쓰기 (동일 규율)
-npm run inspect:music-state    음악 스위치가 몇 단인지 실측 출력 (쓰기 0건)
+npm run test:music-boundary      ③b 4절 경계 4건 (라이브 DB, season_test에만 쓰기, 정리 확인 출력)
+npm run test:music-curation      [3] 큐레이션 읽기 + active 쓰기 (동일 규율)
+npm run test:music-grid-parity   ★앱 라벨 ↔ 워커 어휘 크로스레포 (쓰기 0건, npm test에는 없음)
+npm run inspect:music-state      음악 스위치가 몇 단인지 실측 출력 (쓰기 0건)
 ```
 
 ### 새 파일
 
 ```
-e2e/music-boundary.mjs              lib/music-curation.ts
-e2e/music-curation.mjs              lib/music-curation-order.ts (+ .test.ts)
-scripts/inspect-music-state.mjs     app/admin/music/{page.tsx,actions.ts,MusicCurationView.tsx}
+앱   e2e/music-boundary.mjs              lib/music-curation.ts
+     e2e/music-curation.mjs              lib/music-curation-order.ts (+ .test.ts)
+     e2e/music-grid-parity.mjs           lib/music-grid-labels.ts    (+ .test.ts)
+     scripts/inspect-music-state.mjs     app/admin/music/{page,actions,MusicCurationView}
 ```
 
-수정: `lib/studio.ts`(export 1건) · `app/admin/AdminShell.tsx`+`lib/admin-i18n.ts`(nav 1건) ·
-`package.json` · `reports/studio_go_live_checklist_2026-07.md` ·
-`reports/lane_c_music_c_plan_design_2026-08-07.md`
+수정 — 앱: `lib/studio.ts`(export 1건 + `MusicAsset` optional 2필드) ·
+`app/studio/compose/ProComposeEditor.tsx`(피커 필터·미리듣기·현지화) ·
+`app/studio/ActorMode.tsx`(1문구) · `scripts/theme-leak-check.mjs`(금지어 5개·줄끝주석) ·
+`app/admin/AdminShell.tsx`+`lib/admin-i18n.ts`(nav 1건) · `package.json` ·
+`reports/studio_go_live_checklist_2026-07.md` · `reports/lane_c_music_c_plan_design_2026-08-07.md`
+워커: `assets/music-grid.json`(값) · `src/music-grid.ts`(금지어) ·
+`src/music-library.ts`(`loadMusicGrid`) · `src/seed-music-batch.ts`(배선·경고) · 테스트 2개
 
 ---
 
@@ -110,7 +132,61 @@ scripts/inspect-music-state.mjs     app/admin/music/{page.tsx,actions.ts,MusicCu
   4절이 그걸 단정한다(혼합 목록은 `partial`로 보고, AI 행은 안 바뀜).
 - 서명 없는 곡은 `active`와 무관하게 노출 불가라서 **별도로 세어 화면에 경고**로 띄운다.
 
-★**미착수(지시대로 손대지 않음)**: 매니페스트 스키마, 피커 필터·미리듣기 — 격자 값 대기.
+### ③ [0] 매니페스트 + [4] 피커 — 완료 (격자 어휘 확정 후, 같은 날 저녁)
+
+제니3·본부 확정: **장르 10 × 무드 8 = 80칸**(12.5곡/칸), **템포는 bpm 필터**.
+`Luxury`는 제품 등급어라 제외 → `Elegant`. Rock·Percussion은 **희소성**으로 제외
+(rock×elegant, percussion×dreamy가 빈 칸) — 내 희소성 판단이 채택된 것.
+
+★**어휘를 채우는 것만으로는 아무것도 안 바뀌었을 것이다.** `assets/music-grid.json`은
+08-07부터 있었지만 **production 코드가 그 파일을 읽지 않았다** — `validateMusicGrid`는
+테스트에서만 호출되고, `parseManifest` 호출자 전부가 `EMPTY_MUSIC_GRID` 기본값을 썼다.
+즉 `genre:"cinematic"`을 주장하는 매니페스트는 **여전히 `grid_axis_undecided`로 거부**되고,
+그 거부는 문서화된 "값 미확정" 동작과 **구별이 안 된다.** 스키마는 만들어졌고 배선은
+없었다. → `loadMusicGrid()` 신설, **fail-closed**(깨진 어휘는 throw. empty로 강등되면
+그게 바로 위 실패다).
+
+★**그리고 적재기가 "무엇을 버릴지" 말한다.** `genre`/`bpm` 컬럼이 미마이그라
+`seedLibraryTrack`이 라벨을 검증한 뒤 **버린다**(`GRID_COLUMNS_LIVE=false`).
+1,000곡을 라벨 달아 넣으면 **라벨 없는 1,000행**이 되고 아무도 말해주지 않았을 것 →
+이제 몇 곡이 그 상태인지 출력한다. 마이그 후 같은 매니페스트 재실행이면 채워진다(멱등).
+
+★**앱/워커 어휘 두 벌은 조용히 어긋난다** — 워커에 장르 하나 추가하고 100곡 넣으면
+피커가 한국인 참가자에게 `synthwave` 원문 키를 보여주고, 칩은 없고, 에러도 없다.
+→ `npm run test:music-grid-parity` (양방향 + 순서, **쓰기 0건**). ★`npm test`에 **안 넣었다**:
+CI에 워커 체크아웃이 없어서 무관한 이유로 깨진다. `test:kat`과 같은 자리·같은 리졸버.
+
+**[4] 피커**: 패싯 칩 + 현지화 라벨 + 미리듣기.
+- ★**패싯은 로드된 데이터가 그 값을 가질 때만 렌더**된다. genre·bpm 미마이그라 오늘은
+  칩이 안 뜨고, 컬럼이 오면 **코드 변경 없이** 뜬다. 없는 컬럼으로 필터하면 0건이고,
+  참가자는 그것을 "시네마틱 음악이 없다"로 읽는다 — "배선이 아직"으로 읽지 않는다.
+- ★같은 이유로 **패싯이 없는 곡은 제외**한다(전부 매치 X). 아니면 마이그 후 미분류
+  잔여가 모든 필터에 나타나 **분류된 것처럼** 보인다.
+- ★`MusicAsset`에 `genre`/`bpm`을 optional로 넣었지만 **SELECT엔 안 넣었다** —
+  PostgREST는 모르는 컬럼 하나로 문장을 조용히 거부한다. 마이그 후 **두 줄**이면 켜진다.
+- ★미리듣기는 **별도 audio**이고 채택은 **별도 버튼**이다. 드롭다운에서 바로 고르게 두면
+  곡을 들어보는 유일한 방법이 **컴포지션을 편집하는 것**이 된다.
+- ★표시는 현지화 라벨 — `mood`를 원문 출력하던 자리가 확정 어휘에선 **영어 키**(`elegant`)다.
+
+### ★금지어 대조 (제니3 요구) — 규칙을 만든 그 단어가 금지어가 아니었다
+
+두 목록을 대조했다. **앱 18 → 23 terms**, 워커 17 → 23.
+
+| 추가 | 어디에 없었나 | 왜 중요한가 |
+|---|---|---|
+| `제품` / `product` | ★**양쪽 다 없었다** | 이 규칙을 만든 프리셋 필이 **`뷰티/제품`**이었다. 수정은 배포됐지만 `제품`은 **금지된 적이 없어서 회귀가 무료**였다 |
+| `beauty` (영어) | 앱에 없었다(`뷰티`만) | 영어 문자열이 그냥 통과했다 |
+| `ad` | 앱에 없었다 | |
+| `커머셜` | 양쪽 다 없었다 | |
+| `스킨 케어`·`skin care`·`make-up` | 워커에 없었다 | 띄어쓰기·하이픈 변형 |
+
+부수 수정 2건: ① 배우 프롬프트 예시의 `a beauty mark` → `a small mole`(KO는 이미 `점`).
+`beauty`를 넣을 수 없던 유일한 이유였고 잃는 게 없다. ② 체커가 **줄 끝 주석을 제거**한다 —
+원래 누출을 **고친 그 줄**이 금지어를 설명해야 하는 코드 줄이다.
+
+★**가드가 새 단어마다 실패하는 것을 눈으로 본 뒤에 신뢰했다**(음성 대조군).
+
+★**미착수(지시대로 손대지 않음)**: 없음 — ③b에서 격자 값에 걸려 있던 항목은 전부 끝났다.
 
 ---
 
@@ -207,19 +283,59 @@ scripts/inspect-music-state.mjs     app/admin/music/{page.tsx,actions.ts,MusicCu
 
 ---
 
+## 5b. ★전체 문자열 grep 1회 (제니3 요구) — 참가자 노출 누출 **0건**, 에스컬레이션 2건
+
+`test:theme-leak`은 **`app/studio/**`만** 본다(테마 라벨은 나중에 /watch에서 정당하게
+공개되므로 레포 전역 금지는 틀린 규칙이다). 그래서 확정 후 **양 레포 전역**을 손으로 훑었다.
+★규칙대로 **무엇이 잡혔고 왜 아닌지** 적는다.
+
+| 잡힌 것 | 판정 |
+|---|---|
+| `preset_group_beauty` 키, `group_id='beauty'`, `StudioPresetGroup` 유니온 | **내부 키**. 렌더되는 값은 `엘레강스`/`Elegant`. DB 컬럼과 맞춰야 해서 이름 유지 |
+| `e2e/stage3.mjs` 프롬프트, `Bloom Beauty`(파리티·KAT 픽스처), `music-limits.test.ts` | **테스트 전용**, 렌더 경로 아님. `Bloom Beauty`는 골든 문자열이라 바꾸면 서명·골든이 움직인다 |
+| `theme-leak-check.mjs` / `music-grid.ts`의 금지어 목록 자체, `music-grid-labels.test.ts` | 가드 본문. 설계상 필요 |
+| `app/membership/page.tsx` "the main product", `membership-billing.ts` `product:` | Studio 밖 + **우리 제품 티어**·Stripe 필드. 테마 누출 아님 |
+
+★**에스컬레이션 1 — `official_actors.slug = 'actor-3-beauty-cf'`.** 라이브 실측
+(1행, `display_name='RIN'`, status draft): slug에 **제품군(`beauty`) + 광고형식(`cf`)이 둘 다**
+들어 있다. 오늘은 무해하다 — ⑦ 소비 지점이 0개라 **아무 데서도 렌더되지 않는다**. 다만
+⑦이 배우를 노출하는 작업이므로 **"참가자 화면에 slug를 렌더하지 않는다(표시는 `display_name`)"**가
+규칙이 되어야 한다. ★**이름 변경은 DB 쓰기라 내 것이 아니다(⑥)** — 본체·본부.
+★그리고 이건 **코드 가드로 막을 수 없다**: theme-leak은 리터럴을 보고, 이 값은 DB에서 온다.
+
+★**에스컬레이션 2 — `브랜드`/`brand`는 금지어에 넣지 않았다.** 본부가 지명했지만 실측하니
+살아 있는 용례 둘이 정당하다: 상표 거부 메시지가 **그 단어를 말해야** 하고
+(`상표·브랜드명은 사용할 수 없어요` — 참가자에게 무엇이 문제인지 알려주는 유일한 문장),
+`brand: 'OXXOVO'`는 **우리 로고 alt**다. 둘 다 "화장품 광고"를 추론시키지 않는다.
+★**두 호출부 모두에서 예외 처리해야 하는 금지어는 다음 사람이 지운다.** 그래서 조용히
+건너뛰지 않고 제니2에게 올린다 — 넣으라면 넣는다.
+
+---
+
 ## 6. 대기 — ★내가 고르지 않는다
 
 | 항목 | 소관 |
 |---|---|
-| 격자 **축의 값** (genre 10 / mood 8) | ★제니3·본부 |
-| 마이그 `genre`/`bpm`/`sort_order` **+ 점수 컬럼** | ★지수 본체 (3절-(4)로 항목 1개 추가됨) |
+| ~~격자 축의 값~~ | ✅ **확정 2026-08-08** (제니3·본부) → [0]·[4] 완료 |
+| 마이그 `genre`/`bpm`/`sort_order` **+ 점수 컬럼** | ★지수 본체 — ★**이제 4개를 막는다**(아래) |
 | 스위치 **1·2단** (1,000곡 적재 / `studio_music_enabled=true`) | ★본체·대표님 |
 | `studio_presets.desc_text`의 "the product" | ★본체 |
+| `official_actors.slug='actor-3-beauty-cf'` 개명 | ★본체·본부 (5b절 에스컬레이션 1) |
+| `브랜드`/`brand` 금지어 여부 | ★제니2 (5b절 에스컬레이션 2) |
 | ⑥C 재수립 | ★본부·제니3 |
 | 공급자·계약, 1,000곡 실제 생성 | ★대표님·본부·고문 |
 
-★**격자 값이 오면 즉시**: `[0]` 매니페스트 스키마 → `[4]`-1,2 피커 필터·미리듣기.
-★**점수 컬럼이 오면 즉시**: 큐레이션 정렬항 1개 + 워커 점수 공급 배선.
+★**마이그 하나가 지금 4개를 막는다** (오면 즉시 착수, 전부 배선만 남음):
+1. 큐레이션 **점수 정렬항** 1개 (`lib/music-curation-order.ts`가 이미 처리·테스트됨)
+2. 워커 **점수 공급** — `screenMusic()` 출력을 컬럼에 쓰기
+3. `listMusicAssets` **SELECT 두 줄** → 피커 genre·tempo 칩이 **자동 점등**
+4. 적재기 `GRID_COLUMNS_LIVE=true` — 지금은 라벨을 검증 후 버린다(2절)
+
+★**④ 잔여 전체가 레인 C로 이관됐다**(제니2, 2026-08-08): D 키프레임 · E split ·
+F TTS · G 전환 미노출 4 · H 램프. 근거 = `ProComposeEditor.tsx`의 주인이 레인 C이고
+`lane-c`가 A보다 63커밋 앞선다. ★**순서는 ③b 먼저**였고 ③b는 오늘 대기로 돌아갔으므로
+**다음 착수 = ④**. 첫 후보는 지수2A가 E(split)로 추천했으나 **그 판단이 A 트리 기준일 수
+있어 내가 다시 재기로 했다**([[feedback-check-first-scope-all-repos]]의 브랜치 축).
 
 ---
 
@@ -261,3 +377,14 @@ scripts/inspect-music-state.mjs     app/admin/music/{page.tsx,actions.ts,MusicCu
    커밋에 섞인다 (4절).
 8. ★**상태 문서가 없으면 다음 창은 리포트 더미를 뒤진다.** 08-06·08-07이 그랬다 — 마감
    때 이 파일을 쓰는 것이 그 비용을 없앤다.
+9. ★★**스키마가 있다 ≠ 배선이 있다.** `assets/music-grid.json`은 하루 동안 존재했지만
+   **production 코드가 읽지 않았다.** 값을 채우는 것만으로는 아무 동작도 안 바뀌었을 것이고,
+   **그 거부가 문서화된 "미확정" 동작과 구별되지 않았다.** ★"값 대기"로 적힌 항목을 착수할 때
+   **그 값을 읽는 코드가 실제로 있는지** 먼저 확인해라 (2절 ③).
+10. ★★**금지 규칙을 만든 그 단어가 금지어에 없을 수 있다.** `뷰티/제품`이 규칙의 계기였고
+   `제품`은 **금지된 적이 없었다** — 수정은 배포됐고 회귀는 무료였다. ★**사건을 고쳤다고
+   규칙이 생긴 게 아니다.** 목록은 사건 목록과 따로 대조해야 한다 (2절 금지어 대조).
+11. ★**두 호출부 모두에서 예외 처리해야 하는 금지어는 넣지 않고 올린다.** `브랜드`가 그랬다 —
+   상표 거부 메시지와 로고 alt 둘 다 정당한 용례다. 넣고 억제하면 다음 사람이 지운다 (5b절).
+12. ★**DB 값은 코드 가드로 막을 수 없다.** `official_actors.slug='actor-3-beauty-cf'`는
+   theme-leak이 못 본다(리터럴만 본다). **"렌더하지 않는다"가 규칙**이어야 한다 (5b절).
