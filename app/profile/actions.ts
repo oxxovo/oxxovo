@@ -535,11 +535,7 @@ export async function saveMainRoundSubmission(
   // email-tick sweep retries it. The Studio paths reach the same function from
   // app/studio/actions.
   try {
-    await sendSubmissionReceipts({
-      seasonId: season.id,
-      seasonName: season.display_name,
-      applicationId: input.applicationId,
-    })
+    await sendSubmissionReceipts({ season, applicationId: input.applicationId })
   } catch (e) {
     console.error(
       '[profile] main-round receipt failed (non-fatal):',

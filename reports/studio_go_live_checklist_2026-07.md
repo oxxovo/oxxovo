@@ -7,6 +7,27 @@ season_0 real data is never touched.
 Canonical domain = **www.oxxovo.ai** (oxxovo.com 308-redirects and would make a
 Stripe webhook silently fail -- see [[reference-canonical-domain]]).
 
+## ★How to read a number on this list (added 2026-08-08, HQ)
+
+Two rules, both learned from defects that had already shipped and were reading
+as green.
+
+**1. A number that reads the same for full coverage and for half coverage is not
+answering the question.** Before trusting any count on this list -- or building
+one -- write down WHICH TWO INPUTS have to produce different outputs. The
+scoring panel counted completed / in_progress / failed, all three being counts
+of rows that EXIST, so an entry nobody enqueued was in none of them: full
+coverage and half coverage printed the same thing. Applied here: "0 failed" is
+not "everything scored", "no warning" is not "the step ran", and an empty result
+set is not a pass (C8 says the same thing about `claim_token IS NULL`).
+
+**2. Prefer the check that cannot cancel itself out.** Where a total can be
+reached two ways, take the intersection, not the subtraction. Subtracting rows
+from entries assumes every row still has an entry behind it; one stray row then
+CANCELS a genuinely missing one, and the count comes out clean. ★The failure is
+silent and in the reassuring direction -- and that is the direction that gets
+shipped, because nobody investigates a number that looks fine.
+
 ---
 
 ## Phase 0 -- already LIVE (verified 2026-07-05, do NOT re-run)

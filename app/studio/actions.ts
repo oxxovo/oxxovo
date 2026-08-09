@@ -55,7 +55,7 @@ import { getBalance, getStudioPricing, getStudioPurchaseConfig, creditsForCostOr
 import { isSession6Enabled } from '@/lib/session6'
 import { getCreatorProfile } from '@/lib/profile'
 import { getDisplayName } from '@/lib/nickname'
-import { sendSubmissionReceipts } from '@/lib/email/submission-receipts'
+import { sendSubmissionReceipts, type ReceiptSeasonRef } from '@/lib/email/submission-receipts'
 
 export type PurchaseOptions = { enabled: boolean; packUsd: number[]; creditUsdValue: number }
 
@@ -425,9 +425,9 @@ export async function pollJobsAction(token: string): Promise<PollResult> {
 // a 'failed' row) and the season sweep retries it. Turning a delivered submission
 // into an error the participant sees would be a far worse bug than a late
 // receipt.
-async function receiptFor(season: { id: string; display_name: string }, email: string) {
+async function receiptFor(season: ReceiptSeasonRef, email: string) {
   try {
-    await sendSubmissionReceipts({ seasonId: season.id, seasonName: season.display_name, email })
+    await sendSubmissionReceipts({ season, email })
   } catch (e) {
     console.error('[studio] submission receipt failed (non-fatal):', e instanceof Error ? e.message : String(e))
   }

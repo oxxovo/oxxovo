@@ -20,8 +20,13 @@ export function ApplicationReceived(p: ApplicationReceivedProps) {
 
 export function subjectFor(p: ApplicationReceivedProps): string {
   return p.lang === 'ko'
-    ? `[OXXOVO] ${p.seasonName} 신청이 접수되었습니다`
-    : `[OXXOVO] We received your ${p.seasonName} entry`
+    // ★Split from the SUBMISSION receipt on purpose (Jenny3, 2026-08-08). The
+    // same person gets both, days apart: this one when they take a place in the
+    // season, SubmissionReceived when they hand in the film. Before the split
+    // both said "we received your entry", which is why a participant who had
+    // submitted a film could not tell whether this was about the film.
+    ? `[OXXOVO] 참가 신청이 접수되었습니다`
+    : `[OXXOVO] Your entry to ${p.seasonName} is confirmed`
 }
 
 function Korean(p: ApplicationReceivedProps) {

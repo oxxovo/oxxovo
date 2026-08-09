@@ -101,6 +101,11 @@ import {
   type MainRoundSubmissionReceivedProps,
 } from './templates/MainRoundSubmissionReceived'
 import type { SubmissionFileState } from '@/lib/submission-receipt'
+import {
+  prelimReceiptLines,
+  mainReceiptLines,
+  type ReceiptSeason,
+} from './schedule-lines'
 import { buildShareUrl } from '@/lib/share-kit'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
@@ -689,6 +694,9 @@ type SendSubmissionReceivedInput = {
   videoTitle: string | null
   submittedAtLabel: string | null
   fileState: SubmissionFileState
+  // The season's own schedule columns. The receipt renders only the bullets it
+  // can source from these -- no dates are typed into the template.
+  season: ReceiptSeason
   applicationId: string
   seasonId?: string | null
   forceLang?: EmailLang
@@ -705,6 +713,7 @@ export async function sendSubmissionReceived(
     videoTitle: input.videoTitle,
     submittedAtLabel: input.submittedAtLabel,
     fileState: input.fileState,
+    scheduleLines: prelimReceiptLines(input.season, lang),
   }
   return executeSend({
     toEmail: input.toEmail,
@@ -728,6 +737,7 @@ export async function sendMainRoundSubmissionReceived(
     videoTitle: input.videoTitle,
     submittedAtLabel: input.submittedAtLabel,
     fileState: input.fileState,
+    scheduleLines: mainReceiptLines(input.season, lang),
   }
   return executeSend({
     toEmail: input.toEmail,
@@ -750,6 +760,19 @@ export async function sendMainRoundSubmissionReceived(
 
 const APP_BASE = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
 
+// ★An entry with no title is "Untitled", not the season name and not the
+// creator's name (Jenny3, 2026-08-08). The card already shows the creator
+// separately, so putting it in the title slot prints the same name twice; and
+// the season name would give every untitled entry in the season one identical
+// title. "Untitled" is the standard art/film convention for exactly this.
+// Resolved HERE because it is language-dependent and the caller does not know
+// which language the send resolved to.
+function titleOrUntitled(title: string | null | undefined, lang: EmailLang): string {
+  const t = title?.trim()
+  if (t) return t
+  return lang === 'ko' ? '제목 없음' : 'Untitled'
+}
+
 function shareLink(watchUrl: string, creatorUserId: string | null, campaign: string): string {
   return creatorUserId
     ? buildShareUrl(watchUrl, creatorUserId, { source: 'email_share', medium: 'email', campaign })
@@ -764,7 +787,9 @@ type SendVideoLivePrelimInput = {
   creatorUserId: string | null
   nickname: string
   seasonName: string
-  videoTitle: string
+  // Nullable at the CALLER; resolved to '제목 없음' / 'Untitled' below, where the
+  // language is known. The template still takes a plain string.
+  videoTitle: string | null
   thumbnailUrl: string | null
   score: number | null
   percentile: number | null
@@ -783,7 +808,7 @@ export async function sendVideoLivePrelim(input: SendVideoLivePrelimInput): Prom
     lang,
     nickname: input.nickname,
     seasonName: input.seasonName,
-    videoTitle: input.videoTitle,
+    videoTitle: titleOrUntitled(input.videoTitle, lang),
     thumbnailUrl: input.thumbnailUrl,
     watchUrl,
     shareUrl: shareLink(watchUrl, input.creatorUserId, 'prelim_published'),
@@ -811,7 +836,7 @@ type SendVideoLiveMainInput = {
   creatorUserId: string | null
   nickname: string
   seasonName: string
-  videoTitle: string
+  videoTitle: string | null
   thumbnailUrl: string | null
   voteDeadline: string
   viewCount: number
@@ -827,7 +852,7 @@ export async function sendVideoLiveMain(input: SendVideoLiveMainInput): Promise<
     lang,
     nickname: input.nickname,
     seasonName: input.seasonName,
-    videoTitle: input.videoTitle,
+    videoTitle: titleOrUntitled(input.videoTitle, lang),
     thumbnailUrl: input.thumbnailUrl,
     watchUrl,
     shareUrl: shareLink(watchUrl, input.creatorUserId, 'main_round_live'),

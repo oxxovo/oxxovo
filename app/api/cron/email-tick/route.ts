@@ -234,10 +234,7 @@ async function handle(request: NextRequest) {
       // up the ones that send did not manage -- a Resend outage, a function
       // killed mid-await, or a submission that reached the row through a path
       // nobody wired to the mailer. Same dedup, so it is a no-op otherwise.
-      const receipts = await sendSubmissionReceipts({
-        seasonId: season.id,
-        seasonName: season.display_name,
-      })
+      const receipts = await sendSubmissionReceipts({ season })
       if (receipts.sent || receipts.failed || receipts.deferred) {
         report.submissionReceipts.push({ season: season.id, ...receipts })
       }
@@ -380,9 +377,10 @@ async function fireVideoLive(season: Season, now: Date) {
         creatorUserId: row.user_id,
         nickname,
         seasonName: season.display_name,
-        // No invented titles: an untitled entry is announced under the season it
-        // ran in rather than a placeholder word.
-        videoTitle: row.video_title?.trim() || season.display_name,
+        // ★Untitled entries are resolved inside the sender, where the language is
+        // known -- '제목 없음' / 'Untitled' (Jenny3). Passing the season name here
+        // would give every untitled entry in the season one identical title.
+        videoTitle: row.video_title?.trim() || null,
         thumbnailUrl: row.thumbnail_url,
         applicationId: row.id,
         seasonId: season.id,

@@ -65,7 +65,11 @@ export const INTEGRITY_REC_BADGE_CLASS: Record<IntegrityRecommendation, string> 
 }
 
 export const INTEGRITY_REC_LABEL_KO: Record<IntegrityRecommendation, string> = {
-  reject: '탈락 권장',
+  // ★'탈락' is on the forbidden list (2026-08-08). This label is admin-only, but
+  // the word leaks into how operators write to participants, which is how it got
+  // into an email in the first place. '미진출' states the outcome without
+  // pronouncing a verdict -- see the Korean copy rule.
+  reject: '미진출 권장',
   review: '확인 후 판단 권장',
   accept: '통과 권장',
 }

@@ -23,6 +23,7 @@ import {
   submissionFileState,
 } from '@/lib/submission-receipt'
 import { formatDeadlinePT } from '@/lib/seasons'
+import type { ReceiptSeason } from './schedule-lines'
 
 export type ReceiptTally = { sent: number; skipped: number; failed: number; deferred: number }
 
@@ -43,9 +44,13 @@ type ReceiptRow = {
   main_round_video_url: string | null
 }
 
+// The season is passed whole rather than as an id + name, because the receipt
+// renders its "what happens next" bullets from the schedule columns and must not
+// re-read (or re-guess) them.
+export type ReceiptSeasonRef = ReceiptSeason & { id: string; display_name: string }
+
 export async function sendSubmissionReceipts(opts: {
-  seasonId: string
-  seasonName: string
+  season: ReceiptSeasonRef
   // Either narrows the run to one participant -- the immediate path. The submit
   // action knows the address it authenticated with, not the application id, and
   // matching by email (case-insensitive) is how every other caller in this repo
@@ -62,7 +67,7 @@ export async function sendSubmissionReceipts(opts: {
     .select(
       'id, email, creator_name, country, video_title, studio_application_submitted_at, free_entry_url, main_round_submitted_at, main_round_video_url',
     )
-    .eq('season_id', opts.seasonId)
+    .eq('season_id', opts.season.id)
     // The rule still runs per row; this only keeps the sweep from reading every
     // application in the season on every tick. ★Both columns, or the main-round
     // receipt would never reach a Finalist who submitted through the URL form
@@ -88,7 +93,7 @@ export async function sendSubmissionReceipts(opts: {
     const { data: sentRaw } = await admin
       .from('email_logs')
       .select('application_id, template_key')
-      .eq('season_id', opts.seasonId)
+      .eq('season_id', opts.season.id)
       .in('template_key', ['studio_submission_received', 'main_round_submission_received'])
       .eq('status', 'sent')
     for (const r of (sentRaw ?? []) as { application_id: string; template_key: string }[]) {
@@ -122,7 +127,8 @@ export async function sendSubmissionReceipts(opts: {
         // creator_name is what the entry publishes under; the address local part
         // is the last resort so the greeting is never blank.
         creatorName: row.creator_name?.trim() || row.email.split('@')[0],
-        seasonName: opts.seasonName,
+        seasonName: opts.season.display_name,
+        season: opts.season,
         videoTitle: row.video_title?.trim() || null,
         // ★Per round. Stamping a main-round receipt with the preliminary
         // submission time would put a date a week earlier on it.
@@ -131,7 +137,7 @@ export async function sendSubmissionReceipts(opts: {
         ),
         fileState: submissionFileState(row, round),
         applicationId: row.id,
-        seasonId: opts.seasonId,
+        seasonId: opts.season.id,
       }
       const result =
         round === 'main'
@@ -145,7 +151,7 @@ export async function sendSubmissionReceipts(opts: {
 
   if (tally.deferred > 0) {
     console.warn(
-      `[receipts] ${opts.seasonId}: ${tally.deferred} receipts deferred to the next tick (cap ${RECEIPTS_MAX_PER_SWEEP}).`,
+      `[receipts] ${opts.season.id}: ${tally.deferred} receipts deferred to the next tick (cap ${RECEIPTS_MAX_PER_SWEEP}).`,
     )
   }
   return tally

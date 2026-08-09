@@ -42,9 +42,11 @@ function isScored(p: VideoLivePrelimProps): boolean {
 
 export function subjectFor(p: VideoLivePrelimProps): string {
   if (!isScored(p)) {
+    // Jenny3, 2026-08-08. ★No score, no rank, no judging, and NO ask for votes:
+    // the tone is "your work is public, share it", not "vote for me".
     return p.lang === 'ko'
-      ? `🎬 ${p.videoTitle} — 작품이 공개됐습니다`
-      : `🎬 ${p.videoTitle} — your film is live on OXXOVO`
+      ? `영상이 공개됐습니다 — ${p.videoTitle}`
+      : `Your video is live — ${p.videoTitle}`
   }
   return p.lang === 'ko'
     ? `🎬 ${p.videoTitle} — 작품과 점수가 공개됐습니다`
@@ -58,11 +60,11 @@ export function VideoLivePrelim(p: VideoLivePrelimProps) {
     ? {
         head: 'PRELIMINARY',
         badge: scored ? '✓ PUBLISHED · SCORED' : '✓ PUBLISHED',
-        title: scored ? ['당신의 작품과 점수가', '공개됐습니다'] : ['당신의 작품이', '공개됐습니다'],
+        title: scored ? ['당신의 작품과 점수가', '공개됐습니다'] : ['당신의 예선 작품이', '지금 공개돼 있습니다'],
         sub: scored
           ? 'OXXOVO는 예선부터 모든 참가작의 점수를 공개합니다.'
-          : '점수와 Triple-AI 심사평은 심사를 마친 뒤 별도로 안내됩니다.',
-        watch: '▶ Watch your film',
+          : '방금 렌더와 검증을 통과했습니다. 지금 바로 보실 수 있습니다.',
+        watch: scored ? '▶ Watch your film' : '내 영상 보기',
         share: '팬들에게 공유하기',
         critique: 'Triple-AI 심사평',
         strength: '강점',
@@ -70,16 +72,16 @@ export function VideoLivePrelim(p: VideoLivePrelimProps) {
         report: '전체 리포트 보기 →',
         closer: scored
           ? ['당신의 실력이 점수로 공개됐습니다.', '팬들에게 보여주세요.']
-          : ['당신의 작품이 공개됐습니다.', '팬들에게 보여주세요.'],
+          : ['아래 링크로 관객에게 공유하세요.', '링크는 시즌 내내 유지됩니다.'],
       }
     : {
         head: 'PRELIMINARY',
         badge: scored ? '✓ PUBLISHED · SCORED' : '✓ PUBLISHED',
-        title: scored ? ['Your film and score', 'are now public'] : ['Your film', 'is now live'],
+        title: scored ? ['Your film and score', 'are now public'] : ['Your preliminary entry', 'is now live'],
         sub: scored
           ? 'OXXOVO publishes every entry’s score, from the preliminary round on.'
-          : 'Your score and Triple-AI notes follow separately, once judging is done.',
-        watch: '▶ Watch your film',
+          : 'It just passed rendering and verification. You can watch it now.',
+        watch: scored ? '▶ Watch your film' : 'Watch my video',
         share: 'Share with your fans',
         critique: 'Triple-AI notes',
         strength: 'Strength',
@@ -87,7 +89,7 @@ export function VideoLivePrelim(p: VideoLivePrelimProps) {
         report: 'See the full report →',
         closer: scored
           ? ['Your skill is public, in numbers.', 'Show it to your fans.']
-          : ['Your film is out in the world.', 'Show it to your fans.'],
+          : ['Share the link with your audience —', 'it stays live all season.'],
       }
 
   return (

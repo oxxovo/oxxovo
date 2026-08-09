@@ -14,6 +14,8 @@ import { Heading, Text } from '@react-email/components'
 import { Layout } from '../components/Layout'
 import type { EmailLang } from '../lang'
 import type { SubmissionFileState } from '@/lib/submission-receipt'
+import type { ScheduleLine } from '../schedule-lines'
+import { ScheduleList } from '../components/ScheduleList'
 
 export type MainRoundSubmissionReceivedProps = {
   lang: EmailLang
@@ -22,6 +24,7 @@ export type MainRoundSubmissionReceivedProps = {
   videoTitle: string | null
   submittedAtLabel: string | null
   fileState: SubmissionFileState
+  scheduleLines: ScheduleLine[]
 }
 
 export function MainRoundSubmissionReceived(p: MainRoundSubmissionReceivedProps) {
@@ -30,8 +33,8 @@ export function MainRoundSubmissionReceived(p: MainRoundSubmissionReceivedProps)
 
 export function subjectFor(p: MainRoundSubmissionReceivedProps): string {
   return p.lang === 'ko'
-    ? `[OXXOVO] ${p.seasonName} 본선 작품이 접수되었습니다`
-    : `[OXXOVO] We have your ${p.seasonName} main-round film`
+    ? '[OXXOVO] 본선 작품 제출이 접수되었습니다'
+    : '[OXXOVO] Your final entry has been received'
 }
 
 function Korean(p: MainRoundSubmissionReceivedProps) {
@@ -39,7 +42,7 @@ function Korean(p: MainRoundSubmissionReceivedProps) {
     <Layout lang="ko" preview={`${p.seasonName} 본선 작품이 접수되었습니다.`}>
       <Heading style={headingStyle}>{p.creatorName}님, 본선 작품이 접수되었습니다.</Heading>
       <Text style={paragraph}>
-        <strong>{p.seasonName}</strong> 본선 참가작을 정상적으로 받았습니다.
+        <strong>{p.seasonName}</strong> 본선 작품이 정상 접수되었습니다.
         {p.videoTitle ? (
           <>
             {' '}
@@ -57,6 +60,7 @@ function Korean(p: MainRoundSubmissionReceivedProps) {
           ? '최종 영상 파일은 현재 처리 중이며, 처리가 끝나면 참가작에 자동으로 반영됩니다. 접수 자체는 이미 완료되었습니다.'
           : '최종 영상 파일까지 참가작에 반영되었습니다.'}
       </Text>
+      <ScheduleList lines={p.scheduleLines} />
       <Text style={notice}>
         본선은 <strong>한 번만 제출</strong>할 수 있으며, 접수된 작품은 교체하거나 수정할 수
         없습니다.
@@ -93,6 +97,7 @@ function English(p: MainRoundSubmissionReceivedProps) {
           ? 'Your final video file is still being processed, and it will be attached to your entry automatically when it finishes. The submission itself is already recorded.'
           : 'Your final video file is attached to your entry.'}
       </Text>
+      <ScheduleList lines={p.scheduleLines} />
       <Text style={notice}>
         The main round is a <strong>single submission</strong> — this entry cannot be replaced or
         edited.

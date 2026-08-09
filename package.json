@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import ./scripts/test-register.mjs --test lib/cryptobind.stage3.test.ts lib/studio-verify.stage3.test.ts lib/moderation.test.ts lib/cryptobind-v2.test.ts lib/music-limits.test.ts lib/music-gate.test.ts lib/credits.test.ts lib/pricing-health.test.ts lib/studio-sweep-scope.test.ts lib/studio-claim-columns.test.ts lib/studio-shared.test.ts lib/studio-round-bounds.test.ts lib/watch-hold.test.ts lib/season-phase.test.ts lib/awards-gate.test.ts lib/video-url.test.ts lib/dst-boundaries.test.ts lib/lobby.test.ts lib/watch-visibility.test.ts lib/video-live.test.ts lib/submission-receipt.test.ts lib/prelim-release.test.ts lib/scoring-coverage.test.ts",
+    "test": "node --import ./scripts/test-register.mjs --test lib/cryptobind.stage3.test.ts lib/studio-verify.stage3.test.ts lib/moderation.test.ts lib/cryptobind-v2.test.ts lib/music-limits.test.ts lib/music-gate.test.ts lib/credits.test.ts lib/pricing-health.test.ts lib/studio-sweep-scope.test.ts lib/studio-claim-columns.test.ts lib/studio-shared.test.ts lib/studio-round-bounds.test.ts lib/watch-hold.test.ts lib/season-phase.test.ts lib/awards-gate.test.ts lib/video-url.test.ts lib/dst-boundaries.test.ts lib/lobby.test.ts lib/watch-visibility.test.ts lib/video-live.test.ts lib/submission-receipt.test.ts lib/prelim-release.test.ts lib/scoring-coverage.test.ts lib/email/schedule-lines.test.ts",
     "test:crypto": "node --import ./scripts/test-register.mjs --test lib/cryptobind.stage3.test.ts lib/studio-verify.stage3.test.ts",
     "test:parity:engine": "node scripts/gl-engine-parity.mjs",
     "test:parity:transition": "node scripts/gl-engine-transition.mjs",
