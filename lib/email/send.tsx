@@ -15,6 +15,7 @@ import { getResend, EMAIL_FROM } from './client'
 import type { RankAward } from '@/lib/seasons'
 import { detectEmailLang, type EmailLang } from './lang'
 import { logEmail, alreadySent, type TemplateKey } from './log'
+import { isRateLimitError } from './deferral'
 import {
   PreRegistered,
   subjectFor as preRegisteredSubject,
@@ -112,7 +113,9 @@ import { isMemberHostedEnabled } from '@/lib/member-hosted'
 export type SendResult =
   | { ok: true; messageId: string | null; skipped?: false }
   | { ok: true; messageId: null; skipped: true; reason: 'already_sent' | 'member_hosted_disabled' }
-  | { ok: false; error: string }
+  // ★`deferred` separates "this send must not be attempted again soon" from
+  // "not now". Only the first deserves the failure backoff; see rateLimited().
+  | { ok: false; error: string; deferred?: true }
 
 type ExecuteSendInput = {
   toEmail: string
@@ -163,6 +166,12 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
     })
 
     if (error) {
+      // ★A rate limit is logged 'queued', not 'failed'. canSend only counts
+      // 'failed' rows toward the backoff and only 'sent' rows toward dedup, so
+      // 'queued' leaves the recipient fully eligible on the very next tick --
+      // which is the correct answer to "not now". /admin/emails already renders
+      // the status, so the deferral is visible rather than invented.
+      const deferred = isRateLimitError(error as { name?: string; message?: string; statusCode?: number })
       await logEmail({
         applicationId: input.applicationId,
         seasonId: input.seasonId,
@@ -170,11 +179,15 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
         templateKey: input.templateKey,
         language: input.language,
         subject: input.subject,
-        status: 'failed',
+        status: deferred ? 'queued' : 'failed',
         errorMessage: error.message,
-        metadata: baseMetadata,
+        metadata: deferred
+          ? { ...(baseMetadata ?? {}), deferred_reason: 'rate_limited' }
+          : baseMetadata,
       })
-      return { ok: false, error: error.message }
+      return deferred
+        ? { ok: false, error: error.message, deferred: true }
+        : { ok: false, error: error.message }
     }
 
     await logEmail({

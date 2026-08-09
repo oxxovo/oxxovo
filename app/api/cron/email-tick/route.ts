@@ -18,6 +18,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { canSend } from '@/lib/email/log'
 import {
+  makeTickBudget,
+  budgetAllows,
+  budgetRecord,
+  type TickBudget,
+} from '@/lib/email/deferral'
+import {
   sendSelectedTop50,
   sendNotSelected,
   sendMainRoundStart,
@@ -69,22 +75,22 @@ type ApplicantRow = {
   main_round_submitted_at: string | null
 }
 
+type BatchTally = { sent: number; skipped: number; failed: number; deferred: number }
+
 type TickReport = {
   ok: true
   ranAt: string
-  mainRoundStart: { season: string; sent: number; skipped: number; failed: number }[]
-  submissionDeadline: {
-    season: string
-    reminderHour: number
-    sent: number
-    skipped: number
-    failed: number
-  }[]
-  resultsAnnounced: { season: string; sent: number; skipped: number; failed: number }[]
+  // ★Every tally carries `deferred`. It is the count this tick did not reach --
+  // either the send budget ran out or Resend rate-limited -- and it is reported
+  // rather than folded into `failed`, because the two need opposite responses:
+  // a failure wants investigating, a deferral wants the next tick.
+  mainRoundStart: ({ season: string } & BatchTally)[]
+  submissionDeadline: ({ season: string; reminderHour: number } & BatchTally)[]
+  resultsAnnounced: ({ season: string } & BatchTally)[]
   // Finalist advancement notices (SelectedTop50 + NotSelected), fired once a
   // season's scoring window has completed and season-tick has set the
   // selected/rejected statuses. Dedup-safe (canSend + executeSend).
-  finalistResults: { season: string; sent: number; skipped: number; failed: number }[]
+  finalistResults: ({ season: string } & BatchTally)[]
   // ⑥F growth engine: "your film is live". `deferred` is how many eligible
   // entries this tick did NOT reach because of the per-tick cap -- reported
   // rather than swallowed, so a truncated run never reads as a complete one.
@@ -134,6 +140,10 @@ async function handle(request: NextRequest) {
 
   const supabase = createSupabaseAdmin()
   const now = new Date()
+  // ★ONE budget for the whole tick, not one per template. The 300s ceiling is
+  // the invocation's, so five passes each convinced they had 240s of their own
+  // would overrun exactly as before.
+  const budget = makeTickBudget(now.getTime())
 
   // Pull every season the tick might need. Volume is tiny (one row per
   // season) so we load all and filter in memory.
@@ -164,7 +174,7 @@ async function handle(request: NextRequest) {
       season.main_round_start_at &&
       new Date(season.main_round_start_at) <= now
     ) {
-      const result = await fireMainRoundStart(season)
+      const result = await fireMainRoundStart(season, budget)
       report.mainRoundStart.push({ season: season.id, ...result })
 
       // ★The close this reminds people about must be the close that REFUSES them:
@@ -190,7 +200,7 @@ async function handle(request: NextRequest) {
           submissionCloseAt.getTime() - reminderHour * 3_600_000,
         )
         if (fireAt <= now && now < submissionCloseAt) {
-          const result = await fireSubmissionDeadline(season, reminderHour)
+          const result = await fireSubmissionDeadline(season, reminderHour, budget)
           report.submissionDeadline.push({
             season: season.id,
             reminderHour,
@@ -209,7 +219,7 @@ async function handle(request: NextRequest) {
       season.scoring_complete_at &&
       new Date(season.scoring_complete_at) <= now
     ) {
-      const result = await fireFinalistResults(season)
+      const result = await fireFinalistResults(season, budget)
       report.finalistResults.push({ season: season.id, ...result })
     }
 
@@ -217,7 +227,7 @@ async function handle(request: NextRequest) {
       season.awards_announcement_at &&
       new Date(season.awards_announcement_at) <= now
     ) {
-      const result = await fireResultsAnnounced(season)
+      const result = await fireResultsAnnounced(season, budget)
       report.resultsAnnounced.push({ season: season.id, ...result })
     }
 
@@ -573,7 +583,7 @@ async function fireMembershipNotices(now: Date) {
 
 // ── main_round_start ──────────────────────────────────────────────────────
 
-async function fireMainRoundStart(season: Season) {
+async function fireMainRoundStart(season: Season, budget: TickBudget): Promise<BatchTally> {
   const supabase = createSupabaseAdmin()
   const { data: rows, error } = await supabase
     .from('genesis_applications')
@@ -582,7 +592,7 @@ async function fireMainRoundStart(season: Season) {
     .eq('status', 'selected')
   if (error) {
     console.error('[cron] main_round_start applicant load failed:', error.message)
-    return { sent: 0, skipped: 0, failed: 1 }
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
   }
 
   return await dispatchBatch(
@@ -601,12 +611,17 @@ async function fireMainRoundStart(season: Season) {
         applicationId: row.id,
         seasonId: season.id,
       }),
+    budget,
   )
 }
 
 // ── submission_deadline ───────────────────────────────────────────────────
 
-async function fireSubmissionDeadline(season: Season, reminderHour: number) {
+async function fireSubmissionDeadline(
+  season: Season,
+  reminderHour: number,
+  budget: TickBudget,
+): Promise<BatchTally> {
   const supabase = createSupabaseAdmin()
   const { data: rows, error } = await supabase
     .from('genesis_applications')
@@ -619,7 +634,7 @@ async function fireSubmissionDeadline(season: Season, reminderHour: number) {
       '[cron] submission_deadline applicant load failed:',
       error.message,
     )
-    return { sent: 0, skipped: 0, failed: 1 }
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
   }
 
   return await dispatchBatch(
@@ -636,13 +651,14 @@ async function fireSubmissionDeadline(season: Season, reminderHour: number) {
         applicationId: row.id,
         seasonId: season.id,
       }),
+    budget,
     reminderHour,
   )
 }
 
 // ── results_announced ─────────────────────────────────────────────────────
 
-async function fireResultsAnnounced(season: Season) {
+async function fireResultsAnnounced(season: Season, budget: TickBudget): Promise<BatchTally> {
   const supabase = createSupabaseAdmin()
   // Results go to the main-round cohort only: Finalists (selected /
   // main_round_submitted) and winners (awarded). Preliminary-round rejects
@@ -655,7 +671,7 @@ async function fireResultsAnnounced(season: Season) {
     .in('status', ['selected', 'main_round_submitted', 'awarded'])
   if (error) {
     console.error('[cron] results_announced applicant load failed:', error.message)
-    return { sent: 0, skipped: 0, failed: 1 }
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
   }
 
   return await dispatchBatch(
@@ -670,6 +686,7 @@ async function fireResultsAnnounced(season: Season) {
         applicationId: row.id,
         seasonId: season.id,
       }),
+    budget,
   )
 }
 
@@ -677,7 +694,7 @@ async function fireResultsAnnounced(season: Season) {
 // Fired after season-tick advancement has set selected/rejected statuses.
 // SelectedTop50 -> Finalists; NotSelected -> the rest of the scored pool.
 // Each batch is dedup-safe (canSend + executeSend per applicationId+template).
-async function fireFinalistResults(season: Season) {
+async function fireFinalistResults(season: Season, budget: TickBudget): Promise<BatchTally> {
   const supabase = createSupabaseAdmin()
 
   // Season Report inputs (shared with the admin path via lib/email/finalist-
@@ -704,7 +721,7 @@ async function fireFinalistResults(season: Season) {
       '[cron] finalist_results applicant load failed:',
       selRes.error?.message ?? rejRes.error?.message,
     )
-    return { sent: 0, skipped: 0, failed: 1 }
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
   }
 
   const selected = await dispatchBatch(
@@ -722,6 +739,7 @@ async function fireFinalistResults(season: Season) {
         applicationId: row.id,
         seasonId: season.id,
       }),
+    budget,
   )
   const rejected = await dispatchBatch(
     (rejRes.data ?? []) as ApplicantRow[],
@@ -745,12 +763,14 @@ async function fireFinalistResults(season: Season) {
         seasonId: season.id,
       })
     },
+    budget,
   )
 
   return {
     sent: selected.sent + rejected.sent,
     skipped: selected.skipped + rejected.skipped,
     failed: selected.failed + rejected.failed,
+    deferred: selected.deferred + rejected.deferred,
   }
 }
 
@@ -767,23 +787,46 @@ async function dispatchBatch(
   rows: ApplicantRow[],
   template: TemplateName,
   send: (row: ApplicantRow) => Promise<SendResult>,
+  budget: TickBudget,
   reminderHour?: number,
-) {
+): Promise<BatchTally> {
   let sent = 0
   let skipped = 0
   let failed = 0
+  let deferred = 0
 
-  for (const row of rows) {
+  for (const [i, row] of rows.entries()) {
+    // ★Stop on the budget BEFORE spending, and count the rest rather than
+    // dropping them. Being killed by maxDuration mid-loop is already survivable
+    // -- an unsent row leaves no 'sent' log and the next tick picks it up -- but
+    // it is survivable SILENTLY, and "450 sent" and "270 sent, 180 still owed"
+    // look identical in a report that only counts what happened.
+    if (!budgetAllows(budget)) {
+      deferred = rows.length - i
+      console.warn(
+        `[cron] ${template}: tick budget spent — ${sent} sent, ${deferred} deferred to the next tick ` +
+          `(${budget.attempts} sends averaged ${Math.round(budget.avgMs)}ms)`,
+      )
+      break
+    }
+
+    const startedMs = Date.now()
     const verdict = await canSend(row.id, template, reminderHour)
     if (!verdict.ok) {
       skipped++
+      // A skip is two orders of magnitude cheaper than a send, so it must not
+      // drag the average down and talk the budget into one more real send.
       continue
     }
     const result = await send(row)
-    if (!result.ok) failed++
-    else if ('skipped' in result && result.skipped) skipped++
+    budgetRecord(budget, Date.now() - startedMs)
+
+    if (!result.ok) {
+      if (result.deferred) deferred++
+      else failed++
+    } else if ('skipped' in result && result.skipped) skipped++
     else sent++
   }
 
-  return { sent, skipped, failed }
+  return { sent, skipped, failed, deferred }
 }
