@@ -53,6 +53,7 @@ export type ApplicationRow = {
   integrity_flag: boolean
   integrity_recommendation: IntegrityRecommendation | null
   judged_status: 'pending' | 'in_progress' | 'completed' | 'failed' | null
+  processing_attempts: number | null
 }
 
 type SeasonOption = {
@@ -88,12 +89,14 @@ export function ApplicationsView({
   applications,
   recommendations,
   topNAdvance,
+  blockingFailedCount,
 }: {
   seasons: SeasonOption[]
   selectedSeasonId: string | null
   applications: ApplicationRow[]
   recommendations: RecommendationRow[]
   topNAdvance: number
+  blockingFailedCount: number
 }) {
   const t = useT()
   const lang = useAdminLang()
@@ -213,6 +216,7 @@ export function ApplicationsView({
           recommendations={recommendations}
           applications={applications}
           topNAdvance={topNAdvance}
+          blockingFailedCount={blockingFailedCount}
         />
       )}
 

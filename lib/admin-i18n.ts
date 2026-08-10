@@ -325,6 +325,9 @@ type Messages = {
     recommendations_flagged_section_title: string
     recommendations_flagged_section_note: string
     recommendations_total_label: (n: number) => string
+    // ⑥G gap 3 -- retry-exhausted entries blocking Top N finalization
+    recommendations_blocked_title: string
+    recommendations_blocked_note: (n: number) => string
     // applyRecommendation server action errors (작업 6)
     apply_rec_err_unauthorized: string
     apply_rec_err_season_not_found: string
@@ -944,6 +947,9 @@ const MESSAGES_EN: Messages = {
     recommendations_flagged_section_note:
       'These applications were excluded due to integrity concerns. Admin review and status update required.',
     recommendations_total_label: (n) => `${n} recommended in total`,
+    recommendations_blocked_title: 'Top N finalization is on hold',
+    recommendations_blocked_note: (n) =>
+      `${n} ${n === 1 ? 'entry has' : 'entries have'} exhausted scoring retries and ${n === 1 ? 'is' : 'are'} blocking the recommendation. This is a system error, not a rejection — resolve by marking the entry rejected/withdrawn, or by resetting its retry count for another scoring attempt.`,
     apply_rec_err_unauthorized: 'Admin authentication required.',
     apply_rec_err_season_not_found: 'Season not found.',
     apply_rec_err_no_recommendations: 'No recommendations to apply.',
@@ -1578,6 +1584,9 @@ const MESSAGES_KO: Messages = {
     recommendations_flagged_section_note:
       '다음 신청은 무결성 우려로 자동 추천에서 제외되었습니다. 운영진 검토 후 상태 변경이 필요합니다.',
     recommendations_total_label: (n) => `총 ${n}건 추천됨`,
+    recommendations_blocked_title: 'Top N 확정이 보류 중입니다',
+    recommendations_blocked_note: (n) =>
+      `${n}건이 채점 재시도를 모두 소진해 추천 확정을 막고 있습니다. 시스템 오류이며 참가자 탈락이 아닙니다 — 해당 건을 반려/철회로 처리하거나, 재시도 횟수를 리셋해 다시 채점하면 확정이 진행됩니다.`,
     apply_rec_err_unauthorized: '관리자 인증이 필요합니다.',
     apply_rec_err_season_not_found: '시즌을 찾을 수 없습니다.',
     apply_rec_err_no_recommendations: '적용할 추천 결과가 없습니다.',

@@ -64,3 +64,42 @@ export function scoringCoverage(
 // entry is withdrawn), and one stray row would then hide a genuinely unjudged
 // entry by cancelling it out. The failure would be silent and in the safe-looking
 // direction, which is the direction that gets shipped.
+
+// ⑥G gap 3 -- oxxovo-scoring/src/recommendations.ts:countBlockingFailed (landed
+// 2026-08-08, PR #3) holds preliminary Top N finalization when a row exhausts
+// its retries: judged_status='failed' AND processing_attempts >= MAX_RETRIES.
+// It fires one admin email when it first blocks and then goes silent -- nothing
+// in the app re-derives that state, so an operator checking this screen a day
+// later, or who missed the email, sees the same empty "not yet completed"
+// message a still-scoring season shows. Same failure as gap 1: the number that
+// answers the actual question fell out of the count.
+//
+// ★MAX_RETRIES cannot be imported across repos (same reason
+// SCORING_LEASE_ALERT_MS in lib/scoring-lease-watch.ts is its own constant, not
+// a shared one) -- SCORING_MAX_RETRIES mirrors the worker's env var under a
+// distinct name so the two cannot collide, and is reported alongside the count
+// rather than assumed equal.
+export const SCORING_MAX_RETRIES = Math.max(1, Number(process.env.SCORING_MAX_RETRIES ?? 3))
+
+// Retries exhausted, full stop -- what the worker's countExhaustedFailed reports
+// (season-wide, for the admin email). Does not know about withdrawal/rejection.
+export function isExhaustedFailed(
+  row: { judged_status: string | null; processing_attempts: number | null },
+  maxRetries: number,
+): boolean {
+  return row.judged_status === 'failed' && (row.processing_attempts ?? 0) >= maxRetries
+}
+
+// ★Same status exclusion countBlockingFailed applies before it counts a row
+// against the gate: an entry already out of the running (rejected / withdrawn /
+// waitlist) cannot block a finalization it is not part of. Resolving one of
+// these -- explicitly rejecting/withdrawing it, or resetting processing_attempts
+// for a rescoring attempt -- is exactly what lets the count (and the gate) drop.
+const OUT_OF_RUNNING = new Set(['rejected', 'withdrawn', 'waitlist'])
+
+export function isBlockingFailed(
+  row: { judged_status: string | null; processing_attempts: number | null; status: string },
+  maxRetries: number,
+): boolean {
+  return isExhaustedFailed(row, maxRetries) && !OUT_OF_RUNNING.has(row.status)
+}
