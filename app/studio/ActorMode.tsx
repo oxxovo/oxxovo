@@ -56,8 +56,8 @@ const DICT = {
     pick_refs: '추가 참조 컷 (선택)',
     name_label: '배우 이름',
     // Example names come from the single actor roster (lib/studio-actors.ts) so a
-    // clearance rename is a one-line swap. KIRA/YUZU are OXXOVO's own showcase
-    // actors, shown here only as naming examples.
+    // clearance rename is a one-line swap. KIRA/ANNA/RIN are OXXOVO's own
+    // showcase actors, shown here only as naming examples.
     name_ph: `예: ${STUDIO_ACTOR_EXAMPLES}`,
     register_btn: '이 배우 등록',
     registering: '등록 중…',
