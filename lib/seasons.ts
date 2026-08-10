@@ -323,6 +323,19 @@ export async function getSeasonById(id: string): Promise<Season | null> {
 // right now. Because a season's main round / scoring run in later weeks while
 // the next season's application window is already open, several seasons are
 // in-flight at once; the newest-opened one is the correct application target.
+//
+// ★STANDING RISK, measured 2026-08-10, not fixed here — a scheduling fact, not
+// a code bug: season_0.application_open_at is 2026-09-09 (still future), so
+// today this function resolves season_0 only through the "soonest upcoming"
+// fallback below, not the "opened" branch. That fallback has no is_fixture
+// filter. Until 2026-09-09 00:00 PT, ANY row (including a rehearsal fixture
+// like season_test) that gets a past application_open_at instantly wins the
+// "opened" branch and hijacks the pick — exactly what happened on 2026-08-08
+// when season_test's leftover open date (2026-07-06) took over after
+// season_0's own open moved to 9/9. EXIT CONDITION: this risk disappears on
+// its own once season_0's application_open_at passes (2026-09-09 00:00 PT) --
+// its own row then wins the "opened" branch and nothing else can outrank it
+// on recency without also being in the future.
 export async function getCurrentSeason(): Promise<Season | null> {
   const nowIso = new Date().toISOString()
 
