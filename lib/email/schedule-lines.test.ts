@@ -139,10 +139,31 @@ test('one end known: it says WHICH end', () => {
   assert.deepEqual(onlyStart, [{ label: 'AI judging', value: 'from Nov 5' }])
 })
 
-// ★The results bullet stays absent. scoring_complete_at is Nov 8 00:00 and the
-// announcement is Nov 8 12:00 -- twelve hours apart. If this ever returns three
-// lines, someone has reused the judging end as the results time.
-test('★no results bullet until its own column exists', () => {
+// ★The results bullet is its own column, not the judging end reused. Nov 8
+// 00:00 (scoring_complete_at) and Nov 8 12:00 (prelim_results_announcement_at)
+// are twelve hours apart -- if this ever prints the judging end's date at the
+// announcement's time (or vice versa), the two columns have been confused.
+const RESULTS = '2026-11-08T20:00:00.000Z' // Nov 8 12:00 PT
+
+test('★the results bullet renders from its own column, not the judging end', () => {
+  const lines = prelimReceiptLines(
+    {
+      application_close_at: CLOSE,
+      scoring_start_at: JUDGE_START,
+      scoring_complete_at: JUDGE_END,
+      prelim_results_announcement_at: RESULTS,
+    },
+    'ko',
+  )
+  assert.equal(lines.length, 3)
+  assert.deepEqual(lines.map((l) => l.label), ['공개', 'AI 심사', '결과 안내'])
+  // Nov 8 12:00 PST = Nov 9 05:00 KST -- a different calendar day, same instant.
+  assert.deepEqual(lines[2], { label: '결과 안내', value: '11월 9일 오전 5시(한국 시간)' })
+})
+
+// ★Absent stays absent -- the column being null must still omit the bullet,
+// the same rule every other bullet in this file follows.
+test('no results bullet when its own column is null', () => {
   const lines = prelimReceiptLines(
     { application_close_at: CLOSE, scoring_start_at: JUDGE_START, scoring_complete_at: JUDGE_END },
     'ko',
