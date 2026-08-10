@@ -5,6 +5,7 @@
 
 import 'server-only'
 import { createHash, createHmac, timingSafeEqual } from 'crypto'
+import type { KeyframeTrack } from './edl-keyframes'
 
 export const CRYPTOBIND_ALGO = 'HMAC-SHA256'
 const CANON_VERSION = 'v1'
@@ -198,7 +199,21 @@ const EFFECT_KEYS: readonly (keyof EffectParams)[] = [
 // `fit` = how the clip fills the output canvas when its aspect differs from the
 // chosen output aspect. 'contain' (default/absent) = letterbox (no loss);
 // 'cover' = center-crop to fill. Per-clip (TK 2026-07-23).
-export type SegmentEffect = EdlSegment & { speed?: number; effects?: EffectParams; fit?: 'contain' | 'cover' }
+//
+// ★D -- keyframes (제니2, 2026-08-10). `keyframes[k]` OVERRIDES the scalar
+// `effects[k]` for that parameter, when present; absent parameters keep the
+// plain scalar behaviour untouched. Deliberately NOT a type change to
+// EffectParams itself (number -> number|KeyframeTrack) -- that would be a
+// canonical format change for every segment ever signed. atMs on each point
+// is SEGMENT-RELATIVE (see lib/edl-keyframes.ts). Scope is (a) effect
+// parameters only -- position/scale (transform) is explicitly out (제니2:
+// "D는 키프레임이지 변형이 아니다"). Linear only, no easing vocabulary.
+export type SegmentEffect = EdlSegment & {
+  speed?: number
+  effects?: EffectParams
+  keyframes?: Partial<Record<keyof EffectParams, KeyframeTrack>>
+  fit?: 'contain' | 'cover'
+}
 export type Transition = { afterIndex: number; type: string; durationMs: number }
 
 // Text/title overlay layer (creator copy -- NOT an external asset, so Genesis-OK).
@@ -219,6 +234,11 @@ export type TextLayer = {
   endMs: number          // shown until
   fadeInMs?: number
   fadeOutMs?: number
+  // ★D -- keyframed opacity (제니2, 2026-08-10), OVERRIDING fadeInMs/fadeOutMs
+  // when present. atMs is relative to this layer's own startMs (same
+  // convention as SegmentEffect.keyframes). Value range 0..1. Absent = the
+  // existing two-point fadeIn/fadeOut behaviour, byte-identical to before.
+  opacityKeyframes?: KeyframeTrack
 }
 
 // Music bed (platform library track or in-platform AI generation -- NEVER an
@@ -267,6 +287,34 @@ function effectsCanonical(e?: EffectParams): string {
   return parts.join(',')
 }
 
+// Canonical keyframe track: sorted, points on a fixed grid so preview/store/
+// render never drift a float and break the signature. `scale` matches this
+// file's existing convention for sub-integer quantities (xNorm/yNorm use
+// x1000 for a 0..1 fraction) -- effect-parameter tracks ride the plain
+// integer grid their sliders already use (scale=1, same as effectsCanonical);
+// opacity tracks are 0..1 and NEED a scale, or Math.round collapses every
+// value to 0 or 1 (found by a test deliberately changing 1 -> 0.5 and getting
+// an unchanged canonical string -- 0.5 rounds back to 1).
+function keyframeTrackCanonical(t: KeyframeTrack, scale = 1): string {
+  return [...t.points]
+    .sort((a, b) => a.atMs - b.atMs)
+    .map((p) => `${Math.round(p.atMs)}:${Math.round(p.value * scale)}`)
+    .join(',')
+}
+
+// Canonical keyframe map for a segment: fixed EFFECT_KEYS order (reused, not
+// a second ordering to maintain), only parameters that actually carry points.
+function keyframesCanonical(kf?: Partial<Record<keyof EffectParams, KeyframeTrack>>): string {
+  if (!kf) return ''
+  const parts: string[] = []
+  for (const k of EFFECT_KEYS) {
+    const track = kf[k]
+    if (!track || !track.points.length) continue
+    parts.push(`${k}=${keyframeTrackCanonical(track)}`)
+  }
+  return parts.join(';')
+}
+
 function segCanonical(s: SegmentEffect): string {
   let out = `${s.jobId}:${s.startMs}:${s.endMs}`
   if (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000) out += `;spd=${Math.round(s.speed * 1000)}`
@@ -275,6 +323,11 @@ function segCanonical(s: SegmentEffect): string {
   // APPEND-ONLY: only the non-default 'cover' is signature-visible, so every
   // existing segment (contain/absent) keeps its exact canonical + hash.
   if (s.fit === 'cover') out += ';fit=cover'
+  // APPEND-ONLY: only when at least one parameter actually has keyframe
+  // points, so every segment written before D keeps its exact canonical +
+  // hash (an empty `keyframes: {}` object is indistinguishable from absent).
+  const kf = keyframesCanonical(s.keyframes)
+  if (kf) out += `;kf=${kf}`
   return out
 }
 
@@ -283,7 +336,7 @@ function segCanonical(s: SegmentEffect): string {
 // (and encodeURIComponent is byte-identical in both repos' JS). Numbers ride a
 // fixed grid (0.1% / 1‰) so preview/store/render never drift a float.
 function textCanonical(x: TextLayer): string {
-  return [
+  const base = [
     encodeURIComponent(x.content),
     x.font,
     Math.round(x.sizePct * 10),
@@ -298,6 +351,12 @@ function textCanonical(x: TextLayer): string {
     Math.round(x.fadeInMs ?? 0),
     Math.round(x.fadeOutMs ?? 0),
   ].join(':')
+  // APPEND-ONLY: a `;kfop=` suffix only when opacityKeyframes actually has
+  // points, so every text layer written before D keeps its exact 13-field
+  // canonical string -- no 14th empty field, which would move every existing
+  // hash even for layers that never touch this feature.
+  if (x.opacityKeyframes?.points.length) return `${base};kfop=${keyframeTrackCanonical(x.opacityKeyframes, 1000)}`
+  return base
 }
 
 function textsCanonical(texts: TextLayer[]): string {
