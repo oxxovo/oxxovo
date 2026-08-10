@@ -53,9 +53,22 @@ export const EFFECT_SPECS: readonly EffectSpec[] = [
 ]
 
 // The effects E EXPOSES (parity-passed + engine-previewable). Order = UI order.
-// Excludes: sharpen/chromatic/lutIntensity/motionBlur (not previewable / deferred).
+// Excludes: chromatic/lutIntensity/motionBlur (not previewable / deferred).
+//
+// ★sharpen added 2026-08-10. The gate this file's own comment used to point
+// at (scripts/gl-engine-parity.mjs's sharpen CASE) said not to read a PASS
+// here as licence to expose it, for two reasons that are both closed now:
+// the kernel match (finished 08-08, binomial-5 confirmed against a fitted
+// candidate set) and the gate SHAPE for low-magnitude effects (제니2,
+// 08-08's signal-relative-error bands, replacing the absolute threshold that
+// comment was written against). Under that gate sharpen reads PASS on
+// mandel/testsrc (r=0.256/0.209, both < the 0.5 band) and UNMEASURABLE on
+// smooth/bars (effect magnitude at/under the 1-LSB floor, not a fail) --
+// 0 REVIEW, 0 FAIL. Preview-side wiring landed the same day (targetIdx fix +
+// option (1) restructure, preview-gl.ts): color+LUT -> sharpen -> grain ->
+// vignette -> glow, worker order.
 export const EXPOSED_SLIDER_KEYS: readonly (keyof EffectParams)[] = [
-  'exposure', 'contrast', 'saturation', 'temperature', 'tint', 'vignette', 'glow', 'grain',
+  'exposure', 'contrast', 'saturation', 'temperature', 'tint', 'vignette', 'glow', 'sharpen', 'grain',
 ]
 export const EXPOSED_SLIDERS: readonly EffectSpec[] = EFFECT_SPECS.filter((s) => EXPOSED_SLIDER_KEYS.includes(s.key))
 

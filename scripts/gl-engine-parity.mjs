@@ -260,25 +260,31 @@ const CASES = [
     // ★④-G sharpen. Measured against the WORKER's own filter string
     // (unsharp=5:5:sh/50:5:5:0), not a copy, so a change in render.ts moves this number.
     //
-    // ★★DO NOT READ THIS ROW AS A LICENCE TO EXPOSE SHARPEN. It says PASS, and the pass
-    // is close to meaningless, which scripts/negctl-sharpen.mjs is what showed:
+    // ★HISTORY, kept because it explains why this row used to warn against exposing
+    // sharpen and no longer does. Under the OLD absolute 2.5% gate, this row's
+    // "PASS" was close to meaningless (scripts/negctl-sharpen.mjs, 2026-08-08):
     //
-    //   content   the effect's OWN magnitude   this row's residual
+    //   content   the effect's OWN magnitude   old absolute-gate residual
     //   smooth    0.18%                        0.18%   <- residual == the whole effect
     //   mandel    0.72%                        0.18%
     //   bars      0.33%                        0.08%
     //   testsrc   0.71%                        0.15%
     //
-    // On smooth the residual EQUALS the effect, i.e. a shader that did nothing at all
-    // would score the same -- a vacuous pass. Across the others the residual sits at
-    // roughly a quarter of the magnitude, which is a systematic mismatch (it scales
-    // with detail), not noise. The 2.5% gate was calibrated for the colour grade, which
-    // moves an image by percent; an effect that only moves it by 0.2-0.7% cannot be
-    // discriminated by an ABSOLUTE 2.5% threshold at all.
-    // So sharpen stays OUT of EXPOSED_SLIDER_KEYS, and what this row currently earns is
-    // a regression tripwire on the shader, not a parity verdict. Two things are needed
-    // before exposure, and the second is not mine: finish the kernel match, and decide
-    // the gate SHAPE for low-magnitude effects (relative to magnitude, not absolute).
+    // On smooth the residual EQUALED the effect -- a do-nothing shader would have
+    // scored the same. An effect moving an image by only 0.2-0.7% cannot be judged
+    // by a 2.5% ABSOLUTE threshold calibrated for the colour grade (which moves
+    // images by percent) at all.
+    //
+    // ★BOTH BLOCKERS THIS COMMENT USED TO NAME ARE NOW CLOSED. (1) The kernel match:
+    // finished 2026-08-08 -- a fitted candidate set tied the shipped binomial-5
+    // kernel at gap 0.000 (probe-unsharp-kernel.mjs / fit-unsharp-kernel.mjs), so
+    // the shader's own math is exonerated. (2) The gate shape for low-magnitude
+    // effects: 제니2, 2026-08-08 -- the SIGNAL-RELATIVE bands below (judge()), which
+    // replaced the absolute 2.5% threshold. Under that gate this row reads PASS on
+    // mandel/testsrc (r=0.256/0.209) and UNMEASURABLE on smooth/bars (magnitude at
+    // the 1-LSB floor, not a fail) -- 0 REVIEW, 0 FAIL. ★sharpen joined
+    // EXPOSED_SLIDER_KEYS 2026-08-10 on the strength of this row, once preview-gl.ts
+    // was wired to run it in the worker's real order (see lib/effects.ts's note).
     name: 'sharpen',
     gate: 2.5,
     vf: `${ff(SHARPEN_SLIDERS)},format=rgb24`,
