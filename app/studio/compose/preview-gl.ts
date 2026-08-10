@@ -43,6 +43,8 @@ export class GLProcessor {
   private tex: WebGLTexture
   private lutTex: WebGLTexture
   private lutN = 0
+  private vignetteLutTex: WebGLTexture
+  private vignetteLutReady = false
   private seed = 0
   private fbos: { fb: WebGLFramebuffer; tex: WebGLTexture }[] = []
   private fw = 0
@@ -75,7 +77,20 @@ export class GLProcessor {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
       return t
     }
-    this.tex = mkTex(); this.lutTex = mkTex()
+    this.tex = mkTex(); this.lutTex = mkTex(); this.vignetteLutTex = mkTex()
+    // ★STATIC asset (one table, not per-composition like colour LUTs), so this
+    // fires once here rather than through the per-id makeLutLoader() below.
+    // Fire-and-forget: render() checks vignetteLutReady and treats vignette as
+    // 0 until it resolves (a same-origin ~4KB fetch, effectively one frame).
+    fetch('/vignette/vignette-lut.png')
+      .then((r) => r.blob())
+      .then((b) => createImageBitmap(b))
+      .then((bmp) => {
+        gl.bindTexture(gl.TEXTURE_2D, this.vignetteLutTex)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp)
+        this.vignetteLutReady = true
+      })
+      .catch(() => { /* stays not-ready; vignette silently no-ops rather than throwing mid-render */ })
   }
   private ensureFbos(w: number, h: number): void {
     if (this.fw === w && this.fh === h && this.fbos.length) return
@@ -144,7 +159,12 @@ export class GLProcessor {
     this.uf(this.progCL, 'u_exposure', u.exposure); this.uf(this.progCL, 'u_contrast', u.contrast); this.uf(this.progCL, 'u_saturation', u.saturation)
     this.uf(this.progCL, 'u_tempK', u.tempK); this.uf(this.progCL, 'u_tint', u.tint)
     this.uf(this.progCL, 'u_hasLut', useLut ? 1 : 0); this.uf(this.progCL, 'u_N', this.lutN || 2)
-    const needsChain = stages.length > 0 || sharpenAmt > 0 || chromatic.rh !== 0 || chromatic.bh !== 0 || grainAmt > 0 || u.vignette > 0
+    // ★vignette no-ops until its LUT texture has loaded (a same-origin fetch
+    // kicked off in the constructor, effectively one frame) -- see the note
+    // there. Never throws, never shows a mangled frame; just skips the effect
+    // for the handful of frames before it resolves.
+    const vignetteActive = u.vignette > 0 && this.vignetteLutReady
+    const needsChain = stages.length > 0 || sharpenAmt > 0 || chromatic.rh !== 0 || chromatic.bh !== 0 || grainAmt > 0 || vignetteActive
     if (!needsChain) {
       this.bindTarget(targetIdx, w, h)
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
@@ -182,9 +202,11 @@ export class GLProcessor {
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[cur].tex); drawTo(other)
       ;[cur, other] = [other, cur]
     }
-    if (u.vignette > 0) {
-      gl.useProgram(this.progVignette); gl.uniform1i(gl.getUniformLocation(this.progVignette, 'u_tex'), 0)
-      this.uf(this.progVignette, 'u_vignette', u.vignette)
+    if (vignetteActive) {
+      gl.useProgram(this.progVignette)
+      gl.uniform1i(gl.getUniformLocation(this.progVignette, 'u_tex'), 0); gl.uniform1i(gl.getUniformLocation(this.progVignette, 'u_vignetteLut'), 1)
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.vignetteLutTex)
+      this.uf(this.progVignette, 'u_vignette', u.vignette); gl.uniform2f(gl.getUniformLocation(this.progVignette, 'u_res'), w, h)
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[cur].tex); drawTo(other)
       ;[cur, other] = [other, cur]
     }

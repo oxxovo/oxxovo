@@ -145,6 +145,12 @@ function flipRead(src) {
 // covers unsharp/grain/vignette/copy in any order. Passes after the first are
 // flip-corrected (see flipRead above) -- the pass array itself stays written
 // in natural reading order; callers never see the correction.
+// ★passes[i].tex1B64: optional second texture (LINEAR-filtered, e.g. the
+// vignette LUT), bound to TEXTURE1 as `u_<tex1Name>` with u_res auto-set to
+// the image's own W,H. activeTexture BEFORE bindTexture, in that order --
+// reversed once (gl-engine-parity.mjs's first cut) and it silently produced
+// an all-black sample (unit 1 had nothing bound -> INVALID_OPERATION ->
+// texture reads as zero), which read as a real parity failure until caught.
 async function glChain(rawPasses, testB64) {
   const passes = rawPasses.map((p, i) => (i === 0 ? p : { ...p, frag: flipRead(p.frag) }))
   const url = await page.evaluate(async ({ testB64, passes, VERT }) => {
@@ -155,25 +161,33 @@ async function glChain(rawPasses, testB64) {
     const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o }
     const mkProg = (fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VERT)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p }
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
-    const mkTex = (fromImg) => {
+    const mkTex = (fromImg, linear) => {
       const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t)
-      for (const [k, v] of [['WRAP_S', 'CLAMP_TO_EDGE'], ['WRAP_T', 'CLAMP_TO_EDGE'], ['MIN_FILTER', 'NEAREST'], ['MAG_FILTER', 'NEAREST']]) gl.texParameteri(gl.TEXTURE_2D, gl['TEXTURE_' + k], gl[v])
-      if (fromImg) { gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img) }
+      const filt = linear ? 'LINEAR' : 'NEAREST'
+      for (const [k, v] of [['WRAP_S', 'CLAMP_TO_EDGE'], ['WRAP_T', 'CLAMP_TO_EDGE'], ['MIN_FILTER', filt], ['MAG_FILTER', filt]]) gl.texParameteri(gl.TEXTURE_2D, gl['TEXTURE_' + k], gl[v])
+      if (fromImg) { gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, fromImg) }
       else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
       return t
     }
-    const srcTex = mkTex(true)
+    const srcTex = mkTex(img, false)
     // Two ping-pong FBOs are enough for any chain length: read one, write the other.
-    const mkFbo = () => { const t = mkTex(false); const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return { fb, tex: t } }
+    const mkFbo = () => { const t = mkTex(null, false); const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return { fb, tex: t } }
     const pp = [mkFbo(), mkFbo()]
     let readTex = srcTex
     for (let i = 0; i < passes.length; i++) {
-      const { frag, uniforms } = passes[i]
+      const { frag, uniforms, tex1B64, tex1Name } = passes[i]
       const p = mkProg(frag); gl.useProgram(p)
       const a = gl.getAttribLocation(p, 'a_pos'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0)
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, readTex)
       gl.uniform1i(gl.getUniformLocation(p, 'u_tex'), 0)
       gl.uniform2f(gl.getUniformLocation(p, 'u_texel'), 1 / W, 1 / H)
+      if (tex1B64) {
+        const tex1Img = new Image(); tex1Img.src = 'data:image/png;base64,' + tex1B64; await tex1Img.decode()
+        gl.activeTexture(gl.TEXTURE1); const t1 = mkTex(tex1Img, true)
+        gl.uniform1i(gl.getUniformLocation(p, 'u_' + tex1Name), 1)
+        gl.uniform2f(gl.getUniformLocation(p, 'u_res'), W, H)
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, t1) // re-bind: mkTex leaves unit1 active+bound already, explicit for clarity
+      }
       for (const [k, v] of Object.entries(uniforms || {})) gl.uniform1f(gl.getUniformLocation(p, 'u_' + k), v)
       const last = i === passes.length - 1
       if (last) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H) }
@@ -200,8 +214,9 @@ const U_VIGNETTE = VIGNETTE_SLIDER / 100 // colorUniforms()'s own mapping
 const AMOUNT = unsharpAmount({ sharpen: SHARPEN })
 const SEED = 42
 
+const vignetteLutB64 = (await readFile(join(ROOT, 'public', 'vignette', 'vignette-lut.png'))).toString('base64')
 const unsharpPass = (amount = AMOUNT) => ({ frag: FRAG_UNSHARP, uniforms: { amount } })
-const vignettePass = { frag: FRAG_VIGNETTE, uniforms: { vignette: U_VIGNETTE } }
+const vignettePass = { frag: FRAG_VIGNETTE, uniforms: { vignette: U_VIGNETTE }, tex1B64: vignetteLutB64, tex1Name: 'vignetteLut' }
 const grainPass = { frag: FRAG_GRAIN, uniforms: { grain: GRAIN_SLIDER, seed: SEED } }
 
 console.log('')

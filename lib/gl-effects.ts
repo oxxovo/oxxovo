@@ -121,26 +121,44 @@ void main() {
   o = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`
 
-// Vignette: a separate pass now (was baked into FRAG_COLOR_LUT). ★NOT A
-// PARITY PORT OF ffmpeg's vignette= filter -- that one uses a lens-angle
-// cosine falloff (`ffmpeg -h filter=vignette`: `angle`, default PI/5); this is
-// a distance-based smoothstep, a different formula entirely. Measured
-// 2026-08-10 (scripts/gl-combo-parity.mjs escalation): vignette=60 alone, GL
-// vs ffmpeg = 19.53% on a 26.68%-magnitude effect -- this shader has never
-// been independently parity-verified (gl-engine-parity.mjs's CASES has no
-// vignette row). Moving it to its own pass does not fix that; it only fixes
-// its ORDER relative to grain and sharpen. The math mismatch is tracked
-// separately, not touched here.
+// Vignette: LUT-based, not a closed-form port. ★HISTORY: the original shader
+// here (distance-based smoothstep) was found 2026-08-10 to be a DIFFERENT
+// formula from ffmpeg's actual vignette= filter (lens-angle cosine falloff,
+// `ffmpeg -h filter=vignette`) -- GL vs ffmpeg was 19.53% off on a
+// 26.68%-magnitude effect, and this shader had never been independently
+// parity-verified (no vignette row existed in gl-engine-parity.mjs's CASES).
+// scripts/fit-vignette-model.mjs then tried to FIT a closed form (same method
+// as the unsharp kernel: flat field + known input) and could not clear 1%
+// tolerance anywhere in the slider's actual angle range (PI/6..PI/2,
+// render.ts) -- worst case 7.48% at vg=100, and freeing the cos power up to
+// 12 still only reached 4.97%. So this samples a MEASURED lookup
+// (public/vignette/vignette-lut.png, scripts/gen-vignette-lut.mjs) instead of
+// approximating: every value in it is ffmpeg's own output, not a fit.
+//
+// ★NORMALIZED BY CORNER DISTANCE (hypot(w/2,h/2)), not width or height --
+// verified 2026-08-10 across 4 aspect ratios (640x480 / 480x854 / 1080x1080 /
+// 1920x1080) that the attenuation curve vs distance/corner is IDENTICAL at
+// every sampled point, so one table generalizes to any canvas the editor
+// produces (u_res is read from the ACTUAL frame, not a baked reference size).
+// LUT layout: x = normalized distance 0..1, y = u_vignette (0..1, same
+// normalization as vg/100 -- render.ts's `angle = PI/(6 - vg/25)`), value =
+// attenuation. Baked at 51 angle rows (vg step 2); GL's bilinear sampling
+// interpolates both axes, so no per-frame ffmpeg call is needed at runtime.
 export const FRAG_VIGNETTE = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 o;
-uniform sampler2D u_tex;
+uniform sampler2D u_tex, u_vignetteLut;
 uniform float u_vignette;
+uniform vec2 u_res;
 void main() {
   vec3 c = texture(u_tex, v_uv).rgb;
-  float d = distance(v_uv, vec2(0.5));
-  c *= 1.0 - u_vignette * smoothstep(0.35, 0.75, d);
+  vec2 center = u_res * 0.5;
+  vec2 pixel = v_uv * u_res;
+  float corner = length(center);
+  float dn = corner > 0.0 ? clamp(length(pixel - center) / corner, 0.0, 1.0) : 0.0;
+  float atten = texture(u_vignetteLut, vec2(dn, clamp(u_vignette, 0.0, 1.0))).r;
+  c *= atten;
   o = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`
 

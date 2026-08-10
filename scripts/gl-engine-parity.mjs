@@ -21,7 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { register } from 'node:module'
 import { chromium } from 'playwright-core'
 import { FFMPEG, ffmpegBanner } from './ffmpeg-bin.mjs'
-import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_UNSHARP, FRAG_CHROMATIC, colorUniforms, glowStages, unsharpAmount, chromaticShift, parseCube, tileCube } from '../lib/gl-effects.ts'
+import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_UNSHARP, FRAG_CHROMATIC, FRAG_VIGNETTE, colorUniforms, glowStages, unsharpAmount, chromaticShift, parseCube, tileCube } from '../lib/gl-effects.ts'
 import { resolveWorkerRepo } from './worker-repo.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -193,6 +193,48 @@ async function glRunSingle(frag, uniforms, testB64) {
   return Buffer.from(url.split(',')[1], 'base64')
 }
 
+// ★vignette: separate runner (2 textures + u_res, doesn't fit glRunSingle's
+// one-texture shape). vignetteLutB64 is the SAME PNG bytes preview-gl.ts
+// fetches at runtime -- read from disk here, not regenerated, so this test
+// verifies the shipped asset, not a fresh bake that could silently drift.
+async function glRunVignette(vignette, vignetteLutB64, testB64) {
+  const url = await page.evaluate(async ({ testB64, vignetteLutB64, vignette, frag, VERT }) => {
+    const img = new Image(); img.src = 'data:image/png;base64,' + testB64; await img.decode()
+    const lutImg = new Image(); lutImg.src = 'data:image/png;base64,' + vignetteLutB64; await lutImg.decode()
+    const W = img.width, H = img.height
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H
+    const gl = cv.getContext('webgl2', { premultipliedAlpha: false, preserveDrawingBuffer: true })
+    const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o }
+    const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VERT)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, frag)); gl.linkProgram(p)
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p))
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+    gl.useProgram(p)
+    const a = gl.getAttribLocation(p, 'a_pos'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0)
+    const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex)
+    for (const [k, v] of [['WRAP_S', 'CLAMP_TO_EDGE'], ['WRAP_T', 'CLAMP_TO_EDGE'], ['MIN_FILTER', 'NEAREST'], ['MAG_FILTER', 'NEAREST']]) gl.texParameteri(gl.TEXTURE_2D, gl['TEXTURE_' + k], gl[v])
+    gl.activeTexture(gl.TEXTURE0); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+    // ★activeTexture BEFORE bindTexture -- reversed once here, which bound
+    // lutTex onto unit 0 (stealing it from `tex`) and left unit 1 with
+    // nothing bound, so texImage2D threw INVALID_OPERATION and the sampled
+    // LUT read back as all-zero -> every pixel multiplied by black. That is
+    // what produced the first run's r=1.39-1.65 (worse than a do-nothing
+    // shader), not a real vignette mismatch.
+    const lutTex = gl.createTexture()
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, lutTex)
+    for (const [k, v] of [['WRAP_S', 'CLAMP_TO_EDGE'], ['WRAP_T', 'CLAMP_TO_EDGE'], ['MIN_FILTER', 'LINEAR'], ['MAG_FILTER', 'LINEAR']]) gl.texParameteri(gl.TEXTURE_2D, gl['TEXTURE_' + k], gl[v])
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, lutImg)
+    gl.uniform1i(gl.getUniformLocation(p, 'u_tex'), 0); gl.uniform1i(gl.getUniformLocation(p, 'u_vignetteLut'), 1)
+    gl.uniform1f(gl.getUniformLocation(p, 'u_vignette'), vignette)
+    gl.uniform2f(gl.getUniformLocation(p, 'u_res'), W, H)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H)
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    return cv.toDataURL('image/png')
+  }, { testB64, vignetteLutB64, vignette, frag: FRAG_VIGNETTE, VERT })
+  return Buffer.from(url.split(',')[1], 'base64')
+}
+
 const shadersCL = { cl: FRAG_COLOR_LUT }
 const shadersGlow = { cl: FRAG_COLOR_LUT, blur: FRAG_BLUR, screen: FRAG_SCREEN, copy: '#version 300 es\nprecision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u; void main(){ o=texture(u,v_uv); }' }
 
@@ -219,6 +261,11 @@ const SHARPEN_SLIDERS = { sharpen: 50 }
 // ★A mid-strong value, same reasoning as sharpen: chromatic=80 -> round(80/8)=10px
 // shift, visible but not extreme -- a creator's likely range, not a stress test.
 const CHROMATIC_SLIDERS = { chromatic: 80 }
+// vg=60, same as the value used to demonstrate the ORIGINAL 19.53% mismatch
+// (lane_c_vignette_math_investigation_2026-08-10.md) -- this row should be
+// the direct rebuttal of that number.
+const VIGNETTE_VG = 60
+const vignetteLutB64 = (await readFile(join(ROOT, 'public', 'vignette', 'vignette-lut.png'))).toString('base64')
 const ff = (e) => effectVideoFilters(e).join(',')
 
 const CASES = [
@@ -303,6 +350,17 @@ const CASES = [
     gate: 2.5,
     vf: `${ff(CHROMATIC_SLIDERS)},format=rgb24`,
     gl: async (b64) => glRunSingle(FRAG_CHROMATIC, chromaticShift(CHROMATIC_SLIDERS), b64),
+  },
+  {
+    // ★vignette. Was NEVER in this CASES list before 2026-08-10 -- the shader
+    // it replaces (distance-based smoothstep) had no row here at all, which is
+    // exactly how it went unverified. Rebuts the 19.53% figure that started
+    // this investigation (lane_c_vignette_math_investigation_2026-08-10.md):
+    // same vg=60, now against the measured LUT instead of the old formula.
+    name: 'vignette',
+    gate: 2.5,
+    vf: `${ff({ vignette: VIGNETTE_VG })},format=rgb24`,
+    gl: async (b64) => glRunVignette(colorUniforms({ vignette: VIGNETTE_VG }).vignette, vignetteLutB64, b64),
   },
 ]
 
