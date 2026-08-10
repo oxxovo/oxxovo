@@ -27,6 +27,15 @@ const BADGE: Record<LobbyMode, { label: string; cls: string }> = {
   ended: { label: 'ENDED', cls: 'bg-white/5 text-white/40 border-white/10' },
 }
 
+// ★C-4 (Jenny3, 2026-08-10) -- same seam as LobbySection.tsx's PHASE_BADGE.
+// `mode` folds main_live / voting / awaiting_results into one 'live'; this
+// overrides the badge for the two sub-phases with their own copy and falls
+// through to BADGE.live for everything else still 'live'.
+const PHASE_BADGE: Partial<Record<LobbyCard['phase'], { label: string; cls: string }>> = {
+  voting: { label: 'VOTING OPEN', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
+  awaiting_results: { label: 'TALLYING', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
+}
+
 export default async function TournamentGalleryPage() {
   const now = new Date()
   const [cards, current] = await Promise.all([getLobbyTournaments(now), getCurrentSeason()])
@@ -94,7 +103,7 @@ export default async function TournamentGalleryPage() {
 // A poster card linking to the season's detail page. The poster already carries
 // the prize/timeline, so the body is just the title + a "View details" affordance.
 function GalleryCard({ card }: { card: LobbyCard }) {
-  const badge = BADGE[card.mode]
+  const badge = PHASE_BADGE[card.phase] ?? BADGE[card.mode]
   const ended = card.mode === 'ended'
   return (
     <Link

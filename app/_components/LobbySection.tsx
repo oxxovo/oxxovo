@@ -49,9 +49,19 @@ const MODE_BADGE: Record<LobbyMode, { label: string; cls: string } | null> = {
   ended: { label: 'ENDED', cls: 'bg-white/5 text-white/40 border-white/10' },
 }
 
+// ★C-4 (Jenny3, 2026-08-10). `mode` still collapses main_live / voting /
+// awaiting_results into one 'live' -- this only overrides the badge for the
+// two sub-phases that have their own copy; every other 'live' phase falls
+// through to the generic LIVE badge above. `mode==='live'` already covers
+// both phases too, so the pulse dot below needs no separate check.
+const PHASE_BADGE: Partial<Record<LobbyCard['phase'], { label: string; cls: string }>> = {
+  voting: { label: 'VOTING OPEN', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
+  awaiting_results: { label: 'TALLYING', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
+}
+
 export function LobbyCardView({ card }: { card: LobbyCard }) {
   const ended = card.mode === 'ended'
-  const badge = MODE_BADGE[card.mode]
+  const badge = PHASE_BADGE[card.phase] ?? MODE_BADGE[card.mode]
 
   return (
     <div
@@ -108,7 +118,7 @@ export function LobbyCardView({ card }: { card: LobbyCard }) {
         )}
 
         {card.countdownTargetIso && !ended && (
-          <Countdown targetIso={card.countdownTargetIso} mode={card.mode} />
+          <Countdown targetIso={card.countdownTargetIso} mode={card.mode} phase={card.phase} />
         )}
 
         <div className="mt-4">
@@ -162,7 +172,21 @@ const CD_LABEL: Record<LobbyMode, string> = {
   ended: '',
 }
 
-function Countdown({ targetIso, mode }: { targetIso: string; mode: LobbyMode }) {
+// ★C-4: same two sub-phases as PHASE_BADGE, same fallback shape.
+const PHASE_CD_LABEL: Partial<Record<LobbyCard['phase'], string>> = {
+  voting: 'Voting closes in',
+  awaiting_results: 'Winners in',
+}
+
+function Countdown({
+  targetIso,
+  mode,
+  phase,
+}: {
+  targetIso: string
+  mode: LobbyMode
+  phase: LobbyCard['phase']
+}) {
   const [left, setLeft] = useState<string | null>(null)
   useEffect(() => {
     const target = new Date(targetIso).getTime()
@@ -186,7 +210,9 @@ function Countdown({ targetIso, mode }: { targetIso: string; mode: LobbyMode }) 
   if (!left) return null
   return (
     <div className="mt-2 flex items-baseline gap-2">
-      <span className="text-[10px] uppercase tracking-wider text-white/40">{CD_LABEL[mode]}</span>
+      <span className="text-[10px] uppercase tracking-wider text-white/40">
+        {PHASE_CD_LABEL[phase] ?? CD_LABEL[mode]}
+      </span>
       <span className="font-mono text-sm text-white/85 tabular-nums">{left}</span>
     </div>
   )
