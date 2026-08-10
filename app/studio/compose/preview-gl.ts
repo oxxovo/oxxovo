@@ -150,9 +150,15 @@ export class GLProcessor {
       drawTo(out)
       ;[base, out] = [out, base] // ping-pong: result becomes the new base
     }
-    // final copy base -> canvas
+    // final copy base -> target (canvas by default, or an fbo slot mid-transition --
+    // ★3-(A): this used to hard-bind the canvas here, ignoring targetIdx. The fast
+    // path above (no glow stages) already respected it; a segment with BOTH glow and
+    // an active transition took this branch instead and drew its glow result straight
+    // to the canvas, so transitionBlend(4, 5, ...) read fbos[4]/[5] with whatever was
+    // left in them from a PRIOR frame -- a stale-texture bug that only showed up on
+    // the glow+transition combination, never on either alone.
     gl.useProgram(this.progCopy); gl.uniform1i(gl.getUniformLocation(this.progCopy, 'u'), 0)
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h)
+    this.bindTarget(targetIdx, w, h)
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[base].tex)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   }
