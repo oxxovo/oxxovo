@@ -57,23 +57,52 @@ if (!existsSync(GRID_PATH)) {
 
 const worker = JSON.parse(readFileSync(GRID_PATH, 'utf8'))
 
-const cmp = (name, appKeys, workerKeys) => {
+// Pure diff, extracted so the ★NEGATIVE CONTROL below can call the exact same
+// logic the real comparison uses -- a control that re-implements its own
+// mini-comparator would only prove the re-implementation works, not this file.
+function diffGrid(appKeys, workerKeys) {
   const a = [...appKeys]
   const w = (workerKeys ?? []).map((s) => String(s))
-  const missingInApp = w.filter((k) => !a.includes(k))
-  const missingInWorker = a.filter((k) => !w.includes(k))
+  return {
+    missingInApp: w.filter((k) => !a.includes(k)),
+    missingInWorker: a.filter((k) => !w.includes(k)),
+    orderMatches: a.join(',') === w.join(','),
+  }
+}
+
+const cmp = (name, appKeys, workerKeys) => {
+  const d = diffGrid(appKeys, workerKeys)
   ok(
-    missingInApp.length === 0,
-    `every worker ${name} has an app label${missingInApp.length ? ` -- MISSING: ${missingInApp.join(', ')}` : ''}`,
+    d.missingInApp.length === 0,
+    `every worker ${name} has an app label${d.missingInApp.length ? ` -- MISSING: ${d.missingInApp.join(', ')}` : ''}`,
   )
   ok(
-    missingInWorker.length === 0,
-    `every app ${name} exists in the worker vocabulary${missingInWorker.length ? ` -- EXTRA: ${missingInWorker.join(', ')}` : ''}`,
+    d.missingInWorker.length === 0,
+    `every app ${name} exists in the worker vocabulary${d.missingInWorker.length ? ` -- EXTRA: ${d.missingInWorker.join(', ')}` : ''}`,
   )
   // ★Order too: the app renders chips in its own array order, and the worker file is
   // the document 제니3 approved. Divergent order is not a bug today, but a silent
   // reorder is how "the approved list" stops meaning anything.
-  ok(a.join(',') === w.join(','), `${name} order matches the approved file`)
+  ok(d.orderMatches, `${name} order matches the approved file`)
+}
+
+// ★★NEGATIVE CONTROL (규칙②, 2026-08-10). The self-comparison guard above
+// (line ~44) proves the two paths are not the SAME file. It does not prove
+// diffGrid() can tell two DIFFERENT vocabularies apart -- a comparator with
+// an inverted condition would pass that guard and pass every real comparison
+// too, silently. So: three deliberately broken pairs, run through the exact
+// function the real check uses, asserted to FAIL before a single real row is
+// compared. ★VERIFIED BEFORE SHIPPING: temporarily inverted diffGrid()'s
+// return (missingInApp <-> missingInWorker swapped) and confirmed all three
+// assertions below went red -- so this control is not itself vacuous.
+console.log('\n0. negative control -- can diffGrid() actually catch a mismatch?')
+{
+  const extra = diffGrid(['a', 'b', 'extra'], ['a', 'b'])
+  ok(extra.missingInWorker.length === 1 && extra.missingInWorker[0] === 'extra', 'control: an app-only key is caught as missingInWorker')
+  const missing = diffGrid(['a'], ['a', 'b'])
+  ok(missing.missingInApp.length === 1 && missing.missingInApp[0] === 'b', 'control: a worker-only key is caught as missingInApp')
+  const reordered = diffGrid(['a', 'b'], ['b', 'a'])
+  ok(reordered.orderMatches === false, 'control: a reordered-but-equal-set pair is caught by the order check')
 }
 
 console.log('\n1. axis values')

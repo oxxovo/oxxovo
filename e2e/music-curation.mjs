@@ -131,6 +131,14 @@ async function main() {
   // --------------------------------------------------------------- 3. write --
   console.log('\n3. the write -- and what it refuses to touch')
   {
+    // ★NEGATIVE CONTROL, stated before the write (규칙②, 2026-08-10): aTrack was
+    // seeded active=false. If setMusicActive were a silent no-op (returns
+    // {ok:true} without ever calling .update()), the assertion two lines down
+    // would read the SAME false it reads here and pass by coincidence -- so the
+    // before-state has to be the opposite of the target for the after-check to
+    // prove a transition happened, not just describe a value.
+    ok((await activeOf(aTrack)) === false, 'control: aTrack starts inactive, so activating it is a real transition')
+
     const res = await setMusicActive([aTrack], true)
     ok(res.ok === true && res.changed === 1, `activating one library row reports 1 changed [${JSON.stringify(res)}]`)
     ok((await activeOf(aTrack)) === true, 'and the row is actually active now')
@@ -138,6 +146,18 @@ async function main() {
     const off = await setMusicActive([aTrack, bTrack], false)
     ok(off.ok === true && off.changed === 2, `a bulk withhold reports 2 changed [${JSON.stringify(off)}]`)
     ok((await activeOf(aTrack)) === false && (await activeOf(bTrack)) === false, 'both rows are withheld')
+
+    // ★★THE NO-OP CASE ITSELF (규칙②, 2026-08-10). Every write above changed the
+    // VALUE. None of them prove the statement still runs -- and still reports
+    // changed=1 -- when the target value is what the row ALREADY has. A version
+    // of setMusicActive that special-cased "already at this value" to skip the
+    // update (a plausible-looking optimisation) would misreport changed=0 here
+    // and nobody would have exercised the path to notice.
+    const alreadyOff = await activeOf(aTrack)
+    ok(alreadyOff === false, 'control premise: aTrack is already inactive before the no-op write')
+    const noop = await setMusicActive([aTrack], false)
+    ok(noop.ok === true && noop.changed === 1, `setting a row to the value it already has still reports 1 changed [${JSON.stringify(noop)}]`)
+    ok((await activeOf(aTrack)) === false, 'and the row is still (correctly) inactive')
   }
 
   // ★THE CLAIM THAT MATTERS. An id list is an id list -- the statement itself must

@@ -61,6 +61,18 @@ function hero(now: Date) {
   }
 }
 
+// ★THE OLD BUG, reproduced as a function so a test can run the real consistency
+// check AGAINST it. `!!targetDate` stays true forever once a close date exists on
+// the row -- it was never re-gated on whether the date had actually passed.
+function heroWithOldGate(now: Date) {
+  const banner = getBannerStage(stageInputAt(now.getTime()), now)
+  return {
+    countdown: !!SEASON.application_close_at, // the bug: no isApplicationClosed check
+    cta: resolveSeasonCta(SEASON, now).label,
+    note: banner.stage === 'accepting' ? null : banner.stage,
+  }
+}
+
 // Sweep hourly from a week before applications open to a week past the awards.
 // 1,900-odd instants; the bug lived in a range no hand-picked date sat in.
 function sweep(fn: (now: Date, h: number) => void) {
@@ -85,6 +97,24 @@ test('★the countdown and the CTA never disagree about whether you can still ap
       )
     }
   })
+})
+
+// ★★NEGATIVE CONTROL (규칙②, 2026-08-10). The two tests above prove the CURRENT
+// hero() is self-consistent across the sweep. They do not, on their own, prove the
+// sweep is capable of catching an INconsistent one -- a sweep with too few instants,
+// or a consistency check with an inverted condition, would pass both today's code
+// and the old bug identically. So: run the exact same consistency assertion the
+// first test uses, against heroWithOldGate(), and require it to fail somewhere in
+// the sweep. ★VERIFIED BEFORE SHIPPING (not just asserted): ran this against
+// heroWithOldGate() manually first and confirmed real failures land in the back half
+// of the season (post-close), which is exactly where the historical bug lived.
+test('★control: the SAME consistency check catches the old !!targetDate bug', () => {
+  let sawContradiction = false
+  sweep((now) => {
+    const h = heroWithOldGate(now)
+    if (h.countdown && now.getTime() >= Date.parse(OPEN) && !h.cta.startsWith('Apply')) sawContradiction = true
+  })
+  assert.ok(sawContradiction, 'heroWithOldGate() must produce a countdown/CTA contradiction somewhere in the sweep -- if it does not, this file cannot tell the fixed code from the bug it was written for')
 })
 
 test('★after applications close the countdown is gone -- it used to sit at 00:00:00:00', () => {
