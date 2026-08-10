@@ -5,8 +5,11 @@
 // render.ts) is authoritative; these mirror its B1 math in the SAME order,
 // confirmed by reading render.ts's effectVideoFilters(), not recalled:
 // eq(exposure/contrast/saturation) -> temperature -> tint -> LUT -> sharpen ->
-// grain -> vignette. (chromatic / motionBlur sit between sharpen and grain in
-// the worker but have no GL pass yet.)
+// chromatic -> grain -> vignette. (motionBlur sits between chromatic and grain
+// in the worker; no GL pass yet -- it is TEMPORAL (tmix averages several
+// VIDEO FRAMES), which a single-frame shader here cannot do without a frame-
+// history buffer preview-gl.ts does not have. Different shape of work than
+// the others, flagged separately.)
 import type { EffectParams } from './effects'
 
 // WebGL2 / GLSL ES 3.00 (glow needs FBO multipass + a dynamic-loop gaussian, so
@@ -382,4 +385,33 @@ export function unsharpAmount(seg?: EffectParams, global?: EffectParams): number
   const n = Math.round(Number(v))
   if (!Number.isFinite(n) || n === 0) return 0
   return n / 50
+}
+
+// ---------------------------------------------------------------------------
+// chromatic -- mirrors the render's `rgbashift=rh=round(ch/8):bh=-round(ch/8)`
+// (green untouched). ★DIRECTION MEASURED, NOT ASSUMED (2026-08-10): a known
+// red-channel edge fed through rgbashift=rh=5 moved 5 PIXELS RIGHT (x=50 ->
+// x=55) -- so a positive shift moves that channel's content toward +x, i.e.
+// output(x) = input(x - shift). Sampled here as v_uv - shift*u_texel, edge=
+// smear (clamp), which is what CLAMP_TO_EDGE already gives every texture in
+// this file -- no special-case needed.
+export const FRAG_CHROMATIC = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex;
+uniform vec2 u_texel;
+uniform float u_rh, u_bh;
+void main() {
+  float r = texture(u_tex, v_uv - vec2(u_rh * u_texel.x, 0.0)).r;
+  float g = texture(u_tex, v_uv).g;
+  float b = texture(u_tex, v_uv - vec2(u_bh * u_texel.x, 0.0)).b;
+  o = vec4(r, g, b, 1.0);
+}`
+
+/** Slider -> {rh, bh} in PIXELS. Mirrors render.ts's `round(ch/8)` / `-round(ch/8)`. */
+export function chromaticShift(seg?: EffectParams, global?: EffectParams): { rh: number; bh: number } {
+  const ch = iv(seg?.chromatic) || iv(global?.chromatic)
+  const shift = Math.round(ch / 8)
+  return { rh: shift, bh: -shift }
 }

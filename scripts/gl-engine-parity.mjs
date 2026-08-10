@@ -21,7 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { register } from 'node:module'
 import { chromium } from 'playwright-core'
 import { FFMPEG, ffmpegBanner } from './ffmpeg-bin.mjs'
-import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_UNSHARP, colorUniforms, glowStages, unsharpAmount, parseCube, tileCube } from '../lib/gl-effects.ts'
+import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_UNSHARP, FRAG_CHROMATIC, colorUniforms, glowStages, unsharpAmount, chromaticShift, parseCube, tileCube } from '../lib/gl-effects.ts'
 import { resolveWorkerRepo } from './worker-repo.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -216,6 +216,9 @@ const LUT_ID = 'teal-orange'
 // ★A mid slider, not an extreme: the amount is sh/50, so 50 -> 1.0, which is the
 // strength a creator is most likely to sit at.
 const SHARPEN_SLIDERS = { sharpen: 50 }
+// ★A mid-strong value, same reasoning as sharpen: chromatic=80 -> round(80/8)=10px
+// shift, visible but not extreme -- a creator's likely range, not a stress test.
+const CHROMATIC_SLIDERS = { chromatic: 80 }
 const ff = (e) => effectVideoFilters(e).join(',')
 
 const CASES = [
@@ -289,6 +292,17 @@ const CASES = [
     gate: 2.5,
     vf: `${ff(SHARPEN_SLIDERS)},format=rgb24`,
     gl: async (b64) => glRunSingle(FRAG_UNSHARP, { amount: unsharpAmount(SHARPEN_SLIDERS) }, b64),
+  },
+  {
+    // ★chromatic. Measured against the worker's own filter string
+    // (rgbashift=rh=round(ch/8):bh=-round(ch/8)). Direction (positive shift
+    // moves that channel's content toward +x) was measured with a known
+    // red-channel edge, not assumed -- see the note above FRAG_CHROMATIC in
+    // lib/gl-effects.ts.
+    name: 'chromatic',
+    gate: 2.5,
+    vf: `${ff(CHROMATIC_SLIDERS)},format=rgb24`,
+    gl: async (b64) => glRunSingle(FRAG_CHROMATIC, chromaticShift(CHROMATIC_SLIDERS), b64),
   },
 ]
 

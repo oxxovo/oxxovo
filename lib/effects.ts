@@ -53,7 +53,7 @@ export const EFFECT_SPECS: readonly EffectSpec[] = [
 ]
 
 // The effects E EXPOSES (parity-passed + engine-previewable). Order = UI order.
-// Excludes: chromatic/lutIntensity/motionBlur (not previewable / deferred).
+// Excludes: lutIntensity/motionBlur (see the notes on their gaps below).
 //
 // ★sharpen added 2026-08-10. The gate this file's own comment used to point
 // at (scripts/gl-engine-parity.mjs's sharpen CASE) said not to read a PASS
@@ -65,10 +65,25 @@ export const EFFECT_SPECS: readonly EffectSpec[] = [
 // mandel/testsrc (r=0.256/0.209, both < the 0.5 band) and UNMEASURABLE on
 // smooth/bars (effect magnitude at/under the 1-LSB floor, not a fail) --
 // 0 REVIEW, 0 FAIL. Preview-side wiring landed the same day (targetIdx fix +
-// option (1) restructure, preview-gl.ts): color+LUT -> sharpen -> grain ->
-// vignette -> glow, worker order.
+// option (1) restructure, preview-gl.ts): color+LUT -> sharpen -> chromatic
+// -> grain -> vignette -> glow, worker order.
+//
+// ★chromatic added the same day. Cheaper than sharpen: rgbashift is a plain
+// per-channel pixel shift (direction measured with a known red-channel edge,
+// not assumed), and it reads PASS at r=0.000 on all four contents (byte-
+// identical) -- 0 UNMEASURABLE even, since the shift is visible on every
+// content this harness runs.
+//
+// ★lutIntensity is NOT exposed and isn't a preview-side gap: render.ts's
+// effectVideoFilters() never reads it (lut3d always applies at full
+// strength), so there is nothing on the worker side yet for a slider to
+// match -- exposing it would show a control that lies about the render.
+// ★motionBlur is NOT exposed: it's TEMPORAL (tmix averages several video
+// FRAMES), which this engine's single-frame-in/single-frame-out pass chain
+// cannot reproduce without a frame-history buffer it does not have -- a
+// different shape of work than a shader port, not sized here.
 export const EXPOSED_SLIDER_KEYS: readonly (keyof EffectParams)[] = [
-  'exposure', 'contrast', 'saturation', 'temperature', 'tint', 'vignette', 'glow', 'sharpen', 'grain',
+  'exposure', 'contrast', 'saturation', 'temperature', 'tint', 'vignette', 'glow', 'sharpen', 'chromatic', 'grain',
 ]
 export const EXPOSED_SLIDERS: readonly EffectSpec[] = EFFECT_SPECS.filter((s) => EXPOSED_SLIDER_KEYS.includes(s.key))
 
