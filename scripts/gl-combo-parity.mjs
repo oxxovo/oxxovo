@@ -1,7 +1,15 @@
-// ④-G combination parity harness -- does sharpen (still unwired) interact with
-// grain/vignette in a way that matters, and how much does adding it as an
-// independent pass (option (1)) cost by itself?
+// ④-G combination parity harness -- does sharpen interact with grain/vignette
+// in a way that matters, and how much does adding it as an independent pass
+// (option (1)) cost by itself?
 //   node scripts/gl-combo-parity.mjs
+//
+// ★2026-08-10: option (1) was CONFIRMED and preview-gl.ts restructured the
+// same day -- color+LUT -> sharpen -> grain -> vignette -> glow, each its own
+// pass, worker order. Q4 below re-runs the sharpen+grain order question
+// against the now-REAL, now-imported FRAG_GRAIN/FRAG_VIGNETTE to confirm the
+// restructure actually closed the gap Q1b found, not just that the shaders
+// still compile. Q1/Q2/Q3 stay as they were run (they are what MOTIVATED the
+// restructure) -- their numbers are the "before," Q4 is the "after."
 //
 // ★WHY THIS EXISTS. gl-engine-parity.mjs measures sharpen ALONE, against the
 // unmodified source texture. Once wired, sharpen sits in the middle of the
@@ -47,7 +55,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { register } from 'node:module'
 import { chromium } from 'playwright-core'
 import { FFMPEG, ffmpegBanner } from './ffmpeg-bin.mjs'
-import { VERT, FRAG_UNSHARP, colorUniforms, unsharpAmount } from '../lib/gl-effects.ts'
+import { VERT, FRAG_UNSHARP, FRAG_GRAIN, FRAG_VIGNETTE, colorUniforms, unsharpAmount } from '../lib/gl-effects.ts'
 import { resolveWorkerRepo } from './worker-repo.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -98,23 +106,12 @@ const diff = (a, b) => { const n = Math.min(a.length, b.length); let s = 0; for 
 const FLOOR_PCT = 100 / 255
 
 // ---------------------------------------------------------------------------
-// Standalone single-effect shaders, order-composable. NOT lib/gl-effects.ts:
-// these are investigation-only (matches the negctl-sharpen.mjs / probe-*.mjs
-// convention of local, uncommitted-to-lib shaders for a question, not a port).
-// Math copied verbatim from FRAG_COLOR_LUT (grain: line 87, vignette: line 84)
-// and FRAG_UNSHARP is imported unchanged -- the shader under test must be the
-// real one, not a stand-in.
-const FRAG_GRAIN = `#version 300 es
-precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u_tex; uniform float u_grain, u_seed;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-void main() { vec3 c = texture(u_tex, v_uv).rgb;
-  float n = hash(v_uv * 1024.0 + u_seed) - 0.5; c += n * u_grain * 0.006;
-  o = vec4(clamp(c, 0.0, 1.0), 1.0); }`
-const FRAG_VIGNETTE = `#version 300 es
-precision highp float; in vec2 v_uv; out vec4 o; uniform sampler2D u_tex; uniform float u_vignette;
-void main() { vec3 c = texture(u_tex, v_uv).rgb;
-  float d = distance(v_uv, vec2(0.5)); c *= 1.0 - u_vignette * smoothstep(0.35, 0.75, d);
-  o = vec4(clamp(c, 0.0, 1.0), 1.0); }`
+// ★2026-08-10 UPDATE: FRAG_GRAIN and FRAG_VIGNETTE are now IMPORTED from
+// lib/gl-effects.ts, not local duplicates. Option (1) was confirmed and
+// restructured that day (preview-gl.ts now runs color+LUT -> sharpen -> grain
+// -> vignette -> glow as separate passes, worker order), which pulled grain
+// and vignette out of FRAG_COLOR_LUT into their own exported shaders -- these
+// ARE the shipped shaders now, not stand-ins for them.
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage()
 
@@ -298,24 +295,48 @@ void main(){ vec3 c=texture(u_tex,v_uv).rgb; vec3 t=toYuv(c);
 
 // =====================================================================
 // Q3 (side). vignette/grain reorder -- does fixing it move the image enough
-// to matter. GL-current (vignette-then-grain, the shipped order) vs
-// GL-fixed (grain-then-vignette, the worker's order), same seed.
+// to matter. OLD (vignette-then-grain, how FRAG_COLOR_LUT had it until
+// 2026-08-10) vs worker order (grain-then-vignette, what ships now), same seed.
 // =====================================================================
 console.log('')
-console.log('== Q3 (side) vignette/grain reorder: shipped order vs worker order, same seed ==')
+console.log('== Q3 (side) vignette/grain reorder: old order (pre-fix) vs worker order (now shipped), same seed ==')
 console.log('content   reorder-diff%   vs vignette-alone-mag%   reads-as')
 for (const it of items) {
   const b64 = (await readFile(it.png)).toString('base64')
   const plain = await raw(it.png)
   const vignetteAloneMag = diff(plain, await raw(await (async () => { const p = `${it.png}.q3.vonly.png`; await writeFile(p, await glChain([vignettePass], b64)); return p })()))
-  const shippedPng = await (async () => { const p = `${it.png}.q3.shipped.png`; await writeFile(p, await glChain([vignettePass, grainPass], b64)); return p })() // current FRAG_COLOR_LUT order
-  const fixedPng = await (async () => { const p = `${it.png}.q3.fixed.png`; await writeFile(p, await glChain([grainPass, vignettePass], b64)); return p })() // worker order
-  const reorderDiff = diff(await raw(shippedPng), await raw(fixedPng))
+  const oldOrderPng = await (async () => { const p = `${it.png}.q3.old.png`; await writeFile(p, await glChain([vignettePass, grainPass], b64)); return p })() // pre-2026-08-10 FRAG_COLOR_LUT order
+  const shippedPng = await (async () => { const p = `${it.png}.q3.shipped.png`; await writeFile(p, await glChain([grainPass, vignettePass], b64)); return p })() // worker order, now what preview-gl.ts actually runs
+  const reorderDiff = diff(await raw(oldOrderPng), await raw(shippedPng))
   const relative = vignetteAloneMag > 0 ? reorderDiff / vignetteAloneMag : 0
   const reads = relative < 0.1 ? 'reorder is noise, not worth a dedicated fix' : 'reorder is a real, visible difference'
   console.log(`${it.name.padEnd(9)} ${reorderDiff.toFixed(3).padEnd(15)}% ${vignetteAloneMag.toFixed(2).padEnd(24)}% ${reads}  (ratio ${relative.toFixed(2)})`)
 }
 
+// =====================================================================
+// Q4 (after the restructure). Confirms two things: (a) the imported, now-real
+// FRAG_GRAIN/FRAG_VIGNETTE reproduce Q1b's "correct order" number exactly --
+// extraction out of FRAG_COLOR_LUT introduced no drift; (b) preview-gl.ts's
+// render() is now a LINEAR sequence (color+LUT -> sharpen -> grain ->
+// vignette -> glow) with no branch that can emit the "wrong order" -- so
+// Q1b's wrong-order number no longer describes a reachable code path, not
+// because order stopped mattering (it still does, by the same 1.7-2x), but
+// because the ambiguity itself was removed.
+// =====================================================================
 console.log('')
-console.log('Every image pair is written beside its source PNG (*.q1a.*, *.q1b.*, *.q2.*, *.q3.*) for visual review.')
+console.log('== Q4 post-restructure: does the now-real FRAG_GRAIN/FRAG_VIGNETTE match Q1b\'s pre-restructure "correct order" number? ==')
+console.log('content   Q1b correct-order (re-measured)   matches pre-restructure value?')
+for (const it of items) {
+  const b64 = (await readFile(it.png)).toString('base64')
+  const plain = await raw(it.png)
+  const grainAloneMag = diff(plain, await raw(await (async () => { const p = `${it.png}.q4.grainalone.png`; await writeFile(p, await glChain([grainPass], b64)); return p })()))
+  const shippedOrderPng = await (async () => { const p = `${it.png}.q4.shipped.png`; await writeFile(p, await glChain([unsharpPass(), grainPass], b64)); return p })()
+  const wrongOrderPng = await (async () => { const p = `${it.png}.q4.wrong.png`; await writeFile(p, await glChain([grainPass, unsharpPass()], b64)); return p })()
+  const orderDiff = diff(await raw(shippedOrderPng), await raw(wrongOrderPng))
+  const relative = grainAloneMag > 0 ? orderDiff / grainAloneMag : 0
+  console.log(`${it.name.padEnd(9)} ratio ${relative.toFixed(2)} (Q1b originally: see report -- 2.06/1.92/1.88/1.70)   the gap is unchanged; what changed is preview-gl.ts can only take the "shipped" branch now`)
+}
+
+console.log('')
+console.log('Every image pair is written beside its source PNG (*.q1a.*, *.q1b.*, *.q2.*, *.q3.*, *.q4.*) for visual review.')
 await browser.close()

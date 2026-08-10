@@ -4,21 +4,31 @@
 // ★ The RENDER (oxxovo-studio render.ts, B1) is authoritative; the shaders MATCH
 // it (shared source: lib/gl-effects.ts). Parity is re-verified from the ENGINE's
 // shaders by scripts/gl-engine-parity.mjs before effect controls (E) are exposed.
-// Ported so far: color grade + LUT (this file). Glow / transitions land next.
+// Ported so far: color grade + LUT + sharpen + grain + vignette + glow (this
+// file, worker order: color/LUT -> sharpen -> grain -> vignette -> glow).
+// ★sharpen is WIRED but NOT EXPOSED (not in EXPOSED_SLIDER_KEYS yet) --
+// unsharpAmount()/grainAmount()/colorUniforms().vignette all read 0 from
+// today's UI, so this only changes behaviour once a slider sets them.
 
 import type { PreviewEngine, PreviewClip, PreviewSegment, PreviewTransition } from './preview'
 import { locateComposition, fitObjectFit } from './preview'
 import type { EffectParams } from '@/lib/effects'
-import { VERT, FRAG_COLOR_LUT, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, glowStages, grainAmount, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
+import { VERT, FRAG_COLOR_LUT, FRAG_UNSHARP, FRAG_GRAIN, FRAG_VIGNETTE, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, glowStages, grainAmount, unsharpAmount, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
 
 type TiledLut = { W: number; H: number; px: Uint8Array; N: number }
 
-// WebGL2 multipass: color+LUT -> FBO base; then, per glow stage, separable
-// gaussian + screen-blend (ping-pong FBOs); finally copy to the canvas. No glow
-// = color+LUT drawn straight to the canvas (fast path).
+// WebGL2 multipass: color+LUT -> FBO[6]; then sharpen/grain/vignette each as
+// their own pass (ping-pong FBO[6]/[7], skipped when their amount is 0); then,
+// per glow stage, separable gaussian + screen-blend (ping-pong FBO[0-3]);
+// finally copy to the target. Nothing active at all (no glow, sharpen=0,
+// grain=0, vignette=0) = color+LUT drawn straight to the target (fast path,
+// unchanged from before this pass chain existed).
 export class GLProcessor {
   private gl: WebGL2RenderingContext
   private progCL: WebGLProgram
+  private progUnsharp: WebGLProgram
+  private progGrain: WebGLProgram
+  private progVignette: WebGLProgram
   private progBlur: WebGLProgram
   private progScreen: WebGLProgram
   private progCopy: WebGLProgram
@@ -44,10 +54,11 @@ export class GLProcessor {
       if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('link: ' + gl.getProgramInfoLog(p))
       return p
     }
-    this.progCL = prog(FRAG_COLOR_LUT); this.progBlur = prog(FRAG_BLUR); this.progScreen = prog(FRAG_SCREEN); this.progCopy = prog(FRAG_COPY); this.progTrans = prog(FRAG_TRANSITION)
+    this.progCL = prog(FRAG_COLOR_LUT); this.progUnsharp = prog(FRAG_UNSHARP); this.progGrain = prog(FRAG_GRAIN); this.progVignette = prog(FRAG_VIGNETTE)
+    this.progBlur = prog(FRAG_BLUR); this.progScreen = prog(FRAG_SCREEN); this.progCopy = prog(FRAG_COPY); this.progTrans = prog(FRAG_TRANSITION)
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf)
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
-    for (const p of [this.progCL, this.progBlur, this.progScreen, this.progCopy, this.progTrans]) {
+    for (const p of [this.progCL, this.progUnsharp, this.progGrain, this.progVignette, this.progBlur, this.progScreen, this.progCopy, this.progTrans]) {
       gl.useProgram(p); const a = gl.getAttribLocation(p, 'a_pos'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0)
     }
     const mkTex = () => {
@@ -63,7 +74,7 @@ export class GLProcessor {
     const gl = this.gl
     for (const f of this.fbos) { gl.deleteFramebuffer(f.fb); gl.deleteTexture(f.tex) }
     this.fbos = []
-    for (let i = 0; i < 6; i++) { // 0-3 glow multipass, 4/5 = transition A/B
+    for (let i = 0; i < 8; i++) { // 0-3 glow multipass, 4/5 = transition A/B, 6/7 = pre-glow chain (sharpen/grain/vignette)
       const t = gl.createTexture()!; gl.bindTexture(gl.TEXTURE_2D, t)
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
@@ -112,25 +123,70 @@ export class GLProcessor {
     const stages = glowStages(seg, global)
     const useLut = lutLoaded && this.lutN > 0 && !!activeLut(seg, global)
     const u = colorUniforms(seg, global)
-    // pass 1: color + LUT
+    const sharpenAmt = unsharpAmount(seg, global)
+    const grainAmt = grainAmount(seg, global)
+    // pass 1: color + LUT (no vignette/grain here any more -- ★2026-08-10, see
+    // the note above FRAG_COLOR_LUT in lib/gl-effects.ts: the worker fires
+    // sharpen right after this, and grain/vignette LAST, so baking them into
+    // this pass made the correct order unreachable.)
     gl.useProgram(this.progCL)
     gl.uniform1i(gl.getUniformLocation(this.progCL, 'u_tex'), 0); gl.uniform1i(gl.getUniformLocation(this.progCL, 'u_lut'), 1)
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.lutTex)
     this.uf(this.progCL, 'u_exposure', u.exposure); this.uf(this.progCL, 'u_contrast', u.contrast); this.uf(this.progCL, 'u_saturation', u.saturation)
-    this.uf(this.progCL, 'u_tempK', u.tempK); this.uf(this.progCL, 'u_tint', u.tint); this.uf(this.progCL, 'u_vignette', u.vignette)
+    this.uf(this.progCL, 'u_tempK', u.tempK); this.uf(this.progCL, 'u_tint', u.tint)
     this.uf(this.progCL, 'u_hasLut', useLut ? 1 : 0); this.uf(this.progCL, 'u_N', this.lutN || 2)
-    this.uf(this.progCL, 'u_grain', grainAmount(seg, global)); this.uf(this.progCL, 'u_seed', (this.seed = (this.seed + 1) % 997))
-    if (!stages.length) {
+    const needsChain = stages.length > 0 || sharpenAmt > 0 || grainAmt > 0 || u.vignette > 0
+    if (!needsChain) {
       this.bindTarget(targetIdx, w, h)
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
       return
     }
     this.ensureFbos(w, h)
-    let base = 0, blurA = 1, blurB = 2, out = 3
     const drawTo = (fbIdx: number) => { gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbos[fbIdx].fb); gl.viewport(0, 0, w, h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4) }
+
+    // ---- pre-glow chain: color+LUT -> sharpen -> grain -> vignette --------
+    // ★WORKER ORDER (effectVideoFilters, read not recalled): unsharp fires
+    // right after the LUT; grain and vignette fire last, grain before
+    // vignette. Ping-pongs fbos[6]/[7] -- dedicated scratch slots so this
+    // chain can never collide with glow's 0-3 or a transition's 4/5.
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
-    drawTo(base)
+    drawTo(6)
+    let cur = 6, other = 7
+    if (sharpenAmt > 0) {
+      gl.useProgram(this.progUnsharp); gl.uniform1i(gl.getUniformLocation(this.progUnsharp, 'u_tex'), 0)
+      gl.uniform2f(gl.getUniformLocation(this.progUnsharp, 'u_texel'), 1 / w, 1 / h)
+      this.uf(this.progUnsharp, 'u_amount', sharpenAmt)
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[cur].tex); drawTo(other)
+      ;[cur, other] = [other, cur]
+    }
+    if (grainAmt > 0) {
+      gl.useProgram(this.progGrain); gl.uniform1i(gl.getUniformLocation(this.progGrain, 'u_tex'), 0)
+      this.uf(this.progGrain, 'u_grain', grainAmt); this.uf(this.progGrain, 'u_seed', (this.seed = (this.seed + 1) % 997))
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[cur].tex); drawTo(other)
+      ;[cur, other] = [other, cur]
+    }
+    if (u.vignette > 0) {
+      gl.useProgram(this.progVignette); gl.uniform1i(gl.getUniformLocation(this.progVignette, 'u_tex'), 0)
+      this.uf(this.progVignette, 'u_vignette', u.vignette)
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[cur].tex); drawTo(other)
+      ;[cur, other] = [other, cur]
+    }
+
+    if (!stages.length) {
+      // no glow: cur already holds the fully pre-glow-processed frame.
+      gl.useProgram(this.progCopy); gl.uniform1i(gl.getUniformLocation(this.progCopy, 'u'), 0)
+      this.bindTarget(targetIdx, w, h)
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[cur].tex)
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+      return
+    }
+    // hand off to the glow loop, which owns fbos[0-3] and expects its input
+    // pre-loaded at base=0 -- one copy pass, not a rewrite of the loop below.
+    gl.useProgram(this.progCopy); gl.uniform1i(gl.getUniformLocation(this.progCopy, 'u'), 0)
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbos[cur].tex); drawTo(0)
+
+    let base = 0, blurA = 1, blurB = 2, out = 3
     // glow stages (per-seg then global): separable blur -> screen blend
     for (const st of stages) {
       // H blur base -> blurA

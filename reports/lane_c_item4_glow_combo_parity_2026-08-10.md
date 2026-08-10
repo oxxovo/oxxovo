@@ -176,9 +176,94 @@ glow multipass는 같은 모양의 FBO 체인인데 이미 파리티 통과(0.1-
 
 ---
 
-## 5. 대기
+## 5. ★★재구성 -- ①로 확정, 같은 날 오후 완료
 
-- vignette 셰이더 재작성 + 파리티 케이스 신설(3절) -- 소관 확인 필요.
-- sharpen 배선 자체(재구성 포함) -- 오늘은 "어느 쪽이 맞는지"만 쟀고, 실제 배선은
-  다음 건.
-- `EXPOSED_SLIDER_KEYS`는 여전히 안 건드림.
+제니2 확정: **①로 간다** ("왕복 비용 0이면 ③의 25배 연산을 살 이유가 없고, 순서
+오차가 효과 크기의 1.7~2배면 ②는 탈락 -- '패스 추가 비용 0'이 ③을 지웠다, 재기
+전엔 몰랐을 결론이다"). 승인 = vignette/grain을 분리해 sharpen 뒤로.
+
+### 5a. `lib/gl-effects.ts` -- 셰이더 재구성
+
+- `FRAG_COLOR_LUT`에서 vignette·grain 제거 (eq/temp/tint/LUT만 남음).
+- `FRAG_GRAIN`, `FRAG_VIGNETTE` 신설 -- 수식은 **그대로**(옛 FRAG_COLOR_LUT의
+  84·87줄 복사), 자리만 독립 패스로 옮김. 파리티 수치가 안 움직이는 이유가
+  이것이다(수식 불변).
+- 헤더 주석의 순서 표기를 워커 실측(`effectVideoFilters`)에 맞춰 정정:
+  `eq → temp → tint → LUT → sharpen → grain → vignette`.
+
+### 5b. `preview-gl.ts` -- 파이프라인 재배선
+
+`render()`가 이제: 색+LUT(FBO[6]) → (sharpen>0이면) unsharp → (grain>0이면) grain →
+(vignette>0이면) vignette → (glow 있으면) glow 체인(FBO[0-3], 기존 로직 무변경,
+FBO[6/7]→FBO[0] 카피 1회로 인계) → `targetIdx` 대상. 전부 0이면 기존 1패스
+빠른 경로 그대로.
+
+- FBO 풀 6→8칸으로 확장(6/7 = sharpen/grain/vignette 전용 스크래치, 0-3 glow·4/5
+  전환과 충돌 없음).
+- **★sharpen은 배선됐지만 노출 안 됨** -- `EXPOSED_SLIDER_KEYS`는 안 건드렸다.
+  오늘 UI에서는 `unsharpAmount`/`grainAmount`/`u.vignette`가 전부 0이라 동작 변화 없음
+  (기존 `npm run test:parity:engine` color/LUT/glow 행이 재구성 전후 **숫자까지
+  동일**하게 나온 것으로 확인 -- 아래).
+
+### 5c. 검증
+
+```
+npx tsc --noEmit                 0
+npm test                         461/461
+npm run test:parity:engine       color/LUT/glow ALL PASS, 재구성 전후 숫자 완전 동일
+                                  (0.184/0.105/0.111/0.066 등, 자리 하나 안 틀림)
+```
+
+### 5d. ★★Q4 -- "sharpen+grain 순서 오차가 실제로 사라지는지" 다시 돌린 결과
+
+`scripts/gl-combo-parity.mjs`를 `FRAG_GRAIN`/`FRAG_VIGNETTE`를 **로컬 복사가 아니라
+`lib/gl-effects.ts`에서 import**하도록 바꾸고 재실행:
+
+```
+Q1b (재구성 전 로컬 복사본)  ratio 2.06 / 1.92 / 1.88 / 1.70
+Q4 (재구성 후 실제 export)   ratio 2.06 / 1.92 / 1.88 / 1.70   <- 자리까지 동일
+```
+
+★**오차가 "사라지지" 않았다 -- 없어진 것은 오차가 아니라 모호성이다.** sharpen이
+grain 뒤에 오면 여전히 grain 자체 크기의 1.7~2배만큼 이미지가 바뀐다(물리적으로
+당연: 노이즈 위에 sharpen을 걸면 노이즈까지 강조된다). **달라진 것은 `preview-gl.ts`가
+이제 그 "틀린 순서"를 낼 수 있는 코드 경로 자체가 없다는 것** -- `render()`가
+선형 시퀀스라 sharpen→grain→vignette 외의 순서를 만들 조건분기가 존재하지 않는다.
+추출(`FRAG_COLOR_LUT`→`FRAG_GRAIN`/`FRAG_VIGNETTE`)이 수식을 한 글자도 안 바꿨다는
+것도 이 재측정으로 확인됐다(자리까지 동일).
+
+---
+
+## 6. ★★오늘 얻은 규율 -- 대조군·프로브가 자기 자신을 세 번 잡았다
+
+같은 하니스 세션 안에서 세 번, 다른 층위로:
+
+1. **하니스 자체의 버그를 대조군이 잡았다** (4절) -- 2-pass copy+copy(효과 0)가
+   원본과 28% 벌어졌고, `vflip`과 정확히 0.0000% 일치해 Y축 반전임을 확인. ★첫
+   실행의 델타 표를 그대로 결론으로 썼으면 "①은 비싸다, ③으로 가야 한다"는
+   정반대 결론이 났을 것.
+2. **Q1a의 음성 대조군이 "순서"가 아니라 "수학 모델 자체"를 잡았다** (3절) --
+   정순·역순이 똑같이 나쁘다는 것 자체가 신호였다. 대조군이 찾으라고 설계된 것과
+   다른, 더 근본적인 결함(vignette 셰이더가 ffmpeg와 다른 공식)을 대신 잡았다.
+3. **Q4가 재구성 자체를 검증했다** (5d) -- 셰이더를 옛 위치에서 새 위치로
+   옮긴 뒤, "옮기기 전과 숫자가 같은가"를 다시 재서 추출이 무결함을 확인. 프로브가
+   자신이 측정하던 대상이 바뀐 뒤에도 여전히 같은 것을 재고 있는지 스스로 검증한
+   경우.
+
+**적용**: 아키텍처 판단 직전의 숫자는 "왜 이 크기인가"를 한 번 더 물을 것 --
+한 번은 도구 버그, 한 번은 더 큰 결함, 한 번은 리팩터 무결성 확인으로 답이
+갈렸다. 셋 다 "숫자가 이상하게 크다/똑같다"는 관찰에서 시작했다.
+
+---
+
+## 7. 대기
+
+- ⏸★**vignette 셰이더 수학 불일치 -- 별건, 오늘 손대지 않음.** 근거: vignette=60
+  단독(mandel), GL vs ffmpeg **19.53%** (효과 크기 26.68%의 대부분). 원인 = 다른
+  falloff 모델(GL: 중심거리 smoothstep / ffmpeg: 렌즈각 코사인, `ffmpeg -h
+  filter=vignette`로 확인). "독립 파리티 검증된 적이 없었다"는 것 자체가 갭 --
+  `test:parity:engine`의 `CASES`에 vignette 행이 없다. 소관·착수 시점은 제니2/설계.
+- `EXPOSED_SLIDER_KEYS`는 여전히 안 건드림 -- sharpen/grain/vignette 전부 배선은
+  됐지만 UI에 안 열림.
+- 다음 순서(08-08 인계 그대로): 노출 → chromatic·motionBlur·lutIntensity(같은
+  방식, 효과당 독립 출하) → D 스파이크.

@@ -2,8 +2,11 @@
 // (preview-gl.ts) AND the re-verify parity harness (scripts/gl-engine-parity.mjs)
 // both use, so a ported shader can't drift from what's parity-tested. Client-safe
 // + node-importable (no browser APIs, no @/ alias). ★ The render (oxxovo-studio
-// render.ts) is authoritative; these mirror its B1 math in the SAME order:
-// eq(exposure/contrast/saturation) -> temperature -> tint -> LUT -> vignette.
+// render.ts) is authoritative; these mirror its B1 math in the SAME order,
+// confirmed by reading render.ts's effectVideoFilters(), not recalled:
+// eq(exposure/contrast/saturation) -> temperature -> tint -> LUT -> sharpen ->
+// grain -> vignette. (chromatic / motionBlur sit between sharpen and grain in
+// the worker but have no GL pass yet.)
 import type { EffectParams } from './effects'
 
 // WebGL2 / GLSL ES 3.00 (glow needs FBO multipass + a dynamic-loop gaussian, so
@@ -13,16 +16,29 @@ in vec2 a_pos;
 out vec2 v_uv;
 void main() { v_uv = vec2((a_pos.x + 1.0) * 0.5, (1.0 - a_pos.y) * 0.5); gl_Position = vec4(a_pos, 0.0, 1.0); }`
 
-// Color grade + optional LUT + vignette (render order). LUT is a 2D-tiled cube
-// (size N tiles laid horizontally), trilinear-sampled on blue.
+// Color grade + optional LUT. LUT is a 2D-tiled cube (size N tiles laid
+// horizontally), trilinear-sampled on blue.
+//
+// ★VIGNETTE AND GRAIN USED TO LIVE HERE (baked into this shader, applied
+// vignette-then-grain) and moved out 2026-08-10. Two reasons, found together
+// while wiring sharpen (④-G): (1) the worker's real order (effectVideoFilters,
+// confirmed by reading it) is unsharp -> ... -> noise(grain) -> vignette --
+// sharpen fires right after the LUT, grain and vignette fire LAST, in that
+// order. Keeping them baked into the colour pass made it structurally
+// impossible to put sharpen between "after LUT" and "before grain/vignette"
+// without a separate pass for each. (2) the OLD internal order here was
+// vignette-then-grain -- backwards from the worker's grain-then-vignette --
+// found in the 2026-08-09 fused-unsharp probe (e47f040) and confirmed real
+// (not noise) by scripts/gl-combo-parity.mjs: reordering moves the image by
+// ~1-1.6x vignette's own magnitude on its own. See FRAG_GRAIN / FRAG_VIGNETTE
+// below, applied by the caller as separate passes in the worker's order.
 export const FRAG_COLOR_LUT = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 o;
 uniform sampler2D u_tex, u_lut;
-uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_vignette, u_hasLut, u_N, u_grain, u_seed;
+uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_hasLut, u_N;
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
 // ★ffmpeg eq is a YUV filter, not an RGB one. Measured 2026-07-30 (24-patch chart
 // + 256-step sweeps, planes read directly as yuv444p):
@@ -81,10 +97,47 @@ void main() {
   float k = u_tempK / 3000.0; c.r -= k * 0.05; c.b += k * 0.05;
   c.g += u_tint * (1.0 - abs(2.0 * dot(c, LUMA) - 1.0));
   if (u_hasLut > 0.5) c = lutSample(clamp(c, 0.0, 1.0));
-  if (u_vignette > 0.0) { float d = distance(v_uv, vec2(0.5)); c *= 1.0 - u_vignette * smoothstep(0.35, 0.75, d); }
-  // Grain: APPROXIMATE preview only (a different random field than the ffmpeg
-  // render; amplitude tracks the slider so the amount matches). UI shows a badge.
-  if (u_grain > 0.0) { float n = hash(v_uv * 1024.0 + u_seed) - 0.5; c += n * u_grain * 0.006; }
+  o = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`
+
+// Grain: a separate pass now (was baked into FRAG_COLOR_LUT, see the note
+// above it). APPROXIMATE preview only -- a different random field than the
+// ffmpeg render's `noise=` filter; amplitude tracks the slider so the amount
+// matches, not the pixel pattern. UI shows a badge for this.
+export const FRAG_GRAIN = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex;
+uniform float u_grain, u_seed;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec3 c = texture(u_tex, v_uv).rgb;
+  float n = hash(v_uv * 1024.0 + u_seed) - 0.5;
+  c += n * u_grain * 0.006;
+  o = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`
+
+// Vignette: a separate pass now (was baked into FRAG_COLOR_LUT). ★NOT A
+// PARITY PORT OF ffmpeg's vignette= filter -- that one uses a lens-angle
+// cosine falloff (`ffmpeg -h filter=vignette`: `angle`, default PI/5); this is
+// a distance-based smoothstep, a different formula entirely. Measured
+// 2026-08-10 (scripts/gl-combo-parity.mjs escalation): vignette=60 alone, GL
+// vs ffmpeg = 19.53% on a 26.68%-magnitude effect -- this shader has never
+// been independently parity-verified (gl-engine-parity.mjs's CASES has no
+// vignette row). Moving it to its own pass does not fix that; it only fixes
+// its ORDER relative to grain and sharpen. The math mismatch is tracked
+// separately, not touched here.
+export const FRAG_VIGNETTE = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex;
+uniform float u_vignette;
+void main() {
+  vec3 c = texture(u_tex, v_uv).rgb;
+  float d = distance(v_uv, vec2(0.5));
+  c *= 1.0 - u_vignette * smoothstep(0.35, 0.75, d);
   o = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`
 
