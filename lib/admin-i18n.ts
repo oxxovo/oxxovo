@@ -69,7 +69,7 @@ export function useT(): Messages {
 // Messages
 // ─────────────────────────────────────────────────────────────────
 
-type Messages = {
+export type Messages = {
   layout: {
     admin_console: string
     admin_mode_banner: string
@@ -769,6 +769,179 @@ type Messages = {
     footer_privacy: string
     footer_rules: string
     loading: string
+  }
+  // ★2026-08-11 (지수2C). Watch grid (/watch, Arena*.tsx) + detail
+  // (/watch/[id], Watch*.tsx + social-action components). Same sourcing as
+  // `landing` above. A subset of these keys (marked below) have NO entry in
+  // that document -- they were Korean text hardcoded UNCONDITIONALLY in the
+  // current code (shown to every visitor regardless of language) that the
+  // 08-10 extraction missed because it only captured English strings. Per
+  // 제니2 2026-08-11 ("네 판단대로 가라. 영어를 네가 써라"): English for
+  // these is 지수2C-authored, matched to vocabulary already live elsewhere in
+  // the same files (Main Round / Preliminary / Judging / Voting / Finalist),
+  // never "결선". Logged for a batch 제니3 review in reports/
+  // lane_c_watch_selfauthored_en_2026-08-11.md -- do not read the presence of
+  // an English string here as "approved," only as "shipped and tracked."
+  watch: {
+    banner_tagline1: string
+    banner_tagline2: string
+    banner_learnmore: string
+    hero_current: (seasonNumber: number) => string
+    hero_ctx_results: string
+    hero_ctx_voting: string
+    hero_ctx_judged: (dateStr: string | null) => string
+    hero_ctx_default: (roundName: string) => string
+    hero_cta_results: string
+    hero_cta_default: string
+    finalists_kicker: string
+    finalists_title: string
+    finalist_badge: string
+    featured_kicker: string
+    featured_title: string
+    leaderboard_kicker: string
+    leaderboard_title: string
+    roundbadge_main: string
+    roundbadge_prelim: string
+    badge_verified: string
+    center_mainround: string
+    empty_entries: string
+    // n is a PRE-FORMATTED string (fmtCount()'s "1.2K" etc.), not a raw
+    // number -- matches how Arena.tsx's cardStatusText already composes this.
+    votecount: (n: string) => string
+    // ★self-authored (see file-header note)
+    finalist_pending_note: string
+    results_kicker: string
+    finalist_prelim_kicker: string
+    main_round_results_title: string
+    main_round_live_title: string
+    finalist_prelim_title: string
+    finalist_prelim_tag: string
+    card_judging: string
+    card_voting: string
+    card_awaiting_judgment: string
+    featured_stats: (viewsStr: string, votesStr: string) => string
+    score_suffix: (score: string) => string
+    live_judging: (complete: boolean) => string
+    live_close_label: (isMain: boolean) => string
+    live_reveal_label: string
+    live_vote_label: string
+    live_theme_main: string
+    live_theme_next: string
+    live_countries_suffix: string
+    champions_note: (seasonName: string | null, dateStr: string | null) => string
+    // sidebar / top bar (doc-covered)
+    search_placeholder: string
+    signin: string
+    badge_watch: string
+    badge_subtitle: string
+    nav_home: string
+    nav_home_sub: string
+    nav_tournament: string
+    nav_tournament_sub: string
+    nav_how: string
+    nav_how_sub: string
+    nav_membership: string
+    nav_membership_sub: string
+    nav_faq: string
+    nav_faq_sub: string
+    nav_about: string
+    nav_about_sub: string
+    library_label: string
+    lib_myvideos: string
+    lib_mylikes: string
+    lib_watchlater: string
+    lib_history: string
+    footer_tip_title: string
+    footer_tip_body: string
+    filter_current: string
+    filter_all_competitions: string
+    filter_newest: string
+    filter_champions: string
+    filter_all_champions: string
+    filter_viewall: string
+    host_suffix: (seasonName: string) => string
+    sort_trending: string
+    sort_latest: string
+    sort_award: string
+    round_prelim: string
+    round_main: string
+    winner_1st: string
+    winner_2nd: string
+    winner_3rd: string
+    sidebar_home: string
+    sidebar_tournament: string
+    sidebar_sort_label: string
+    sidebar_seasons_label: string
+    sidebar_all: string
+    sidebar_allrounds: string
+    sidebar_round_label: string
+    sidebar_winners_label: string
+    sidebar_more_label: string
+    sidebar_membership: string
+    sidebar_about: string
+    sidebar_how: string
+    sidebar_qa: string
+    sidebar_subs_label: string
+    // detail page (doc-covered + 1 self-authored)
+    detail_roundlabel_main: string
+    detail_roundlabel_prelim: string
+    detail_staffpick: string
+    detail_winner: string
+    detail_rank1: string
+    detail_rank2: string
+    detail_rank3: string
+    detail_winner_generic: string
+    detail_views: (n: number) => string
+    detail_comments_count: (n: number) => string
+    detail_madewith: (ai: string) => string
+    detail_related_title: string
+    detail_related_empty: string
+    detail_related_views_likes: (views: number, likes: number) => string
+    detail_main_round_pending: string
+    // social actions (doc-covered)
+    comments_count: (n: number) => string
+    comments_guidelines: string
+    comment_placeholder: string
+    comment_submit: string
+    comment_signin_prompt: string
+    comments_empty: string
+    comment_edited: string
+    comment_save: string
+    comment_cancel: string
+    comment_edit: string
+    comment_delete: string
+    comment_delete_confirm: string
+    comment_report: string
+    comment_reported: string
+    follow_following: (creatorName: string) => string
+    follow_follow: (creatorName: string) => string
+    follow_btn_following: string
+    follow_btn_follow: string
+    save_saved: string
+    save_save: string
+    report_reported: string
+    report_report: string
+    share_copied: string
+    share_share: string
+    staffpick_on: string
+    staffpick_off: string
+    vote_error_limit: (n: number) => string
+    vote_error_closed: string
+    vote_notopen: string
+    vote_title: string
+    vote_count: (n: number) => string
+    vote_remaining: (remaining: number, cap: number) => string
+    vote_closed_suffix: string
+    vote_btn_voted: string
+    vote_btn_vote: string
+    vote_btn_closed: string
+    vote_cap_used: (n: number) => string
+    // score panel
+    score_title: string
+    score_intent: string
+    score_execution: string
+    score_originality: string
+    score_integrity_verified: string
   }
 }
 
@@ -1497,6 +1670,164 @@ const MESSAGES_EN: Messages = {
     footer_rules: 'Rules',
     loading: 'Loading…',
   },
+  watch: {
+    banner_tagline1: 'OXXOVO is the global arena for AI creators.',
+    banner_tagline2: 'Built under the same conditions. Judged on skill alone.',
+    banner_learnmore: 'Learn More on Landing Page ↗',
+    hero_current: (seasonNumber) => `Current Competition — Season ${seasonNumber}`,
+    hero_ctx_results: 'The winners have been announced. See who took the top spots this season.',
+    hero_ctx_voting: 'Community voting is open. Watch the main-round films and vote for your favorite creator.',
+    hero_ctx_judged: (dateStr) => `Judging is complete. Finalists will be revealed ${dateStr ? `on ${dateStr}` : 'soon'}.`,
+    hero_ctx_default: (roundName) =>
+      `${roundName} is in progress. Videos are shown in the order they were entered. Join OXXOVO for free to vote in the Main Round and support your favorite creators.`,
+    hero_cta_results: 'See who won →',
+    hero_cta_default: 'Join free to vote →',
+    finalists_kicker: 'Main Round',
+    finalists_title: '🏆 Finalists',
+    finalist_badge: 'Finalist',
+    featured_kicker: 'Spotlight',
+    featured_title: 'Featured Competitors',
+    leaderboard_kicker: 'Standings',
+    leaderboard_title: 'Leaderboard',
+    roundbadge_main: 'Main Round',
+    roundbadge_prelim: 'Preliminary',
+    badge_verified: '✓ Verified',
+    center_mainround: 'MAIN ROUND',
+    empty_entries: 'No entries yet. They appear here as creators submit.',
+    votecount: (n) => `${n} votes`, // n pre-formatted (fmtCount)
+    finalist_pending_note: 'Main round video coming soon',
+    results_kicker: 'Results',
+    finalist_prelim_kicker: 'Finalists',
+    main_round_results_title: '🏆 Main Round Results',
+    main_round_live_title: '🏆 Main Round · Live Now',
+    finalist_prelim_title: 'Finalist Entries · Preliminary Round',
+    finalist_prelim_tag: 'Finalist Entry',
+    card_judging: '⚡ Judging',
+    card_voting: '🔥 Voting',
+    card_awaiting_judgment: 'Awaiting judgment',
+    featured_stats: (viewsStr, votesStr) => `${viewsStr} views · ${votesStr} votes`,
+    score_suffix: (score) => `Triple-AI ${score}`,
+    live_judging: (complete) => `Triple-AI ${complete ? 'Judging Complete' : 'Judging'}`,
+    live_close_label: (isMain) => `${isMain ? 'Main Round' : 'Preliminary'} closes in`,
+    live_reveal_label: 'Finalists revealed in',
+    live_vote_label: 'Voting closes in',
+    live_theme_main: 'Main Round Theme',
+    live_theme_next: 'Next Round Theme',
+    live_countries_suffix: 'countries',
+    champions_note: (seasonName, dateStr) =>
+      dateStr
+        ? `${seasonName ?? 'Season'} Champions revealed ${dateStr}`
+        : 'Champions revealed after judging completes',
+    search_placeholder: 'Search videos & creators',
+    signin: 'Sign in',
+    badge_watch: 'WATCH',
+    badge_subtitle: 'AI Creator League',
+    nav_home: 'Home',
+    nav_home_sub: 'Go to Landing Page',
+    nav_tournament: 'Tournament Info',
+    nav_tournament_sub: 'Rules, Schedule, Prizes',
+    nav_how: 'How It Works',
+    nav_how_sub: 'Learn the process',
+    nav_membership: 'Membership',
+    nav_membership_sub: 'Join & Benefits',
+    nav_faq: 'FAQ',
+    nav_faq_sub: 'Frequently Asked Questions',
+    nav_about: 'About',
+    nav_about_sub: 'About OXXOVO',
+    library_label: 'Library',
+    lib_myvideos: 'My Videos',
+    lib_mylikes: 'My Likes',
+    lib_watchlater: 'Watch Later',
+    lib_history: 'History',
+    footer_tip_title: 'All Information in One Place',
+    footer_tip_body: 'You are in WATCH. Click menu items to open in a new tab.',
+    filter_current: 'Current Competition',
+    filter_all_competitions: 'All Competitions',
+    filter_newest: 'Newest First',
+    filter_champions: '🏆 Champions',
+    filter_all_champions: 'All Champions',
+    filter_viewall: 'View All →',
+    host_suffix: (seasonName) => `${seasonName} · Host`,
+    sort_trending: 'Trending',
+    sort_latest: 'Latest',
+    sort_award: 'Award Winners',
+    round_prelim: 'Preliminary',
+    round_main: 'Main Round',
+    winner_1st: '🥇 1st Place',
+    winner_2nd: '🥈 2nd Place',
+    winner_3rd: '🥉 3rd Place',
+    sidebar_home: 'Home',
+    sidebar_tournament: 'Tournament',
+    sidebar_sort_label: 'Sort',
+    sidebar_seasons_label: 'Seasons',
+    sidebar_all: 'All',
+    sidebar_allrounds: 'All rounds',
+    sidebar_round_label: 'Round',
+    sidebar_winners_label: 'Winners',
+    sidebar_more_label: 'More',
+    sidebar_membership: 'Membership',
+    sidebar_about: 'About',
+    sidebar_how: 'How It Works',
+    sidebar_qa: 'Q&A',
+    sidebar_subs_label: 'Subscriptions',
+    detail_roundlabel_main: 'Main Round',
+    detail_roundlabel_prelim: 'Preliminary',
+    detail_staffpick: 'Staff Pick',
+    detail_winner: '🏆 Winner',
+    detail_rank1: '🥇 1st Place',
+    detail_rank2: '🥈 2nd Place',
+    detail_rank3: '🥉 3rd Place',
+    detail_winner_generic: '🏆 Winner',
+    detail_views: (n) => `${n.toLocaleString()} views`,
+    detail_comments_count: (n) => `${n.toLocaleString()} comments`,
+    detail_madewith: (ai) => `Made with ${ai}`,
+    detail_related_title: 'More from this season',
+    detail_related_empty: 'Nothing else here yet.',
+    detail_related_views_likes: (views, likes) => `${views.toLocaleString()} views · ${likes.toLocaleString()} likes`,
+    detail_main_round_pending: '🏆 Finalist entry · Main round video coming soon.',
+    comments_count: (n) => `${n} comments`,
+    comments_guidelines: 'Community Guidelines',
+    comment_placeholder: 'Add a comment…',
+    comment_submit: 'Comment',
+    comment_signin_prompt: 'Sign in to comment…',
+    comments_empty: 'No comments yet. Be the first.',
+    comment_edited: '(edited)',
+    comment_save: 'Save',
+    comment_cancel: 'Cancel',
+    comment_edit: 'Edit',
+    comment_delete: 'Delete',
+    comment_delete_confirm: 'Delete this comment?',
+    comment_report: 'Report',
+    comment_reported: 'Reported',
+    follow_following: (creatorName) => `Following ${creatorName}`,
+    follow_follow: (creatorName) => `Follow ${creatorName}`,
+    follow_btn_following: 'Following',
+    follow_btn_follow: 'Follow',
+    save_saved: 'Saved',
+    save_save: 'Save',
+    report_reported: 'Reported',
+    report_report: 'Report',
+    share_copied: 'Copied',
+    share_share: 'Share',
+    staffpick_on: 'Staff Pick',
+    staffpick_off: 'Mark Staff Pick',
+    vote_error_limit: (n) => `You've used all ${n} votes. Un-vote another to switch.`,
+    vote_error_closed: 'Voting is closed.',
+    vote_notopen: 'Community voting is not open.',
+    vote_title: 'Community vote',
+    vote_count: (n) => `${n.toLocaleString()} votes`,
+    vote_remaining: (remaining, cap) => `${remaining} of ${cap} left`,
+    vote_closed_suffix: 'voting closed',
+    vote_btn_voted: '✓ Voted',
+    vote_btn_vote: 'Vote',
+    vote_btn_closed: 'Closed',
+    vote_cap_used: (n) => `All ${n} votes used — un-vote one to switch.`,
+    score_title: 'Triple-AI score',
+    score_intent: 'Intent / clarity',
+    score_execution: 'Execution',
+    score_originality: 'Originality',
+    score_integrity_verified: 'Integrity Verified',
+  },
 }
 
 const MESSAGES_KO: Messages = {
@@ -2217,6 +2548,162 @@ const MESSAGES_KO: Messages = {
     footer_privacy: '개인정보처리방침',
     footer_rules: '대회 규정',
     loading: '불러오는 중…',
+  },
+  watch: {
+    banner_tagline1: 'OXXOVO는 AI 크리에이터를 위한 글로벌 아레나입니다.',
+    banner_tagline2: '같은 조건에서 만들고, 실력으로 경쟁합니다.',
+    banner_learnmore: '랜딩 페이지에서 자세히 보기 ↗',
+    hero_current: (seasonNumber) => `진행 중인 대회 — 시즌 ${seasonNumber}`,
+    hero_ctx_results: '우승자가 발표됐습니다. 이번 시즌 상위 입상작을 확인해 보세요.',
+    hero_ctx_voting: '관객 투표가 열렸습니다. 본선 작품을 보고 마음에 드는 크리에이터에게 투표하세요.',
+    hero_ctx_judged: (dateStr) => `심사가 끝났습니다. 본선 진출자는 ${dateStr ? `${dateStr}에` : '곧'} 공개됩니다.`,
+    hero_ctx_default: (roundName) =>
+      `${roundName} 진행 중입니다. 영상은 제출된 순서대로 표시됩니다. 무료로 가입하시면 본선에서 투표하고 좋아하는 크리에이터를 응원하실 수 있습니다.`,
+    hero_cta_results: '우승작 보기 →',
+    hero_cta_default: '무료 가입하고 투표 →',
+    finalists_kicker: '본선',
+    finalists_title: '🏆 본선 진출자',
+    finalist_badge: '본선 진출',
+    featured_kicker: '주목',
+    featured_title: '주목할 참가자',
+    leaderboard_kicker: '순위',
+    leaderboard_title: '리더보드',
+    roundbadge_main: '본선',
+    roundbadge_prelim: '예선',
+    badge_verified: '✓ 검증됨',
+    center_mainround: '본선',
+    empty_entries: '아직 출품작이 없습니다. 참가자가 제출하면 여기에 표시됩니다.',
+    votecount: (n) => `${n}표`,
+    finalist_pending_note: '본선 영상 준비 중',
+    results_kicker: '결과',
+    finalist_prelim_kicker: '본선 진출자',
+    main_round_results_title: '🏆 본선 결과',
+    main_round_live_title: '🏆 본선 · 지금 시합 중',
+    finalist_prelim_title: '본선 진출작 · 예선 라운드 작품',
+    finalist_prelim_tag: '본선 진출작',
+    card_judging: '⚡ AI 심사 중',
+    card_voting: '🔥 투표중',
+    card_awaiting_judgment: '심사 대기',
+    featured_stats: (viewsStr, votesStr) => `조회 ${viewsStr} · 투표 ${votesStr}`,
+    score_suffix: (score) => `Triple-AI ${score}점`,
+    live_judging: (complete) => `Triple-AI ${complete ? '심사 완료' : '심사 중'}`,
+    live_close_label: (isMain) => `${isMain ? '본선' : '예선'} 마감까지`,
+    live_reveal_label: '본선 진출작 공개까지',
+    live_vote_label: '투표 마감까지',
+    live_theme_main: '본선 주제',
+    live_theme_next: '다음 라운드 주제',
+    live_countries_suffix: '개국 참가',
+    champions_note: (seasonName, dateStr) =>
+      dateStr ? `${seasonName ?? '시즌'} 우승자, ${dateStr} 발표` : '우승자는 심사가 끝난 뒤 발표됩니다.',
+    search_placeholder: '영상·크리에이터 검색',
+    signin: '로그인',
+    badge_watch: 'WATCH',
+    badge_subtitle: 'AI 크리에이터 리그',
+    nav_home: '홈',
+    nav_home_sub: '랜딩 페이지로 이동',
+    nav_tournament: '대회 안내',
+    nav_tournament_sub: '규정 · 일정 · 상금',
+    nav_how: '참가 방법',
+    nav_how_sub: '진행 과정 안내',
+    nav_membership: '멤버십',
+    nav_membership_sub: '가입 및 혜택',
+    nav_faq: '자주 묻는 질문',
+    nav_faq_sub: '궁금한 점 모아보기',
+    nav_about: '소개',
+    nav_about_sub: 'OXXOVO 소개',
+    library_label: '보관함',
+    lib_myvideos: '내 영상',
+    lib_mylikes: '좋아요한 영상',
+    lib_watchlater: '나중에 볼 영상',
+    lib_history: '시청 기록',
+    footer_tip_title: '모든 정보를 한곳에서',
+    footer_tip_body: '지금 WATCH에 계십니다. 메뉴를 누르면 새 탭에서 열립니다.',
+    filter_current: '진행 중인 대회',
+    filter_all_competitions: '전체 대회',
+    filter_newest: '최신순',
+    filter_champions: '🏆 역대 우승자',
+    filter_all_champions: '전체 우승자',
+    filter_viewall: '전체 보기 →',
+    host_suffix: (seasonName) => `${seasonName} · 주최`,
+    sort_trending: '인기순',
+    sort_latest: '최신순',
+    sort_award: '수상작',
+    round_prelim: '예선',
+    round_main: '본선',
+    winner_1st: '🥇 1위',
+    winner_2nd: '🥈 2위',
+    winner_3rd: '🥉 3위',
+    sidebar_home: '홈',
+    sidebar_tournament: '대회',
+    sidebar_sort_label: '정렬',
+    sidebar_seasons_label: '시즌',
+    sidebar_all: '전체',
+    sidebar_allrounds: '전체 라운드',
+    sidebar_round_label: '라운드',
+    sidebar_winners_label: '수상',
+    sidebar_more_label: '더보기',
+    sidebar_membership: '멤버십',
+    sidebar_about: '소개',
+    sidebar_how: '참가 방법',
+    sidebar_qa: '질문과 답변',
+    sidebar_subs_label: '구독',
+    detail_roundlabel_main: '본선',
+    detail_roundlabel_prelim: '예선',
+    detail_staffpick: '운영진 추천',
+    detail_winner: '🏆 수상작',
+    detail_rank1: '🥇 1위',
+    detail_rank2: '🥈 2위',
+    detail_rank3: '🥉 3위',
+    detail_winner_generic: '🏆 수상작',
+    detail_views: (n) => `조회 ${n.toLocaleString()}회`,
+    detail_comments_count: (n) => `댓글 ${n.toLocaleString()}개`,
+    detail_madewith: (ai) => `${ai}로 제작`,
+    detail_related_title: '이 시즌의 다른 작품',
+    detail_related_empty: '아직 다른 작품이 없습니다.',
+    detail_related_views_likes: (views, likes) => `조회 ${views.toLocaleString()}회 · 좋아요 ${likes.toLocaleString()}개`,
+    detail_main_round_pending: '🏆 본선 진출작입니다 · 본선 영상은 준비 중입니다.',
+    comments_count: (n) => `댓글 ${n}개`,
+    comments_guidelines: '커뮤니티 가이드',
+    comment_placeholder: '댓글을 남겨보세요…',
+    comment_submit: '등록',
+    comment_signin_prompt: '로그인하고 댓글 남기기',
+    comments_empty: '아직 댓글이 없습니다. 첫 댓글을 남겨보세요.',
+    comment_edited: '(수정됨)',
+    comment_save: '저장',
+    comment_cancel: '취소',
+    comment_edit: '수정',
+    comment_delete: '삭제',
+    comment_delete_confirm: '이 댓글을 삭제할까요?',
+    comment_report: '신고',
+    comment_reported: '신고됨',
+    follow_following: (creatorName) => `${creatorName} 팔로우 중`,
+    follow_follow: (creatorName) => `${creatorName} 팔로우`,
+    follow_btn_following: '팔로우 중',
+    follow_btn_follow: '팔로우',
+    save_saved: '저장됨',
+    save_save: '저장',
+    report_reported: '신고됨',
+    report_report: '신고',
+    share_copied: '복사됨',
+    share_share: '공유',
+    staffpick_on: '운영진 추천',
+    staffpick_off: '운영진 추천으로 지정',
+    vote_error_limit: (n) => `${n}표를 모두 사용하셨습니다. 다른 작품의 투표를 취소하면 바꾸실 수 있습니다.`,
+    vote_error_closed: '투표가 마감됐습니다.',
+    vote_notopen: '관객 투표가 아직 열리지 않았습니다.',
+    vote_title: '관객 투표',
+    vote_count: (n) => `${n.toLocaleString()}표`,
+    vote_remaining: (remaining, cap) => `${remaining}/${cap}표 남음`,
+    vote_closed_suffix: '투표 마감',
+    vote_btn_voted: '✓ 투표함',
+    vote_btn_vote: '투표',
+    vote_btn_closed: '마감',
+    vote_cap_used: (n) => `${n}표를 모두 쓰셨습니다 — 하나를 취소하면 바꿀 수 있습니다.`,
+    score_title: 'Triple-AI 점수',
+    score_intent: '기획 명확성',
+    score_execution: '완성도',
+    score_originality: '독창성',
+    score_integrity_verified: '무결성 검증됨',
   },
 }
 

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { reportWatchVideo } from './actions'
+import { useT } from '@/lib/admin-i18n'
 
 // Save / Report on the detail action row. Save is still a UI placeholder (no
 // watch_saves table yet, like the top-bar search/notifications). Report is wired
@@ -14,6 +15,7 @@ const base =
   'inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white/75 transition hover:border-white/40 disabled:opacity-50'
 
 export function SaveButton({ isLoggedIn }: { isLoggedIn: boolean }) {
+  const t = useT()
   const [saved, setSaved] = useState(false)
   return (
     <button
@@ -23,7 +25,7 @@ export function SaveButton({ isLoggedIn }: { isLoggedIn: boolean }) {
       className={base}
     >
       <span aria-hidden>{saved ? '✓' : '⊕'}</span>
-      {saved ? 'Saved' : 'Save'}
+      {saved ? t.watch.save_saved : t.watch.save_save}
     </button>
   )
 }
@@ -37,6 +39,7 @@ export function VideoReportButton({
   round: string
   isLoggedIn: boolean
 }) {
+  const t = useT()
   const [reported, setReported] = useState(false)
   const [pending, start] = useTransition()
   return (
@@ -54,7 +57,7 @@ export function VideoReportButton({
       className={base}
     >
       <span aria-hidden>⚑</span>
-      {reported ? 'Reported' : 'Report'}
+      {reported ? t.watch.report_reported : t.watch.report_report}
     </button>
   )
 }

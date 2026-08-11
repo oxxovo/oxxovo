@@ -22,6 +22,7 @@
 
 import { useEffect, useState } from 'react'
 import { CountdownTimer } from '@/app/_components/CountdownTimer'
+import { useT } from '@/lib/admin-i18n'
 
 type Stats = { entries: number; creators: number; countries: number }
 type Judging = { scored: number; total: number }
@@ -67,6 +68,7 @@ export function LiveStatusBar({
   voteOpen?: boolean
   voteEndISO?: string | null
 }) {
+  const t = useT()
   const [stats, setStats] = useState<Stats>(initialStats)
   const [judging, setJudging] = useState<Judging>(initialJudging)
 
@@ -114,7 +116,7 @@ export function LiveStatusBar({
   // Shimmer runs only while judging is genuinely in progress; it stops at 완료.
   const judgingComplete = judging.total > 0 && judging.scored >= judging.total
   const isMain = roundName.toLowerCase().includes('main')
-  const closeLabel = isMain ? '본선 마감까지' : '예선 마감까지'
+  const closeLabel = t.watch.live_close_label(isMain)
 
   return (
     <div className="flex h-full flex-col gap-[18px] rounded-xl border border-[#3a2560]/70 bg-[#150c24] p-5">
@@ -138,7 +140,7 @@ export function LiveStatusBar({
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-[14px] text-[#e7e0f5]">
                 <span aria-hidden className="text-[#8b22ff]">⚡</span>
-                Triple-AI {judgingComplete ? '심사 완료' : '심사 중'}
+                {t.watch.live_judging(judgingComplete)}
               </span>
               <span className="text-[15px] font-semibold text-white">
                 {judging.scored} / {judging.total}
@@ -165,7 +167,7 @@ export function LiveStatusBar({
           <div className="flex items-center gap-2">
             <span aria-hidden className="text-[#9b8bc4]">{showReveal ? '🏆' : '🕐'}</span>
             <span className="text-[12px] text-[#9b8bc4]">
-              {showReveal ? '본선 진출작 공개까지' : closeLabel}
+              {showReveal ? t.watch.live_reveal_label : closeLabel}
             </span>
             <CountdownTimer
               targetAt={showReveal ? revealAt! : closeAt!}
@@ -182,7 +184,7 @@ export function LiveStatusBar({
           <div className="h-px bg-[#33235a]" />
           <div className="flex items-center gap-2">
             <span aria-hidden className="text-[#e24b4a]">🔥</span>
-            <span className="text-[12px] text-[#9b8bc4]">투표 마감까지</span>
+            <span className="text-[12px] text-[#9b8bc4]">{t.watch.live_vote_label}</span>
             <CountdownTimer
               targetAt={voteEnd!}
               className="ml-auto text-[15px] font-semibold tabular-nums text-white"
@@ -200,7 +202,7 @@ export function LiveStatusBar({
           <div className="flex items-center gap-1.5">
             <span aria-hidden>🎬</span>
             <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#c9b4f5]">
-              {isMain ? 'Main Round Theme' : '다음 라운드 주제'}
+              {isMain ? t.watch.live_theme_main : t.watch.live_theme_next}
             </span>
           </div>
           <p className="mt-1 text-[15px] font-bold leading-snug text-white">{theme}</p>
@@ -211,7 +213,7 @@ export function LiveStatusBar({
       <div className="flex items-center gap-2">
         <span aria-hidden className="text-[#9b8bc4]">🌍</span>
         <span className="text-[15px] font-semibold text-white">{stats.countries}</span>
-        <span className="text-[12px] text-[#9b8bc4]">개국 참가</span>
+        <span className="text-[12px] text-[#9b8bc4]">{t.watch.live_countries_suffix}</span>
       </div>
     </div>
   )

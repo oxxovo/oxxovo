@@ -1,14 +1,22 @@
-// Arena preview surface (server components). Dark-purple "arena spectator"
-// redesign of Watch. Lives ONLY at /watch-arena -- the live /watch is untouched.
+// Arena grid surface, rendered at the live /watch (via ArenaWatch.tsx). Dark-
+// purple "arena spectator" redesign of Watch.
 //
 // Score policy: verified Triple-AI scores are PUBLIC on both prelim and main
 // cards (TK 2026-07-10 -- transparency; reversed the old prelim-owner-only rule).
 // Featured/Leaderboard remain main-round standings and auto-hide when there are
 // no scored main-round videos.
+//
+// ★'use client' (2026-08-11): purely presentational (props in, JSX out, no
+// server-only imports), so wiring useT() here just means declaring the
+// boundary explicitly -- the actual data-fetching stays in the server page
+// that renders this. See lib/admin-i18n.ts's `watch` namespace for the DICT.
+
+'use client'
 
 import Link from 'next/link'
 import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress, Finalist, BannerContent } from '@/lib/watch'
 import { LiveStatusBar } from './LiveStatusBar'
+import { useT, useAdminLang, type Messages } from '@/lib/admin-i18n'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
 const ACCENT = '#8b22ff'
@@ -31,7 +39,11 @@ function fmtCount(n: number): string {
 // same size and color, only the icon/title/subtitle change per stage. Each
 // stage tells the audience what to do right now. (TK 2026-07-12)
 export function ArenaBanner({ content }: { content: BannerContent }) {
+  const t = useT()
   if (content.stage !== 'accepting') {
+    // ★content.title/subtitle come from getBannerStage() (lib/watch.ts) as
+    // literal English -- out of this pass's scope, same as the landing hero's
+    // stageNote (제니3 소관, reports/lane_c_i18n_translation_list_2026-08-10.md).
     return (
       <div className="pt-4 pb-5">
         <div className="flex items-center gap-4">
@@ -52,17 +64,17 @@ export function ArenaBanner({ content }: { content: BannerContent }) {
         </span>
         <div className="min-w-0 flex-1 leading-tight">
           <p className="truncate text-[12px] font-bold text-[#a855ff] sm:text-[13px]">
-            OXXOVO is the global arena for AI creators.
+            {t.watch.banner_tagline1}
           </p>
           <p className="truncate text-[11px] text-white/55 sm:text-[12px]">
-            Built under the same conditions. Judged on skill alone.
+            {t.watch.banner_tagline2}
           </p>
         </div>
         <Link
           href="/"
           className="shrink-0 text-[11px] font-bold text-white/70 transition hover:text-white sm:text-[12px]"
         >
-          Learn More on Landing Page ↗
+          {t.watch.banner_learnmore}
         </Link>
       </div>
     </div>
@@ -105,6 +117,8 @@ export function ArenaHero({
   voteOpen?: boolean
   voteEndISO?: string | null
 }) {
+  const t = useT()
+  const lang = useAdminLang()
   const panel = (
     <LiveStatusBar
       seasonNumber={seasonNumber}
@@ -146,28 +160,29 @@ export function ArenaHero({
       {/* One context line + the free voting CTA, beneath the image. */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-4">
         <div className="min-w-0">
-          <p className="text-[14px] font-semibold text-[#e7e0f5]">Current Competition — Season {seasonNumber}</p>
+          <p className="text-[14px] font-semibold text-[#e7e0f5]">{t.watch.hero_current(seasonNumber)}</p>
           <p className="mt-0.5 text-[12px] leading-relaxed text-[#9b8bc4]">
             {/* Stage-gated so the context line + CTA don't stay stuck on the
                 "vote in the Main Round" pitch after the lifecycle moves on. Same
-                A안 stopgap as the card/heading -- reuses the banner stage. */}
+                A안 stopgap as the card/heading -- reuses the banner stage.
+                ★roundName (a prop, sourced upstream) stays whatever the caller
+                passed -- often English ("Judging Complete") even under the KO
+                toggle; out of this pass's scope, flagged the same way as the
+                landing hero's stageNote. */}
             {stage === 'results' ? (
-              <>The winners have been announced. See who took the top spots this season.</>
+              <>{t.watch.hero_ctx_results}</>
             ) : stage === 'voting' ? (
-              <>Community voting is open. Watch the main-round films and vote for your favorite creator.</>
+              <>{t.watch.hero_ctx_voting}</>
             ) : roundName === 'Judging Complete' ? (
               <>
-                Judging is complete. Finalists will be revealed
-                {revealAtISO
-                  ? ` on ${new Date(revealAtISO).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
-                  : ' soon'}
-                .
+                {t.watch.hero_ctx_judged(
+                  revealAtISO
+                    ? new Date(revealAtISO).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric' })
+                    : null,
+                )}
               </>
             ) : (
-              <>
-                {roundName} is in progress. Videos are shown in the order they were entered. Join OXXOVO
-                for free to vote in the Main Round and support your favorite creators.
-              </>
+              <>{t.watch.hero_ctx_default(roundName)}</>
             )}
           </p>
         </div>
@@ -175,7 +190,7 @@ export function ArenaHero({
           href="/signup"
           className="shrink-0 rounded-lg bg-[#8b22ff] px-4 py-2 text-[13px] font-bold text-white transition hover:bg-[#7a1ee0]"
         >
-          {stage === 'results' ? 'See who won →' : 'Join free to vote →'}
+          {stage === 'results' ? t.watch.hero_cta_results : t.watch.hero_cta_default}
         </Link>
       </div>
     </section>
@@ -187,10 +202,11 @@ export function ArenaHero({
 // the entry grid. When a finalist hasn't submitted the main-round film yet, the
 // card overlays "본선 영상 준비 중" over the prelim thumbnail. (TK 2026-07-12)
 export function FinalistSection({ finalists }: { finalists: Finalist[] }) {
+  const t = useT()
   if (finalists.length === 0) return null
   return (
     <section className="mb-10">
-      <Heading kicker="Main Round" title="🏆 Finalists" />
+      <Heading kicker={t.watch.finalists_kicker} title={t.watch.finalists_title} />
       <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
         {finalists.map((f) => (
           <Link
@@ -214,11 +230,11 @@ export function FinalistSection({ finalists }: { finalists: Finalist[] }) {
                 </div>
               )}
               <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-[#8b22ff]/90 px-2 py-1 text-[11px] font-black text-white backdrop-blur">
-                🏆 {f.awardRank ? `#${f.awardRank}` : 'Finalist'}
+                🏆 {f.awardRank ? `#${f.awardRank}` : t.watch.finalist_badge}
               </span>
               {!f.mainVideoUrl && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/55">
-                  <span className="text-xs font-bold text-white/90">본선 영상 준비 중</span>
+                  <span className="text-xs font-bold text-white/90">{t.watch.finalist_pending_note}</span>
                 </div>
               )}
             </div>
@@ -226,7 +242,7 @@ export function FinalistSection({ finalists }: { finalists: Finalist[] }) {
               <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{f.videoTitle || f.creatorName}</h3>
               <p className="mt-1 truncate text-xs text-[#7a7299]">
                 by {f.creatorName}
-                {f.verifiedScore != null ? ` · Triple-AI ${Number(f.verifiedScore).toFixed(2)}점` : ''}
+                {f.verifiedScore != null ? ` · ${t.watch.score_suffix(Number(f.verifiedScore).toFixed(2))}` : ''}
               </p>
             </div>
           </Link>
@@ -252,6 +268,7 @@ function WatchCard({
   voteOpen: boolean
   tag?: string
 }) {
+  const t = useT()
   return (
     <Link
       href={`/watch/${v.applicationId}?round=${v.round}`}
@@ -272,7 +289,7 @@ function WatchCard({
       <div className="p-3.5">
         <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</h3>
         <p className="mt-1 truncate text-xs text-[#7a7299]">
-          by {v.creatorName} · {cardStatusText(v, voteOpen, showJudging, seasonNames)}
+          by {v.creatorName} · {cardStatusText(v, voteOpen, showJudging, seasonNames, t)}
         </p>
       </div>
     </Link>
@@ -297,13 +314,14 @@ export function MainRoundSection({
   // "winners announced" banner. (A안 stopgap, same gate as the hero card.)
   stage?: string
 }) {
+  const t = useT()
   if (videos.length === 0) return null
   const isResults = stage === 'results'
   return (
     <section className="mb-10">
       <Heading
-        kicker={isResults ? 'Results' : 'Main Round'}
-        title={isResults ? '🏆 본선 결과' : '🏆 본선 · 지금 시합 중'}
+        kicker={isResults ? t.watch.results_kicker : t.watch.finalists_kicker}
+        title={isResults ? t.watch.main_round_results_title : t.watch.main_round_live_title}
       />
       <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
         {videos.map((v) => (
@@ -325,10 +343,11 @@ export function FinalistPrelimSection({
   videos: WatchVideo[]
   seasonNames: Record<string, string>
 }) {
+  const t = useT()
   if (videos.length === 0) return null
   return (
     <section className="mb-10">
-      <Heading kicker="Finalists" title="본선 진출작 · 예선 라운드 작품" />
+      <Heading kicker={t.watch.finalist_prelim_kicker} title={t.watch.finalist_prelim_title} />
       <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
         {videos.map((v) => (
           <WatchCard
@@ -337,7 +356,7 @@ export function FinalistPrelimSection({
             seasonNames={seasonNames}
             showJudging={false}
             voteOpen={false}
-            tag="본선 진출작"
+            tag={t.watch.finalist_prelim_tag}
           />
         ))}
       </div>
@@ -367,9 +386,10 @@ function Thumb({ v }: { v: WatchVideo }) {
 }
 
 function RoundBadge({ round }: { round: WatchVideo['round'] }) {
+  const t = useT()
   return (
     <span className="absolute left-2 top-2 inline-flex items-center rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/85 backdrop-blur">
-      {round === 'main' ? 'Main Round' : 'Preliminary'}
+      {round === 'main' ? t.watch.roundbadge_main : t.watch.roundbadge_prelim}
     </span>
   )
 }
@@ -386,10 +406,11 @@ function ScoreBadge({ score }: { score: PublicScore }) {
 
 // ── Featured Competitors (main-round, large cards, score shown) ─────────────
 export function FeaturedCompetitors({ items, seasonNames }: { items: ScoredMain[]; seasonNames: Record<string, string> }) {
+  const t = useT()
   if (items.length === 0) return null
   return (
     <section className="mb-12">
-      <Heading kicker="Spotlight" title="Featured Competitors" />
+      <Heading kicker={t.watch.featured_kicker} title={t.watch.featured_title} />
       <div className="flex gap-5 overflow-x-auto pb-2">
         {items.map(({ video: v, score }) => (
           <Link
@@ -410,7 +431,7 @@ export function FeaturedCompetitors({ items, seasonNames }: { items: ScoredMain[
                 {v.creatorName} · {seasonNames[v.seasonId] ?? ''}
               </p>
               <p className="mt-1 text-[11px] text-[#7a7299]">
-                {fmtCount(v.viewCount)} views · {fmtCount(v.likeCount)} votes
+                {t.watch.featured_stats(fmtCount(v.viewCount), fmtCount(v.likeCount))}
               </p>
             </div>
           </Link>
@@ -422,11 +443,12 @@ export function FeaturedCompetitors({ items, seasonNames }: { items: ScoredMain[
 
 // ── Leaderboard (#1/#2/#3 by Triple-AI score; main-round only) ──────────────
 export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seasonNames: Record<string, string> }) {
+  const t = useT()
   if (items.length === 0) return null
   const medals = ['🥇', '🥈', '🥉']
   return (
     <section className="mb-12">
-      <Heading kicker="Standings" title="Leaderboard" />
+      <Heading kicker={t.watch.leaderboard_kicker} title={t.watch.leaderboard_title} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {items.slice(0, 3).map(({ video: v, score }, i) => (
           <Link
@@ -475,10 +497,11 @@ export function LatestEntries({
   showJudging?: boolean
   voteOpen?: boolean
 }) {
+  const t = useT()
   return (
     <section id="entries" className="scroll-mt-24">
       {videos.length === 0 ? (
-        <p className="py-16 text-center text-sm text-[#7a7299]">No entries yet. They appear here as creators submit.</p>
+        <p className="py-16 text-center text-sm text-[#7a7299]">{t.watch.empty_entries}</p>
       ) : (
         // Mobile 2 columns; tablet 3 (sm implicit from base + md:3); desktop 4
         // per row (8_final).
@@ -503,7 +526,7 @@ export function LatestEntries({
               <div className="p-3.5">
                 <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</h3>
                 <p className="mt-1 truncate text-xs text-[#7a7299]">
-                  by {v.creatorName} · {cardStatusText(v, voteOpen, showJudging, seasonNames)}
+                  by {v.creatorName} · {cardStatusText(v, voteOpen, showJudging, seasonNames, t)}
                 </p>
               </div>
             </Link>
@@ -529,17 +552,18 @@ function CardBadge({
   showJudging: boolean
   voteOpen: boolean
 }) {
+  const t = useT()
   const base =
     'absolute left-2 top-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-black backdrop-blur'
 
   if (v.round === 'main' && voteOpen) {
-    return <span className={`${base} bg-red-500/90 text-white`}>🔥 투표중</span>
+    return <span className={`${base} bg-red-500/90 text-white`}>{t.watch.card_voting}</span>
   }
   if (v.publicScore != null) {
-    return <span className={`${base} bg-emerald-500/90 text-black`}>✓ Verified</span>
+    return <span className={`${base} bg-emerald-500/90 text-black`}>{t.watch.badge_verified}</span>
   }
   if (showJudging && !v.scored) {
-    return <span className={`${base} bg-[#8b22ff]/90 text-white`}>⚡ AI 심사 중</span>
+    return <span className={`${base} bg-[#8b22ff]/90 text-white`}>{t.watch.card_judging}</span>
   }
   return null
 }
@@ -558,12 +582,13 @@ function CardCenter({
   showJudging: boolean
   voteOpen: boolean
 }) {
+  const t = useT()
   const wrap = 'pointer-events-none absolute inset-0 flex items-center justify-center'
   if (v.round === 'main' && voteOpen) {
     return (
       <div className={wrap}>
         <span className="text-lg font-black tracking-wide text-[#f3b6b6] drop-shadow-[0_2px_10px_rgba(0,0,0,.7)]">
-          MAIN ROUND
+          {t.watch.center_mainround}
         </span>
       </div>
     )
@@ -585,12 +610,13 @@ function cardStatusText(
   voteOpen: boolean,
   showJudging: boolean,
   seasonNames: Record<string, string>,
+  t: Messages,
 ): string {
   // Votes are public DURING the window (voteOpen) and stay public AFTER it
   // closes -- a final scoreboard, not hidden (TK 2026-07-12). Any main-round
   // video that has votes shows them, regardless of the window state.
-  if (v.round === 'main' && (voteOpen || v.voteCount > 0)) return `${fmtCount(v.voteCount)} votes`
-  if (v.publicScore != null) return `Triple-AI ${Number(v.publicScore).toFixed(2)}점`
-  if (showJudging && !v.scored) return '심사 대기'
+  if (v.round === 'main' && (voteOpen || v.voteCount > 0)) return t.watch.votecount(fmtCount(v.voteCount))
+  if (v.publicScore != null) return t.watch.score_suffix(Number(v.publicScore).toFixed(2))
+  if (showJudging && !v.scored) return t.watch.card_awaiting_judgment
   return seasonNames[v.seasonId] ?? ''
 }

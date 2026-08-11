@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import type { WatchSort, WatchRound } from '@/lib/watch'
 import { WatchTopBar } from './WatchTopBar'
+import { useT, type Messages } from '@/lib/admin-i18n'
 
 // Shell for the Watch surface: fixed top bar + left sidebar (desktop fixed /
 // mobile drawer, opened from the top-bar hamburger) + main grid (children).
@@ -19,20 +20,20 @@ export type SidebarSubscription = {
   name: string
 }
 
-const SORTS: { key: WatchSort; label: string }[] = [
-  { key: 'trending', label: 'Trending' },
-  { key: 'latest', label: 'Latest' },
-  { key: 'award', label: 'Award Winners' },
+const SORTS: { key: WatchSort; labelKey: keyof Pick<Messages['watch'], 'sort_trending' | 'sort_latest' | 'sort_award'> }[] = [
+  { key: 'trending', labelKey: 'sort_trending' },
+  { key: 'latest', labelKey: 'sort_latest' },
+  { key: 'award', labelKey: 'sort_award' },
 ]
 
-const ROUNDS: { key: WatchRound; label: string }[] = [
-  { key: 'application', label: 'Preliminary' },
-  { key: 'main', label: 'Main Round' },
+const ROUNDS: { key: WatchRound; labelKey: keyof Pick<Messages['watch'], 'round_prelim' | 'round_main'> }[] = [
+  { key: 'application', labelKey: 'round_prelim' },
+  { key: 'main', labelKey: 'round_main' },
 ]
-const WINNERS: { rank: number; label: string }[] = [
-  { rank: 1, label: '🥇 1st Place' },
-  { rank: 2, label: '🥈 2nd Place' },
-  { rank: 3, label: '🥉 3rd Place' },
+const WINNERS: { rank: number; labelKey: keyof Pick<Messages['watch'], 'winner_1st' | 'winner_2nd' | 'winner_3rd'> }[] = [
+  { rank: 1, labelKey: 'winner_1st' },
+  { rank: 2, labelKey: 'winner_2nd' },
+  { rank: 3, labelKey: 'winner_3rd' },
 ]
 
 export function WatchShell({
@@ -64,6 +65,7 @@ export function WatchShell({
   basePath?: string
   children: React.ReactNode
 }) {
+  const t = useT()
   // Build a filter URL on basePath, preserving the other active filters.
   const buildHref = (
     sortKey: WatchSort,
@@ -93,18 +95,18 @@ export function WatchShell({
 
   const nav = (
     <nav className="flex flex-col gap-1">
-      <NavLink href="/watch" label="Home" icon="🎬" />
-      <NavLink href="/welcome" label="Tournament" icon="🏆" />
+      <NavLink href="/watch" label={t.watch.sidebar_home} icon="🎬" />
+      <NavLink href="/welcome" label={t.watch.sidebar_tournament} icon="🏆" />
 
-      <Divider label="Sort" />
+      <Divider label={t.watch.sidebar_sort_label} />
       {sorts.map((s) => (
-        <RailLink key={s.key} href={buildHref(s.key, keep)} label={s.label} active={s.key === sort} />
+        <RailLink key={s.key} href={buildHref(s.key, keep)} label={t.watch[s.labelKey]} active={s.key === sort} />
       ))}
 
-      <Divider label="Seasons" />
+      <Divider label={t.watch.sidebar_seasons_label} />
       <RailLink
         href={buildHref(sort, { round: activeRound, awardRank: activeAwardRank })}
-        label="All"
+        label={t.watch.sidebar_all}
         active={!activeSeason}
       />
       {seasons.map((g) => (
@@ -119,17 +121,17 @@ export function WatchShell({
 
       {showRound && (
         <>
-          <Divider label="Round" />
+          <Divider label={t.watch.sidebar_round_label} />
           <RailLink
             href={buildHref(sort, { season: activeSeason, awardRank: activeAwardRank })}
-            label="All rounds"
+            label={t.watch.sidebar_allrounds}
             active={!activeRound}
           />
           {ROUNDS.map((r) => (
             <RailLink
               key={r.key}
               href={buildHref(sort, { season: activeSeason, round: r.key, awardRank: activeAwardRank })}
-              label={r.label}
+              label={t.watch[r.labelKey]}
               active={activeRound === r.key}
             />
           ))}
@@ -138,32 +140,32 @@ export function WatchShell({
 
       {showWinners && (
         <>
-          <Divider label="Winners" />
+          <Divider label={t.watch.sidebar_winners_label} />
           <RailLink
             href={buildHref(sort, { season: activeSeason, round: activeRound })}
-            label="All"
+            label={t.watch.sidebar_all}
             active={!activeAwardRank}
           />
           {WINNERS.map((w) => (
             <RailLink
               key={w.rank}
               href={buildHref(sort, { season: activeSeason, round: activeRound, awardRank: w.rank })}
-              label={w.label}
+              label={t.watch[w.labelKey]}
               active={activeAwardRank === w.rank}
             />
           ))}
         </>
       )}
 
-      <Divider label="More" />
-      <NavLink href="/membership" label="Membership" icon="💎" />
-      <NavLink href="/welcome#about" label="About" icon="ℹ️" />
-      <NavLink href="/welcome#how" label="How It Works" icon="📖" />
-      <NavLink href="/welcome#faq" label="Q&A" icon="❓" />
+      <Divider label={t.watch.sidebar_more_label} />
+      <NavLink href="/membership" label={t.watch.sidebar_membership} icon="💎" />
+      <NavLink href="/welcome#about" label={t.watch.sidebar_about} icon="ℹ️" />
+      <NavLink href="/welcome#how" label={t.watch.sidebar_how} icon="📖" />
+      <NavLink href="/welcome#faq" label={t.watch.sidebar_qa} icon="❓" />
 
       {subscriptions.length > 0 && (
         <>
-          <Divider label="Subscriptions" />
+          <Divider label={t.watch.sidebar_subs_label} />
           {subscriptions.map((s) => (
             <RailLink
               key={s.creatorUserId}

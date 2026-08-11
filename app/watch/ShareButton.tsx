@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { useT } from '@/lib/admin-i18n'
 
 // Native share sheet when available (mobile), else copy the link to clipboard.
 export function ShareButton() {
+  const t = useT()
   const [copied, setCopied] = useState(false)
 
   async function share() {
@@ -32,7 +34,7 @@ export function ShareButton() {
       className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white/75 transition hover:border-white/40"
     >
       <span aria-hidden>↗</span>
-      {copied ? 'Copied' : 'Share'}
+      {copied ? t.watch.share_copied : t.watch.share_share}
     </button>
   )
 }

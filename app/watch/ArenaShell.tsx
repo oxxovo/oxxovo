@@ -3,30 +3,31 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ArenaTopBar } from './ArenaTopBar'
+import { useT } from '@/lib/admin-i18n'
 
 // Watch chrome (top bar + left sidebar + main), arena design. The
 // sort/season/champion filters live in the filter bar above the grid, so the
 // sidebar is a static nav: a WATCH badge, icon+title+subtitle platform links, a
 // (pre-launch, disabled) Library, and a helper footer. Uses ArenaTopBar.
 
-type Item = { href: string; icon: string; title: string; subtitle: string }
+type Item = { href: string; icon: string; titleKey: 'nav_home' | 'nav_tournament' | 'nav_how' | 'nav_membership' | 'nav_faq' | 'nav_about'; subKey: 'nav_home_sub' | 'nav_tournament_sub' | 'nav_how_sub' | 'nav_membership_sub' | 'nav_faq_sub' | 'nav_about_sub' }
 
 // Menu items open in a new tab (the footer tells the user so) -- keeps WATCH open.
 const NAV: Item[] = [
-  { href: '/', icon: '🏠', title: 'Home', subtitle: 'Go to Landing Page' },
-  { href: '/welcome', icon: '🏆', title: 'Tournament Info', subtitle: 'Rules, Schedule, Prizes' },
-  { href: '/welcome#how', icon: '📖', title: 'How It Works', subtitle: 'Learn the process' },
-  { href: '/membership', icon: '💎', title: 'Membership', subtitle: 'Join & Benefits' },
-  { href: '/welcome#faq', icon: '❓', title: 'FAQ', subtitle: 'Frequently Asked Questions' },
-  { href: '/welcome#about', icon: 'ℹ️', title: 'About', subtitle: 'About OXXOVO' },
+  { href: '/', icon: '🏠', titleKey: 'nav_home', subKey: 'nav_home_sub' },
+  { href: '/welcome', icon: '🏆', titleKey: 'nav_tournament', subKey: 'nav_tournament_sub' },
+  { href: '/welcome#how', icon: '📖', titleKey: 'nav_how', subKey: 'nav_how_sub' },
+  { href: '/membership', icon: '💎', titleKey: 'nav_membership', subKey: 'nav_membership_sub' },
+  { href: '/welcome#faq', icon: '❓', titleKey: 'nav_faq', subKey: 'nav_faq_sub' },
+  { href: '/welcome#about', icon: 'ℹ️', titleKey: 'nav_about', subKey: 'nav_about_sub' },
 ]
 
 // Personal library -- disabled placeholders until launch (no data yet).
-const LIBRARY: { icon: string; label: string }[] = [
-  { icon: '🎬', label: 'My Videos' },
-  { icon: '❤️', label: 'My Likes' },
-  { icon: '🕒', label: 'Watch Later' },
-  { icon: '📜', label: 'History' },
+const LIBRARY: { icon: string; labelKey: 'lib_myvideos' | 'lib_mylikes' | 'lib_watchlater' | 'lib_history' }[] = [
+  { icon: '🎬', labelKey: 'lib_myvideos' },
+  { icon: '❤️', labelKey: 'lib_mylikes' },
+  { icon: '🕒', labelKey: 'lib_watchlater' },
+  { icon: '📜', labelKey: 'lib_history' },
 ]
 
 export function ArenaShell({
@@ -36,6 +37,7 @@ export function ArenaShell({
   user: { email: string } | null
   children: React.ReactNode
 }) {
+  const t = useT()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [railCollapsed, setRailCollapsed] = useState(false)
   const toggleMenu = () => {
@@ -49,25 +51,25 @@ export function ArenaShell({
       <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.18] px-3 py-2.5">
         <span aria-hidden className="text-sm text-[#a855ff]">▶</span>
         <div className="leading-tight">
-          <div className="text-base font-black tracking-wide text-white">WATCH</div>
-          <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/45">AI Creator League</div>
+          <div className="text-base font-black tracking-wide text-white">{t.watch.badge_watch}</div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/45">{t.watch.badge_subtitle}</div>
         </div>
       </div>
 
       {NAV.map((n) => (
-        <NavItem key={n.href} item={n} />
+        <NavItem key={n.href} item={n} title={t.watch[n.titleKey]} subtitle={t.watch[n.subKey]} />
       ))}
 
-      <SectionLabel label="Library" />
+      <SectionLabel label={t.watch.library_label} />
       {LIBRARY.map((l) => (
-        <LibraryItem key={l.label} icon={l.icon} label={l.label} />
+        <LibraryItem key={l.labelKey} icon={l.icon} label={t.watch[l.labelKey]} />
       ))}
 
       {/* Helper footer */}
       <div className="mt-6 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.06] px-3 py-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a855ff]">All Information in One Place</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a855ff]">{t.watch.footer_tip_title}</p>
         <p className="mt-1 text-[11px] leading-relaxed text-white/45">
-          You are in WATCH. Click menu items to open in a new tab.
+          {t.watch.footer_tip_body}
         </p>
       </div>
     </nav>
@@ -107,7 +109,7 @@ export function ArenaShell({
 }
 
 // icon + title (white bold) + subtitle (gray). Opens in a new tab.
-function NavItem({ item }: { item: Item }) {
+function NavItem({ item, title, subtitle }: { item: Item; title: string; subtitle: string }) {
   return (
     <Link
       href={item.href}
@@ -117,8 +119,8 @@ function NavItem({ item }: { item: Item }) {
     >
       <span aria-hidden className="mt-0.5 text-base">{item.icon}</span>
       <span className="min-w-0">
-        <span className="block text-sm font-bold text-white">{item.title}</span>
-        <span className="block text-[11px] leading-tight text-white/45">{item.subtitle}</span>
+        <span className="block text-sm font-bold text-white">{title}</span>
+        <span className="block text-[11px] leading-tight text-white/45">{subtitle}</span>
       </span>
     </Link>
   )
