@@ -15,10 +15,13 @@ export default async function ContactsPage({
   // All seasons for the dropdown.
   const { data: seasonsData } = await supabase
     .from('seasons')
-    .select('id, name, season_number, status')
+    .select('id, name, season_number, status, is_fixture')
     .order('season_number', { ascending: false })
 
-  const seasons = (seasonsData ?? []) as Pick<Season, 'id' | 'name' | 'season_number' | 'status'>[]
+  const seasons = (seasonsData ?? []) as (Pick<
+    Season,
+    'id' | 'name' | 'season_number' | 'status'
+  > & { is_fixture: boolean | null })[]
 
   // 'all' = cross-season view (winners from every season).
   // 'specific id' = scope to that season.
@@ -34,6 +37,16 @@ export default async function ContactsPage({
 
   if (seasonScope !== 'all') {
     query = query.eq('season_id', seasonScope)
+  } else {
+    // ★Rehearsal/fixture seasons (season_test, season_1001-1006, ...) must
+    // never surface as real winner contacts in the cross-season view. A
+    // specific season the operator picked is an explicit choice and stays
+    // unguarded (e.g. to inspect rehearsal data on purpose); only the
+    // default aggregate is at risk of a silent leak once a fixture season
+    // ever gets an award_rank (verified 2026-08-12: with the guard removed,
+    // a rehearsal season_test row with award_rank set here DOES appear).
+    const nonFixtureIds = seasons.filter((s) => !s.is_fixture).map((s) => s.id)
+    query = query.in('season_id', nonFixtureIds)
   }
 
   const { data } = await query
