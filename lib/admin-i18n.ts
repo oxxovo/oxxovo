@@ -89,6 +89,9 @@ type Messages = {
       credits: string
       promo: string
       messages: string
+      comments: string
+      watch_home: string
+      watch_videos: string
     }
   }
   dashboard: {
@@ -706,6 +709,9 @@ const MESSAGES_EN: Messages = {
       credits: 'Credits',
       promo: 'Promo videos',
       messages: 'Messages',
+      comments: 'Comment moderation',
+      watch_home: 'Watch as Home',
+      watch_videos: 'Video moderation',
     },
   },
   dashboard: {
@@ -1343,6 +1349,9 @@ const MESSAGES_KO: Messages = {
       credits: '크레딧',
       promo: '홍보영상',
       messages: '메시지',
+      comments: '댓글 관리',
+      watch_home: 'Watch 홈 전환',
+      watch_videos: '영상 관리',
     },
   },
   dashboard: {
