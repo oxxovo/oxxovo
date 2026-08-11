@@ -21,6 +21,7 @@ type NavItemKey =
   | 'comments'
   | 'watch_home'
   | 'watch_videos'
+  | 'broadcasts'
 
 const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean }> = [
   { href: '/admin', key: 'dashboard', emoji: '🏠' },
@@ -31,6 +32,7 @@ const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean 
   { href: '/admin/winners', key: 'winners', emoji: '🏆', soon: true },
   { href: '/admin/partners', key: 'partners', emoji: '🤝' },
   { href: '/admin/emails', key: 'emails', emoji: '📧' },
+  { href: '/admin/broadcasts', key: 'broadcasts', emoji: '📢' },
   { href: '/admin/credits', key: 'credits', emoji: '💳' },
   { href: '/admin/promo', key: 'promo', emoji: '🎬' },
   { href: '/admin/messages', key: 'messages', emoji: '💬' },

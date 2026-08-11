@@ -92,6 +92,7 @@ type Messages = {
       comments: string
       watch_home: string
       watch_videos: string
+      broadcasts: string
     }
   }
   dashboard: {
@@ -712,6 +713,7 @@ const MESSAGES_EN: Messages = {
       comments: 'Comment moderation',
       watch_home: 'Watch as Home',
       watch_videos: 'Video moderation',
+      broadcasts: 'Broadcasts',
     },
   },
   dashboard: {
@@ -1352,6 +1354,7 @@ const MESSAGES_KO: Messages = {
       comments: '댓글 관리',
       watch_home: 'Watch 홈 전환',
       watch_videos: '영상 관리',
+      broadcasts: '연락처 발송',
     },
   },
   dashboard: {

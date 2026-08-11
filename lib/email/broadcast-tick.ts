@@ -119,6 +119,18 @@ export async function runBroadcastTick(
 
     for (const email of remainingEmails) {
       if (!budgetAllows(budget)) break
+
+      // ★Cancellation must land inside a still-running tick, not just on the
+      // next cron firing -- an operator who catches a mistake mid-send needs
+      // this to stop within seconds, not up to 15 more minutes. Cheap single-
+      // row read; the loop already spends more than this per recipient.
+      const { data: liveStatus } = await admin
+        .from('admin_broadcasts')
+        .select('status')
+        .eq('id', campaign.id)
+        .maybeSingle()
+      if (liveStatus?.status === 'canceled') break
+
       const t0 = Date.now()
 
       // Fresh read, not the queue-time snapshot -- this is the entire point
@@ -186,11 +198,29 @@ export async function runBroadcastTick(
 
   const totalAccounted = totals.sent + totals.skipped + totals.failed
   const totalRecipients = campaign.recipient_emails.length
-  // ★"carrying over", not "stuck": status stays 'sending' with an accurate
-  // remaining count so the (future) screen reads as in-progress, not silent
-  // failure -- otherwise an operator re-queues the same campaign and double-
-  // sends the part that already went out.
-  const newStatus = totalAccounted >= totalRecipients ? 'done' : 'sending'
+
+  // ★Re-read status rather than trust the loop's own "did I break on cancel"
+  // flag -- an operator could cancel in the gap between the loop's last
+  // status check and this final write. A canceled campaign must stay
+  // canceled (counts still get the honest update); it is not "done" just
+  // because every recipient happened to be accounted for by the time it
+  // stopped, and it does not get resurrected to 'sending'.
+  const { data: currentRow } = await admin
+    .from('admin_broadcasts')
+    .select('status')
+    .eq('id', campaign.id)
+    .maybeSingle()
+
+  // "carrying over", not "stuck": status stays 'sending' with an accurate
+  // remaining count so the screen reads as in-progress, not silent failure --
+  // otherwise an operator re-queues the same campaign and double-sends the
+  // part that already went out.
+  const newStatus =
+    currentRow?.status === 'canceled'
+      ? 'canceled'
+      : totalAccounted >= totalRecipients
+        ? 'done'
+        : 'sending'
 
   await admin
     .from('admin_broadcasts')
