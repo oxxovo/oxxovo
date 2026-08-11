@@ -422,6 +422,56 @@ export async function saveSmsConsent(
   return { ok: true, optIn: input.optIn, consentAt: input.optIn ? now : null }
 }
 
+// ─── Email opt-out (season/tournament announcement emails) ──────────────
+// The consent itself is recorded at signup (app/login/actions.ts
+// recordEmailConsent, see app/privacy Section 11 / app/terms Section 12) --
+// this card only lets the user WITHDRAW it. There is no opt back in from
+// here deliberately: re-consent needs the same evidence trail (timestamp +
+// IP + notice text) that signup produces, and this card cannot show that
+// notice again outside the signup flow. A user who changes their mind signs
+// out and logs back in.
+
+export type EmailConsentData = { optIn: boolean; consentAt: string | null }
+
+export async function loadEmailConsent(): Promise<
+  { ok: true; data: EmailConsentData } | { ok: false }
+> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false }
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('profiles')
+    .select('email_opt_in, email_consent_at')
+    .eq('id', user.id)
+    .maybeSingle()
+  return {
+    ok: true,
+    data: {
+      optIn: Boolean(data?.email_opt_in),
+      consentAt: (data?.email_consent_at as string | null) ?? null,
+    },
+  }
+}
+
+export type UnsubscribeEmailResult =
+  | { ok: true }
+  | { ok: false; error: 'unauthenticated' | 'save_failed'; detail?: string }
+
+export async function unsubscribeEmail(): Promise<UnsubscribeEmailResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'unauthenticated' }
+
+  const admin = createSupabaseAdmin()
+  const { error } = await admin
+    .from('profiles')
+    .update({ email_opt_in: false, email_opt_out_at: new Date().toISOString() })
+    .eq('id', user.id)
+  if (error) return { ok: false, error: 'save_failed', detail: error.message }
+
+  revalidatePath('/profile')
+  return { ok: true }
+}
+
 // ─── saveMainRoundSubmission ────────────────────────────────────────────
 // Single-submission model ([[project-main-round-single-submission]]) — one
 // video, no edits. Race-safe via UPDATE WHERE status='selected'.

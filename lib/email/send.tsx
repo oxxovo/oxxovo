@@ -11,7 +11,7 @@
 import 'server-only'
 import { render } from '@react-email/components'
 import type { ReactElement } from 'react'
-import { getResend, EMAIL_FROM } from './client'
+import { getResend, EMAIL_FROM, APP_URL } from './client'
 import type { RankAward } from '@/lib/seasons'
 import { detectEmailLang, type EmailLang } from './lang'
 import { logEmail, alreadySent, type TemplateKey } from './log'
@@ -130,6 +130,25 @@ type ExecuteSendInput = {
   reminderHour?: number
 }
 
+// RFC 8058 one-click unsubscribe. Every outbound email carries these headers,
+// transactional included -- deliverability (Gmail/Yahoo bulk-sender rules)
+// and the List-Unsubscribe-Post one-click action both depend on it being
+// present everywhere, not just on templates this session considers
+// "marketing". The link itself unsubscribes from tournament ANNOUNCEMENT
+// emails only (lib/email/consent.ts canSendMarketingEmail) -- it cannot stop
+// notices about the recipient's own application/account (see app/privacy
+// Section 11), because there is nothing on this row for those to check.
+// Keyed by email (not a signed token): matches the SMS STOP pattern in scope
+// and cost -- worst case of a guessed/leaked link is an unwanted unsubscribe,
+// reversible by logging back in.
+function unsubscribeHeaders(toEmail: string): Record<string, string> {
+  const url = `${APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(toEmail)}`
+  return {
+    'List-Unsubscribe': `<mailto:info@oxxovo.ai?subject=unsubscribe>, <${url}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  }
+}
+
 // Shared engine: dedup + render + resend + log. Every send* helper funnels
 // through this so retry/dedup/logging behavior is identical across templates.
 async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
@@ -163,6 +182,7 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
       to: input.toEmail,
       subject: input.subject,
       html,
+      headers: unsubscribeHeaders(input.toEmail),
     })
 
     if (error) {
