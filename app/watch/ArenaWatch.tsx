@@ -146,7 +146,7 @@ export async function ArenaWatch({
       />
       <MainRoundSection videos={mainRoundVideos} seasonNames={seasonNames} voteOpen={voteOpen} stage={bannerStage.stage} />
       <FinalistPrelimSection videos={finalistPrelims} seasonNames={seasonNames} />
-      <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
+      <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} seasonName={currentSeason?.name} awardsAt={currentSeason?.awards_announcement_at} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />
     </ArenaShell>
   )
