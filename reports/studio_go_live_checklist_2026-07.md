@@ -221,6 +221,14 @@ switch was made, which is why unifying cost nothing.)
     reads the cap once at module load, so even a new deployment's warm instances
     turn over at the next cold start, not mid-tick. Budget ~2 minutes for the
     correction, not zero.
+- ★**And check `/api/cron/broadcast-tick` actually FIRED, not just that it is
+  registered.** `vercel.json` crons only trigger on Production, so this cannot be
+  observed before C3 either -- registering the schedule and Vercel actually
+  calling it are different claims (2026-08-12, HQ). After this deploy, open the
+  Vercel dashboard's **Cron Jobs tab** and confirm `broadcast-tick` shows a real
+  execution at `:07/:22/:37/:52` (its offset from email-tick's `:00/:15/:30/:45`,
+  so the two never fire in the same minute). Do this by eye -- a session cannot
+  see the Cron Jobs tab.
 - CAUTION: Vercel git auto-deploy stays OFF (`vercel.json` git.deploymentEnabled.main
   =false). Every production move goes through this command so every one is stamped.
 
