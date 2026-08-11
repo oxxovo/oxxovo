@@ -1,5 +1,9 @@
 # 레인 C 상태 — 2026-08-10 (작성: 지수2C)
 
+★★★당일 최종 갱신 (대표님 지시로 오늘 마감). HEAD: 앱 `d32accb` / 워커 `ed7945b`.
+미커밋 0(양쪽). **무결성 라벨은 TK 판단 대기. 한국어 배선(~21파일)이 그 뒤다.**
+내일 순서 = 무결성 판단 → 한국어 배선 → motionBlur 구현.
+
 작업 공간: 앱 `C:\Users\Tom\oxxovo-lane-c` / 워커 `C:\Users\Tom\oxxovo-studio-lane-c`,
 둘 다 `feat/studio-lane-c`. **미커밋: 앱 0 / 워커 0. 둘 다 push 완료.**
 
