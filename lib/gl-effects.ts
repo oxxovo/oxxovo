@@ -5,11 +5,12 @@
 // render.ts) is authoritative; these mirror its B1 math in the SAME order,
 // confirmed by reading render.ts's effectVideoFilters(), not recalled:
 // eq(exposure/contrast/saturation) -> temperature -> tint -> LUT -> sharpen ->
-// chromatic -> grain -> vignette. (motionBlur sits between chromatic and grain
-// in the worker; no GL pass yet -- it is TEMPORAL (tmix averages several
-// VIDEO FRAMES), which a single-frame shader here cannot do without a frame-
-// history buffer preview-gl.ts does not have. Different shape of work than
-// the others, flagged separately.)
+// chromatic -> motionBlur -> grain -> vignette. motionBlur (FRAG_MOTIONBLUR,
+// below) is TEMPORAL (worker's tmix averages several VIDEO FRAMES) -- it needs
+// a frame-history ring buffer fed independently of the single source texture
+// this file's other passes read, wired in preview-gl.ts via
+// video.requestVideoFrameCallback() (2026-08-10 spike, reports/
+// lane_c_item4_g_motionblur_spike_2026-08-10.md).
 import type { EffectParams } from './effects'
 
 // WebGL2 / GLSL ES 3.00 (glow needs FBO multipass + a dynamic-loop gaussian, so
@@ -449,4 +450,40 @@ export function chromaticShift(seg?: EffectParams, global?: EffectParams): { rh:
   const ch = iv(seg?.chromatic) || iv(global?.chromatic)
   const shift = Math.round(ch / 8)
   return { rh: shift, bh: -shift }
+}
+
+// ---------------------------------------------------------------------------
+// motionBlur -- mirrors the render's `tmix=frames=N` (unweighted average of
+// the N most recently decoded video frames, ffmpeg's tmix default weights).
+// Fed by a frame-history ring buffer (preview-gl.ts), NOT by re-sampling one
+// static texture like every other pass here -- so this shader takes N
+// explicit texture units instead of the usual single u_tex.
+export const FRAG_MOTIONBLUR = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex0, u_tex1, u_tex2, u_tex3, u_tex4, u_tex5;
+uniform int u_n;
+void main() {
+  vec3 acc = texture(u_tex0, v_uv).rgb;
+  if (u_n > 1) acc += texture(u_tex1, v_uv).rgb;
+  if (u_n > 2) acc += texture(u_tex2, v_uv).rgb;
+  if (u_n > 3) acc += texture(u_tex3, v_uv).rgb;
+  if (u_n > 4) acc += texture(u_tex4, v_uv).rgb;
+  if (u_n > 5) acc += texture(u_tex5, v_uv).rgb;
+  o = vec4(acc / float(u_n), 1.0);
+}`
+
+/**
+ * Slider -> ring-buffer frame count N (1..6). ★Mirrors render.ts EXACTLY
+ * (src/render.ts:133-134, read not recalled): `mb ? 1 + Math.round(mb/20) : 1`
+ * -- N=1 (no blend, the worker emits no tmix filter at all) when motionBlur
+ * is 0. The 2026-08-10 blocked-design note (lane_c_item4_g_blocked_design)
+ * wrote this as `2 + round(mb/20)`; that was a design-time guess made before
+ * this line of render.ts was read directly, and it is off by one -- this is
+ * the corrected version, taken from the worker source itself.
+ */
+export function motionBlurN(seg?: EffectParams, global?: EffectParams): number {
+  const mb = iv(seg?.motionBlur) || iv(global?.motionBlur)
+  return mb ? 1 + Math.round(mb / 20) : 1
 }

@@ -14,16 +14,34 @@
 // second -- measured directly 2026-08-10, see render.ts's lutStage note); the
 // residual left after that fix reads like the same floor-adjacent noise
 // documented for sharpen, not a further formula error, but REVIEW is REVIEW.
-// motionBlur is NOT wired -- it is TEMPORAL (worker's tmix averages several
-// video FRAMES), which this single-frame-in/single-frame-out pass chain
-// cannot do without a frame-history buffer this engine does not keep (needs
-// its own spike, see reports/lane_c_item4_g_blocked_design_2026-08-10.md).
+// motionBlur (2026-08-10): a frame-history ring buffer (RING_SIZE slots,
+// GLProcessor.ringTex) fed independently of the rAF draw loop, via
+// video.requestVideoFrameCallback() so each ring slot holds a genuinely NEW
+// decoded frame -- not a duplicate from rAF ticking faster than source fps
+// (measured 2.47x over-tick on a 24fps clip, reports/
+// lane_c_item4_g_motionblur_spike_2026-08-10.md). The ring holds RAW
+// (pre-effect) frames; motionBlurN() of the most recent are averaged
+// (FRAG_MOTIONBLUR) into the texture the rest of the per-segment chain then
+// runs on -- an approximation of the worker's real tmix (which averages
+// already-graded frames mid-chain), not a literal port; parity measurement
+// against the worker's actual tmix output decides whether this is close
+// enough to expose (EFFECT_SPECS already declares motionBlur 'approximate').
 
 import type { PreviewEngine, PreviewClip, PreviewSegment, PreviewTransition } from './preview'
 import { locateComposition, fitObjectFit } from './preview'
 import type { EffectParams } from '@/lib/effects'
-import { VERT, FRAG_COLOR_LUT, FRAG_UNSHARP, FRAG_CHROMATIC, FRAG_GRAIN, FRAG_VIGNETTE, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, activeLutIntensity, glowStages, grainAmount, unsharpAmount, chromaticShift, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
+import { VERT, FRAG_COLOR_LUT, FRAG_UNSHARP, FRAG_CHROMATIC, FRAG_GRAIN, FRAG_VIGNETTE, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, FRAG_MOTIONBLUR, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, activeLutIntensity, glowStages, grainAmount, unsharpAmount, chromaticShift, motionBlurN, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
 import { valueAt, type KeyframeTrack } from '@/lib/edl-keyframes'
+
+// video.requestVideoFrameCallback isn't in every TS DOM lib version -- typed
+// locally rather than assumed present, and feature-checked at every call site
+// (Safari <15.4 lacks it; motionBlur just never fills its ring there, which
+// render() already treats as "no blend yet" -- same graceful floor as the
+// vignette-LUT-not-loaded-yet case).
+type RVFCVideo = HTMLVideoElement & {
+  requestVideoFrameCallback?: (cb: (now: number, metadata: unknown) => void) => number
+  cancelVideoFrameCallback?: (handle: number) => void
+}
 
 // ★D keyframes (2026-08-10). Only exposure/contrast/saturation/vignette are
 // keyframe-able at all -- same limitation as the worker (render.ts), for the
@@ -61,11 +79,15 @@ type TiledLut = { W: number; H: number; px: Uint8Array; N: number }
 // finally copy to the target. Nothing active at all (no glow, sharpen=0,
 // grain=0, vignette=0) = color+LUT drawn straight to the target (fast path,
 // unchanged from before this pass chain existed).
+// motionBlur ring buffer size -- matches motionBlurN()'s max (mb=100 -> N=6).
+const RING_SIZE = 6
+
 export class GLProcessor {
   private gl: WebGL2RenderingContext
   private progCL: WebGLProgram
   private progUnsharp: WebGLProgram
   private progChromatic: WebGLProgram
+  private progMotionBlur: WebGLProgram
   private progGrain: WebGLProgram
   private progVignette: WebGLProgram
   private progBlur: WebGLProgram
@@ -81,6 +103,12 @@ export class GLProcessor {
   private fbos: { fb: WebGLFramebuffer; tex: WebGLTexture }[] = []
   private fw = 0
   private fh = 0
+  // motionBlur ring: RAW (pre-effect) frames pushed by an external rVFC loop
+  // (createGLPreview), read by render() -- see the file-header note.
+  private ringTex: WebGLTexture[] = []
+  private ringFbo: { fb: WebGLFramebuffer; tex: WebGLTexture } | null = null
+  private ringFilled = 0
+  private ringWrite = 0
   constructor(public canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { premultipliedAlpha: false })
     if (!gl) throw new Error('webgl2 unavailable')
@@ -96,11 +124,12 @@ export class GLProcessor {
       return p
     }
     this.progCL = prog(FRAG_COLOR_LUT); this.progUnsharp = prog(FRAG_UNSHARP); this.progChromatic = prog(FRAG_CHROMATIC)
+    this.progMotionBlur = prog(FRAG_MOTIONBLUR)
     this.progGrain = prog(FRAG_GRAIN); this.progVignette = prog(FRAG_VIGNETTE)
     this.progBlur = prog(FRAG_BLUR); this.progScreen = prog(FRAG_SCREEN); this.progCopy = prog(FRAG_COPY); this.progTrans = prog(FRAG_TRANSITION)
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf)
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
-    for (const p of [this.progCL, this.progUnsharp, this.progChromatic, this.progGrain, this.progVignette, this.progBlur, this.progScreen, this.progCopy, this.progTrans]) {
+    for (const p of [this.progCL, this.progUnsharp, this.progChromatic, this.progMotionBlur, this.progGrain, this.progVignette, this.progBlur, this.progScreen, this.progCopy, this.progTrans]) {
       gl.useProgram(p); const a = gl.getAttribLocation(p, 'a_pos'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0)
     }
     const mkTex = () => {
@@ -137,6 +166,27 @@ export class GLProcessor {
       const fb = gl.createFramebuffer()!; gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0)
       this.fbos.push({ fb, tex: t })
     }
+    // motionBlur ring: RING_SIZE plain textures (no FBO -- filled by texImage2D
+    // from the video element, never rendered into) + one dedicated FBO for the
+    // blended-average output. A resize invalidates whatever was captured at the
+    // old size, same as the fbos above -- ringFilled resets to 0 rather than
+    // trying to rescale stale frames.
+    for (const t of this.ringTex) gl.deleteTexture(t)
+    this.ringTex = []
+    for (let i = 0; i < RING_SIZE; i++) {
+      const t = gl.createTexture()!; gl.bindTexture(gl.TEXTURE_2D, t)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      this.ringTex.push(t)
+    }
+    if (this.ringFbo) { gl.deleteFramebuffer(this.ringFbo.fb); gl.deleteTexture(this.ringFbo.tex) }
+    const rt = gl.createTexture()!; gl.bindTexture(gl.TEXTURE_2D, rt)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    const rfb = gl.createFramebuffer()!; gl.bindFramebuffer(gl.FRAMEBUFFER, rfb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rt, 0)
+    this.ringFbo = { fb: rfb, tex: rt }
+    this.ringFilled = 0; this.ringWrite = 0
     this.fw = w; this.fh = h
   }
   setLut(l: TiledLut | null): void {
@@ -146,6 +196,26 @@ export class GLProcessor {
     gl.bindTexture(gl.TEXTURE_2D, this.lutTex)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, l.W, l.H, 0, gl.RGBA, gl.UNSIGNED_BYTE, l.px)
   }
+  // motionBlur ring capture -- called from an rVFC loop (createGLPreview),
+  // NOT from render()/the rAF draw loop, so a duplicate rAF tick (source fps <
+  // display refresh rate) can never push the same decoded frame twice. See the
+  // file-header note and reports/lane_c_item4_g_motionblur_spike_2026-08-10.md.
+  pushRingFrame(source: TexImageSource, w: number, h: number): void {
+    this.ensureFbos(w, h)
+    if (!this.ringTex.length) return
+    const gl = this.gl
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, this.ringTex[this.ringWrite])
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
+    this.ringWrite = (this.ringWrite + 1) % this.ringTex.length
+    this.ringFilled = Math.min(this.ringFilled + 1, this.ringTex.length)
+  }
+  // Discard whatever's in the ring -- called whenever the video jumps
+  // discontinuously (new clip loaded, seek/scrub): old frames belong to a
+  // different point in time and averaging them in would blend across the cut
+  // instead of motion-blurring within one shot.
+  resetRing(): void { this.ringFilled = 0; this.ringWrite = 0 }
   private uf(p: WebGLProgram, name: string, v: number) { this.gl.uniform1f(this.gl.getUniformLocation(p, name), v) }
   // Bind the final draw target: -1 = canvas, else fbos[idx].
   private bindTarget(idx: number, w: number, h: number) {
@@ -174,6 +244,11 @@ export class GLProcessor {
     // convention the worker's `t` uses inside its per-segment ffmpeg process
     // (measured, not assumed: -ss before -i rebases pts_time to 0).
     keyframes?: Partial<Record<keyof EffectParams, KeyframeTrack>>, segRelMs = 0,
+    // ★motionBlur (2026-08-10). false ONLY for the transition-window videoB
+    // call (drawFrameGL) -- the ring is fed exclusively from the primary
+    // `video` element's rVFC loop, so applying it to the incoming clip's
+    // frames would blend across the cut, not within one shot.
+    useRing = true,
   ): void {
     const gl = this.gl
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h }
@@ -193,6 +268,27 @@ export class GLProcessor {
     const sharpenAmt = unsharpAmount(seg, global)
     const chromatic = chromaticShift(seg, global)
     const grainAmt = grainAmount(seg, global)
+    // ★motionBlur (2026-08-10): averages the N most recent RAW ring frames
+    // (approximating the worker's mid-chain tmix -- see the file-header note)
+    // into ringFbo, then pass 1 below reads THAT instead of the single
+    // just-uploaded this.tex. Only the source for pass 1 changes; motionBlur
+    // needs no ping-pong chain step of its own.
+    const mbN = motionBlurN(seg, global)
+    let colorSrcTex = this.tex
+    if (useRing && mbN > 1 && this.ringFilled > 0 && this.ringFbo) {
+      const n = Math.min(mbN, this.ringFilled)
+      gl.useProgram(this.progMotionBlur)
+      for (let i = 0; i < RING_SIZE; i++) {
+        const idx = (this.ringWrite - 1 - Math.min(i, n - 1) + RING_SIZE * 2) % RING_SIZE
+        gl.activeTexture(gl.TEXTURE0 + i)
+        gl.bindTexture(gl.TEXTURE_2D, this.ringTex[idx])
+        gl.uniform1i(gl.getUniformLocation(this.progMotionBlur, `u_tex${i}`), i)
+      }
+      gl.uniform1i(gl.getUniformLocation(this.progMotionBlur, 'u_n'), n)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.ringFbo.fb); gl.viewport(0, 0, w, h)
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+      colorSrcTex = this.ringFbo.tex
+    }
     // pass 1: color + LUT (no vignette/grain here any more -- ★2026-08-10, see
     // the note above FRAG_COLOR_LUT in lib/gl-effects.ts: the worker fires
     // sharpen right after this, and grain/vignette LAST, so baking them into
@@ -212,7 +308,7 @@ export class GLProcessor {
     const needsChain = stages.length > 0 || sharpenAmt > 0 || chromatic.rh !== 0 || chromatic.bh !== 0 || grainAmt > 0 || vignetteActive
     if (!needsChain) {
       this.bindTarget(targetIdx, w, h)
-      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, colorSrcTex)
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
       return
     }
@@ -224,7 +320,7 @@ export class GLProcessor {
     // right after the LUT; grain and vignette fire last, grain before
     // vignette. Ping-pongs fbos[6]/[7] -- dedicated scratch slots so this
     // chain can never collide with glow's 0-3 or a transition's 4/5.
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, colorSrcTex)
     drawTo(6)
     let cur = 6, other = 7
     if (sharpenAmt > 0) {
@@ -433,7 +529,9 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
             const segRelMsA = video.currentTime * 1000 - seg.startMs
             const segRelMsB = videoB.currentTime * 1000 - segB.startMs
             const lutA = applyLut(seg.effects); proc.render(video, w, h, seg.effects, glob, lutA, 4, seg.keyframes, segRelMsA)
-            const lutB = applyLut(segB.effects); proc.render(videoB, w, h, segB.effects, glob, lutB, 5, segB.keyframes, segRelMsB)
+            // useRing=false: the motionBlur ring is fed only from `video`'s rVFC
+            // loop (see render()'s param note) -- videoB has no ring of its own.
+            const lutB = applyLut(segB.effects); proc.render(videoB, w, h, segB.effects, glob, lutB, 5, segB.keyframes, segRelMsB, false)
             proc.transitionBlend(4, 5, w, h, p, TRANSITION_TYPE[tr.type] ?? 0)
             return
           }
@@ -457,6 +555,17 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     try { drawFrameGL() } catch (e) { degrade(e instanceof Error ? `${e.name}: ${e.message}` : String(e)) }
   }
   const loop = () => { drawFrame(); report(); if (playing && !dead) raf = requestAnimationFrame(loop) }
+  // ★motionBlur ring capture. A SEPARATE self-re-registering loop, not tied to
+  // rAF/the draw loop -- rVFC fires once per genuinely NEW decoded frame
+  // (measured 24.5fps vs rAF's 60.5fps on a 24fps clip, 2.47x over-tick;
+  // reports/lane_c_item4_g_motionblur_spike_2026-08-10.md), so this is the only
+  // way to fill the ring without duplicate-frame bias toward the most recent tick.
+  let mbHandle = 0
+  const mbCaptureTick = () => {
+    if (proc && video && video.videoWidth) proc.pushRingFrame(video, video.videoWidth, video.videoHeight)
+    const rv = video as RVFCVideo | null
+    if (rv?.requestVideoFrameCallback) mbHandle = rv.requestVideoFrameCallback(mbCaptureTick)
+  }
   const playAt = async (i: number, startOffsetMs = 0) => {
     if (!video || i >= segs.length) { setPlaying(false); return }
     releaseVideoB()
@@ -466,6 +575,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     const url = clip.url
     if (video.src !== url) video.src = url
     video.volume = 1
+    proc?.resetRing() // new clip: old ring frames are a different shot entirely
     try { video.currentTime = segs[i].startMs / 1000 + startOffsetMs / 1000; await video.play() } catch { setPlaying(false) }
   }
   // The media itself failed to load (most likely: this origin is not in the R2
@@ -499,6 +609,8 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       v.crossOrigin = 'anonymous'
       v.addEventListener('error', onMediaError)
       v.addEventListener('seeked', onSeeked)
+      const rv = v as RVFCVideo
+      if (rv.requestVideoFrameCallback) mbHandle = rv.requestVideoFrameCallback(mbCaptureTick)
       try {
         canvas = document.createElement('canvas')
         // Fill the aspect box; object-fit (set per current segment in drawFrameGL)
@@ -548,6 +660,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       const target = videoTimeMs / 1000
       const apply = () => {
         if (!video || dead) return
+        proc?.resetRing() // scrub/seek: old ring frames are from a different point in time
         try { video.currentTime = target } catch { /* not ready */ }
         if (playing) { video.play().catch(() => {}); return }
         // paused scrub: onSeeked repaints when the seek settles; this rAF retry
@@ -582,6 +695,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
       const seek = () => {
         if (!video || dead) return
         video.addEventListener('seeked', paint, { once: true })
+        proc?.resetRing() // jumping to a still frame: old ring frames are stale
         try { video.currentTime = seg.startMs / 1000 } catch { /* not ready */ }
         let tries = 0
         const retry = () => {
@@ -596,6 +710,8 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     },
     destroy() {
       cancelAnimationFrame(raf)
+      const rv = video as RVFCVideo | null
+      if (rv?.cancelVideoFrameCallback && mbHandle) rv.cancelVideoFrameCallback(mbHandle)
       video?.removeEventListener('timeupdate', onTimeUpdate)
       video?.removeEventListener('error', onMediaError)
       video?.removeEventListener('seeked', onSeeked)

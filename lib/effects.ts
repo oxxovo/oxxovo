@@ -91,12 +91,26 @@ export const EFFECT_SPECS: readonly EffectSpec[] = [
 // and the 0.5/1.0 bands are exactly what they were; this is a business call
 // to ship inside the gate's own acknowledged blind spot, recorded here so
 // nobody reads "exposed" as "passed." See reports/lane_c_floor_derivation_2026-08-10.md.
-// ★motionBlur is NOT exposed: it's TEMPORAL (tmix averages several video
-// FRAMES), which this engine's single-frame-in/single-frame-out pass chain
-// cannot reproduce without a frame-history buffer it does not have -- a
-// different shape of work than a shader port, not sized here.
+// ★motionBlur added 2026-08-11. Was blocked on a frame-history buffer this
+// engine didn't have (tmix averages several video FRAMES, not one) -- closed
+// by a two-step process: the 2026-08-10 spike (reports/
+// lane_c_item4_g_motionblur_spike_2026-08-10.md) found video.
+// requestVideoFrameCallback() eliminates the rAF-over-tick duplicate-capture
+// problem structurally (measured 2.47x on a 24fps clip), then a video-based
+// parity harness (scripts/gl-motionblur-parity.mjs, run against the worker's
+// REAL tmix output, not a hand-written copy) measured the actual
+// approximation this engine makes -- averaging RAW pre-effect frames, vs the
+// worker's mid-chain average of already-graded frames -- and it reads PASS:
+// r=0.088 (motionBlur=40, N=3) and r=0.051 (motionBlur=100, N=6), both well
+// inside the r<0.5 band, on a moving-content clip with the decode pipeline
+// itself verified clean first (browser vs ffmpeg decode of the same lossless
+// file: 0.118%, at the 1-LSB floor). Declared 'approximate' in EFFECT_SPECS
+// above stays -- PASS on one content set is not the same claim as sharpen/
+// chromatic's byte-exact match, and the mid-chain-vs-pre-chain averaging
+// order is a real, documented difference from the worker, just one this
+// measurement found small enough to ship.
 export const EXPOSED_SLIDER_KEYS: readonly (keyof EffectParams)[] = [
-  'exposure', 'contrast', 'saturation', 'temperature', 'tint', 'vignette', 'glow', 'sharpen', 'chromatic', 'grain', 'lutIntensity',
+  'exposure', 'contrast', 'saturation', 'temperature', 'tint', 'vignette', 'glow', 'sharpen', 'chromatic', 'grain', 'lutIntensity', 'motionBlur',
 ]
 export const EXPOSED_SLIDERS: readonly EffectSpec[] = EFFECT_SPECS.filter((s) => EXPOSED_SLIDER_KEYS.includes(s.key))
 
