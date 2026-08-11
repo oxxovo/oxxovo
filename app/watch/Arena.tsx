@@ -55,7 +55,7 @@ export function ArenaBanner({ content }: { content: BannerContent }) {
             OXXOVO is the global arena for AI creators.
           </p>
           <p className="truncate text-[11px] text-white/55 sm:text-[12px]">
-            No editors. No favoritism. Just you, the AI, and the audience.
+            Built under the same conditions. Judged on skill alone.
           </p>
         </div>
         <Link

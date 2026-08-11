@@ -258,7 +258,7 @@ export function LandingView() {
 
             <div className="mt-8 max-w-[460px]">
               <p className="text-[18px] font-black text-white uppercase tracking-[0.055em]">AI is easy. Winning is hard.</p>
-              <p className="mt-2 text-[16px] italic font-semibold text-gray-400">Same prompt. Same time. No excuses.</p>
+              <p className="mt-2 text-[16px] italic font-semibold text-gray-400">Same tools. Same clock. Skill decides.</p>
             </div>
 
             <div className="mt-7 w-[min(100%,500px)]">
@@ -364,7 +364,7 @@ export function LandingView() {
               title="Share Your Video"
               body={
                 <>
-                  Share your AI-generated video ({season.application_video_min_seconds}–{season.application_video_max_seconds} seconds) — hosted on YouTube or Vimeo. Use any AI service: Sora, Veo, Runway, Kling, Pika, or others.
+                  Make your video in OXXOVO Studio ({season.application_video_min_seconds}–{season.application_video_max_seconds} seconds) and submit it there. Everyone works with the same toolset — what separates entries is your direction, not your budget.
                 </>
               }
             />
@@ -408,7 +408,7 @@ export function LandingView() {
             The First Verified Arena<br />for AI Video Creators.
           </h2>
           <p className="text-white/70 leading-relaxed text-lg">
-            OXXOVO is the global arena for AI video creators. We verify AI-generated content with independent {panelLabel.toLowerCase()} scoring to ensure fairness. Founded in Las Vegas, OXXOVO Labs Inc. operates the first AI-verified video tournament platform.
+            OXXOVO is the global arena for AI video creators. Independent {panelLabel} scoring verifies every entry and keeps each round fair. OXXOVO Labs Inc., based in Las Vegas, operates the AI Creator League — a season-based competition where creators compete, get verified, and get discovered.
           </p>
 
           <div className="grid grid-cols-3 gap-4 mt-10 pt-8 border-t border-white/10">
@@ -422,7 +422,7 @@ export function LandingView() {
             </div>
             <div>
               <div className="text-[#8b22ff] text-3xl font-black">Verified</div>
-              <div className="text-xs text-white/50 uppercase tracking-wider mt-1.5">Same Rules. No Excuses.</div>
+              <div className="text-xs text-white/50 uppercase tracking-wider mt-1.5">Same Rules. Skill Decides.</div>
             </div>
           </div>
         </div>
@@ -452,8 +452,8 @@ export function LandingView() {
               })}
             </Faq>
 
-            <Faq q="What AI tools can I use?">
-              Sora, Veo, Runway, Kling, Pika, or any other AI video generation service. We accept all major platforms — the focus is on your creative direction, not which tool you choose.
+            <Faq q="How do I create my video?">
+              Everyone creates in OXXOVO Studio — the same models, the same limits, for everyone. You don&apos;t bring outside tools, and you don&apos;t need a subscription anywhere else. That&apos;s what makes the result comparable.
             </Faq>
 
             <Faq q="How exactly are submissions scored?">
