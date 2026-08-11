@@ -1,8 +1,8 @@
 -- ===========================================================================
 -- OXXOVO Email opt-in (signup consent) -- profiles schema migration (2026-08-11)
 -- ===========================================================================
--- Run in Supabase SQL Editor (whole file, one block). Idempotent (ADD COLUMN
--- IF NOT EXISTS). No DO $$ block. ASCII-only (=== separators only).
+-- Run each BLOCK separately, in order, in Supabase SQL Editor.
+-- Idempotent (ADD COLUMN IF NOT EXISTS). No DO $$ block. ASCII-only.
 --
 -- Purpose: mirrors sms_optin_migration_2026-06.sql exactly, for email instead
 --   of SMS. Signup consent text: "By creating an OXXOVO account, you agree to
@@ -11,8 +11,7 @@
 --   (TK-confirmed copy, KR/EN in app/login consent notice + Privacy SS11 /
 --   Terms SS12.)
 --
---     email_opt_in       : current consent state (true once the signup notice
---                           has been shown and the account created; false
+--     email_opt_in       : current consent state (true once recorded; false
 --                           after unsubscribe).
 --     email_consent_at   : timestamp the consent was recorded (evidence).
 --     email_consent_ip   : caller IP at that moment (evidence).
@@ -23,17 +22,32 @@
 --                           profile settings). NULL = never unsubscribed.
 --
 -- Accounts created BEFORE this migration ships have all five columns NULL/false
--- -- there is no retroactive consent record for them (cannot be backfilled
--- honestly). Accounts created AFTER ships get email_opt_in=true +
--- email_consent_at/ip/text stamped once, at first successful login
--- (app/auth/callback/route.ts), same trigger point across new and existing
--- accounts hitting the callback for the first time post-deploy.
+-- -- there is no retroactive consent record for them. Accounts created AFTER
+-- ships get email_opt_in=true + email_consent_at/ip/text stamped once, at
+-- app/auth/callback/route.ts (after the recipient opens the emailed link and
+-- proves mailbox ownership -- not at OTP-request time on the login form).
 --
 -- Does NOT touch genesis_applications.agreed_to_rules/agreed_to_privacy/
--- agreed_to_integrity_notice -- those are a separate, apply-time layer (per-
--- submission agreement), not touched by this migration.
+-- agreed_to_integrity_notice -- separate, apply-time layer, untouched.
 -- ===========================================================================
 
+
+-- ===========================================================================
+-- BLOCK 0 -- pre-check. Expect 0 rows (none of the 5 columns exist yet).
+-- ===========================================================================
+SELECT column_name, data_type, is_nullable, column_default
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'profiles'
+    AND column_name IN (
+      'email_opt_in', 'email_consent_at', 'email_consent_ip',
+      'email_consent_text', 'email_opt_out_at'
+    )
+  ORDER BY column_name;
+
+
+-- ===========================================================================
+-- BLOCK 1 -- write. ADD-only, idempotent.
+-- ===========================================================================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -45,26 +59,23 @@ ALTER TABLE public.profiles
 
 COMMIT;
 
--- ===========================================================================
--- Verification (run separately, after COMMIT)
--- ===========================================================================
--- 1a) 5 columns exist -- expect email_opt_in/email_consent_at/email_consent_ip/
---     email_consent_text/email_opt_out_at
--- SELECT column_name, data_type, is_nullable, column_default
---   FROM information_schema.columns
---   WHERE table_schema='public' AND table_name='profiles'
---     AND column_name LIKE 'email\_%' ESCAPE '\'
---   ORDER BY column_name;
-
--- 1b) Current opt-in distribution -- expect all false before any deploy/login
--- SELECT email_opt_in, count(*) FROM public.profiles GROUP BY email_opt_in;
 
 -- ===========================================================================
--- Rollback (if needed) -- destroys consent evidence, use with care.
+-- BLOCK 2 -- verify. Expect 5 rows now (same query as BLOCK 0).
 -- ===========================================================================
--- ALTER TABLE public.profiles
---   DROP COLUMN IF EXISTS email_opt_in,
---   DROP COLUMN IF EXISTS email_consent_at,
---   DROP COLUMN IF EXISTS email_consent_ip,
---   DROP COLUMN IF EXISTS email_consent_text,
---   DROP COLUMN IF EXISTS email_opt_out_at;
+SELECT column_name, data_type, is_nullable, column_default
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'profiles'
+    AND column_name IN (
+      'email_opt_in', 'email_consent_at', 'email_consent_ip',
+      'email_consent_text', 'email_opt_out_at'
+    )
+  ORDER BY column_name;
+
+
+-- ===========================================================================
+-- BLOCK 3 -- verify distribution. Expect every row email_opt_in=false,
+-- count = total row count in public.profiles (ALTER with a DEFAULT backfills
+-- every existing row).
+-- ===========================================================================
+SELECT email_opt_in, count(*) FROM public.profiles GROUP BY email_opt_in;
