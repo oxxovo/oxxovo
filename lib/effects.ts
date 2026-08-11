@@ -53,7 +53,7 @@ export const EFFECT_SPECS: readonly EffectSpec[] = [
 ]
 
 // The effects E EXPOSES (parity-passed + engine-previewable). Order = UI order.
-// Excludes: lutIntensity/motionBlur (see the notes on their gaps below).
+// Excludes: motionBlur (see the note on its gap below).
 //
 // ★sharpen added 2026-08-10. The gate this file's own comment used to point
 // at (scripts/gl-engine-parity.mjs's sharpen CASE) said not to read a PASS
@@ -74,19 +74,29 @@ export const EFFECT_SPECS: readonly EffectSpec[] = [
 // identical) -- 0 UNMEASURABLE even, since the shift is visible on every
 // content this harness runs.
 //
-// ★lutIntensity is IMPLEMENTED on both sides (2026-08-10: worker's
-// buildSegmentFC split+lut3d+blend, GL's FRAG_COLOR_LUT mix) but NOT exposed
-// yet -- scripts/gl-engine-parity.mjs's lutIntensity row reads REVIEW
-// (r=0.44-0.83), not PASS, even after a real formula bug (ffmpeg's blend
-// opacity direction) was found and fixed. Exposing it now would ship a
-// control this project's own gate has not cleared -- the same discipline
-// sharpen/chromatic followed before their rows went green.
+// ★★lutIntensity added 2026-08-10 by TK executive decision, NOT because the
+// gate passed -- it has not. scripts/gl-engine-parity.mjs's lutIntensity row
+// still reads REVIEW (r=0.44-0.83 on 3/4 contents, PASS only on bars) after a
+// real formula bug (ffmpeg's blend=all_mode=normal:all_opacity weights the
+// FIRST/bottom input, not the second -- found and fixed the same day) closed
+// most, not all, of the gap. TK's reasoning (제니2, relayed): the instrument
+// itself cannot resolve this band -- three separate findings the same day
+// (no single FLOOR*k cutoff exists near the floor; two magnitude-identical
+// exposure samples read r 2x apart; the residual shrinks as the effect grows,
+// which is the signature of instrument noise, not a wrong formula) -- and
+// where the gate can't give a clean answer, the effect is ALSO too small for
+// a participant to see. This is the SAME reasoning sharpen's UNMEASURABLE
+// rows already rest on, made explicit and applied on purpose rather than
+// arrived at by construction. ★THE GATE ITSELF WAS NOT CHANGED -- FLOOR_PCT
+// and the 0.5/1.0 bands are exactly what they were; this is a business call
+// to ship inside the gate's own acknowledged blind spot, recorded here so
+// nobody reads "exposed" as "passed." See reports/lane_c_floor_derivation_2026-08-10.md.
 // ★motionBlur is NOT exposed: it's TEMPORAL (tmix averages several video
 // FRAMES), which this engine's single-frame-in/single-frame-out pass chain
 // cannot reproduce without a frame-history buffer it does not have -- a
 // different shape of work than a shader port, not sized here.
 export const EXPOSED_SLIDER_KEYS: readonly (keyof EffectParams)[] = [
-  'exposure', 'contrast', 'saturation', 'temperature', 'tint', 'vignette', 'glow', 'sharpen', 'chromatic', 'grain',
+  'exposure', 'contrast', 'saturation', 'temperature', 'tint', 'vignette', 'glow', 'sharpen', 'chromatic', 'grain', 'lutIntensity',
 ]
 export const EXPOSED_SLIDERS: readonly EffectSpec[] = EFFECT_SPECS.filter((s) => EXPOSED_SLIDER_KEYS.includes(s.key))
 
