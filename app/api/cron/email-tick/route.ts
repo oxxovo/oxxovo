@@ -740,23 +740,9 @@ async function fireFinalistResults(season: Season, budget: TickBudget): Promise<
     return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
   }
 
-  const selected = await dispatchBatch(
-    (selRes.data ?? []) as ApplicantRow[],
-    'selected_top50',
-    async (row) =>
-      sendSelectedTop50({
-        toEmail: row.email,
-        country: row.country,
-        creatorName: row.creator_name,
-        seasonName: season.display_name,
-        topNAdvance: season.top_n_advance,
-        totalParticipants: total,
-        mainRoundStartAt: season.main_round_start_at,
-        applicationId: row.id,
-        seasonId: season.id,
-      }),
-    budget,
-  )
+  // ★Big cohort first: the shared tick budget is spent in call order, so
+  // whichever of these runs second is the one that can defer. Rejected is
+  // deferred to the next tick, not lost -- HQ-accepted (2026-08-10).
   const rejected = await dispatchBatch(
     (rejRes.data ?? []) as ApplicantRow[],
     'not_selected',
@@ -779,6 +765,23 @@ async function fireFinalistResults(season: Season, budget: TickBudget): Promise<
         seasonId: season.id,
       })
     },
+    budget,
+  )
+  const selected = await dispatchBatch(
+    (selRes.data ?? []) as ApplicantRow[],
+    'selected_top50',
+    async (row) =>
+      sendSelectedTop50({
+        toEmail: row.email,
+        country: row.country,
+        creatorName: row.creator_name,
+        seasonName: season.display_name,
+        topNAdvance: season.top_n_advance,
+        totalParticipants: total,
+        mainRoundStartAt: season.main_round_start_at,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
     budget,
   )
 
