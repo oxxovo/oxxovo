@@ -20,6 +20,35 @@ import type { PreviewEngine, PreviewClip, PreviewSegment, PreviewTransition } fr
 import { locateComposition, fitObjectFit } from './preview'
 import type { EffectParams } from '@/lib/effects'
 import { VERT, FRAG_COLOR_LUT, FRAG_UNSHARP, FRAG_CHROMATIC, FRAG_GRAIN, FRAG_VIGNETTE, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, glowStages, grainAmount, unsharpAmount, chromaticShift, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
+import { valueAt, type KeyframeTrack } from '@/lib/edl-keyframes'
+
+// ★D keyframes (2026-08-10). Only exposure/contrast/saturation/vignette are
+// keyframe-able at all -- same limitation as the worker (render.ts), for the
+// same reason (checked there against ffmpeg directly): this list exists so
+// the two sides can't silently drift on WHICH params animate.
+const KEYFRAMEABLE_PARAMS: readonly (keyof EffectParams)[] = ['exposure', 'contrast', 'saturation', 'vignette']
+
+// seg with any keyframed param replaced by its value AT segRelMs -- a plain
+// EffectParams a caller can hand to colorUniforms()/etc exactly like a
+// static one, so nothing downstream needs to know keyframes exist at all.
+function effectiveSegParams(
+  seg: EffectParams | undefined,
+  keyframes: Partial<Record<keyof EffectParams, KeyframeTrack>> | undefined,
+  segRelMs: number,
+): EffectParams | undefined {
+  if (!keyframes) return seg
+  let out: EffectParams | undefined
+  for (const k of KEYFRAMEABLE_PARAMS) {
+    const track = keyframes[k]
+    if (!track || !track.points.length) continue
+    if (!out) out = { ...seg }
+    // KEYFRAMEABLE_PARAMS is all-numeric EffectParams keys; TS can't narrow a
+    // generic `keyof` write across a mixed number|string object, so this cast
+    // just states what's already true by construction above.
+    ;(out as Record<string, number>)[k] = valueAt(track, segRelMs)
+  }
+  return out ?? seg
+}
 
 type TiledLut = { W: number; H: number; px: Uint8Array; N: number }
 
@@ -135,7 +164,14 @@ export class GLProcessor {
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.fbos[bIdx].tex)
     this.bindTarget(-1, w, h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   }
-  render(source: TexImageSource, w: number, h: number, seg?: EffectParams, global?: EffectParams, lutLoaded = false, targetIdx = -1): void {
+  render(
+    source: TexImageSource, w: number, h: number, seg?: EffectParams, global?: EffectParams, lutLoaded = false, targetIdx = -1,
+    // ★D keyframes (2026-08-10). segRelMs = playhead position relative to
+    // THIS segment's own start (0 at the segment's first frame) -- the same
+    // convention the worker's `t` uses inside its per-segment ffmpeg process
+    // (measured, not assumed: -ss before -i rebases pts_time to 0).
+    keyframes?: Partial<Record<keyof EffectParams, KeyframeTrack>>, segRelMs = 0,
+  ): void {
     const gl = this.gl
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h }
     if (targetIdx >= 0) this.ensureFbos(w, h)
@@ -143,6 +179,10 @@ export class GLProcessor {
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
+    // Keyframed params replaced by their value AT segRelMs; everything past
+    // this point reads `seg` (now the effective one) exactly like before --
+    // colorUniforms/unsharpAmount/etc never need to know keyframes exist.
+    seg = effectiveSegParams(seg, keyframes, segRelMs)
     const stages = glowStages(seg, global)
     const useLut = lutLoaded && this.lutN > 0 && !!activeLut(seg, global)
     const u = colorUniforms(seg, global)
@@ -385,8 +425,10 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
           // audio crossfade (mirrors the render's acrossfade)
           video.volume = 1 - p; videoB.volume = p
           if (videoB.readyState >= 2) {
-            const lutA = applyLut(seg.effects); proc.render(video, w, h, seg.effects, glob, lutA, 4)
-            const lutB = applyLut(segB.effects); proc.render(videoB, w, h, segB.effects, glob, lutB, 5)
+            const segRelMsA = video.currentTime * 1000 - seg.startMs
+            const segRelMsB = videoB.currentTime * 1000 - segB.startMs
+            const lutA = applyLut(seg.effects); proc.render(video, w, h, seg.effects, glob, lutA, 4, seg.keyframes, segRelMsA)
+            const lutB = applyLut(segB.effects); proc.render(videoB, w, h, segB.effects, glob, lutB, 5, segB.keyframes, segRelMsB)
             proc.transitionBlend(4, 5, w, h, p, TRANSITION_TYPE[tr.type] ?? 0)
             return
           }
@@ -399,7 +441,8 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     }
     // --- normal single-video path (unchanged) ---
     const lut = applyLut(seg?.effects)
-    proc.render(video, w, h, seg?.effects, glob, lut)
+    const segRelMs = seg ? video.currentTime * 1000 - seg.startMs : 0
+    proc.render(video, w, h, seg?.effects, glob, lut, -1, seg?.keyframes, segRelMs)
   }
   // Every GL call the preview makes goes through here. A throw (SecurityError on
   // a tainted cross-origin video, shader/link failure, context loss) degrades to
