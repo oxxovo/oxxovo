@@ -1,5 +1,9 @@
 # 랜딩·Watch 번역 목록 (조회) — 2026-08-10
 
+★★후속 정정 (같은 날, 제니3 폐기값 발견 4건 대응) — 아래 표의 3행이 이제
+스냅샷과 다르다. 코드는 고쳤고(랜딩 English original), 표는 참고용으로
+아래 "폐기값 정정" 절에 반영했다. 번역은 정정된 영문 기준으로 해달라.
+
 ★조회. 코드 0줄, 배선 없음. 랜딩(`app/_landing/LandingView.tsx`) + Watch
 (`app/watch/*.tsx` 18개 파일, `app/watch/[id]/page.tsx`) 전체를 직접 읽고
 뽑았다 — grep 표본 아님. `getBannerStage`(`lib/watch.ts`)의 배너·단계 문구는
@@ -260,6 +264,31 @@
 | watch_score_intent | Intent / clarity | 점수 패널, 축 라벨 |
 | watch_score_execution | Execution | 점수 패널, 축 라벨 |
 | watch_score_originality | Originality | 점수 패널, 축 라벨 |
+
+## 폐기값 정정 (제니2 확인 4건, 같은 날)
+
+| 키 | 이전 표의 원문 | 정정된 원문 | 사유 |
+|---|---|---|---|
+| landing_step2_body | …independent AI models — {model list} — from… | …independent AI models from {N} different companies… (모델명 목록 삭제) | 심사 AI 모델명 노출 금지 |
+| landing_faq_a7 | …The {advance count label} earn the Finalist title. Future seasons' prize pools scale with participation. The Grand Final prize pool will be announced based on tournament participation. | …The {advance count label} earn the Finalist title. (뒤 두 문장 삭제) | 시즌0 자산에서 왕중왕전 전량 금지 |
+| landing_faq_a9 | {panelLabel} scoring takes approximately 60–90 seconds per submission. Your individual score appears in your profile soon after submission. Final rankings are published after the application period closes. | Scoring runs in a batch after the application period closes. Your individual score and the panel's reasoning arrive with your preliminary-round results notification, and you can also check them in your profile. | 실시간 채점처럼 읽히는 문구가 실제 일정(마감 후 일괄)과 안 맞음. 제니3 한국어 문안 기반 영문 재작성 |
+
+**landing_step1_body / landing_faq_a3 (Studio 전용 표현) — 아직 코드 미수정.**
+"YouTube나 Vimeo에 올려 공유" / "Sora·Veo·Runway 등 아무거나"로 읽히는 현재
+원문이 시즌0의 `allowed_video_platforms=['studio']` 규칙과 안 맞다는 지적—
+문안은 제니3 소관이라 그거 오면 고친다.
+
+**faq_a5 표기 확인 요청**: "step2_body·faq_a5의 {model list} 제거" 지시를
+받았는데, 실제 코드의 FAQ #5("Why {N} AIs instead of one?")는 모델명 변수가
+없다(개수·회사수만 언급). 모델명을 실제로 노출하는 곳은 **FAQ #4**("How
+exactly are submissions scored?" — `formatModelName(m.name)` 목록)과 **FAQ
+#8**("How does OXXOVO prevent cheating?" — integrity 모델이 있을 때
+`formatModelName(integrityModel.name)`)이다. 어느 걸 가리킨 건지 확인
+부탁 — 잘못 짚어 고치면 그게 새 오류라 안 건드렸다.
+
+**B급 (메모만, 미수정)**: `landing_faq_a1`(참가 비용 FAQ)에 생성 비용 병기
+필요 지적, `watch_hero_ctx_judged`의 `{date}` 포맷(`Arena.tsx` `toLocaleDateString`)에
+시간대 표시 없음 — PST/PDT 오류 재발 방지 규칙 위반 소지.
 
 ## 함께 표시 못한 것
 

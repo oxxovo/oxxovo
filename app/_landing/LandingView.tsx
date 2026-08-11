@@ -8,7 +8,6 @@ import {
   advanceCountLabel,
   formatAccessCopy,
   formatDeadlinePT,
-  formatAiModelList,
   formatAiProviderList,
   formatModelName,
   formatPanelLabel,
@@ -374,7 +373,7 @@ export function LandingView() {
               title={`${panelLabel} Judges`}
               body={
                 <>
-                  {modelCount === 3 ? 'Three' : modelCount} independent AI models — {formatAiModelList(season.ai_models)} — from {modelCount === 3 ? 'three' : modelCount} different companies score your work in parallel. Eliminates single-AI bias.
+                  {modelCount === 3 ? 'Three' : modelCount} independent AI models from {modelCount === 3 ? 'three' : modelCount} different companies score your work in parallel. Eliminates single-AI bias.
                 </>
               }
             />
@@ -480,7 +479,7 @@ export function LandingView() {
             </Faq>
 
             <Faq q="What are the prizes?">
-              {season.name} features a ${Number(season.total_prize_pool).toLocaleString()} prize pool (${Number(season.prize_first).toLocaleString()} for 1st, ${Number(season.prize_second).toLocaleString()} for 2nd, ${Number(season.prize_third).toLocaleString()} for 3rd). The {advanceCountLabel(season)} earn the Finalist title. Future seasons&apos; prize pools scale with participation. The Grand Final prize pool will be announced based on tournament participation.
+              {season.name} features a ${Number(season.total_prize_pool).toLocaleString()} prize pool (${Number(season.prize_first).toLocaleString()} for 1st, ${Number(season.prize_second).toLocaleString()} for 2nd, ${Number(season.prize_third).toLocaleString()} for 3rd). The {advanceCountLabel(season)} earn the Finalist title.
             </Faq>
 
             <Faq q="How does OXXOVO prevent cheating?">
@@ -488,7 +487,7 @@ export function LandingView() {
             </Faq>
 
             <Faq q="When do I get my results?">
-              {panelLabel} scoring takes approximately 60–90 seconds per submission. Your individual score appears in your profile soon after submission. Final rankings are published after the application period closes.
+              Scoring runs in a batch after the application period closes. Your individual score and the panel&apos;s reasoning arrive with your preliminary-round results notification, and you can also check them in your profile.
             </Faq>
           </div>
         ) : (
