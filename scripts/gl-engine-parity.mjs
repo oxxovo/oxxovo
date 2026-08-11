@@ -45,9 +45,9 @@ process.env.LUT_DIR = join(WORKER_REPO, 'assets', 'luts')
 // Same resolve hook `npm test` uses; registering here keeps a bare `node
 // scripts/gl-engine-parity.mjs` working, with no npm-script flag to remember.
 register('./test-hooks.mjs', import.meta.url)
-let effectVideoFilters
+let effectVideoFilters, buildSegmentFC
 try {
-  ;({ effectVideoFilters } = await import(pathToFileURL(RENDER_TS).href))
+  ;({ effectVideoFilters, buildSegmentFC } = await import(pathToFileURL(RENDER_TS).href))
 } catch (e) {
   console.error(`\n★Found ${RENDER_TS} but could not import it -- exiting 1 rather than`)
   console.error(`  falling back to local copies of its filter strings.\n  ${e?.message ?? e}\n`)
@@ -86,6 +86,11 @@ const TMPDIR = (process.env.TEMP || '/tmp').split(String.fromCharCode(92)).join(
 const argPngs = process.argv.slice(2)
 const run = (args) => new Promise((res, rej) => { const p = spawn(FFMPEG, args); const ch = []; let e = ''; p.stdout.on('data', (d) => ch.push(d)); p.stderr.on('data', (d) => (e += d)); p.on('close', (c) => (c === 0 ? res(Buffer.concat(ch)) : rej(new Error('ff ' + c + ' ' + e.slice(-200))))); p.on('error', rej) })
 const raw = (png, vf) => run(['-y', '-i', png, ...(vf ? ['-vf', vf] : []), '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
+// ★lutIntensity's filter runs through buildSegmentFC (filter_complex, blend
+// path), not a plain -vf chain -- a DIFFERENT ffmpeg invocation shape than
+// every other row here, matching how render.ts's real call site invokes it
+// (-filter_complex ... -map '[vout]').
+const rawFC = (png, fc) => run(['-y', '-i', png, '-filter_complex', fc, '-map', '[vout]', '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'])
 // ★④-G SIGNAL-RELATIVE ERROR. Normalises the residual by the effect's OWN per-pixel
 // signal instead of by the frame: sum|gl-ff| / sum|ff-plain|.
 //
@@ -282,11 +287,15 @@ const CASES = [
     name: 'LUT',
     gate: 3,
     // ★From the worker (LUT_DIR points at its assets/luts, md5-checked above).
+    // ★lutIntensity:1 (2026-08-10) -- FRAG_COLOR_LUT's LUT application is now
+    // `mix(c, lutSample(c), u_lutIntensity)`, an undeclared/unset uniform
+    // defaults to 0 in WebGL, which would silently turn this row into a
+    // do-nothing shader (r=1.000 on every content) without this.
     vf: `${ff({ lut: LUT_ID })},format=rgb24`,
     gl: async (b64) => {
       const cube = parseCube(await readFile('public/luts/teal_orange.cube', 'utf8'))
       const t = tileCube(cube)
-      return glRun({ shaders: shadersCL, U: colorUniforms(), lut: { px: Array.from(t.px), W: t.W, H: t.H, N: cube.size } }, b64)
+      return glRun({ shaders: shadersCL, U: { ...colorUniforms(), lutIntensity: 1 }, lut: { px: Array.from(t.px), W: t.W, H: t.H, N: cube.size } }, b64)
     },
   },
   {
@@ -362,6 +371,21 @@ const CASES = [
     vf: `${ff({ vignette: VIGNETTE_VG })},format=rgb24`,
     gl: async (b64) => glRunVignette(colorUniforms({ vignette: VIGNETTE_VG }).vignette, vignetteLutB64, b64),
   },
+  {
+    // ★lutIntensity (2026-08-10). Measured against the WORKER's own
+    // buildSegmentFC() (filter_complex split+lut3d+normal-blend), NOT a
+    // -vf chain -- lutIntensity<100 can't be expressed linearly, same reason
+    // glow needs filter_complex. GL side: FRAG_COLOR_LUT's u_lutIntensity mix.
+    // pct=60, a mid value (same reasoning as sharpen/chromatic's mid picks).
+    name: 'lutIntensity',
+    gate: 3,
+    fc: buildSegmentFC({ jobId: 'x', startMs: 0, endMs: 1000, effects: { lut: LUT_ID, lutIntensity: 60 } }, { w: 320, h: 240, fps: 30 }),
+    gl: async (b64) => {
+      const cube = parseCube(await readFile('public/luts/teal_orange.cube', 'utf8'))
+      const t = tileCube(cube)
+      return glRun({ shaders: shadersCL, U: { ...colorUniforms(), lutIntensity: 0.6 }, lut: { px: Array.from(t.px), W: t.W, H: t.H, N: cube.size } }, b64)
+    },
+  },
 ]
 
 // ★MEASUREMENT FLOOR = 1 LSB. The colour port established that ffmpeg's own identity
@@ -389,7 +413,7 @@ for (const it of items) {
   for (const c of CASES) {
     const outPng = `${it.png.replace(/\.png$/, '')}.eng.${c.name}.png`
     await writeFile(outPng, await c.gl(b64))
-    const ffOut = await raw(it.png, c.vf)
+    const ffOut = c.fc ? await rawFC(it.png, c.fc) : await raw(it.png, c.vf)
     const d = diff(ffOut, await raw(outPng))
     // ★How far the EFFECT moves the image at all. Without this the residual has no
     // scale: a 0.18% residual is excellent against a 5% effect and worthless against a

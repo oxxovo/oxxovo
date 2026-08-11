@@ -74,10 +74,13 @@ export const EFFECT_SPECS: readonly EffectSpec[] = [
 // identical) -- 0 UNMEASURABLE even, since the shift is visible on every
 // content this harness runs.
 //
-// ★lutIntensity is NOT exposed and isn't a preview-side gap: render.ts's
-// effectVideoFilters() never reads it (lut3d always applies at full
-// strength), so there is nothing on the worker side yet for a slider to
-// match -- exposing it would show a control that lies about the render.
+// ★lutIntensity is IMPLEMENTED on both sides (2026-08-10: worker's
+// buildSegmentFC split+lut3d+blend, GL's FRAG_COLOR_LUT mix) but NOT exposed
+// yet -- scripts/gl-engine-parity.mjs's lutIntensity row reads REVIEW
+// (r=0.44-0.83), not PASS, even after a real formula bug (ffmpeg's blend
+// opacity direction) was found and fixed. Exposing it now would ship a
+// control this project's own gate has not cleared -- the same discipline
+// sharpen/chromatic followed before their rows went green.
 // ★motionBlur is NOT exposed: it's TEMPORAL (tmix averages several video
 // FRAMES), which this engine's single-frame-in/single-frame-out pass chain
 // cannot reproduce without a frame-history buffer it does not have -- a

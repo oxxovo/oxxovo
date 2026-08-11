@@ -40,7 +40,7 @@ precision highp float;
 in vec2 v_uv;
 out vec4 o;
 uniform sampler2D u_tex, u_lut;
-uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_hasLut, u_N;
+uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_hasLut, u_N, u_lutIntensity;
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 
 // ★ffmpeg eq is a YUV filter, not an RGB one. Measured 2026-07-30 (24-patch chart
@@ -99,7 +99,12 @@ void main() {
   c = eqGrade(c, u_exposure, u_contrast, u_saturation);
   float k = u_tempK / 3000.0; c.r -= k * 0.05; c.b += k * 0.05;
   c.g += u_tint * (1.0 - abs(2.0 * dot(c, LUMA) - 1.0));
-  if (u_hasLut > 0.5) c = lutSample(clamp(c, 0.0, 1.0));
+  // ★lutIntensity (2026-08-10): worker's default (unset -> 100) is FULL
+  // strength, the one exception to this file's usual "0 == neutral" rule --
+  // matches render.ts's lut3d always applying at full strength when no
+  // lutIntensity was ever written, so every EDL signed before today renders
+  // byte-identical.
+  if (u_hasLut > 0.5) c = mix(c, lutSample(clamp(c, 0.0, 1.0)), u_lutIntensity);
   o = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`
 
@@ -293,6 +298,18 @@ export function colorUniforms(seg?: EffectParams, global?: EffectParams): ColorU
 export function activeLut(seg?: EffectParams, global?: EffectParams): string {
   const s = typeof seg?.lut === 'string' ? seg.lut : ''
   return s || (typeof global?.lut === 'string' ? global.lut : '')
+}
+
+// LUT strength (0..1) for whichever of seg/global actually carries the active
+// LUT (same winner as activeLut -- intensity is read from THAT object, not
+// folded independently, matching render.ts calling effectVideoFilters(seg.effects)
+// and effectVideoFilters(global) as two separate calls). Unset -> 1.0 (full
+// strength, matches the worker's pre-2026-08-10 always-full-strength lut3d).
+export function activeLutIntensity(seg?: EffectParams, global?: EffectParams): number {
+  const src = typeof seg?.lut === 'string' && seg.lut ? seg : typeof global?.lut === 'string' && global.lut ? global : undefined
+  const raw = src?.lutIntensity
+  const pct = typeof raw === 'number' ? Math.max(0, Math.min(100, raw)) : 100
+  return pct / 100
 }
 
 // LUT id -> served .cube path (public/luts). Matches oxxovo-studio LUT_FILES.

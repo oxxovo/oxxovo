@@ -4,22 +4,25 @@
 // ★ The RENDER (oxxovo-studio render.ts, B1) is authoritative; the shaders MATCH
 // it (shared source: lib/gl-effects.ts). Parity is re-verified from the ENGINE's
 // shaders by scripts/gl-engine-parity.mjs before effect controls (E) are exposed.
-// Ported so far: color grade + LUT + sharpen + chromatic + grain + vignette +
-// glow (this file, worker order: color/LUT -> sharpen -> chromatic -> grain ->
-// vignette -> glow). ★sharpen/chromatic are WIRED AND EXPOSED
-// (EXPOSED_SLIDER_KEYS, 2026-08-10). motionBlur is NOT wired -- it is
-// TEMPORAL (worker's tmix averages several video FRAMES), which this
-// single-frame-in/single-frame-out pass chain cannot do without a frame-
-// history buffer this engine does not keep. lutIntensity is NOT wired either,
-// on purpose: render.ts's effectVideoFilters() never reads it (lut3d always
-// applies at full strength), so there is nothing on the worker side for a
-// preview slider to match yet -- exposing it here would show a control that
-// lies about what the render does.
+// Ported so far: color grade + LUT + lutIntensity + sharpen + chromatic +
+// grain + vignette + glow (this file, worker order: color/LUT -> sharpen ->
+// chromatic -> grain -> vignette -> glow). ★sharpen/chromatic are WIRED AND
+// EXPOSED (EXPOSED_SLIDER_KEYS). ★lutIntensity is WIRED but NOT exposed yet --
+// scripts/gl-engine-parity.mjs reads REVIEW (r=0.44-0.83, not the r<0.5 PASS
+// band) even after a real formula bug was found and fixed (ffmpeg's
+// blend=all_mode=normal:all_opacity weights the FIRST/bottom input, not the
+// second -- measured directly 2026-08-10, see render.ts's lutStage note); the
+// residual left after that fix reads like the same floor-adjacent noise
+// documented for sharpen, not a further formula error, but REVIEW is REVIEW.
+// motionBlur is NOT wired -- it is TEMPORAL (worker's tmix averages several
+// video FRAMES), which this single-frame-in/single-frame-out pass chain
+// cannot do without a frame-history buffer this engine does not keep (needs
+// its own spike, see reports/lane_c_item4_g_blocked_design_2026-08-10.md).
 
 import type { PreviewEngine, PreviewClip, PreviewSegment, PreviewTransition } from './preview'
 import { locateComposition, fitObjectFit } from './preview'
 import type { EffectParams } from '@/lib/effects'
-import { VERT, FRAG_COLOR_LUT, FRAG_UNSHARP, FRAG_CHROMATIC, FRAG_GRAIN, FRAG_VIGNETTE, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, glowStages, grainAmount, unsharpAmount, chromaticShift, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
+import { VERT, FRAG_COLOR_LUT, FRAG_UNSHARP, FRAG_CHROMATIC, FRAG_GRAIN, FRAG_VIGNETTE, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, activeLutIntensity, glowStages, grainAmount, unsharpAmount, chromaticShift, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
 import { valueAt, type KeyframeTrack } from '@/lib/edl-keyframes'
 
 // ★D keyframes (2026-08-10). Only exposure/contrast/saturation/vignette are
@@ -185,6 +188,7 @@ export class GLProcessor {
     seg = effectiveSegParams(seg, keyframes, segRelMs)
     const stages = glowStages(seg, global)
     const useLut = lutLoaded && this.lutN > 0 && !!activeLut(seg, global)
+    const lutIntensity = activeLutIntensity(seg, global)
     const u = colorUniforms(seg, global)
     const sharpenAmt = unsharpAmount(seg, global)
     const chromatic = chromaticShift(seg, global)
@@ -199,6 +203,7 @@ export class GLProcessor {
     this.uf(this.progCL, 'u_exposure', u.exposure); this.uf(this.progCL, 'u_contrast', u.contrast); this.uf(this.progCL, 'u_saturation', u.saturation)
     this.uf(this.progCL, 'u_tempK', u.tempK); this.uf(this.progCL, 'u_tint', u.tint)
     this.uf(this.progCL, 'u_hasLut', useLut ? 1 : 0); this.uf(this.progCL, 'u_N', this.lutN || 2)
+    this.uf(this.progCL, 'u_lutIntensity', lutIntensity)
     // ★vignette no-ops until its LUT texture has loaded (a same-origin fetch
     // kicked off in the constructor, effectively one frame) -- see the note
     // there. Never throws, never shows a mangled frame; just skips the effect
