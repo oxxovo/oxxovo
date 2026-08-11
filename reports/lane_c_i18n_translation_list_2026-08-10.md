@@ -290,6 +290,31 @@ exactly are submissions scored?" — `formatModelName(m.name)` 목록)과 **FAQ
 필요 지적, `watch_hero_ctx_judged`의 `{date}` 포맷(`Arena.tsx` `toLocaleDateString`)에
 시간대 표시 없음 — PST/PDT 오류 재발 방지 규칙 위반 소지.
 
+## ★2026-08-11 추가 -- 무결성 카피 확정 (TK 판정, 문안 제니3→제니2)
+
+아래 4개는 오늘 코드에 반영 완료(`app/_landing/LandingView.tsx`,
+`app/watch/ScorePanel.tsx`). 위 08-10 표의 옛 원문(모델명·임계값·4항목
+비중 노출)은 폐기 -- 이 표가 최신이다. 한국어 값은 제니2가 전달한
+확정본 그대로.
+
+| 키 | 한국어 | 영어 | 위치 |
+|---|---|---|---|
+| landing_faq_a8 | 무결성 검증이 허위 표기를 자동으로 잡아냅니다. 검증에 걸린 작품은 사람이 다시 확인합니다. 사용한 AI 도구나 콘텐츠 출처를 거짓으로 밝히면 자동 실격됩니다. 검증 기준과 비중은 공개하지 않습니다. | An automated integrity check flags misrepresentation. Anything it flags gets a human review. Misstating your tools or sources is grounds for disqualification. We don't publish the thresholds or weighting. | FAQ 질문 8 답변 |
+| landing_faq_a4_outro | 최종 OXXOVO 점수는 여러 항목의 가중 평균입니다. 공개되는 항목은 기획 명확성({%}), 완성도({%}), 독창성({%}) 세 가지이며, 무결성은 별도로 자동 검증됩니다. 편차가 큰 점수는 자동으로 제외됩니다. | Your final OXXOVO score is a weighted average. Three components are shown — Intent Clarity ({%}), Execution ({%}), and Originality ({%}) — and integrity is verified automatically. Outlier scores are discarded. | FAQ 질문 4 답변, 마지막 문단 |
+| landing_step3_body | 공개 항목 세 가지 — 기획 명확성({%}), 완성도({%}), 독창성({%}) — 로 OXXOVO 점수를 받습니다. 모든 작품은 무결성 자동 검증을 함께 거칩니다. | You get an OXXOVO score across three published components — Intent Clarity ({%}), Execution ({%}), Originality ({%}). Every entry also passes an automated integrity check. | 스텝 03 본문 |
+| watch_score_integrity_verified | 무결성 검증됨 (✓ 접두) | Integrity Verified (✓ prefix) | Watch 점수 패널, 통과 시에만 표시(배지). 미달/미검증 상태는 표시하지 않음 -- 임계값 힌트가 되므로 |
+
+**{%} 변수 확인 (제니2 요청)**: season_0 DB 실측(`scoring_intent_clarity_weight
+=0.25, scoring_execution_weight=0.45, scoring_originality_weight=0.20,
+scoring_integrity_weight=0.10`) + `formatWeightPercent()`
+(`lib/seasons.ts:437`) 코드 확인 -- 정규화 없음, 원값 그대로
+`Math.round(weight*100)`. 25/45/20 그대로 표시된다, 90 기준 재정규화
+아님. 코드 수정 불필요, 이미 제니3/제니2 권고대로였다.
+
+**landing_faq_a8에서 제거된 것**: 심사 모델명(`integrityModel`), 임계값
+(`season.flag_integrity_threshold`), 무결성 비중(%) -- 셋 다 코드에서
+삭제, `getIntegrityModel` import도 이 파일에서 미사용이 되어 함께 제거.
+
 ## 함께 표시 못한 것
 
 - **FAQ #2 답변**(`landing_faq_a2`) — `lib/seasons.ts`의 `formatAccessCopy()`가

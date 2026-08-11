@@ -12,7 +12,6 @@ import {
   formatModelName,
   formatPanelLabel,
   formatWeightPercent,
-  getIntegrityModel,
   isApplicationClosed,
   type Season,
 } from '@/lib/seasons'
@@ -123,7 +122,6 @@ export function LandingView() {
     { icon: '❖', title: 'Built for Creators', desc: 'Made by creators. For creators.' },
   ]
 
-  const integrityModel = season ? getIntegrityModel(season.ai_models) : null
   const modelCount = season?.ai_models.length ?? 3
   const panelLabel = season ? formatPanelLabel(season.ai_models) : 'multi-AI'
 
@@ -382,7 +380,7 @@ export function LandingView() {
               title="Get Your Score"
               body={
                 <>
-                  Receive your final OXXOVO Score across four categories: Intent Clarity ({formatWeightPercent(season.scoring_intent_clarity_weight)}), Execution ({formatWeightPercent(season.scoring_execution_weight)}), Originality ({formatWeightPercent(season.scoring_originality_weight)}), Integrity ({formatWeightPercent(season.scoring_integrity_weight)}).
+                  You get an OXXOVO score across three published components — Intent Clarity ({formatWeightPercent(season.scoring_intent_clarity_weight)}), Execution ({formatWeightPercent(season.scoring_execution_weight)}), Originality ({formatWeightPercent(season.scoring_originality_weight)}). Every entry also passes an automated integrity check.
                 </>
               }
             />
@@ -466,7 +464,7 @@ export function LandingView() {
                 ))}
               </span>
               <span className="block mt-4">
-                Your final OXXOVO Score is a weighted average across four categories: Intent Clarity ({formatWeightPercent(season.scoring_intent_clarity_weight)}), Execution ({formatWeightPercent(season.scoring_execution_weight)}), Originality ({formatWeightPercent(season.scoring_originality_weight)}), and Integrity ({formatWeightPercent(season.scoring_integrity_weight)}). Outlier scores are automatically excluded.
+                Your final OXXOVO score is a weighted average. Three components are shown — Intent Clarity ({formatWeightPercent(season.scoring_intent_clarity_weight)}), Execution ({formatWeightPercent(season.scoring_execution_weight)}), and Originality ({formatWeightPercent(season.scoring_originality_weight)}) — and integrity is verified automatically. Outlier scores are discarded.
               </span>
             </Faq>
 
@@ -483,7 +481,7 @@ export function LandingView() {
             </Faq>
 
             <Faq q="How does OXXOVO prevent cheating?">
-              Our Integrity score ({formatWeightPercent(season.scoring_integrity_weight)} weight{integrityModel ? `, judged solely by ${formatModelName(integrityModel.name)} to prevent AI collusion` : ''}) automatically detects misrepresentation. Submissions with Integrity scores below {season.flag_integrity_threshold} are flagged for human review. False claims about your AI tool or content origin result in automatic disqualification.
+              An automated integrity check flags misrepresentation. Anything it flags gets a human review. Misstating your tools or sources is grounds for disqualification. We don&apos;t publish the thresholds or weighting.
             </Faq>
 
             <Faq q="When do I get my results?">

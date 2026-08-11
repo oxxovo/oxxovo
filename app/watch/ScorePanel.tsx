@@ -27,6 +27,17 @@ export function ScorePanel({ score }: { score: PublicScore }) {
         <Axis label="Originality" value={score.originality} />
       </div>
 
+      {/* ★2026-08-11: badge only, no number, PASS-only (no "not verified" state
+          -- see PublicScore.integrityVerified). Kept even though it adds no
+          numeric info: omitting integrity from this panel entirely would
+          erase the 4th scoring dimension's existence, which TK's ruling did
+          not ask for -- "verification happened" is shown, the number isn't. */}
+      {score.integrityVerified && (
+        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+          <span aria-hidden>✓</span> Integrity Verified
+        </div>
+      )}
+
       {score.ai.length > 0 && (
         <div className="mt-5 space-y-4 border-t border-white/10 pt-4">
           {score.ai.map((a) => (

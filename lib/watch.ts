@@ -689,6 +689,12 @@ export type PublicScore = {
   execution: number | null
   originality: number | null
   ai: AiCritique[]
+  // ★2026-08-11 (제니2, TK integrity-copy ruling): boolean ONLY -- pass/fail,
+  // never the underlying score or threshold ([[project-scoring-integrity-rules]]).
+  // false/unflagged reads as "verified"; a genuine flag stays internal (no
+  // "not verified" state is ever surfaced -- that would itself hint the
+  // threshold, which is the leak TK's ruling closed).
+  integrityVerified: boolean
 }
 
 // Parse the ai_outputs JSONB ({claude,gpt,gemini}: {strengths,weaknesses,aiSummary})
@@ -734,7 +740,7 @@ export async function getPublicScore(
   const { data } = await admin
     .from('scoring_results')
     .select(
-      'verified_score, grade, consensus_intent, consensus_execution, consensus_originality, ai_outputs, judged_status',
+      'verified_score, grade, consensus_intent, consensus_execution, consensus_originality, ai_outputs, judged_status, integrity_flag',
     )
     .eq('application_id', applicationId)
     .eq('round', round)
@@ -748,6 +754,7 @@ export async function getPublicScore(
     execution: data.consensus_execution as number | null,
     originality: data.consensus_originality as number | null,
     ai: parseAiOutputs(data.ai_outputs),
+    integrityVerified: data.integrity_flag === false,
   }
 }
 
