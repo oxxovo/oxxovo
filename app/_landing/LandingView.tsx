@@ -24,11 +24,13 @@ import { getStudioApplicationFlag } from '@/app/apply/actions'
 import { getMembershipLandingData } from '@/app/membership/actions'
 import type { MembershipLandingData } from '@/app/membership/types'
 import { formatFooterStatusLine } from '@/lib/ip-info'
+import { useT, useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
 
 type TimeLeft = { days: string; hours: string; minutes: string; seconds: string }
 const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '00' }
 
 export function LandingView() {
+  const t = useT()
   const [user, setUser] = useState<{ email: string } | null>(null)
   const [season, setSeason] = useState<Season | null>(null)
   const [membership, setMembership] = useState<MembershipLandingData | null>(null)
@@ -82,7 +84,7 @@ export function LandingView() {
   // before open -> "Get notified" (pre-register), open -> "Apply to <season>".
   const cta = season
     ? resolveSeasonCta(season)
-    : { href: '/apply', label: 'Apply now' }
+    : { href: '/apply', label: t.landing.cta_default }
 
   useEffect(() => {
     if (!targetDate) return
@@ -115,11 +117,11 @@ export function LandingView() {
   }
 
   const features = [
-    { icon: '⚡', title: 'Real-time', desc: 'Live tournaments. Feel the pressure.' },
-    { icon: '✦', title: 'Verified', desc: 'Same prompt. Same conditions.' },
-    { icon: '♛', title: 'Ranked', desc: 'Global leaderboard. Earn your reputation.' },
-    { icon: '◎', title: 'Global', desc: 'Creators from around the world.' },
-    { icon: '❖', title: 'Built for Creators', desc: 'Made by creators. For creators.' },
+    { icon: '⚡', title: t.landing.feat1_title, desc: t.landing.feat1_desc },
+    { icon: '✦', title: t.landing.feat2_title, desc: t.landing.feat2_desc },
+    { icon: '♛', title: t.landing.feat3_title, desc: t.landing.feat3_desc },
+    { icon: '◎', title: t.landing.feat4_title, desc: t.landing.feat4_desc },
+    { icon: '❖', title: t.landing.feat5_title, desc: t.landing.feat5_desc },
   ]
 
   const modelCount = season?.ai_models.length ?? 3
@@ -153,20 +155,21 @@ export function LandingView() {
         </Link>
 
         <nav className="flex items-center gap-9 text-[14px] font-medium text-white/75 max-md:hidden">
-          <a className="transition hover:text-[#b66cff]" href="/tournament">Tournament Info</a>
+          <a className="transition hover:text-[#b66cff]" href="/tournament">{t.landing.nav_tournament}</a>
           {studioFunnel && (
-            <a className="transition hover:text-[#b66cff]" href="/studio">Studio</a>
+            <a className="transition hover:text-[#b66cff]" href="/studio">{t.landing.nav_studio}</a>
           )}
           {watchNav && (
-            <a className="transition hover:text-[#b66cff]" href="/watch">Watch</a>
+            <a className="transition hover:text-[#b66cff]" href="/watch">{t.landing.nav_watch}</a>
           )}
-          <a className="transition hover:text-[#b66cff]" href="#how">How It Works</a>
-          <a className="transition hover:text-[#b66cff]" href="#about">About</a>
-          <a className="transition hover:text-[#b66cff]" href="/membership">Membership</a>
-          <a className="transition hover:text-[#b66cff]" href="#faq">FAQ</a>
+          <a className="transition hover:text-[#b66cff]" href="#how">{t.landing.nav_how}</a>
+          <a className="transition hover:text-[#b66cff]" href="#about">{t.landing.nav_about}</a>
+          <a className="transition hover:text-[#b66cff]" href="/membership">{t.landing.nav_membership}</a>
+          <a className="transition hover:text-[#b66cff]" href="#faq">{t.landing.nav_faq}</a>
         </nav>
 
         <div className="flex items-center gap-5">
+          <LangSwitch />
           {user ? (
             <>
               {/* Shown on mobile: this is the only /profile link on the page, and
@@ -190,7 +193,7 @@ export function LandingView() {
                 href="/profile"
                 className="text-[14px] text-white/70 hover:text-white transition cursor-pointer max-md:max-w-[122px] max-md:truncate"
               >
-                Hi, {user.email.split('@')[0]}
+                {t.landing.greeting(user.email.split('@')[0])}
               </a>
               {/* Stays hidden under md, deliberately: a fourth item does not fit
                   (~296px against a ~243px budget). Reached via /profile instead. */}
@@ -199,7 +202,7 @@ export function LandingView() {
                   href="/studio"
                   className="rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.08] px-5 py-2.5 text-[14px] font-bold text-white/90 transition hover:bg-[#8b22ff]/[.16] max-md:hidden"
                 >
-                  Studio
+                  {t.landing.nav_studio}
                 </a>
               )}
               {/* Folded under md -- not removed: the hero renders the same cta.href
@@ -213,7 +216,7 @@ export function LandingView() {
                 onClick={handleLogout}
                 className="rounded-lg border border-white/20 px-5 py-2.5 text-[14px] font-bold text-white/80 transition hover:border-[#8b22ff] hover:text-white"
               >
-                Log out
+                {t.landing.logout}
               </button>
             </>
           ) : (
@@ -221,7 +224,7 @@ export function LandingView() {
               {/* Shown on mobile. Without it a phone visitor has no way to sign in
                   from here whenever the CTA is not /apply -- before the window
                   opens and after it closes, /pre-register has no login link. */}
-              <a className="text-[14px] text-white/60" href="/login">Log in</a>
+              <a className="text-[14px] text-white/60" href="/login">{t.landing.login}</a>
               <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110 max-md:hidden" href={cta.href}>
                 {cta.label}
               </a>
@@ -246,17 +249,17 @@ export function LandingView() {
 
             <div className="mb-6 inline-flex items-center gap-2.5 text-[13px] font-bold uppercase tracking-[0.055em] text-[#b66cff]">
               <span className="h-2.5 w-2.5 rounded-full border-2 border-[#8b22ff] shadow-[inset_0_0_0_2px_#050507,0_0_16px_rgba(139,34,255,.7)]" />
-              AI Competitive Creation Platform
+              {t.landing.eyebrow}
             </div>
 
             <h1 className="text-[clamp(32px,3.2vw,54px)] font-black uppercase leading-[.96] tracking-[-.04em]">
-              The Global Arena<br />
-              for <span className="text-[#8b22ff] drop-shadow-[0_0_30px_rgba(139,34,255,.5)]">AI Creators.</span>
+              {t.landing.h1_line1}<br />
+              <span className="text-[#8b22ff] drop-shadow-[0_0_30px_rgba(139,34,255,.5)]">{t.landing.h1_line2}</span>
             </h1>
 
             <div className="mt-8 max-w-[460px]">
-              <p className="text-[18px] font-black text-white uppercase tracking-[0.055em]">AI is easy. Winning is hard.</p>
-              <p className="mt-2 text-[16px] italic font-semibold text-gray-400">Same tools. Same clock. Skill decides.</p>
+              <p className="text-[18px] font-black text-white uppercase tracking-[0.055em]">{t.landing.sub1}</p>
+              <p className="mt-2 text-[16px] italic font-semibold text-gray-400">{t.landing.sub2}</p>
             </div>
 
             <div className="mt-7 w-[min(100%,500px)]">
@@ -270,15 +273,15 @@ export function LandingView() {
                 href="/tournament"
                 className="mt-3 flex h-[52px] items-center justify-center rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.06] px-8 text-[15px] font-bold uppercase tracking-wide text-white/90 transition hover:bg-[#8b22ff]/[.12]"
               >
-                Tournament Info
+                {t.landing.hero_tournament_btn}
               </a>
               <p className="mt-2.5 text-xs text-white/50">
-                Submit your AI video. {season ? (
+                {t.landing.hero_submit_prefix} {season ? (
                   <>
                     {panelLabel} scoring by {formatAiProviderList(season.ai_models)}.
                   </>
                 ) : (
-                  <>AI verified scoring.</>
+                  <>{t.landing.hero_submit_fallback}</>
                 )}
               </p>
             </div>
@@ -286,7 +289,7 @@ export function LandingView() {
             {SHOW_COUNTDOWN && (
               <div className="mt-7 w-[min(100%,500px)] border-t border-white/10 pt-5">
                 <div className="mb-1 text-[12px] font-bold uppercase tracking-widest text-[#b66cff]">
-                  Application Closes In
+                  {t.landing.countdown_label}
                 </div>
                 {formatDeadlinePT(season?.application_close_at) && (
                   <div className="mb-3.5 text-[12px] text-white/50">
@@ -294,7 +297,7 @@ export function LandingView() {
                   </div>
                 )}
                 <div className="grid max-w-[400px] grid-cols-4">
-                  {[['Days', timeLeft.days], ['Hrs', timeLeft.hours], ['Min', timeLeft.minutes], ['Sec', timeLeft.seconds]].map(([label, val], i) => (
+                  {[[t.landing.countdown_days, timeLeft.days], [t.landing.countdown_hrs, timeLeft.hours], [t.landing.countdown_min, timeLeft.minutes], [t.landing.countdown_sec, timeLeft.seconds]].map(([label, val], i) => (
                     <div key={label} className={`${i > 0 ? 'border-l border-white/10 pl-5' : ''} ${i < 3 ? 'pr-5' : ''}`}>
                       <strong className="block text-[28px] font-semibold tracking-wide">{val}</strong>
                       <span className="mt-1 block text-[11px] uppercase text-white/50">{label}</span>
@@ -316,13 +319,17 @@ export function LandingView() {
                 {/* These stages tell the audience to come and watch, so the link
                     belongs -- but only under the same rule as the header entry, so
                     the landing can never invite someone to a 404 or an empty grid.
-                    One rule, two places (lib/watch-nav). */}
+                    One rule, two places (lib/watch-nav).
+                    ★stageNote.title/subtitle are NOT wired here -- getBannerStage()
+                    (lib/watch.ts) returns them as literal English, out of this
+                    pass's scope (제니3 소관, per reports/
+                    lane_c_i18n_translation_list_2026-08-10.md). */}
                 {watchNav && (
                   <a
                     href="/watch"
                     className="mt-3 inline-flex text-[13px] font-bold text-[#b66cff] transition hover:text-white"
                   >
-                    Watch the competition →
+                    {t.landing.watch_link}
                   </a>
                 )}
               </div>
@@ -351,47 +358,42 @@ export function LandingView() {
 
       <section id="how" className="relative z-20 mx-auto max-w-6xl px-6 py-24 scroll-mt-24">
         <div className="text-center mb-14">
-          <span className="text-[#b66cff] uppercase tracking-widest text-sm font-bold">How It Works</span>
-          <h2 className="text-4xl md:text-5xl font-black mt-3">Submit. Get Verified. Win.</h2>
+          <span className="text-[#b66cff] uppercase tracking-widest text-sm font-bold">{t.landing.how_eyebrow}</span>
+          <h2 className="text-4xl md:text-5xl font-black mt-3">{t.landing.how_h2}</h2>
         </div>
 
         {season ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <Step
               num="01"
-              title="Share Your Video"
-              body={
-                <>
-                  Make your video in OXXOVO Studio ({season.application_video_min_seconds}–{season.application_video_max_seconds} seconds) and submit it there. Everyone works with the same toolset — what separates entries is your direction, not your budget.
-                </>
-              }
+              title={t.landing.step1_title}
+              body={t.landing.step1_body(season.application_video_min_seconds, season.application_video_max_seconds)}
             />
             <Step
               num="02"
-              title={`${panelLabel} Judges`}
-              body={
-                <>
-                  {modelCount === 3 ? 'Three' : modelCount} independent AI models from {modelCount === 3 ? 'three' : modelCount} different companies score your work in parallel. Eliminates single-AI bias.
-                </>
-              }
+              title={t.landing.step2_title(panelLabel)}
+              body={t.landing.step2_body(modelCount)}
             />
             <Step
               num="03"
-              title="Get Your Score"
-              body={
-                <>
-                  You get an OXXOVO score across three published components — Intent Clarity ({formatWeightPercent(season.scoring_intent_clarity_weight)}), Execution ({formatWeightPercent(season.scoring_execution_weight)}), Originality ({formatWeightPercent(season.scoring_originality_weight)}). Every entry also passes an automated integrity check.
-                </>
-              }
+              title={t.landing.step3_title}
+              body={t.landing.step3_body(
+                formatWeightPercent(season.scoring_intent_clarity_weight),
+                formatWeightPercent(season.scoring_execution_weight),
+                formatWeightPercent(season.scoring_originality_weight),
+              )}
             />
             <Step
               num="04"
-              title="Earn Your Title"
-              body={
-                <>
-                  The {advanceCountLabel(season)} advance as Finalists, competing for the {season.name} prize pool of ${Number(season.total_prize_pool).toLocaleString()} (${Number(season.prize_first).toLocaleString()} / ${Number(season.prize_second).toLocaleString()} / ${Number(season.prize_third).toLocaleString()}).
-                </>
-              }
+              title={t.landing.step4_title}
+              body={t.landing.step4_body(
+                advanceCountLabel(season),
+                season.name,
+                Number(season.total_prize_pool).toLocaleString(),
+                Number(season.prize_first).toLocaleString(),
+                Number(season.prize_second).toLocaleString(),
+                Number(season.prize_third).toLocaleString(),
+              )}
             />
           </div>
         ) : (
@@ -401,26 +403,26 @@ export function LandingView() {
 
       <section id="about" className="relative z-20 mx-auto max-w-6xl px-6 py-24 scroll-mt-24 border-t border-white/5">
         <div className="max-w-3xl mx-auto">
-          <span className="text-[#b66cff] uppercase tracking-widest text-sm font-bold">About</span>
+          <span className="text-[#b66cff] uppercase tracking-widest text-sm font-bold">{t.landing.about_eyebrow}</span>
           <h2 className="text-4xl md:text-5xl font-black mt-3 mb-6">
-            The First Verified Arena<br />for AI Video Creators.
+            {t.landing.about_h2_line1}<br />{t.landing.about_h2_line2}
           </h2>
           <p className="text-white/70 leading-relaxed text-lg">
-            OXXOVO is the global arena for AI video creators. Independent {panelLabel} scoring verifies every entry and keeps each round fair. OXXOVO Labs Inc., based in Las Vegas, operates the AI Creator League — a season-based competition where creators compete, get verified, and get discovered.
+            {t.landing.about_body(panelLabel)}
           </p>
 
           <div className="grid grid-cols-3 gap-4 mt-10 pt-8 border-t border-white/10">
             <div>
               <div className="text-[#8b22ff] text-3xl font-black">{modelCount}</div>
-              <div className="text-xs text-white/50 uppercase tracking-wider mt-1.5">Independent AI Judges</div>
+              <div className="text-xs text-white/50 uppercase tracking-wider mt-1.5">{t.landing.stat1_label}</div>
             </div>
             <div>
-              <div className="text-[#8b22ff] text-3xl font-black">Global</div>
-              <div className="text-xs text-white/50 uppercase tracking-wider mt-1.5">Open to All Creators</div>
+              <div className="text-[#8b22ff] text-3xl font-black">{t.landing.stat2_value}</div>
+              <div className="text-xs text-white/50 uppercase tracking-wider mt-1.5">{t.landing.stat2_label}</div>
             </div>
             <div>
-              <div className="text-[#8b22ff] text-3xl font-black">Verified</div>
-              <div className="text-xs text-white/50 uppercase tracking-wider mt-1.5">Same Rules. Skill Decides.</div>
+              <div className="text-[#8b22ff] text-3xl font-black">{t.landing.stat3_value}</div>
+              <div className="text-xs text-white/50 uppercase tracking-wider mt-1.5">{t.landing.stat3_label}</div>
             </div>
           </div>
         </div>
@@ -428,17 +430,23 @@ export function LandingView() {
 
       <section id="faq" className="relative z-20 mx-auto max-w-6xl px-6 py-24 scroll-mt-24 border-t border-white/5">
         <div className="text-center mb-14">
-          <span className="text-[#b66cff] uppercase tracking-widest text-sm font-bold">FAQ</span>
-          <h2 className="text-4xl md:text-5xl font-black mt-3">Common Questions</h2>
+          <span className="text-[#b66cff] uppercase tracking-widest text-sm font-bold">{t.landing.faq_eyebrow}</span>
+          <h2 className="text-4xl md:text-5xl font-black mt-3">{t.landing.faq_h2}</h2>
         </div>
 
         {season ? (
           <div className="max-w-3xl mx-auto space-y-3">
-            <Faq q={`Who can participate in ${season.name}?`}>
-              Anyone, anywhere. There are no nationality, age, or experience requirements. You just need an AI-generated video ({season.application_video_min_seconds}–{season.application_video_max_seconds} seconds) and a free OXXOVO account.
+            <Faq q={t.landing.faq_q1(season.name)}>
+              {t.landing.faq_a1(season.application_video_min_seconds, season.application_video_max_seconds)}
             </Faq>
 
-            <Faq q="What does it cost to compete?">
+            {/* ★FAQ #2's answer stays English-only regardless of language toggle --
+                formatAccessCopy() (lib/seasons.ts) is a dynamic function whose
+                Korean text was never approved (the translation doc explicitly
+                marks it "동적 함수, 별도 처리" and its own 3-branch draft copy
+                doesn't match this function's actual 2-branch logic). Only the
+                question is translated. */}
+            <Faq q={t.landing.faq_q2}>
               {formatAccessCopy({
                 seasonName: season.name,
                 entryFee: Number(season.entry_fee),
@@ -450,12 +458,12 @@ export function LandingView() {
               })}
             </Faq>
 
-            <Faq q="How do I create my video?">
-              Everyone creates in OXXOVO Studio — the same models, the same limits, for everyone. You don&apos;t bring outside tools, and you don&apos;t need a subscription anywhere else. That&apos;s what makes the result comparable.
+            <Faq q={t.landing.faq_q3}>
+              {t.landing.faq_a3}
             </Faq>
 
-            <Faq q="How exactly are submissions scored?">
-              Each video is judged by {modelCount} AI models in parallel:
+            <Faq q={t.landing.faq_q4}>
+              {t.landing.faq_a4_intro(modelCount)}
               <span className="block mt-3 text-white/55 text-sm leading-relaxed">
                 {season.ai_models.map((m) => (
                   <span key={m.name} className="block">
@@ -464,28 +472,39 @@ export function LandingView() {
                 ))}
               </span>
               <span className="block mt-4">
-                Your final OXXOVO score is a weighted average. Three components are shown — Intent Clarity ({formatWeightPercent(season.scoring_intent_clarity_weight)}), Execution ({formatWeightPercent(season.scoring_execution_weight)}), and Originality ({formatWeightPercent(season.scoring_originality_weight)}) — and integrity is verified automatically. Outlier scores are discarded.
+                {t.landing.faq_a4_outro(
+                  formatWeightPercent(season.scoring_intent_clarity_weight),
+                  formatWeightPercent(season.scoring_execution_weight),
+                  formatWeightPercent(season.scoring_originality_weight),
+                )}
               </span>
             </Faq>
 
-            <Faq q={`Why ${modelCount === 3 ? 'three' : modelCount} AIs instead of one?`}>
-              Every AI has bias. By using {modelCount} independent models from {modelCount} different companies, individual biases cancel out. When the panel agrees, the result is far more trustworthy than any single AI&apos;s verdict. This is what makes OXXOVO scoring {panelLabel} Verified.
+            <Faq q={t.landing.faq_q5(modelCount)}>
+              {t.landing.faq_a5(modelCount, panelLabel)}
             </Faq>
 
-            <Faq q={`What if ${season.max_applicants} people apply before me?`}>
-              {season.name} accepts up to {season.max_applicants} applicants. If the limit is reached before you apply, you&apos;ll be automatically added to the {season.name} Waitlist with priority access to the next season. We never turn anyone away.
+            <Faq q={t.landing.faq_q6(season.max_applicants)}>
+              {t.landing.faq_a6(season.name, season.max_applicants)}
             </Faq>
 
-            <Faq q="What are the prizes?">
-              {season.name} features a ${Number(season.total_prize_pool).toLocaleString()} prize pool (${Number(season.prize_first).toLocaleString()} for 1st, ${Number(season.prize_second).toLocaleString()} for 2nd, ${Number(season.prize_third).toLocaleString()} for 3rd). The {advanceCountLabel(season)} earn the Finalist title.
+            <Faq q={t.landing.faq_q7}>
+              {t.landing.faq_a7(
+                season.name,
+                Number(season.total_prize_pool).toLocaleString(),
+                Number(season.prize_first).toLocaleString(),
+                Number(season.prize_second).toLocaleString(),
+                Number(season.prize_third).toLocaleString(),
+                advanceCountLabel(season),
+              )}
             </Faq>
 
-            <Faq q="How does OXXOVO prevent cheating?">
-              An automated integrity check flags misrepresentation. Anything it flags gets a human review. Misstating your tools or sources is grounds for disqualification. We don&apos;t publish the thresholds or weighting.
+            <Faq q={t.landing.faq_q8}>
+              {t.landing.faq_a8}
             </Faq>
 
-            <Faq q="When do I get my results?">
-              Scoring runs in a batch after the application period closes. Your individual score and the panel&apos;s reasoning arrive with your preliminary-round results notification, and you can also check them in your profile.
+            <Faq q={t.landing.faq_q9}>
+              {t.landing.faq_a9}
             </Faq>
           </div>
         ) : (
@@ -497,15 +516,15 @@ export function LandingView() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <img src="/oxxovo_logo.png" alt="OXXOVO" className="h-6 opacity-70" />
-            <span className="text-[#b66cff]">The New Standard for AI Creativity</span>
+            <span className="text-[#b66cff]">{t.landing.footer_tagline}</span>
           </div>
           <span>OXXOVO Labs Inc. · Las Vegas, Nevada, USA · oxxovo.ai</span>
           <div className="flex items-center gap-4">
-            <a href="/tournament" className="hover:text-white/70">Tournament Info</a>
-            <a href="/membership" className="hover:text-white/70">Membership</a>
-            <a href="/terms" className="hover:text-white/70">Terms</a>
-            <a href="/privacy" className="hover:text-white/70">Privacy</a>
-            <a href="/rules" className="hover:text-white/70">Rules</a>
+            <a href="/tournament" className="hover:text-white/70">{t.landing.footer_tournament}</a>
+            <a href="/membership" className="hover:text-white/70">{t.landing.footer_membership}</a>
+            <a href="/terms" className="hover:text-white/70">{t.landing.footer_terms}</a>
+            <a href="/privacy" className="hover:text-white/70">{t.landing.footer_privacy}</a>
+            <a href="/rules" className="hover:text-white/70">{t.landing.footer_rules}</a>
           </div>
         </div>
         <p className="mt-1 text-center text-[10px] text-white/20">OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.</p>
@@ -539,5 +558,34 @@ function Faq({ q, children }: { q: string; children: React.ReactNode }) {
 }
 
 function SectionLoading() {
-  return <div className="text-center text-white/35 text-sm">Loading…</div>
+  const t = useT()
+  return <div className="text-center text-white/35 text-sm">{t.landing.loading}</div>
+}
+
+// Local KO|EN toggle (mirrors the membership/profile-page pattern). Auto-
+// detect (localStorage > browser language) picks the default; this overrides
+// it and the choice persists via the same localStorage key useAdminLang()
+// reads everywhere else (apply/profile/membership/Studio, and Watch once
+// wired) -- one toggle here is enough for the choice to follow the visitor
+// across pages, but Watch gets its own too (a visitor who lands there first,
+// e.g. via a shared link, never having seen this page). (TK 2026-08-11: KO/EN
+// are canonical; any other language is left to the browser's own translator.)
+function LangSwitch() {
+  const lang = useAdminLang()
+  const cls = (active: boolean) =>
+    `px-2 py-1 text-[11px] transition ${
+      active ? 'text-[#b66cff] font-bold' : 'text-white/40 hover:text-white/70'
+    }`
+  const set = (next: Lang) => setAdminLang(next)
+  return (
+    <div className="flex items-center border border-white/20 rounded overflow-hidden">
+      <button type="button" onClick={() => set('ko')} className={cls(lang === 'ko')}>
+        KO
+      </button>
+      <span className="text-white/20 text-[11px]">|</span>
+      <button type="button" onClick={() => set('en')} className={cls(lang === 'en')}>
+        EN
+      </button>
+    </div>
+  )
 }
