@@ -31,6 +31,7 @@ import { isSubmittableRenderStatus } from '@/lib/studio-shared'
 import { createRawPreview, type PreviewEngine, type PreviewTransition } from './preview'
 import { createGLPreview } from './preview-gl'
 import { hasAnyEffect, EXPOSED_SLIDERS, LUT_OPTIONS, EXPOSED_TRANSITIONS, type EffectParams } from '@/lib/effects'
+import { valueAt, type KeyframeTrack } from '@/lib/edl-keyframes'
 import { FONT_SPECS, type TextLayer } from '@/lib/text-render'
 import { TEXT_LIMITS, TEXT_CANVAS, validateTexts, type TextReason } from '@/lib/text-limits'
 import { TextOverlay } from './TextOverlay'
@@ -59,7 +60,17 @@ import {
 
 // effects/speed are populated by the effect UI (E); undefined in C (no effect UI
 // yet), which keeps the composition effect-free -> the raw preview stays accurate.
-type Segment = { uid: string; jobId: string; startMs: number; endMs: number; speed?: number; effects?: EffectParams; fit?: 'contain' | 'cover' }
+type Segment = {
+  uid: string; jobId: string; startMs: number; endMs: number; speed?: number; effects?: EffectParams; fit?: 'contain' | 'cover'
+  // ★D keyframes (2026-08-10). Segment-relative atMs (0 == this segment's own
+  // startMs). Only exposure/contrast/saturation/vignette are keyframe-able
+  // (decision ①(a), 2026-08-10 -- position/scale explicitly out of scope).
+  keyframes?: Partial<Record<keyof EffectParams, KeyframeTrack>>
+}
+// Effect keys the keyframe toggle applies to -- must match render.ts's
+// effectVideoFilters() kfOf() gate (only eq's 3 + vignette support ffmpeg's
+// eval=frame; the others are typed <int>/<float>, no per-frame expression).
+const KEYFRAME_KEYS: readonly (keyof EffectParams)[] = ['exposure', 'contrast', 'saturation', 'vignette']
 type Aspect = '16:9' | '9:16'
 
 let uidSeq = 0
@@ -507,7 +518,118 @@ const POOL_OVERSCAN = 2
 const ZOOM_MIN = 6
 const ZOOM_MAX = 120
 
+// ★D keyframes -- mini keyframe track (design: reports/lane_c_item4_d_ui_design_2026-08-10.md).
+// Click empty track = add a point at the current interpolated value. Drag a
+// point = move it (x=time, y=value). Double-click = delete (floor: 2 points,
+// enforced by the caller never rendering this below 2). Linear only (decision
+// ②, 2026-08-10) -- no curve picker, points always connect with a straight line.
+function KeyframeMiniTrack({
+  track,
+  min,
+  max,
+  spanMs,
+  onChange,
+}: {
+  track: KeyframeTrack
+  min: number
+  max: number
+  spanMs: number
+  onChange: (next: KeyframeTrack) => void
+}) {
+  const [selected, setSelected] = useState(0)
+  const trackRef = useRef<HTMLDivElement>(null)
+  const dragIdx = useRef<number | null>(null)
+  const pts = track.points
 
+  const xPct = (atMs: number) => (spanMs > 0 ? Math.max(0, Math.min(1, atMs / spanMs)) : 0) * 100
+  const yPct = (val: number) => (1 - (max > min ? (val - min) / (max - min) : 0)) * 100
+
+  const msFromClientX = (clientX: number) => {
+    const el = trackRef.current
+    if (!el) return 0
+    const r = el.getBoundingClientRect()
+    return Math.round(Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * spanMs)
+  }
+  const valFromClientY = (clientY: number) => {
+    const el = trackRef.current
+    if (!el) return min
+    const r = el.getBoundingClientRect()
+    const p = Math.max(0, Math.min(1, (clientY - r.top) / r.height))
+    return Math.round(max - p * (max - min))
+  }
+  const commit = (next: { atMs: number; value: number }[]) => onChange({ points: [...next].sort((a, b) => a.atMs - b.atMs) })
+
+  const onPointDown = (i: number) => (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelected(i)
+    dragIdx.current = i
+    const onMove = (ev: MouseEvent) => {
+      const idx = dragIdx.current
+      if (idx == null) return
+      const atMs = msFromClientX(ev.clientX)
+      const value = Math.max(min, Math.min(max, valFromClientY(ev.clientY)))
+      commit(pts.map((p, j) => (j === idx ? { atMs, value } : p)))
+    }
+    const onUp = () => {
+      dragIdx.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+  const onTrackClick = (e: React.MouseEvent) => {
+    if (e.target !== trackRef.current) return // a point's own mousedown already handled it
+    const atMs = msFromClientX(e.clientX)
+    const value = Math.round(Math.max(min, Math.min(max, valueAt(track, atMs))))
+    const next = [...pts, { atMs, value }]
+    commit(next)
+    setSelected(next.length - 1)
+  }
+  const onPointDoubleClick = (i: number) => (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (pts.length <= 2) return // floor: dropping below 2 points is the caller's OFF toggle, not this component's job
+    commit(pts.filter((_, j) => j !== i))
+    setSelected(0)
+  }
+
+  const sel = pts[Math.min(selected, pts.length - 1)]
+  return (
+    <div className="mt-1">
+      <div
+        ref={trackRef}
+        onClick={onTrackClick}
+        className="relative h-8 w-full cursor-crosshair rounded border border-white/10 bg-[#070610]"
+      >
+        {pts.map((p, i) => (
+          <button
+            key={i}
+            type="button"
+            onMouseDown={onPointDown(i)}
+            onDoubleClick={onPointDoubleClick(i)}
+            className={`absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border ${
+              i === selected ? 'border-white bg-[#8b22ff]' : 'border-white/50 bg-[#8b22ff]/70'
+            }`}
+            style={{ left: `${xPct(p.atMs)}%`, top: `${yPct(p.value)}%` }}
+          />
+        ))}
+      </div>
+      {sel && (
+        <input
+          type="number"
+          min={min}
+          max={max}
+          value={Math.round(sel.value)}
+          onChange={(e) => {
+            const value = Math.max(min, Math.min(max, Number(e.target.value) || 0))
+            commit(pts.map((p, j) => (j === selected ? { ...p, value } : p)))
+          }}
+          className="mt-1 w-16 rounded border border-white/10 bg-[#070610] px-1.5 py-0.5 text-[10px] text-white"
+        />
+      )}
+    </div>
+  )
+}
 
 export default function ProComposeEditor(props: ComposeEditorProps) {
   const t = DICT[props.lang]
@@ -837,7 +959,13 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (typeof document === 'undefined') return false
     try { return !!document.createElement('canvas').getContext('webgl2') } catch { return false }
   }, [])
-  const compositionHasEffects = hasAnyEffect(globalFx) || transitions.length > 0 || segments.some((s) => hasAnyEffect(s.effects) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
+  // ★D keyframes: a segment can carry a live keyframes map while its static
+  // effects[key] sits at neutral (toggling ON seeds the track FROM whatever
+  // effects[key] already was, which is 0 on a never-touched slider) --
+  // hasAnyEffect() alone would miss it, silently dropping to the v1 EDL path
+  // (no GL preview, no keyframes in the signed submission).
+  const hasAnyKeyframes = (s: Segment) => !!s.keyframes && Object.values(s.keyframes).some((tr) => tr && tr.points.length > 0)
+  const compositionHasEffects = hasAnyEffect(globalFx) || transitions.length > 0 || segments.some((s) => hasAnyEffect(s.effects) || hasAnyKeyframes(s) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
   // ★ NEVER SHOW A BLACK PREVIEW. If the GL engine cannot draw (cross-origin
   // texture upload refused, shader/context failure), it reports up here and we
   // stay on the raw engine for the rest of the session: the user sees the
@@ -1137,6 +1265,29 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     commit(`fx:${uid}:${key}`, true)
     setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, effects: { ...x.effects, [key]: val } } : x)))
   }
+  // ★D keyframes. track=undefined removes the field (reverts to the static
+  // effects[key] value) -- the OFF toggle path.
+  const setSegKeyframe = (uid: string, key: keyof EffectParams, track: KeyframeTrack | undefined) => {
+    commit(`kf:${uid}:${key}`)
+    setSegments((s) => s.map((x) => {
+      if (x.uid !== uid) return x
+      const kf = { ...x.keyframes }
+      if (track) kf[key] = track
+      else delete kf[key]
+      return { ...x, keyframes: kf }
+    }))
+  }
+  // Toggle keyframing for one field on the selected clip. ON seeds 2 points at
+  // the current static value (no jump on entry). OFF drops the track --
+  // effects[key] is untouched, so it reads back the value the track was
+  // seeded from (or whatever a later plain slider edit set it to).
+  const toggleKeyframe = (key: keyof EffectParams) => {
+    if (!selSeg) return
+    if (selSeg.keyframes?.[key]) { setSegKeyframe(selSeg.uid, key, undefined); return }
+    const val = Number(selSeg.effects?.[key]) || 0
+    const span = Math.max(1, selSeg.endMs - selSeg.startMs)
+    setSegKeyframe(selSeg.uid, key, { points: [{ atMs: 0, value: val }, { atMs: span, value: val }] })
+  }
   const setSegLut = (uid: string, lut: string) => {
     commit(`lut:${uid}`)
     setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, effects: { ...x.effects, lut } } : x)))
@@ -1244,6 +1395,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
             ...(s.speed !== undefined && Math.round(s.speed * 1000) !== 1000 ? { speed: s.speed } : {}),
             ...(hasAnyEffect(s.effects) ? { effects: s.effects } : {}),
             ...(s.fit === 'cover' ? { fit: 'cover' as const } : {}),
+            ...(hasAnyKeyframes(s) ? { keyframes: s.keyframes } : {}),
           })),
           ...(transitions.length ? { transitions: transitions.map((tr) => ({ afterIndex: tr.afterIndex, type: tr.type, durationMs: tr.durationMs })) } : {}),
           ...(hasAnyEffect(globalFx) ? { global: globalFx } : {}),
@@ -1665,15 +1817,33 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                         {EXPOSED_SLIDERS.map((spec) => {
                           const val = Number(fx[spec.key]) || 0
+                          // ★D keyframes: only per-clip (global carries no keyframe map, data
+                          // model decision), only the 4 ffmpeg-eval-capable params.
+                          const canKeyframe = fxTab === 'clip' && !!selSeg && KEYFRAME_KEYS.includes(spec.key)
+                          const kfTrack = canKeyframe ? selSeg!.keyframes?.[spec.key] : undefined
                           return (
                             <label key={spec.key} className="block">
                               <span className="flex items-center justify-between text-[11px] text-white/55">
-                                <span>{spec.label}{spec.parity === 'approximate' && <span className="ml-1 rounded bg-amber-400/20 px-1 py-0.5 text-[9px] font-bold text-amber-300">{t.approx_badge}</span>}</span>
+                                <span className="flex items-center gap-1">
+                                  {spec.label}{spec.parity === 'approximate' && <span className="ml-1 rounded bg-amber-400/20 px-1 py-0.5 text-[9px] font-bold text-amber-300">{t.approx_badge}</span>}
+                                  {canKeyframe && (
+                                    <button type="button" onClick={() => toggleKeyframe(spec.key)}
+                                      title="Keyframe" aria-pressed={!!kfTrack}
+                                      className={`ml-0.5 text-[10px] leading-none transition ${kfTrack ? 'text-[#8b22ff]' : 'text-white/25 hover:text-white/55'}`}>
+                                      ◆
+                                    </button>
+                                  )}
+                                </span>
                                 <span className="tabular-nums text-white/35">{val}</span>
                               </span>
-                              <input type="range" min={spec.min} max={spec.max} value={val} onChange={(e) => setKey(spec.key, Number(e.target.value))}
-                                onDoubleClick={() => { lastCommit.current = { key: '', t: 0 }; setKey(spec.key, 0) }} title={t.dbl_default}
-                                className="w-full accent-[#8b22ff]" />
+                              {kfTrack ? (
+                                <KeyframeMiniTrack track={kfTrack} min={spec.min} max={spec.max} spanMs={selSeg!.endMs - selSeg!.startMs}
+                                  onChange={(next) => setSegKeyframe(selSeg!.uid, spec.key, next)} />
+                              ) : (
+                                <input type="range" min={spec.min} max={spec.max} value={val} onChange={(e) => setKey(spec.key, Number(e.target.value))}
+                                  onDoubleClick={() => { lastCommit.current = { key: '', t: 0 }; setKey(spec.key, 0) }} title={t.dbl_default}
+                                  className="w-full accent-[#8b22ff]" />
+                              )}
                             </label>
                           )
                         })}
@@ -1898,25 +2068,58 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                                   className="w-full accent-[#8b22ff]" />
                               </div>
                             </div>
-                            {/* fade */}
-                            <div className="grid grid-cols-2 gap-3">
-                              <label className="block">
+                            {/* fade -- opacityKeyframes (2026-08-10) is an "advanced" generalization
+                                of fadeIn/fadeOutMs: same visual result (0->1->0 envelope), but an
+                                arbitrary point count instead of a fixed 2-stage ramp. Mutually
+                                exclusive at render time (text-render.ts's textAlphaAt), so the UI
+                                only ever shows one or the other, never both. */}
+                            {l.opacityKeyframes ? (
+                              <div>
                                 <span className="flex items-center justify-between text-[11px] text-white/55">
-                                  <span>{t.text_fade} {t.text_fade_in}</span><span className="tabular-nums text-white/35">{((l.fadeInMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
+                                  <span>{t.text_fade} (advanced)</span>
+                                  <button type="button" onClick={() => up({ opacityKeyframes: undefined }, 'text-opkf-off')}
+                                    className="text-[10px] text-white/40 hover:text-white/70">↺ simple</button>
                                 </span>
-                                <input type="range" min={0} max={span} step={50} value={l.fadeInMs ?? 0}
-                                  onChange={(e) => up({ fadeInMs: Math.min(Number(e.target.value), span - (l.fadeOutMs ?? 0)) }, 'text-fadein')}
-                                  className="w-full accent-[#8b22ff]" />
-                              </label>
-                              <label className="block">
-                                <span className="flex items-center justify-between text-[11px] text-white/55">
-                                  <span>{t.text_fade} {t.text_fade_out}</span><span className="tabular-nums text-white/35">{((l.fadeOutMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
-                                </span>
-                                <input type="range" min={0} max={span} step={50} value={l.fadeOutMs ?? 0}
-                                  onChange={(e) => up({ fadeOutMs: Math.min(Number(e.target.value), span - (l.fadeInMs ?? 0)) }, 'text-fadeout')}
-                                  className="w-full accent-[#8b22ff]" />
-                              </label>
-                            </div>
+                                <KeyframeMiniTrack
+                                  track={{ points: l.opacityKeyframes.points.map((p) => ({ atMs: p.atMs, value: p.value * 100 })) }}
+                                  min={0} max={100} spanMs={span}
+                                  onChange={(next) => up({ opacityKeyframes: { points: next.points.map((p) => ({ atMs: p.atMs, value: p.value / 100 })) } }, 'text-opkf')}
+                                />
+                              </div>
+                            ) : (
+                              <>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <label className="block">
+                                    <span className="flex items-center justify-between text-[11px] text-white/55">
+                                      <span>{t.text_fade} {t.text_fade_in}</span><span className="tabular-nums text-white/35">{((l.fadeInMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
+                                    </span>
+                                    <input type="range" min={0} max={span} step={50} value={l.fadeInMs ?? 0}
+                                      onChange={(e) => up({ fadeInMs: Math.min(Number(e.target.value), span - (l.fadeOutMs ?? 0)) }, 'text-fadein')}
+                                      className="w-full accent-[#8b22ff]" />
+                                  </label>
+                                  <label className="block">
+                                    <span className="flex items-center justify-between text-[11px] text-white/55">
+                                      <span>{t.text_fade} {t.text_fade_out}</span><span className="tabular-nums text-white/35">{((l.fadeOutMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
+                                    </span>
+                                    <input type="range" min={0} max={span} step={50} value={l.fadeOutMs ?? 0}
+                                      onChange={(e) => up({ fadeOutMs: Math.min(Number(e.target.value), span - (l.fadeInMs ?? 0)) }, 'text-fadeout')}
+                                      className="w-full accent-[#8b22ff]" />
+                                  </label>
+                                </div>
+                                <div className="flex justify-end pt-1">
+                                  <button type="button" onClick={() => {
+                                    const fin = l.fadeInMs ?? 0, fout = l.fadeOutMs ?? 0
+                                    const points = [
+                                      { atMs: 0, value: fin > 0 ? 0 : 1 },
+                                      ...(fin > 0 ? [{ atMs: fin, value: 1 }] : []),
+                                      ...(fout > 0 ? [{ atMs: Math.max(fin, span - fout), value: 1 }] : []),
+                                      { atMs: span, value: fout > 0 ? 0 : 1 },
+                                    ]
+                                    up({ opacityKeyframes: { points } }, 'text-opkf-on')
+                                  }} className="text-[10px] text-white/40 hover:text-white/70">Advanced ▸</button>
+                                </div>
+                              </>
+                            )}
                             <div className="flex justify-end pt-1">
                               <button type="button" onClick={() => removeText(selText)}
                                 className="text-[10px] text-white/40 transition hover:text-[#ff8888]">✕ {t.text_delete}</button>

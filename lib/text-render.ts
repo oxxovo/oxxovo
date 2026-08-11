@@ -10,6 +10,8 @@
 // signed TextLayer shape lives in lib/cryptobind.ts (server-only) and is
 // structurally identical to the one re-declared here.
 
+import { valueAt, type KeyframeTrack } from './edl-keyframes'
+
 // Structural copy of cryptobind's TextLayer (client-safe). Keep in sync.
 export type TextLayer = {
   content: string
@@ -25,6 +27,12 @@ export type TextLayer = {
   endMs: number
   fadeInMs?: number
   fadeOutMs?: number
+  // ★D keyframes (2026-08-10), segment-relative atMs (same convention as
+  // SegmentEffect.keyframes) -- an "advanced" generalization of fadeIn/
+  // fadeOutMs the editor UI can switch a layer into. Mutually exclusive with
+  // fadeIn/fadeOutMs at render/preview time: when present, this is the sole
+  // source of opacity.
+  opacityKeyframes?: KeyframeTrack
 }
 
 // Font allowlist. `family` is a UNIQUE alias registered identically on both sides
@@ -125,8 +133,18 @@ export function drawTextLayer(ctx: Ctx2D, W: number, H: number, layer: TextLayer
 // Opacity for a layer at composition time `tMs`, given its window + fades.
 // Shared by preview (globalAlpha) and any timing checks; the worker mirrors the
 // same ramp with ffmpeg's fade filter.
+//
+// ★D keyframes (2026-08-10): opacityKeyframes, when present, is the SOLE
+// source of opacity -- fadeInMs/fadeOutMs are ignored (the editor's "advanced"
+// toggle converts them into an equivalent 4-point track on the way in, so
+// this is never a silent behavior change from the creator's point of view).
+// atMs is layer-relative (0 == layer.startMs), matching SegmentEffect's
+// keyframes convention (relative to the thing's own start, not composition 0).
 export function textAlphaAt(layer: TextLayer, tMs: number): number {
   if (tMs < layer.startMs || tMs > layer.endMs) return 0
+  if (layer.opacityKeyframes && layer.opacityKeyframes.points.length) {
+    return valueAt(layer.opacityKeyframes, tMs - layer.startMs)
+  }
   const fin = layer.fadeInMs ?? 0
   const fout = layer.fadeOutMs ?? 0
   if (fin > 0 && tMs < layer.startMs + fin) return (tMs - layer.startMs) / fin
