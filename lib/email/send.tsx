@@ -21,6 +21,7 @@ import {
   subjectFor as preRegisteredSubject,
   type PreRegisteredProps,
 } from './templates/PreRegistered'
+import { AdminBroadcast, type AdminBroadcastProps } from './templates/AdminBroadcast'
 import {
   ApplicationReceived,
   subjectFor as applicationReceivedSubject,
@@ -128,6 +129,10 @@ type ExecuteSendInput = {
   // Cron-only: extra dedup key for multi-fire templates (submission_deadline
   // fires once per reminder_hour). Also persisted in metadata.
   reminderHour?: number
+  // Extra fields merged into the logged metadata (e.g. admin_broadcast's
+  // campaign_id/segment). Merged UNDER reminderHour's key so a future caller
+  // combining both cannot silently clobber the dedup key.
+  metadata?: Record<string, unknown> | null
 }
 
 // RFC 8058 one-click unsubscribe. Every outbound email carries these headers,
@@ -153,7 +158,9 @@ function unsubscribeHeaders(toEmail: string): Record<string, string> {
 // through this so retry/dedup/logging behavior is identical across templates.
 async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
   const baseMetadata: Record<string, unknown> | null =
-    input.reminderHour != null ? { reminder_hour: input.reminderHour } : null
+    input.reminderHour != null || input.metadata
+      ? { ...(input.metadata ?? {}), ...(input.reminderHour != null ? { reminder_hour: input.reminderHour } : {}) }
+      : null
 
   if (input.applicationId) {
     if (
@@ -270,6 +277,44 @@ export async function sendPreRegistered(
     subject: preRegisteredSubject(props),
     element: <PreRegistered {...props} />,
     seasonId: input.seasonId,
+  })
+}
+
+type SendAdminBroadcastInput = {
+  toEmail: string
+  subject: string
+  bodyText: string
+  posterImageUrl: string | null
+  promoVideoUrl: string | null
+  seasonId?: string | null
+  campaignId: string
+  segment: string
+  lang?: EmailLang
+}
+
+// admin_broadcasts recipient-console send. NOT application-scoped
+// (applicationId omitted -- executeSend's per-application dedup does not
+// apply); dedup for a campaign is (campaign_id, to_email), checked by
+// lib/email/broadcast-tick.ts BEFORE this is ever called, not here.
+export async function sendAdminBroadcast(
+  input: SendAdminBroadcastInput,
+): Promise<SendResult> {
+  const lang = input.lang ?? 'en'
+  const props: AdminBroadcastProps = {
+    lang,
+    subject: input.subject,
+    bodyText: input.bodyText,
+    posterImageUrl: input.posterImageUrl,
+    promoVideoUrl: input.promoVideoUrl,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'admin_broadcast',
+    language: lang,
+    subject: input.subject,
+    element: <AdminBroadcast {...props} />,
+    seasonId: input.seasonId,
+    metadata: { campaign_id: input.campaignId, segment: input.segment },
   })
 }
 

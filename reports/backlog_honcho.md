@@ -13,9 +13,7 @@
 | 4 | `getCurrentSeason()` "opened" 아닌 "soonest upcoming" 폴백 경로로만 season_0을 잡는 상태 — 이 기간 과거 open을 가진 어떤 행이든 즉시 가로챔 | $0 (코드 주석 완료, `lib/seasons.ts`) | 감시만, 조치 아님 | **2026-09-09 00:00 PT** 지나면 자연 해소 |
 | 5 | award-gate 부분 코호트 확정 — `countBlockingFailed`로 이미 닫혔는지 확인만 (새 작업 아님) | $0 | 없음 | 전체 테스트 착수 전 확인 예정 |
 | 6 | email-tick 300초 예산 — 제안 3건(중복 alreadySent 제거 / 틱당 예산+deferred 보고 / 429 처리) | 코드 소량 | 전체 테스트(리허설) 실주행(계산 아닌 실측 필요) | 리허설 전 |
-| 7 | 멀티 admin — 코드 완료, 마이그+머지 대기 | 마이그 1건 | 8·9와 한 파일로 묶기 | 미정 |
-| 8 | A2P 10DLC SMS — 코드 완료, `sms_optin` 마이그 대기 | 마이그 1건 | 7·9와 한 파일로 묶기 | 미정 |
-| 9 | Member Hosted Tournament — GRANT 마이그 대기 | 마이그 1건 | 7·8과 한 파일로 묶기 | 미정 |
+| 7 | 멀티 admin — **마이그는 이미 Run됨**(2026-08-11 실측: `is_staff()` RPC 200·role CHECK 확인). 남은 건 코드 머지뿐(`feat/multi-admin`, `bbc1356`) + 매니저로 올릴 실사용자 부재(현재 profiles 7행 중 실사용자는 대표님 1명, 나머지는 테스트/픽스처 계정) | 머지 1건 | 후보가 될 실사용자가 먼저 가입 | 미정 |
 | 10 | `lib/email/schedule-lines.ts` "결과 안내" bullet 부재 | 미측정 | 레인 A 소관 — 제니2 경유로 지시 | 미정 |
 | 12 | **전체 테스트(리허설) 착수 시 선행 확인** — season_test·season_test2의 `scoring_start_at`이 스테일이라 버퍼 게이트에 차단된다. 시계 압축 시 그 컬럼도 같이 당겨야 "워커가 조용히 0건"이 안 난다 | 미측정 | 전체 테스트 계획 자체가 아직 없음(2026-08-10 기준, 8/11·8/13·8/14는 본부가 무효화함) | 전체 테스트 착수 시 |
 | 14 | [C]④ Pro Editor | 본체 관여 아님 | 지수2C가 병렬 진행 | 지수2C 소관 |
@@ -38,3 +36,9 @@
 | c10 | 11월 운영비 산출 | **폐기(TK 판정, 2026-08-10)** — "필요없는 것에 시간·돈 낭비 말라". 근거: 회사 부담 항목은 이미 실측 존재(인프라 8/10 실측·채점 API 편당 실측), fal은 참가자 선불이라 회사 부담 0, 11월 전 언제든 낼 수 있음. 본부가 인계 브리프만 보고 확인 없이 "진행 중"으로 보고한 게 원인이었다 — 이 세션이 못 찾은 게 맞았다. **다시 찾지 말 것** |
 | c11 | season_1001~1006 리허설 잔여 행 노출 차단 | **조치 불필요.** 실측: 6개 행 전부 is_fixture=true·status=completed·open/close NULL, genesis_applications 0건. `getWatchSeasonGroups()`는 영상이 있는 시즌만 그룹을 만들어(bySeason이 videos에서 파생) 0영상 시즌은 애초에 순회 대상이 아니다. `getSeasonMeta()`(비export, 유일 호출부 lib/watch.ts:990)에 is_fixture 필터를 넣는 안은 **기각** — season_test(is_fixture=true)가 실제 영상을 갖고 있어 이 메타(표시명)를 정당하게 필요로 하는 유일한 호출부이고, 필터를 걸면 그 표시명이 퇴화한다(seasonId로 폴백). 막을 노출 경로가 없는데 유일한 실사용처를 깨는 것은 손해만 있다 |
 | c12 | E2E 8+1종 | **✅닫힘 2026-08-03 / `7f22cc0`.** 완료 내역(2026-08-02~08-03): 9번 도달성 7/7(`248e8a6`) · 변조 8종→S2 수정 후 10/10(`3df501e`) · KAT 불변 35/35·requireFinal 6/6·시간압축 마감 12/12·실패→재렌더 20/20·동기 경로 회귀 포함(`7f22cc0`). 본부가 옛 브리프의 "2.0d 남았다" 수치를 확인 없이 잔여로 옮긴 게 원인 — 제니2가 올린 지수2A 대기 5건에도 E2E가 없어 교차 확인됨 |
+| c13 | A2P 10DLC SMS(8) — 마이그+코드+배포 전부 완료 | 2026-08-11 실측: `profiles`에 sms_optin 6컬럼 전부 존재 + `SmsConsentCard.tsx`가 이미 `main`에 병합돼 있음(2026-06-23 라이브). 재확인 불필요 |
+| c14 | Member Hosted Tournament(9) — GRANT 마이그 완료 | 2026-08-11 실측: `platform_config`/`member_tier_config`/`partner_tournaments` service_role 조회 정상(예전 permission denied 해소) + `profiles.partner_tier` 존재. `/host/new`도 이미 `main` 병합(마스터스위치 기본 OFF, 켜는 건 별개 비즈니스 판단) |
+| c15 | award-gate 부분 코호트 확정(5) — 이미 닫혀 있음 | `lib/awards-gate.ts` Gate 2가 `scoredCount < submittedCount`면 사유 불문 무조건 막음(재시도 소진 실패도 포함, 9/10도 막힘을 테스트로 확인). countBlockingFailed(예선용, 다른 코드)보다 엄격한 상위호환이라 별도 배선 불필요 |
+| c16 | Winners nav 항목(soon:true) 처리 | **철회 → 유지 확정(2026-08-11 TK).** "코드에 없다=필요 없다"가 아니었음. 설계 승인: 시즌 드롭다운(기본 all, is_fixture 제외) + award_rank 시즌 횡단 + scoring_results(round='main') join 등급 + 카드형. 새 테이블 없음(genesis_applications+scoring_results로 충분). 착수는 발송 콘솔(#17) 완료 후 |
+| c17 | `email_optin_migration_2026-08-11.sql` Run 완료 | `profiles`에 email_opt_in/email_consent_at/email_consent_ip/email_consent_text/email_opt_out_at 5컬럼 생성 확인(BLOCK 0=0행 → BLOCK 2=5행 → BLOCK 3 전부 false). 가입 시 동의 UI(`app/login`)+콜백 기록(`app/auth/callback`)+수신거부(`/profile` EmailConsentCard·List-Unsubscribe)까지 코드 배포 완료(`31c63d5`~`e13c878`) |
+| c18 | `admin_broadcasts` 테이블 생성 완료 (참가자 연락처 발송 콘솔) | 2026-08-11 Run 확인: tbl 1 / idx 2 / trg 1(updated_at 자동갱신) / rls true / policy 0(service_role 전용, fail-closed). 발송 루프(`lib/email/broadcast-tick.ts` + `/api/cron/broadcast-tick`) 코드 완료, 화면(`/admin/broadcasts`)은 다음 순서 |

@@ -31,6 +31,12 @@ export type TemplateKey =
   // membership_renewal_notified_at, not email_logs). Logged for transparency.
   | 'membership_renewal'
   | 'membership_founding_expiry'
+  // Admin recipient-console campaigns (admin_broadcasts). Not application-
+  // scoped -- dedup is (campaign_id, to_email) via metadata->>campaign_id,
+  // checked by lib/email/broadcast-tick.ts, not executeSend's applicationId
+  // path. A 'skipped' row here means "no marketing consent at send time",
+  // never "already sent" -- see lib/email/broadcast.ts.
+  | 'admin_broadcast'
 
 export type LogStatus = 'sent' | 'failed' | 'queued' | 'skipped'
 
