@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import type { EmailOtpType } from '@supabase/supabase-js'
 import { createSupabaseServer } from '@/lib/supabase-server'
+import { recordEmailConsentForUser } from '@/app/login/actions'
 
 // Public-site Supabase auth callback — handles magic-link redirects.
 // Mirrors app/admin/auth/callback for general users.
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = await createSupabaseServer()
-  const { error } = tokenHash
+  const { data, error } = tokenHash
     ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: (otpType as EmailOtpType) || 'magiclink' })
     : await supabase.auth.exchangeCodeForSession(code as string)
 
@@ -60,6 +61,20 @@ export async function GET(request: NextRequest) {
     await supabase.rpc('link_user_applications')
   } catch {
     // ignore
+  }
+
+  // Email signup consent (app/privacy Section 11, app/terms Section 12) is
+  // recorded HERE, not on the login form -- this is the point that proves the
+  // caller actually controls this mailbox (they opened the link), not just
+  // typed an address into a public form. See app/login/actions.ts for the
+  // full reasoning and lib/email/signup-consent.ts for the once-only guard.
+  const userId = data.user?.id ?? data.session?.user?.id
+  if (userId) {
+    try {
+      await recordEmailConsentForUser(userId)
+    } catch {
+      // best-effort, never blocks login
+    }
   }
 
   // Only honor `next` if it's a safe, relative in-app path (leading single

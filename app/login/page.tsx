@@ -4,12 +4,13 @@ import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useAdminLang } from '@/lib/admin-i18n'
-import { recordEmailConsent } from './actions'
 
 // Signup consent notice shown above "Send login link" (see app/privacy Section
 // 11, app/terms Section 12). TK-confirmed copy, 2026-08-11 -- must stay
-// consistent with EMAIL_CONSENT_DISCLOSURE in ./actions.ts (the snapshot
-// stored as consent proof).
+// consistent with EMAIL_CONSENT_DISCLOSURE in app/login/actions.ts (the
+// snapshot stored as consent proof). Only shown here -- the actual write
+// happens at app/auth/callback/route.ts once the recipient has proven they
+// control the mailbox by opening the link, not when this form is submitted.
 const CONSENT_DICT = {
   ko: {
     text: 'OXXOVO 회원으로 가입하시면, 대회 진행 안내와 다음 시즌 대회 안내를 이메일 또는 휴대폰(문자)으로 받으시게 됩니다. 수신을 원하지 않으시면 언제든지 설정에서 해제하실 수 있습니다.',
@@ -93,10 +94,8 @@ function LoginInner() {
       setError(otpError.message)
       return
     }
-    // Fire-and-forget: the consent notice was shown above the button the user
-    // just pressed, so the stamp belongs to this moment, not the eventual
-    // click on the emailed link. Never blocks the UI (see actions.ts).
-    void recordEmailConsent(email)
+    // Consent is recorded when the emailed link is actually opened
+    // (app/auth/callback/route.ts), not here -- this only sent the link.
     setSent(true)
   }
 
