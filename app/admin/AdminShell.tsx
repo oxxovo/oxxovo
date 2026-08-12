@@ -68,7 +68,6 @@ export function AdminShell({
             OXXOVO
           </div>
           <div className="text-lg font-black text-white">{t.layout.admin_console}</div>
-          <div className="mt-3 text-[11px] text-white/40 truncate">{admin.email}</div>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
@@ -95,20 +94,25 @@ export function AdminShell({
             </Link>
           ))}
         </nav>
-
-        <div className="px-3 py-4 border-t border-[#ff4444]/15 space-y-2">
-          <AdminExternalLink
-            href="/"
-            className="block px-3 py-2 text-xs text-white/40 hover:text-white/70 transition"
-          >
-            {t.layout.view_public_site}
-          </AdminExternalLink>
-          <LangToggle />
-          <LogoutButton />
-        </div>
       </aside>
 
       <main className="flex-1 min-w-0">
+        {/* Account/language/exit -- own row, deliberately separate from the
+            warning banner below (HQ 2026-08-12: the warning must not read as
+            diluted by sitting next to interactive account controls). One
+            place (AdminShell), not per-page -- see AdminExternalLink. */}
+        <div className="flex items-center justify-end gap-3 border-b border-[#ff4444]/15 px-8 py-2.5">
+          <LangToggle />
+          <AdminExternalLink
+            href="/"
+            className="shrink-0 px-2 text-xs text-white/50 hover:text-white/80 transition"
+          >
+            {t.layout.view_public_site}
+          </AdminExternalLink>
+          <span className="shrink-0 text-[11px] text-white/40 truncate max-w-[220px]">{admin.email}</span>
+          <LogoutButton />
+        </div>
+
         <div className="border-b border-[#ff4444]/15 bg-[#ff4444]/[.04] px-8 py-3 text-[11px] tracking-wider text-[#ff8844] font-bold uppercase">
           {t.layout.admin_mode_banner}
         </div>
