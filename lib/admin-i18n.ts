@@ -1611,7 +1611,7 @@ const MESSAGES_EN: Messages = {
     hero_submit_prefix: 'Submit your AI video.',
     hero_submit_scoring: (panelLabel) => `${panelLabel} scoring by multiple independent AI models.`,
     hero_submit_fallback: 'AI verified scoring.',
-    countdown_label: 'Application Closes In',
+    countdown_label: 'Submission Closes In',
     countdown_days: 'Days',
     countdown_hrs: 'Hrs',
     countdown_min: 'Min',
@@ -1631,7 +1631,7 @@ const MESSAGES_EN: Messages = {
     how_h2: 'Submit. Get Verified. Win.',
     step1_title: 'Share Your Video',
     step1_body: (min, max) =>
-      `Make your video in OXXOVO Studio (${min}–${max} seconds) and submit it there. Everyone works with the same toolset — what separates entries is your direction, not your budget.`,
+      `Make your video in OXXOVO Studio (${min}–${max} seconds) and submit it there.`,
     step2_title: (panelLabel) => `${panelLabel} Judges`,
     step2_body: (modelCount) =>
       `${modelCount === 3 ? 'Three' : modelCount} independent AI models from ${modelCount === 3 ? 'three' : modelCount} different companies score your work in parallel. Eliminates single-AI bias.`,
@@ -2494,7 +2494,7 @@ const MESSAGES_KO: Messages = {
     hero_submit_prefix: 'AI 영상을 제출하세요.',
     hero_submit_scoring: (panelLabel) => `${panelLabel} 채점 — 복수의 이종 AI 모델이 참여합니다.`,
     hero_submit_fallback: 'AI 검증 채점.',
-    countdown_label: '신청 마감까지',
+    countdown_label: '제출 마감까지',
     countdown_days: '일',
     countdown_hrs: '시',
     countdown_min: '분',
@@ -2514,7 +2514,7 @@ const MESSAGES_KO: Messages = {
     how_h2: '제출하고. 검증받고. 우승하세요.',
     step1_title: '영상 공유',
     step1_body: (min, max) =>
-      `OXXOVO 스튜디오에서 영상(${min}~${max}초)을 만들고 그대로 제출하세요. 모두가 같은 도구로 작업합니다 — 작품을 가르는 건 예산이 아니라 당신의 연출입니다.`,
+      `OXXOVO Studio에서 영상(${min}~${max}초)을 만들고 바로 제출하세요.`,
     step2_title: (panelLabel) => `${panelLabel} 심사`,
     step2_body: (modelCount) =>
       `서로 다른 ${modelCount}개 회사의 독립 AI 모델 ${modelCount}개가 동시에 작품을 채점합니다. 단일 AI 편향을 제거합니다.`,

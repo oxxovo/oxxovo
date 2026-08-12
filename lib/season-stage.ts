@@ -7,7 +7,7 @@
 // is how two surfaces end up disagreeing about the same instant.
 //
 // That disagreement is not hypothetical: the landing has been rendering
-// "Application Closes In / 00 00 00 00" from the close date all the way to the
+// "Submission Closes In / 00 00 00 00" from the close date all the way to the
 // awards, underneath a CTA that already said "Join the waitlist". One screen, two
 // answers. The fix is not a second mapping on the landing -- it is this one.
 //

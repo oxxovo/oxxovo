@@ -69,7 +69,7 @@ export function LandingView() {
   }, [season])
 
   // The countdown is about ONE deadline: applications closing. Past that instant
-  // it was still rendering "Application Closes In / 00 00 00 00" -- through the
+  // it was still rendering "Submission Closes In / 00 00 00 00" -- through the
   // main round, the vote and the results -- under a CTA that already read "Join
   // the waitlist". Recomputed every render, and the timer below re-renders every
   // second, so it goes away on the tick the deadline passes.
@@ -304,9 +304,9 @@ export function LandingView() {
                 <div className="mb-1 text-[12px] font-bold uppercase tracking-widest text-[#b66cff]">
                   {t.landing.countdown_label}
                 </div>
-                {formatDeadlinePT(season?.application_close_at, lang) && (
+                {formatDeadlinePT(season?.application_close_at, lang, { withKst: true }) && (
                   <div className="mb-3.5 text-[12px] text-white/50">
-                    {formatDeadlinePT(season?.application_close_at, lang)}
+                    {formatDeadlinePT(season?.application_close_at, lang, { withKst: true })}
                   </div>
                 )}
                 <div className="grid max-w-[400px] grid-cols-4">
