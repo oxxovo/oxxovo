@@ -34,8 +34,46 @@ export type MusicReason =
   | 'music_imitation' // copyright-mimicry request (artist/track blocklist or phrase)
   | 'music_insufficient_credits'
   | 'music_cap_reached'
+  // ★Price is not configured (or configures to nothing). Distinct from
+  // insufficient_credits: the participant is not at fault and nothing is charged.
+  | 'music_not_priced'
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
+// ---------------------------------------------------------------------------
+// Cost model
+//
+// ★ UNIT NEUTRAL. Music vendors price two different ways -- per output (a flat
+// fee per generated track) and per minute of audio -- and the vendor is not
+// chosen yet. A single per-generation number cannot express the per-minute kind,
+// so cost is `base + perSecond x duration`. Either vendor is a config change:
+//   per output : base = fee,  perSecond = 0
+//   per minute : base = 0,    perSecond = rate/60
+// Both terms may be set at once (a fee plus a rate), which some vendors do.
+export type MusicCost = { baseUsd: number; perSecondUsd: number }
+
+export function musicCostUsd(cost: MusicCost, durationSeconds: number): number {
+  return cost.baseUsd + cost.perSecondUsd * durationSeconds
+}
+
+/**
+ * ★ FAIL-CLOSED ON PRICE. Returns the reason when a generation must NOT proceed.
+ *
+ * The company pays nothing toward participant generation -- cost x 1.25, prepaid.
+ * Before this check, `studio_music_gen_cost_usd` simply being absent from
+ * platform_config made getMusicGenConfig() return 0, creditsForCost() return 0,
+ * and the balance test `balance < 0` pass for everyone: switching music on would
+ * have made AI generation free. And music is switched on with a SQL UPDATE, not
+ * a deploy, so nothing in a release process would have caught it.
+ *
+ * A price of zero is therefore never "free", it is "not configured yet".
+ */
+export function validateMusicPricing(cost: MusicCost, durationSeconds: number): MusicReason | null {
+  if (!isNum(cost.baseUsd) || !isNum(cost.perSecondUsd)) return 'music_not_priced'
+  if (cost.baseUsd < 0 || cost.perSecondUsd < 0) return 'music_not_priced'
+  if (musicCostUsd(cost, durationSeconds) <= 0) return 'music_not_priced'
+  return null
+}
 
 // Validate a music bed against the composition duration (ms). Pure shape/bounds
 // only -- asset existence + signature are resolved server-side (needs the DB).

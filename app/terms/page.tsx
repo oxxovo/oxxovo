@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 
 export default function TermsPage() {
@@ -105,7 +106,14 @@ export default function TermsPage() {
       </section>
 
       <div className="mt-16 pt-8 border-t border-white/10 text-center text-white/30 text-sm">
-        OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.
+        {/* This page had no way back to the site on any viewport. The link and its
+            styling are the ones /tournament, /about, /faq and /guidelines already
+            use, so there is no new wording here to keep in sync. Terms reachability
+            is also what a payment review looks for. */}
+        <Link href="/" className="mb-4 inline-block text-xs tracking-[0.2em] text-white/40 transition hover:text-white">
+          &larr; OXXOVO
+        </Link>
+        <p>OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.</p>
         <p className="text-xs text-white/30 mt-1">{formatFooterStatusLine()}</p>
       </div>
     </main>

@@ -17,6 +17,7 @@ import {
   submitRenderAction,
   deleteRenderAction,
   generateMusicAction,
+  listMusicAssetsAction,
   pollMusicAction,
   type ComposeClip,
   type ResumeRender,
@@ -45,7 +46,6 @@ export default function ComposePage() {
     restorableRender: RestorableRender | null
     nickname: string
     musicEnabled: boolean
-    musicAssets: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
     musicAiEnabled: boolean
     musicCreditCost: number
     musicPromptMax: number
@@ -115,7 +115,7 @@ export default function ComposePage() {
             restorableRender={data.restorableRender}
             nickname={data.nickname}
             musicEnabled={data.musicEnabled}
-            musicAssets={data.musicAssets}
+            loadMusicAssets={() => listMusicAssetsAction(token)}
             musicAiEnabled={data.musicAiEnabled}
             musicCreditCost={data.musicCreditCost}
             musicPromptMax={data.musicPromptMax}

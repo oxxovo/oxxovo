@@ -31,14 +31,46 @@ import { isSubmittableRenderStatus } from '@/lib/studio-shared'
 import { createRawPreview, type PreviewEngine, type PreviewTransition } from './preview'
 import { createGLPreview } from './preview-gl'
 import { hasAnyEffect, EXPOSED_SLIDERS, LUT_OPTIONS, EXPOSED_TRANSITIONS, type EffectParams } from '@/lib/effects'
+import { valueAt, type KeyframeTrack } from '@/lib/edl-keyframes'
 import { FONT_SPECS, type TextLayer } from '@/lib/text-render'
-import { TEXT_LIMITS, validateTexts, type TextReason } from '@/lib/text-limits'
+import { TEXT_LIMITS, TEXT_CANVAS, validateTexts, type TextReason } from '@/lib/text-limits'
 import { TextOverlay } from './TextOverlay'
+import { TextTrack } from './TextTrack'
+import { TextFitReadout } from './TextFit'
+import { maxFittingSizePct } from '@/lib/text-metrics'
 import { createMusicPreview, type MusicPreview, type MusicBed } from './music-preview'
+import {
+  MIN_SPLIT_MS,
+  splitPointFromPlayhead,
+  splitSegmentAt,
+  type SplitReason,
+} from '@/lib/edl-split'
+import {
+  availableFacets,
+  filterMusicAssets,
+  genreLabel,
+  moodLabel,
+  musicPickerLine,
+  presentGenreKeys,
+  presentMoodKeys,
+  presentTempoKeys,
+  tempoLabel,
+  type MusicFilterSelection,
+} from '@/lib/music-grid-labels'
 
 // effects/speed are populated by the effect UI (E); undefined in C (no effect UI
 // yet), which keeps the composition effect-free -> the raw preview stays accurate.
-type Segment = { uid: string; jobId: string; startMs: number; endMs: number; speed?: number; effects?: EffectParams; fit?: 'contain' | 'cover' }
+type Segment = {
+  uid: string; jobId: string; startMs: number; endMs: number; speed?: number; effects?: EffectParams; fit?: 'contain' | 'cover'
+  // ★D keyframes (2026-08-10). Segment-relative atMs (0 == this segment's own
+  // startMs). Only exposure/contrast/saturation/vignette are keyframe-able
+  // (decision ①(a), 2026-08-10 -- position/scale explicitly out of scope).
+  keyframes?: Partial<Record<keyof EffectParams, KeyframeTrack>>
+}
+// Effect keys the keyframe toggle applies to -- must match render.ts's
+// effectVideoFilters() kfOf() gate (only eq's 3 + vignette support ffmpeg's
+// eval=frame; the others are typed <int>/<float>, no per-frame expression).
+const KEYFRAME_KEYS: readonly (keyof EffectParams)[] = ['exposure', 'contrast', 'saturation', 'vignette']
 type Aspect = '16:9' | '9:16'
 
 let uidSeq = 0
@@ -163,6 +195,21 @@ const DICT = {
     text_fade_in: '들어옴', text_fade_out: '나감',
     text_delete: '삭제',
     text_drag: '드래그해서 위치 이동',
+    tt_title: '자막 트랙',
+    tt_none: '텍스트를 추가하면 표시 구간이 여기에 나타나요.',
+    tt_hint: '바를 끌어 구간을 옮기고, 양 끝을 끌어 길이를 조절하세요.',
+    tt_move: '끌어서 구간 이동',
+    tt_trim_s: '시작 조절', tt_trim_e: '끝 조절',
+    fit_w: '가로', fit_h: '세로', fit_ok: '화면 안에 들어갑니다',
+    fix_split: 'Enter로 줄을 나누세요 — 문구를 그대로 두고 폭을 줄일 수 있어요.',
+    fix_smaller: '글자 크기를 줄이세요.',
+    fix_shorter: '글자 수를 줄이세요.',
+    fix_font: (n: string) => `이 문구라면 ${n} 글꼴로는 들어갑니다.`,
+    fix_up: '위치를 위쪽으로 옮기세요.',
+    fix_fewer_lines: '줄 수를 줄이세요.',
+    fix_none: `최소 크기(${TEXT_LIMITS.MIN_SIZE_PCT}%)에서도 들어가지 않아요. 줄을 나누거나 문구를 줄여 주세요.`,
+    fix_glyph: (c: string) => `이 글꼴에 없는 글자: ${c} — 영상에서 빈칸으로 나옵니다.`,
+    fit_cap: (n: number) => `화면에 들어가는 최대 크기 ${n}% — 이 눈금을 넘기면 잘립니다.`,
     // --- output aspect / per-clip fit ---
     aspect_hint: '출력 비율 — 미리보기가 즉시 바뀝니다',
     crop_badge: '크롭됨',
@@ -175,7 +222,24 @@ const DICT = {
     music_title: '음악',
     music_none_assets: '음악 라이브러리 준비 중입니다.',
     music_need_clip: '먼저 타임라인에 클립을 올리세요.',
+    // ★④-E 분할. 규칙과 상수는 lib/edl-split.ts에 있다.
+    split: '분할',
+    split_hint: '플레이헤드 위치에서 클립을 둘로 나눕니다. 전체 길이는 변하지 않습니다.',
+    split_need_inside: '클립 안쪽에 플레이헤드를 두세요 (경계에서는 나눌 것이 없습니다).',
+    split_why: (r: SplitReason, maxClips: number) =>
+      r === 'too_many_clips'
+        ? `클립 수 상한(${maxClips})에 도달했습니다. 분할도 클립 한 칸을 씁니다.`
+        : r === 'too_short'
+          ? `양쪽 조각이 최소 ${MIN_SPLIT_MS}ms는 되어야 합니다.`
+          : '이 위치에서는 나눌 수 없습니다.',
     music_pick: '음악 선택',
+    music_loading: '불러오는 중…',
+    // ★[4] 필터·미리듣기. 장르·무드 라벨 자체는 lib/music-grid-labels.ts에 있다 —
+    // 키는 워커가 쓰고 읽는 말은 앱이 가진다.
+    music_filter_clear: '필터 해제',
+    music_filter_none: '이 조건에 맞는 곡이 없습니다. 필터를 해제해 보세요.',
+    music_use_this: '이 곡 사용',
+    music_preview_close: '닫기',
     music_change: '변경',
     music_volume: '음악 볼륨',
     music_balance: '원본 소리',
@@ -186,7 +250,12 @@ const DICT = {
     music_wysiwyg: '미리보기에서 들리는 그대로 최종본에 들어갑니다.',
     // --- AI music generation (Stage 6) ---
     music_ai_title: 'AI로 음악 생성',
-    music_ai_ph: '분위기를 설명하세요 (예: 밝고 경쾌한 일렉트로팝, 화장품 광고). 특정 가수·곡을 흉내내는 요청은 거절됩니다.',
+    // ★GENRE AND MOOD ONLY. This example used to end in '화장품 광고' -- a
+    // product category on the participant's screen, which is the one thing the
+    // main-round theme must not leak through. Never name a product type, an
+    // industry, '광고'/'CF', or a brand here; two genre/mood examples do the same
+    // job of showing what a usable prompt looks like.
+    music_ai_ph: '분위기를 설명하세요 (예: 밝고 경쾌한 일렉트로팝, 잔잔한 솔로 피아노). 특정 가수·곡을 흉내내는 요청은 거절됩니다.',
     music_ai_generate: '생성',
     music_ai_generating: '생성 중… 잠시 기다려 주세요.',
     music_ai_cost: (n: number) => `${n} 크레딧`,
@@ -207,6 +276,7 @@ const DICT = {
         music_prompt_empty: '프롬프트를 입력해 주세요.',
         music_duration: '요청한 길이가 허용 범위를 벗어났습니다.',
         music_cap_reached: '생성 한도에 도달했습니다.',
+        music_not_priced: '음악 생성 요금이 아직 설정되지 않았습니다. 운영진이 확인 중이며, 요금이 청구되지 않았습니다.',
         music_ai_disabled: 'AI 음악 생성이 아직 활성화되지 않았습니다.',
         music_disabled: '이 시즌에는 음악을 사용할 수 없습니다.',
       } as Record<string, string>)[r] ?? '음악 생성에 실패했습니다. 다시 시도해 주세요.'),
@@ -222,6 +292,9 @@ const DICT = {
       text_window: '표시 구간이 영상 길이를 벗어났어요.',
       text_fade: '페이드가 표시 구간보다 길어요.',
       text_trademark: '상표·브랜드명은 사용할 수 없어요. 문구를 수정해 주세요.',
+      text_too_wide: '문구가 화면 폭을 넘어가요. 줄을 나누거나, 크기를 줄이거나, 글자 수를 줄여 주세요.',
+      text_too_tall: '문구가 화면 아래로 넘어가요. 위쪽으로 옮기거나, 크기를 줄이거나, 줄 수를 줄여 주세요.',
+      text_font_glyph: '이 글꼴에 없는 글자가 있어요 — 그대로 두면 영상에서 빈칸으로 나와요. 글꼴을 바꾸거나 문구를 수정해 주세요.',
     }[r]),
   },
   en: {
@@ -337,6 +410,21 @@ const DICT = {
     text_fade_in: 'In', text_fade_out: 'Out',
     text_delete: 'Delete',
     text_drag: 'Drag to move',
+    tt_title: 'Caption track',
+    tt_none: 'Add a text layer and its show window appears here.',
+    tt_hint: 'Drag a bar to move its window; drag an edge to resize.',
+    tt_move: 'Drag to move the window',
+    tt_trim_s: 'Trim start', tt_trim_e: 'Trim end',
+    fit_w: 'Width', fit_h: 'Height', fit_ok: 'Fits the frame',
+    fix_split: 'Press Enter to split the line — keeps every word, narrows the block.',
+    fix_smaller: 'Reduce the text size.',
+    fix_shorter: 'Use fewer characters.',
+    fix_font: (n: string) => `This text would fit in ${n}.`,
+    fix_up: 'Move the text higher in the frame.',
+    fix_fewer_lines: 'Use fewer lines.',
+    fix_none: `It does not fit even at the minimum size (${TEXT_LIMITS.MIN_SIZE_PCT}%). Split the line or shorten the text.`,
+    fix_glyph: (c: string) => `Characters this font cannot draw: ${c} — they render as blank space.`,
+    fit_cap: (n: number) => `Largest size that fits: ${n}% — past this tick the text is clipped.`,
     // --- output aspect / per-clip fit ---
     aspect_hint: 'Output aspect — the preview reframes instantly',
     crop_badge: 'CROPPED',
@@ -349,7 +437,24 @@ const DICT = {
     music_title: 'Music',
     music_none_assets: 'Music library coming soon.',
     music_need_clip: 'Add a clip to the timeline first.',
+    // ★④-E split. The rule and the constant live in lib/edl-split.ts.
+    split: 'Split',
+    split_hint: 'Cut the clip in two at the playhead. Total length does not change.',
+    split_need_inside: 'Put the playhead inside a clip (there is nothing to cut on a boundary).',
+    split_why: (r: SplitReason, maxClips: number) =>
+      r === 'too_many_clips'
+        ? `You have reached the clip limit (${maxClips}). A split spends a clip slot too.`
+        : r === 'too_short'
+          ? `Each piece has to be at least ${MIN_SPLIT_MS}ms.`
+          : 'This position cannot be split.',
     music_pick: 'Pick music',
+    music_loading: 'Loading…',
+    // ★[4] filter + preview. The genre/mood wording itself lives in
+    // lib/music-grid-labels.ts -- the worker owns the keys, the app owns the words.
+    music_filter_clear: 'Clear filters',
+    music_filter_none: 'No tracks match these filters. Try clearing them.',
+    music_use_this: 'Use this track',
+    music_preview_close: 'Close',
     music_change: 'Change',
     music_volume: 'Music volume',
     music_balance: 'Original audio',
@@ -360,7 +465,8 @@ const DICT = {
     music_wysiwyg: 'What you hear in the preview is what ships in the final.',
     // --- AI music generation (Stage 6) ---
     music_ai_title: 'Generate music with AI',
-    music_ai_ph: 'Describe the mood (e.g. bright upbeat electro-pop for a skincare ad). Requests that imitate a specific artist or song are refused.',
+    // Genre and mood only -- see the KO note. No product category, no industry.
+    music_ai_ph: 'Describe the mood (e.g. bright upbeat electro-pop, or a calm solo piano). Requests that imitate a specific artist or song are refused.',
     music_ai_generate: 'Generate',
     music_ai_generating: 'Generating… please wait.',
     music_ai_cost: (n: number) => `${n} credits`,
@@ -381,6 +487,7 @@ const DICT = {
         music_prompt_empty: 'Please enter a prompt.',
         music_duration: 'The requested length is out of range.',
         music_cap_reached: 'You have reached the generation limit.',
+        music_not_priced: 'Music generation pricing is not configured yet. Staff are looking into it; you have not been charged.',
         music_ai_disabled: 'AI music generation is not enabled yet.',
         music_disabled: 'Music is not available this season.',
       } as Record<string, string>)[r] ?? 'Music generation failed. Please try again.'),
@@ -396,6 +503,9 @@ const DICT = {
       text_window: 'The show window is outside the video length.',
       text_fade: 'Fade is longer than the show window.',
       text_trademark: 'Trademarks / brand names are not allowed. Please edit the text.',
+      text_too_wide: 'This line is wider than the frame. Split it across lines, reduce the size, or shorten it.',
+      text_too_tall: 'The text runs past the bottom of the frame. Move it up, reduce the size, or use fewer lines.',
+      text_font_glyph: 'This font has no glyph for one of these characters — it would render as a blank gap. Change the font or edit the text.',
     }[r]),
   },
 } as const
@@ -408,7 +518,118 @@ const POOL_OVERSCAN = 2
 const ZOOM_MIN = 6
 const ZOOM_MAX = 120
 
+// ★D keyframes -- mini keyframe track (design: reports/lane_c_item4_d_ui_design_2026-08-10.md).
+// Click empty track = add a point at the current interpolated value. Drag a
+// point = move it (x=time, y=value). Double-click = delete (floor: 2 points,
+// enforced by the caller never rendering this below 2). Linear only (decision
+// ②, 2026-08-10) -- no curve picker, points always connect with a straight line.
+function KeyframeMiniTrack({
+  track,
+  min,
+  max,
+  spanMs,
+  onChange,
+}: {
+  track: KeyframeTrack
+  min: number
+  max: number
+  spanMs: number
+  onChange: (next: KeyframeTrack) => void
+}) {
+  const [selected, setSelected] = useState(0)
+  const trackRef = useRef<HTMLDivElement>(null)
+  const dragIdx = useRef<number | null>(null)
+  const pts = track.points
 
+  const xPct = (atMs: number) => (spanMs > 0 ? Math.max(0, Math.min(1, atMs / spanMs)) : 0) * 100
+  const yPct = (val: number) => (1 - (max > min ? (val - min) / (max - min) : 0)) * 100
+
+  const msFromClientX = (clientX: number) => {
+    const el = trackRef.current
+    if (!el) return 0
+    const r = el.getBoundingClientRect()
+    return Math.round(Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * spanMs)
+  }
+  const valFromClientY = (clientY: number) => {
+    const el = trackRef.current
+    if (!el) return min
+    const r = el.getBoundingClientRect()
+    const p = Math.max(0, Math.min(1, (clientY - r.top) / r.height))
+    return Math.round(max - p * (max - min))
+  }
+  const commit = (next: { atMs: number; value: number }[]) => onChange({ points: [...next].sort((a, b) => a.atMs - b.atMs) })
+
+  const onPointDown = (i: number) => (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelected(i)
+    dragIdx.current = i
+    const onMove = (ev: MouseEvent) => {
+      const idx = dragIdx.current
+      if (idx == null) return
+      const atMs = msFromClientX(ev.clientX)
+      const value = Math.max(min, Math.min(max, valFromClientY(ev.clientY)))
+      commit(pts.map((p, j) => (j === idx ? { atMs, value } : p)))
+    }
+    const onUp = () => {
+      dragIdx.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+  const onTrackClick = (e: React.MouseEvent) => {
+    if (e.target !== trackRef.current) return // a point's own mousedown already handled it
+    const atMs = msFromClientX(e.clientX)
+    const value = Math.round(Math.max(min, Math.min(max, valueAt(track, atMs))))
+    const next = [...pts, { atMs, value }]
+    commit(next)
+    setSelected(next.length - 1)
+  }
+  const onPointDoubleClick = (i: number) => (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (pts.length <= 2) return // floor: dropping below 2 points is the caller's OFF toggle, not this component's job
+    commit(pts.filter((_, j) => j !== i))
+    setSelected(0)
+  }
+
+  const sel = pts[Math.min(selected, pts.length - 1)]
+  return (
+    <div className="mt-1">
+      <div
+        ref={trackRef}
+        onClick={onTrackClick}
+        className="relative h-8 w-full cursor-crosshair rounded border border-white/10 bg-[#070610]"
+      >
+        {pts.map((p, i) => (
+          <button
+            key={i}
+            type="button"
+            onMouseDown={onPointDown(i)}
+            onDoubleClick={onPointDoubleClick(i)}
+            className={`absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border ${
+              i === selected ? 'border-white bg-[#8b22ff]' : 'border-white/50 bg-[#8b22ff]/70'
+            }`}
+            style={{ left: `${xPct(p.atMs)}%`, top: `${yPct(p.value)}%` }}
+          />
+        ))}
+      </div>
+      {sel && (
+        <input
+          type="number"
+          min={min}
+          max={max}
+          value={Math.round(sel.value)}
+          onChange={(e) => {
+            const value = Math.max(min, Math.min(max, Number(e.target.value) || 0))
+            commit(pts.map((p, j) => (j === selected ? { ...p, value } : p)))
+          }}
+          className="mt-1 w-16 rounded border border-white/10 bg-[#070610] px-1.5 py-0.5 text-[10px] text-white"
+        />
+      )}
+    </div>
+  )
+}
 
 export default function ProComposeEditor(props: ComposeEditorProps) {
   const t = DICT[props.lang]
@@ -428,14 +649,77 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const musicEnabled = props.musicEnabled ?? false
   // Freshly-generated AI tracks (this session) merged into the picker so a
   // just-finished generation is immediately selectable without a full reload.
-  type PickAsset = { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }
+  // ★genre/bpm are optional: the columns are not migrated, so they are absent today and
+  // the facet controls below stay hidden until the data carries them (see
+  // lib/music-grid-labels.ts availableFacets and the note on MusicAsset).
+  type PickAsset = {
+    id: string
+    url: string
+    title: string
+    mood: string
+    source: 'library' | 'ai'
+    genre?: string | null
+    bpm?: number | null
+  }
   const [extraMusic, setExtraMusic] = useState<PickAsset[]>([])
+  // ★Lazily-loaded library. See ComposeEditorProps.loadMusicAssets: the beds are
+  // no longer shipped with the page, so they arrive here the first time the
+  // picker is actually needed.
+  const [loadedMusic, setLoadedMusic] = useState<PickAsset[] | null>(null)
+  const [musicLoading, setMusicLoading] = useState(false)
   const musicAssets = useMemo<PickAsset[]>(() => {
-    const base = props.musicAssets ?? []
+    const base = props.musicAssets ?? loadedMusic ?? []
     const seen = new Set(base.map((a) => a.id))
     return [...base, ...extraMusic.filter((a) => !seen.has(a.id))]
-  }, [props.musicAssets, extraMusic])
+  }, [props.musicAssets, loadedMusic, extraMusic])
+  const loadMusic = useCallback(() => {
+    if (!props.loadMusicAssets || loadedMusic !== null || musicLoading) return
+    setMusicLoading(true)
+    props
+      .loadMusicAssets()
+      // ★An empty array on failure, not a retry loop and not a thrown error. The
+      // picker's "no tracks" state already exists and is honest here: nothing is
+      // pickable right now. A bed cannot be silently substituted, and the render
+      // path re-resolves the asset server-side regardless of what this list said.
+      .then((a) => setLoadedMusic(a ?? []))
+      .catch(() => setLoadedMusic([]))
+      .finally(() => setMusicLoading(false))
+  }, [props, loadedMusic, musicLoading])
+  // Has the picker list actually been resolved? Distinguishes "there are no
+  // tracks" from "we have not fetched them yet" -- without it an empty list
+  // before the first fetch reads as "library coming soon", which is a lie.
+  const musicListReady = props.musicAssets !== undefined || loadedMusic !== null
   const musicUrl = music ? (musicAssets.find((a) => a.id === music.assetId)?.url ?? null) : null
+
+  // ---- [4] picker facets + preview ----------------------------------------
+  // ★The facet rule is in lib/music-grid-labels.ts, not here, so it can be executed by
+  // a test instead of eyeballed through a component. This holds only the selection.
+  const [musicFacets, setMusicFacets] = useState<MusicFilterSelection>({})
+  // Which controls may render AT ALL. With genre/bpm unmigrated every asset lacks them,
+  // so those chips do not appear -- a filter that returns nothing would read as "there
+  // is no cinematic music" rather than "this is not wired up yet". They light up on
+  // their own once rows carry the columns.
+  const musicFacetsAvailable = useMemo(() => availableFacets(musicAssets), [musicAssets])
+  const musicFilterActive = !!(musicFacets.genre || musicFacets.mood || musicFacets.tempo)
+  const visibleMusicAssets = useMemo(
+    () => filterMusicAssets(musicAssets, musicFacets),
+    [musicAssets, musicFacets],
+  )
+  // ★Preview is its own element, not the timeline's audio: auditioning a candidate must
+  // not disturb the composition or the bed already selected. `preload="none"` so opening
+  // the panel does not fetch a thousand files.
+  const [musicPreviewId, setMusicPreviewId] = useState<string | null>(null)
+  const musicPreviewUrl = musicPreviewId
+    ? (musicAssets.find((a) => a.id === musicPreviewId)?.url ?? null)
+    : null
+  // ★A restored draft can already have a bed selected, and then the list is not
+  // optional: without it the panel shows a bare asset id instead of the track
+  // name, and the preview has no URL to play. So a selected bed loads the list
+  // whether or not the participant ever touches the picker.
+  useEffect(() => {
+    if (musicEnabled && music && !musicListReady) loadMusic()
+  }, [musicEnabled, music, musicListReady, loadMusic])
+
   // AI music-gen panel state (Stage 6). Gated on props.musicAiEnabled.
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiState, setAiState] = useState<'idle' | 'generating' | 'error'>('idle')
@@ -675,7 +959,13 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     if (typeof document === 'undefined') return false
     try { return !!document.createElement('canvas').getContext('webgl2') } catch { return false }
   }, [])
-  const compositionHasEffects = hasAnyEffect(globalFx) || transitions.length > 0 || segments.some((s) => hasAnyEffect(s.effects) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
+  // ★D keyframes: a segment can carry a live keyframes map while its static
+  // effects[key] sits at neutral (toggling ON seeds the track FROM whatever
+  // effects[key] already was, which is 0 on a never-touched slider) --
+  // hasAnyEffect() alone would miss it, silently dropping to the v1 EDL path
+  // (no GL preview, no keyframes in the signed submission).
+  const hasAnyKeyframes = (s: Segment) => !!s.keyframes && Object.values(s.keyframes).some((tr) => tr && tr.points.length > 0)
+  const compositionHasEffects = hasAnyEffect(globalFx) || transitions.length > 0 || segments.some((s) => hasAnyEffect(s.effects) || hasAnyKeyframes(s) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
   // ★ NEVER SHOW A BLACK PREVIEW. If the GL engine cannot draw (cross-origin
   // texture upload refused, shader/context failure), it reports up here and we
   // stay on the raw engine for the rest of the session: the user sees the
@@ -873,6 +1163,39 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     lastCommit.current = { key: '', t: 0 }
     setCanUndo(true); setCanRedo(redoRef.current.length > 0)
   }
+  // ---- ④-E clip split ------------------------------------------------------
+  // ★The RULE is lib/edl-split.ts, not here: a rule inside a component is a rule no
+  // test can execute (same reason text-track-lanes / music-picker-scope exist). This
+  // holds only the wiring and the refusal message.
+  const [splitNote, setSplitNote] = useState<SplitReason | null>(null)
+  const splitPoint = useMemo(() => splitPointFromPlayhead(segments, playheadMs), [segments, playheadMs])
+  // Enabled only when a split would actually succeed, so the button is not an offer
+  // that fails. The refusal path still exists for the keyboard route.
+  const canSplit = useMemo(() => {
+    if (!splitPoint) return false
+    return splitSegmentAt(segments, transitions, splitPoint.index, splitPoint.sourceCutMs, {
+      maxClips: props.maxClips,
+      newUid: () => 'probe',
+    }).ok
+  }, [segments, transitions, splitPoint, props.maxClips])
+
+  const splitAtPlayhead = () => {
+    if (!splitPoint) { setSplitNote('cut_outside'); return }
+    const res = splitSegmentAt(segments, transitions, splitPoint.index, splitPoint.sourceCutMs, {
+      maxClips: props.maxClips,
+      newUid: nextUid,
+    })
+    if (!res.ok) { setSplitNote(res.reason); return }
+    // ★ONE commit, and NOT coalesced. The segment insert and the transition shift must
+    // undo together, and two splits in a row must be two undo steps -- 2026-08-02 had a
+    // coalesce key that made one undo revert two separate edits.
+    commit('split')
+    setSegments(res.segments)
+    setTransitions(res.transitions)
+    setSel(res.selectUid)
+    setSplitNote(null)
+  }
+
   // ---- text/title overlay helpers -------------------------------------------
   const addText = () => {
     if (texts.length >= TEXT_LIMITS.MAX_TEXTS || totalMs <= 0) return
@@ -887,8 +1210,19 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   }
   // patch a layer; pass coalesceKey (e.g. 'text-size') for continuous drags so a
   // slide collapses into one undo step (mirrors the effect sliders).
+  //
+  // ★THE KEY CARRIES THE LAYER INDEX, like every other per-item key in this file
+  // (`trim:${uid}:${edge}`, `fx:${uid}:${key}`, `spd:${uid}`). Text was the one
+  // exception, and it cost an undo step: two layers dragged within COALESCE_MS
+  // shared the key, so the second edit merged into the first and one undo
+  // reverted BOTH -- back to the state before either. Hard to reach while the
+  // only way to move a window was the inspector's slider on the single selected
+  // layer; easy the moment the caption track put every layer's bar on screen at
+  // once, which is exactly what it is for.
+  // The intended merge is unaffected: the bar edge and the inspector slider act
+  // on the same layer, so they still produce the same key and stay one step.
   const updateText = (i: number, patch: Partial<TextLayer>, coalesceKey?: string) => {
-    commit(coalesceKey ?? 'text-edit', !!coalesceKey)
+    commit(coalesceKey ? `${coalesceKey}:${i}` : 'text-edit', !!coalesceKey)
     setTexts((ts) => ts.map((l, k) => (k === i ? { ...l, ...patch } : l)))
   }
   const removeText = (i: number) => {
@@ -930,6 +1264,29 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const setSegFx = (uid: string, key: keyof EffectParams, val: number) => {
     commit(`fx:${uid}:${key}`, true)
     setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, effects: { ...x.effects, [key]: val } } : x)))
+  }
+  // ★D keyframes. track=undefined removes the field (reverts to the static
+  // effects[key] value) -- the OFF toggle path.
+  const setSegKeyframe = (uid: string, key: keyof EffectParams, track: KeyframeTrack | undefined) => {
+    commit(`kf:${uid}:${key}`)
+    setSegments((s) => s.map((x) => {
+      if (x.uid !== uid) return x
+      const kf = { ...x.keyframes }
+      if (track) kf[key] = track
+      else delete kf[key]
+      return { ...x, keyframes: kf }
+    }))
+  }
+  // Toggle keyframing for one field on the selected clip. ON seeds 2 points at
+  // the current static value (no jump on entry). OFF drops the track --
+  // effects[key] is untouched, so it reads back the value the track was
+  // seeded from (or whatever a later plain slider edit set it to).
+  const toggleKeyframe = (key: keyof EffectParams) => {
+    if (!selSeg) return
+    if (selSeg.keyframes?.[key]) { setSegKeyframe(selSeg.uid, key, undefined); return }
+    const val = Number(selSeg.effects?.[key]) || 0
+    const span = Math.max(1, selSeg.endMs - selSeg.startMs)
+    setSegKeyframe(selSeg.uid, key, { points: [{ atMs: 0, value: val }, { atMs: span, value: val }] })
   }
   const setSegLut = (uid: string, lut: string) => {
     commit(`lut:${uid}`)
@@ -1021,7 +1378,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     // the edl1 hash + the existing effect-free render path).
     // Pre-validate text layers with the SAME rules the server enforces, so a bad
     // layer (e.g. size < 5%) is explained inline before a round-trip.
-    const tv = validateTexts(texts, totalMs)
+    const tv = validateTexts(texts, totalMs, aspect)
     if (!tv.ok) {
       setErr(tv.index >= 0 ? `${t.text_reason(tv.reason)} (${t.text_layer_n(tv.index + 1)})` : t.text_reason(tv.reason))
       setRenderState(null); setBusy(false); return
@@ -1038,6 +1395,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
             ...(s.speed !== undefined && Math.round(s.speed * 1000) !== 1000 ? { speed: s.speed } : {}),
             ...(hasAnyEffect(s.effects) ? { effects: s.effects } : {}),
             ...(s.fit === 'cover' ? { fit: 'cover' as const } : {}),
+            ...(hasAnyKeyframes(s) ? { keyframes: s.keyframes } : {}),
           })),
           ...(transitions.length ? { transitions: transitions.map((tr) => ({ afterIndex: tr.afterIndex, type: tr.type, durationMs: tr.durationMs })) } : {}),
           ...(hasAnyEffect(globalFx) ? { global: globalFx } : {}),
@@ -1345,8 +1703,19 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                 <button onClick={fitZoom} disabled={!segments.length} title={t.fit}
                   className="ml-0.5 flex h-6 items-center rounded px-1.5 text-[10px] font-bold text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-30">{t.fit}</button>
               </div>
+              {/* ★④-E split at the playhead. Disabled unless the split would actually
+                  succeed -- and the title says WHY when it would not, because a dead
+                  control with no reason reads as a broken editor. */}
+              <button type="button" onClick={splitAtPlayhead} disabled={!canSplit}
+                title={canSplit ? t.split_hint : splitPoint ? t.split_why(splitNote ?? 'too_many_clips', props.maxClips) : t.split_need_inside}
+                className="flex h-6 items-center rounded border border-white/10 px-2 text-[10px] font-bold text-white/60 transition hover:border-white/30 hover:text-white disabled:opacity-30">
+                {t.split}
+              </button>
               <span className="text-[10px] text-white/30">{t.clip_count(segments.length, props.maxClips)}</span>
             </div>
+            {splitNote && (
+              <p className="mt-1 text-[10px] text-amber-300/80">{t.split_why(splitNote, props.maxClips)}</p>
+            )}
           </div>
           <div ref={tlRef} className="min-h-[150px] flex-1 overflow-x-auto p-4"
             onDragOver={(e) => e.preventDefault()}
@@ -1392,6 +1761,16 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                   <div className="flex min-w-full flex-1 items-center justify-center rounded-lg border border-dashed border-white/12 text-[11px] text-white/25">{t.drag_here}</div>
                 )}
               </div>
+              {/* Caption track. Inside this width:trackW box on purpose -- it then
+                  shares the ruler's time axis and inherits zoom + h-scroll. */}
+              {segments.length > 0 && (
+                <TextTrack
+                  texts={texts} totalMs={totalMs} pxPerSec={pxPerSec}
+                  selectedIndex={selText} playheadMs={playheadMs} boundariesMs={segStarts}
+                  labels={{ title: t.tt_title, none: t.tt_none, hint: t.tt_hint, move: t.tt_move, trimStart: t.tt_trim_s, trimEnd: t.tt_trim_e }}
+                  onSelect={setSelText}
+                  onWindow={(i, patch, key) => updateText(i, patch, key)} />
+              )}
             </div>
             <p className="mt-3 text-[10px] text-white/30">{t.tl_hint}</p>
           </div>
@@ -1438,15 +1817,33 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                         {EXPOSED_SLIDERS.map((spec) => {
                           const val = Number(fx[spec.key]) || 0
+                          // ★D keyframes: only per-clip (global carries no keyframe map, data
+                          // model decision), only the 4 ffmpeg-eval-capable params.
+                          const canKeyframe = fxTab === 'clip' && !!selSeg && KEYFRAME_KEYS.includes(spec.key)
+                          const kfTrack = canKeyframe ? selSeg!.keyframes?.[spec.key] : undefined
                           return (
                             <label key={spec.key} className="block">
                               <span className="flex items-center justify-between text-[11px] text-white/55">
-                                <span>{spec.label}{spec.parity === 'approximate' && <span className="ml-1 rounded bg-amber-400/20 px-1 py-0.5 text-[9px] font-bold text-amber-300">{t.approx_badge}</span>}</span>
+                                <span className="flex items-center gap-1">
+                                  {spec.label}{spec.parity === 'approximate' && <span className="ml-1 rounded bg-amber-400/20 px-1 py-0.5 text-[9px] font-bold text-amber-300">{t.approx_badge}</span>}
+                                  {canKeyframe && (
+                                    <button type="button" onClick={() => toggleKeyframe(spec.key)}
+                                      title="Keyframe" aria-pressed={!!kfTrack}
+                                      className={`ml-0.5 text-[10px] leading-none transition ${kfTrack ? 'text-[#8b22ff]' : 'text-white/25 hover:text-white/55'}`}>
+                                      ◆
+                                    </button>
+                                  )}
+                                </span>
                                 <span className="tabular-nums text-white/35">{val}</span>
                               </span>
-                              <input type="range" min={spec.min} max={spec.max} value={val} onChange={(e) => setKey(spec.key, Number(e.target.value))}
-                                onDoubleClick={() => { lastCommit.current = { key: '', t: 0 }; setKey(spec.key, 0) }} title={t.dbl_default}
-                                className="w-full accent-[#8b22ff]" />
+                              {kfTrack ? (
+                                <KeyframeMiniTrack track={kfTrack} min={spec.min} max={spec.max} spanMs={selSeg!.endMs - selSeg!.startMs}
+                                  onChange={(next) => setSegKeyframe(selSeg!.uid, spec.key, next)} />
+                              ) : (
+                                <input type="range" min={spec.min} max={spec.max} value={val} onChange={(e) => setKey(spec.key, Number(e.target.value))}
+                                  onDoubleClick={() => { lastCommit.current = { key: '', t: 0 }; setKey(spec.key, 0) }} title={t.dbl_default}
+                                  className="w-full accent-[#8b22ff]" />
+                              )}
                             </label>
                           )
                         })}
@@ -1541,6 +1938,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                         const strokeOn = !!l.strokeColor && (l.strokePct ?? 0) > 0
                         const GRID_X: [number, TextLayer['align']][] = [[0.06, 'left'], [0.5, 'center'], [0.94, 'right']]
                         const GRID_Y = [0.1, 0.45, 0.82]
+                        // ★Dynamic size cap. The slider stops where the text stops
+                        // fitting THIS aspect, so a participant cannot drag into a
+                        // value the server will reject. Nothing else is clamped --
+                        // position and content stay exactly as they were set.
+                        const canvas = TEXT_CANVAS[aspect] ?? TEXT_CANVAS['9:16']
+                        const sizeCap = maxFittingSizePct(l, canvas[0], canvas[1], TEXT_LIMITS.MIN_SIZE_PCT, TEXT_LIMITS.MAX_SIZE_PCT)
                         return (
                           <div className="space-y-2.5 rounded-lg border border-white/10 bg-white/[.02] p-2.5">
                             {/* content */}
@@ -1569,9 +1972,25 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                                 <span className="flex items-center justify-between text-[11px] text-white/55">
                                   <span>{t.text_size}</span><span className="tabular-nums text-white/35">{Math.round(l.sizePct)}%</span>
                                 </span>
-                                <input type="range" min={TEXT_LIMITS.MIN_SIZE_PCT} max={TEXT_LIMITS.MAX_SIZE_PCT} value={l.sizePct}
-                                  onChange={(e) => up({ sizePct: Number(e.target.value) }, 'text-size')}
-                                  className="w-full accent-[#8b22ff]" />
+                                {/* ★Safe-cap MARKER, not a hard stop. Capping `max`
+                                    at sizeCap desynced the thumb from the number:
+                                    lower the text and the cap drops below the value
+                                    already set, so the thumb pins at max while the
+                                    readout still says 12%. Clamping the value would
+                                    fix that by silently changing what the
+                                    participant placed, which is the one thing we do
+                                    not do. A tick keeps the thumb honest and shows
+                                    where the frame stops. */}
+                                <span className="relative mt-1 block">
+                                  <input type="range" min={TEXT_LIMITS.MIN_SIZE_PCT} max={TEXT_LIMITS.MAX_SIZE_PCT} step={0.5} value={l.sizePct}
+                                    onChange={(e) => up({ sizePct: Number(e.target.value) }, 'text-size')}
+                                    className="w-full accent-[#8b22ff]" />
+                                  {sizeCap !== null && sizeCap < TEXT_LIMITS.MAX_SIZE_PCT && (
+                                    <span aria-hidden title={t.fit_cap(sizeCap)}
+                                      className="pointer-events-none absolute top-0 h-3 w-px bg-[#ffd24a]"
+                                      style={{ left: `${((sizeCap - TEXT_LIMITS.MIN_SIZE_PCT) / (TEXT_LIMITS.MAX_SIZE_PCT - TEXT_LIMITS.MIN_SIZE_PCT)) * 100}%` }} />
+                                  )}
+                                </span>
                               </label>
                               <label className="block">
                                 <span className="text-[11px] text-white/55">{t.text_color}</span>
@@ -1580,6 +1999,15 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                               </label>
                             </div>
                             <p className="text-[9px] leading-tight text-white/35">{t.text_size_floor(TEXT_LIMITS.MIN_SIZE_PCT)}</p>
+                            <TextFitReadout layer={l} canvas={canvas} fonts={FONT_SPECS}
+                              atSizeFloor={l.sizePct <= TEXT_LIMITS.MIN_SIZE_PCT}
+                              labels={{
+                                width: t.fit_w, height: t.fit_h, ok: t.fit_ok,
+                                tooWide: t.text_reason('text_too_wide') ?? '', tooTall: t.text_reason('text_too_tall') ?? '',
+                                fixSplit: t.fix_split, fixSmaller: t.fix_smaller, fixShorter: t.fix_shorter,
+                                fixFont: t.fix_font, fixUp: t.fix_up, fixFewerLines: t.fix_fewer_lines,
+                                noSizeFits: t.fix_none, missingGlyph: t.fix_glyph,
+                              }} />
                             {/* stroke */}
                             <div className="grid grid-cols-2 items-end gap-3">
                               <label className="block">
@@ -1640,25 +2068,58 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                                   className="w-full accent-[#8b22ff]" />
                               </div>
                             </div>
-                            {/* fade */}
-                            <div className="grid grid-cols-2 gap-3">
-                              <label className="block">
+                            {/* fade -- opacityKeyframes (2026-08-10) is an "advanced" generalization
+                                of fadeIn/fadeOutMs: same visual result (0->1->0 envelope), but an
+                                arbitrary point count instead of a fixed 2-stage ramp. Mutually
+                                exclusive at render time (text-render.ts's textAlphaAt), so the UI
+                                only ever shows one or the other, never both. */}
+                            {l.opacityKeyframes ? (
+                              <div>
                                 <span className="flex items-center justify-between text-[11px] text-white/55">
-                                  <span>{t.text_fade} {t.text_fade_in}</span><span className="tabular-nums text-white/35">{((l.fadeInMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
+                                  <span>{t.text_fade} (advanced)</span>
+                                  <button type="button" onClick={() => up({ opacityKeyframes: undefined }, 'text-opkf-off')}
+                                    className="text-[10px] text-white/40 hover:text-white/70">↺ simple</button>
                                 </span>
-                                <input type="range" min={0} max={span} step={50} value={l.fadeInMs ?? 0}
-                                  onChange={(e) => up({ fadeInMs: Math.min(Number(e.target.value), span - (l.fadeOutMs ?? 0)) }, 'text-fadein')}
-                                  className="w-full accent-[#8b22ff]" />
-                              </label>
-                              <label className="block">
-                                <span className="flex items-center justify-between text-[11px] text-white/55">
-                                  <span>{t.text_fade} {t.text_fade_out}</span><span className="tabular-nums text-white/35">{((l.fadeOutMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
-                                </span>
-                                <input type="range" min={0} max={span} step={50} value={l.fadeOutMs ?? 0}
-                                  onChange={(e) => up({ fadeOutMs: Math.min(Number(e.target.value), span - (l.fadeInMs ?? 0)) }, 'text-fadeout')}
-                                  className="w-full accent-[#8b22ff]" />
-                              </label>
-                            </div>
+                                <KeyframeMiniTrack
+                                  track={{ points: l.opacityKeyframes.points.map((p) => ({ atMs: p.atMs, value: p.value * 100 })) }}
+                                  min={0} max={100} spanMs={span}
+                                  onChange={(next) => up({ opacityKeyframes: { points: next.points.map((p) => ({ atMs: p.atMs, value: p.value / 100 })) } }, 'text-opkf')}
+                                />
+                              </div>
+                            ) : (
+                              <>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <label className="block">
+                                    <span className="flex items-center justify-between text-[11px] text-white/55">
+                                      <span>{t.text_fade} {t.text_fade_in}</span><span className="tabular-nums text-white/35">{((l.fadeInMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
+                                    </span>
+                                    <input type="range" min={0} max={span} step={50} value={l.fadeInMs ?? 0}
+                                      onChange={(e) => up({ fadeInMs: Math.min(Number(e.target.value), span - (l.fadeOutMs ?? 0)) }, 'text-fadein')}
+                                      className="w-full accent-[#8b22ff]" />
+                                  </label>
+                                  <label className="block">
+                                    <span className="flex items-center justify-between text-[11px] text-white/55">
+                                      <span>{t.text_fade} {t.text_fade_out}</span><span className="tabular-nums text-white/35">{((l.fadeOutMs ?? 0) / 1000).toFixed(1)}{t.sec}</span>
+                                    </span>
+                                    <input type="range" min={0} max={span} step={50} value={l.fadeOutMs ?? 0}
+                                      onChange={(e) => up({ fadeOutMs: Math.min(Number(e.target.value), span - (l.fadeInMs ?? 0)) }, 'text-fadeout')}
+                                      className="w-full accent-[#8b22ff]" />
+                                  </label>
+                                </div>
+                                <div className="flex justify-end pt-1">
+                                  <button type="button" onClick={() => {
+                                    const fin = l.fadeInMs ?? 0, fout = l.fadeOutMs ?? 0
+                                    const points = [
+                                      { atMs: 0, value: fin > 0 ? 0 : 1 },
+                                      ...(fin > 0 ? [{ atMs: fin, value: 1 }] : []),
+                                      ...(fout > 0 ? [{ atMs: Math.max(fin, span - fout), value: 1 }] : []),
+                                      { atMs: span, value: fout > 0 ? 0 : 1 },
+                                    ]
+                                    up({ opacityKeyframes: { points } }, 'text-opkf-on')
+                                  }} className="text-[10px] text-white/40 hover:text-white/70">Advanced ▸</button>
+                                </div>
+                              </>
+                            )}
                             <div className="flex justify-end pt-1">
                               <button type="button" onClick={() => removeText(selText)}
                                 className="text-[10px] text-white/40 transition hover:text-[#ff8888]">✕ {t.text_delete}</button>
@@ -1674,21 +2135,120 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                 {musicEnabled && (
                 <div className="mt-4 border-t border-white/8 pt-3">
                   <p className="mb-2 text-[11px] uppercase tracking-[0.15em] text-white/45">{t.music_title}</p>
-                  {musicAssets.length === 0 ? (
+                  {musicListReady && musicAssets.length === 0 ? (
                     <p className="py-2 text-[11px] text-white/35">{t.music_none_assets}</p>
                   ) : !music ? (
-                    <select value="" onChange={(e) => { const a = musicAssets.find((x) => x.id === e.target.value); if (a) pickMusic(a.id, a.source) }}
-                      className="w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none">
-                      <option value="">{t.music_pick}…</option>
-                      {musicAssets.map((a) => <option key={a.id} value={a.id}>{a.mood} — {a.title}</option>)}
-                    </select>
+                    <div className="space-y-2">
+                      {/* ★Facet chips. Each group renders only when the LOADED data
+                          carries that facet, and only the values actually present are
+                          offered -- so a filter can never come back empty for a reason
+                          the participant cannot see. genre/tempo are absent until the
+                          columns are migrated. */}
+                      {(musicFacetsAvailable.genre || musicFacetsAvailable.mood || musicFacetsAvailable.tempo) && (
+                        <div className="space-y-1.5">
+                          {musicFacetsAvailable.genre && (
+                            <div className="flex flex-wrap gap-1">
+                              {presentGenreKeys(musicAssets).map((k) => (
+                                <button key={k} type="button"
+                                  onClick={() => setMusicFacets((s) => ({ ...s, genre: s.genre === k ? null : k }))}
+                                  className={`rounded px-2 py-0.5 text-[10px] transition ${musicFacets.genre === k ? 'bg-[#8b22ff] text-white' : 'border border-white/15 text-white/55 hover:border-white/35'}`}>
+                                  {genreLabel(k, props.lang)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {musicFacetsAvailable.mood && (
+                            <div className="flex flex-wrap gap-1">
+                              {presentMoodKeys(musicAssets).map((k) => (
+                                <button key={k} type="button"
+                                  onClick={() => setMusicFacets((s) => ({ ...s, mood: s.mood === k ? null : k }))}
+                                  className={`rounded px-2 py-0.5 text-[10px] transition ${musicFacets.mood === k ? 'bg-[#8b22ff] text-white' : 'border border-white/15 text-white/55 hover:border-white/35'}`}>
+                                  {moodLabel(k, props.lang)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {musicFacetsAvailable.tempo && (
+                            <div className="flex flex-wrap gap-1">
+                              {presentTempoKeys(musicAssets).map((k) => (
+                                <button key={k} type="button"
+                                  onClick={() => setMusicFacets((s) => ({ ...s, tempo: s.tempo === k ? null : k }))}
+                                  className={`rounded px-2 py-0.5 text-[10px] transition ${musicFacets.tempo === k ? 'bg-[#8b22ff] text-white' : 'border border-white/15 text-white/55 hover:border-white/35'}`}>
+                                  {tempoLabel(k, props.lang)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {musicFilterActive && (
+                            <button type="button" onClick={() => setMusicFacets({})}
+                              className="text-[10px] text-white/40 underline transition hover:text-white/70">
+                              {t.music_filter_clear} ({visibleMusicAssets.length}/{musicAssets.length})
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ★The list loads on first contact with this control, not on
+                          page load. Focus fires for the keyboard too, so this is not
+                          a mouse-only affordance. */}
+                      <select value="" onFocus={loadMusic} onMouseDown={loadMusic}
+                        onChange={(e) => {
+                          const a = musicAssets.find((x) => x.id === e.target.value)
+                          // ★Auditioning is separate from choosing: selecting in the
+                          // list previews it, and the bed is only committed by the
+                          // button below. Picking straight from a dropdown made the
+                          // only way to hear a track an edit to the composition.
+                          if (a) setMusicPreviewId(a.id)
+                        }}
+                        className="w-full rounded-lg border border-white/10 bg-[#070610] px-3 py-1.5 text-xs text-white focus:border-[#8b22ff] focus:outline-none">
+                        <option value="">{musicLoading ? t.music_loading : `${t.music_pick}…`}</option>
+                        {visibleMusicAssets.map((a) => (
+                          <option key={a.id} value={a.id}>{musicPickerLine(a, props.lang) || a.id}</option>
+                        ))}
+                      </select>
+
+                      {/* ★Filter matched nothing: say so, rather than showing an empty
+                          dropdown that reads as an empty library. */}
+                      {musicListReady && musicFilterActive && visibleMusicAssets.length === 0 && (
+                        <p className="text-[11px] text-white/35">{t.music_filter_none}</p>
+                      )}
+
+                      {/* ★[4] preview. Its own element, so auditioning never touches the
+                          timeline or the selected bed. preload="none": opening the panel
+                          must not fetch a thousand files. */}
+                      {musicPreviewUrl && (() => {
+                        const prev = musicAssets.find((a) => a.id === musicPreviewId)
+                        return (
+                          <div className="space-y-1.5 rounded-lg border border-white/10 bg-white/[.02] p-2">
+                            <p className="truncate text-[11px] text-white/70">
+                              {prev ? musicPickerLine(prev, props.lang) || prev.id : ''}
+                            </p>
+                            <audio controls preload="none" src={musicPreviewUrl} className="h-7 w-full" />
+                            <div className="flex gap-2">
+                              <button type="button"
+                                onClick={() => { if (prev) { pickMusic(prev.id, prev.source); setMusicPreviewId(null) } }}
+                                className="rounded bg-[#8b22ff] px-2.5 py-1 text-[10px] font-bold text-white transition hover:bg-[#a04dff]">
+                                {t.music_use_this}
+                              </button>
+                              <button type="button" onClick={() => setMusicPreviewId(null)}
+                                className="rounded border border-white/15 px-2.5 py-1 text-[10px] text-white/55 transition hover:border-white/35">
+                                {t.music_preview_close}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
                   ) : (() => {
                     const selm = musicAssets.find((a) => a.id === music.assetId)
                     const span = (music.endMs ?? totalMs) - (music.startMs ?? 0)
                     return (
                       <div className="space-y-2.5 rounded-lg border border-white/10 bg-white/[.02] p-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-[12px] text-white">{selm ? `${selm.mood} — ${selm.title}` : music.assetId}</span>
+                          {/* ★Localised, not the raw key: `mood` used to be printed
+                              straight through, and with the vocabulary confirmed that
+                              value is English ('elegant'). */}
+                          <span className="truncate text-[12px] text-white">{selm ? musicPickerLine(selm, props.lang) || selm.id : music.assetId}</span>
                           <button type="button" onClick={removeMusic} className="shrink-0 text-[10px] text-white/40 transition hover:text-[#ff8888]">✕ {t.music_remove}</button>
                         </div>
                         <label className="block">

@@ -135,6 +135,101 @@ test('TAMPER: moving a text position changes the hash', () => {
   assert.notEqual(computeEdlHash(tampered), GOLDEN_TEXT_HASH)
 })
 
+// ---- D keyframes KAT (append-only ;kf= on a segment, ;kfop= on a text) ----
+const GOLDEN_KF_CANON =
+  'edl2||clipA:0:5000;fx=exposure=10;kf=vignette=0:0,2000:60||T:||G:||TX:Fade%20Test:pretendard:60:#ffffff::0:center:500:500:0:3000:0:0;kfop=0:0,500:1000,2500:0'
+const GOLDEN_KF_HASH = '78b90a4bd633cae9007543e05a889b76faeae7e8169284e1b6c4e402b7924c04'
+
+const kfSample: ComposeEdl = {
+  version: 2,
+  segments: [
+    {
+      jobId: 'clipA', startMs: 0, endMs: 5000,
+      effects: { exposure: 10 },
+      keyframes: { vignette: { points: [{ atMs: 0, value: 0 }, { atMs: 2000, value: 60 }] } },
+    },
+  ],
+  texts: [
+    {
+      content: 'Fade Test', font: 'pretendard', sizePct: 6, color: '#ffffff', align: 'center',
+      xNorm: 0.5, yNorm: 0.5, startMs: 0, endMs: 3000,
+      opacityKeyframes: { points: [{ atMs: 0, value: 0 }, { atMs: 500, value: 1 }, { atMs: 2500, value: 0 }] },
+    },
+  ],
+}
+
+test('KAT: keyframe canonical string is stable (cross-repo byte-mirror)', () => {
+  assert.equal(edlCanonicalString(kfSample), GOLDEN_KF_CANON)
+})
+
+test('KAT: keyframe hash is stable (cross-repo byte-mirror)', () => {
+  assert.equal(computeEdlHash(kfSample), GOLDEN_KF_HASH)
+})
+
+test('append-only: an unkeyframed EDL keeps its EXACT canonical string (byte-identical to before D)', () => {
+  // The GOLDEN_CANON/GOLDEN_HASH sample above predates D entirely and must not
+  // move -- this is the actual regression this feature could cause if the
+  // append were wired wrong (e.g. an empty `;kf=` for every segment).
+  assert.equal(edlCanonicalString(sample), GOLDEN_CANON)
+  assert.equal(computeEdlHash(sample), GOLDEN_HASH)
+})
+
+test('append-only: a segment with an EMPTY keyframes object is canonically identical to no keyframes at all', () => {
+  const withEmpty: ComposeEdl = JSON.parse(JSON.stringify(kfSample))
+  withEmpty.segments[0].keyframes = {}
+  const withUndefined: ComposeEdl = JSON.parse(JSON.stringify(kfSample))
+  delete withUndefined.segments[0].keyframes
+  assert.equal(computeEdlHash(withEmpty), computeEdlHash(withUndefined))
+})
+
+test('keyframe KEY ORDER is canonical (insertion order does not matter, same as effects)', () => {
+  const shuffled: ComposeEdl = JSON.parse(JSON.stringify(kfSample))
+  shuffled.segments[0].keyframes = {
+    vignette: kfSample.segments[0].keyframes!.vignette,
+    exposure: { points: [] }, // present key, no points -- must not appear in canonical
+  }
+  assert.equal(computeEdlHash(shuffled), computeEdlHash(kfSample))
+})
+
+test('keyframe track points are sorted regardless of insertion order', () => {
+  const reordered: ComposeEdl = JSON.parse(JSON.stringify(kfSample))
+  reordered.segments[0].keyframes!.vignette!.points.reverse()
+  assert.equal(computeEdlHash(reordered), computeEdlHash(kfSample))
+})
+
+test('TAMPER: changing a keyframe point value changes the hash', () => {
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(kfSample))
+  tampered.segments[0].keyframes!.vignette!.points[1].value = 61 // 60 -> 61
+  assert.notEqual(computeEdlHash(tampered), GOLDEN_KF_HASH)
+})
+
+test('TAMPER: adding a keyframe point changes the hash', () => {
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(kfSample))
+  tampered.segments[0].keyframes!.vignette!.points.push({ atMs: 4000, value: 20 })
+  assert.notEqual(computeEdlHash(tampered), GOLDEN_KF_HASH)
+})
+
+test('TAMPER: editing an opacity keyframe changes the hash', () => {
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(kfSample))
+  tampered.texts![0].opacityKeyframes!.points[1].value = 0.5 // 1 -> 0.5
+  assert.notEqual(computeEdlHash(tampered), GOLDEN_KF_HASH)
+})
+
+test('opacityKeyframes OVERRIDES fadeInMs/fadeOutMs presence in the canonical -- both still 0 fields, but the ;kfop= suffix is what carries the real shape', () => {
+  // A text layer with BOTH set: the base 13-field string still encodes
+  // fadeInMs/fadeOutMs as before (unread by the renderer once kfop wins), but
+  // the canonical/signature difference is entirely in the kfop suffix -- so a
+  // layer that changes only its keyframes still changes the hash even with
+  // fadeInMs/fadeOutMs held fixed.
+  const withFadeAndKf: ComposeEdl = JSON.parse(JSON.stringify(kfSample))
+  withFadeAndKf.texts![0].fadeInMs = 300
+  withFadeAndKf.texts![0].fadeOutMs = 300
+  assert.notEqual(computeEdlHash(withFadeAndKf), GOLDEN_KF_HASH)
+  const kfOnly: ComposeEdl = JSON.parse(JSON.stringify(withFadeAndKf))
+  delete kfOnly.texts![0].opacityKeyframes
+  assert.notEqual(computeEdlHash(kfOnly), computeEdlHash(withFadeAndKf), 'kfop presence alone must move the hash')
+})
+
 // ---- music bed KAT (append-only MU section) -------------------------------
 const GOLDEN_MUSIC_CANON =
   'edl2||clipA:0:5000||T:||G:||MU:lib_elegant_01:library:70:40:0:5000:500:800'

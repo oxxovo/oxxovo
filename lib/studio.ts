@@ -29,6 +29,7 @@ import {
 import { verifySourceClipCrypto } from '@/lib/studio-verify'
 import { validateTexts, parseTrademarkBlocklist, findBlockedTrademark, type TextReason } from '@/lib/text-limits'
 import { validateMusicBed, type MusicReason } from '@/lib/music-limits'
+import { musicPickerOrFilter, musicPickerPathOk, isUuid, type MusicScopeRow } from '@/lib/music-picker-scope'
 import { isOwnedBy } from '@/lib/studio-sweep-scope'
 import { isMusicEnabled } from '@/lib/music-gate'
 import { shouldHoldPrelim } from '@/lib/watch-hold'
@@ -456,7 +457,16 @@ export type CreateGenerationResult =
         // Stage 3 (image / i2v):
         | 'not_image_model'
         | 'not_video_model'
+        // ★The model is a video model but does not take a start image, so it
+        // cannot shoot an actor. Distinct from 'not_video_model': that one says
+        // "wrong medium", this one says "right medium, wrong capability".
+        | 'not_i2v_model'
         | 'character_not_found'
+        // ★The actor exists but carries no reference angle, so elements[] would go
+        // out with reference_image_urls: []. Measured to be a guaranteed fal 422 --
+        // see createI2vGeneration. Distinct from 'character_not_found' because the
+        // actor IS there and the participant can fix this (add a reference cut).
+        | 'character_no_reference'
         | 'parent_not_found'
         | 'parent_not_ready'
         | 'parent_not_image'
@@ -515,6 +525,17 @@ export async function createGeneration(args: {
   const models = await getActiveModels()
   const model = models.find((m) => m.id === args.modelId)
   if (!model) return { ok: false, reason: 'unknown_model' }
+  // ★And it must not be an i2v model. This is the other half of the guard in
+  // createI2vGeneration: that one refuses a t2v model on the actor path, this one
+  // refuses an i2v model on the plain text path. An i2v row points at a dedicated
+  // image-to-video endpoint (kling-v3-pro-i2v is a separate catalogue row from
+  // kling-v3-pro), so calling it with no start image is a 422 -- charge, fail,
+  // refund, for a request that could have been refused for free.
+  // ★If a model ever accepts a start image OPTIONALLY, this flag is the wrong
+  // thing to key on and the catalogue needs a second one. Do not relax this
+  // check to make such a model work; today `accepts_start_image` means
+  // "requires one".
+  if (model.acceptsI2v) return { ok: false, reason: 'not_i2v_model', detail: 'i2v model on the t2v path' }
 
   // 1a. Preset (optional). Must exist + be active; the server assembles the
   // final prompt itself -- a client-assembled prompt is never trusted.
@@ -918,6 +939,18 @@ export async function createI2vGeneration(args: {
   const model = await getModelById(args.modelId)
   if (!model) return { ok: false, reason: 'unknown_model' }
   if (model.mediaType !== 'video') return { ok: false, reason: 'not_video_model' }
+  // ★The server decides what an i2v model is, not the editor. Until now the only
+  // thing keeping a plain t2v model out of this path was one client-side filter
+  // (`ActorMode.tsx`, `state.models.filter(m => m.acceptsI2v)`), and a filter in
+  // the browser is a suggestion. Sending start_image_url/elements/multi_prompt to
+  // a model whose schema has no such fields is a fal 422: the participant is
+  // charged, the worker fails the job, refundFailedJob returns the credits, and
+  // they are told "generation failed" for a request the server could have refused
+  // for free. Measured 2026-08-02: `accepts_start_image=true` is set on exactly
+  // one of the 19 catalogue rows (kling-v3-pro-i2v), which is why the gap has not
+  // cost anything yet -- and why it will the moment a second i2v model lands or
+  // the picker changes.
+  if (!model.acceptsI2v) return { ok: false, reason: 'not_i2v_model' }
 
   const shots = (args.shots ?? []).map((s) => ({
     prompt: (s.prompt ?? '').trim(),
@@ -941,6 +974,22 @@ export async function createI2vGeneration(args: {
   if (cErr) return { ok: false, reason: 'failed', detail: cErr.message }
   if (!charRow || !charRow.frontal_image_job_id) return { ok: false, reason: 'character_not_found' }
   const refIds = ((charRow.reference_image_job_ids as string[] | null) ?? []) as string[]
+  // ★REFUSE FOR FREE WHAT fal WILL REFUSE FOR MONEY. With no reference angle the
+  // i2vInput below sends `elements[0].reference_image_urls: []`, and fal's schema
+  // documents that field as "1-3 images supported". Measured 2026-08-07 against two
+  // real calls that differ in nothing else: job 649ed536 sent [] and came back
+  // Unprocessable Entity; dd118b00, 44 minutes later with the SAME 3x5s shots and
+  // references attached, came back ready. So without this the participant is
+  // charged, the worker fails the job, refundFailedJob gives the credits back, and
+  // they are told "generation failed" for a request that could never have worked --
+  // a charge-fail-refund roundtrip plus a misleading message.
+  // ★The UI does not prevent it: registering an actor asks for a frontal and calls
+  // extra reference cuts optional (ActorMode `pick_refs`), which is correct for the
+  // character library and wrong as an i2v precondition. Fixing the copy there is a
+  // separate decision; refusing here is the server half either way.
+  if (refIds.length === 0) {
+    return { ok: false, reason: 'character_no_reference', detail: 'i2v needs >=1 reference image (fal: 1-3 supported)' }
+  }
   const parentIds = [...new Set([charRow.frontal_image_job_id as string, ...refIds])]
 
   const loaded = await loadOwnedReadyImages(admin, parentIds, args.userId, args.seasonId)
@@ -1268,41 +1317,117 @@ export async function submitGeneration(args: {
 // (a later step) verifies the full v1s chain. The render is the SCORED artifact.
 // ===========================================================================
 
-export type MusicAsset = { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }
+export type MusicAsset = {
+  id: string
+  url: string
+  title: string
+  mood: string
+  source: 'library' | 'ai'
+  /**
+   * ★Grid facets for the picker filter. OPTIONAL because the columns are not migrated:
+   * `genre` / `bpm` do not exist on studio_music_assets yet (지수 본체's migration), so
+   * they are absent today and the picker offers no genre or tempo control as a result
+   * (lib/music-grid-labels.ts availableFacets -- a filter over a column that is not
+   * there would return nothing and read as "there is no cinematic music").
+   *
+   * ★DO NOT ADD THEM TO THE SELECT BELOW UNTIL THE MIGRATION HAS RUN. PostgREST refuses
+   * a statement containing one unknown column SILENTLY, taking the whole read with it
+   * ([[feedback-postgrest-unknown-column-silent]], which cost a submission with no file
+   * on 2026-08-03) -- so naming them early empties the picker rather than erroring.
+   * Flipping this on is two lines: the select list, and the two fields in the map.
+   */
+  genre?: string | null
+  bpm?: number | null
+}
 
 // List the music beds a participant can pick for a season: the platform library
 // (active, ready, SIGNED) + the participant's own ready AI tracks. `enabled=false`
 // when the season's studio_music_enabled gate is off (allowlist) -> the editor
 // hides the music panel. Unsigned / not-ready assets are never offered, so a bed
 // the render couldn't verify is never selectable.
+// ★Hard ceiling on one picker read, and it is deliberately ABOVE the planned
+// catalogue (1,000 library tracks + one participant's own AI tracks, capped at
+// seasons.studio_music_max_generations_per_round). It exists so the row count is
+// OURS and not PostgREST's: an implicit db-max-rows cut is silent, this one is
+// detected and reported. Raise it if the catalogue grows; do not remove it.
+const MUSIC_PICKER_MAX_ROWS = 2000
+
 export async function listMusicAssets(
   seasonId: string,
   userId: string,
-): Promise<{ enabled: boolean; assets: MusicAsset[] }> {
+): Promise<{ enabled: boolean; assets: MusicAsset[]; truncated?: boolean }> {
   const admin = createSupabaseAdmin()
   if (!(await isMusicEnabled(seasonId))) return { enabled: false, assets: [] }
+
+  // ★userId reaches PostgREST inside a filter STRING below, so it is checked to be
+  // a uuid first. Every caller passes a session id today; this is the one place
+  // where "today" would not be enough.
+  if (!isUuid(userId)) return { enabled: true, assets: [] }
+
+  // ★THE FILTER IS SQL NOW, AND THERE IS A LIMIT. Until 2026-08-07 this selected
+  // every ready row and narrowed it in JS, ordered by `source` ascending, with no
+  // limit. Under the B plan that was harmless -- there were zero AI rows. Under the
+  // C plan (library + participant generation) it fails in a way nobody can see:
+  //   - 'ai' sorts before 'library', so the rows PostgREST drops at its row ceiling
+  //     are the LIBRARY ones;
+  //   - at a 1,000-track library the ceiling is reached by the library alone, so
+  //     the FIRST participant generation starts pushing songs out of everyone's
+  //     picker;
+  //   - and there is no error, no warning, and no count to compare against.
+  // The ordering hazard is gone (no source ordering), the ceiling is ours and
+  // explicit, and crossing it is reported instead of silently obeyed.
   const { data, error } = await admin
     .from('studio_music_assets')
-    .select('id, url, title, mood, source, user_id, active, cryptobind_signature')
+    // ★`genre` / `bpm` JOINED 2026-08-09. They were deliberately absent from this list
+    // while the migration was outstanding, because ONE unknown column makes PostgREST
+    // refuse the whole select silently and the picker would have gone empty with no
+    // error ([[feedback-postgrest-unknown-column-silent]]). Both were probed read-only
+    // against the live table before being named here (42703 = absent; neither returned
+    // it). The picker's facet chips render only for values the loaded rows actually
+    // carry, so they light up from this line alone -- no UI change.
+    .select('id, url, title, mood, source, user_id, active, cryptobind_signature, genre, bpm')
     .eq('status', 'ready')
     .not('url', 'is', null)
-    .order('source', { ascending: true })
-    .order('mood', { ascending: true })
+    .or(musicPickerOrFilter(userId))
+    .order('title', { ascending: true })
+    .limit(MUSIC_PICKER_MAX_ROWS)
   if (error || !data) return { enabled: true, assets: [] }
-  const assets: MusicAsset[] = data
-    .filter(
-      (a) =>
-        a.cryptobind_signature &&
-        ((a.source === 'library' && a.active) || (a.source === 'ai' && a.user_id === userId)),
+
+  const truncated = data.length >= MUSIC_PICKER_MAX_ROWS
+  if (truncated) {
+    console.error(
+      `[music] picker read hit MUSIC_PICKER_MAX_ROWS (${MUSIC_PICKER_MAX_ROWS}) for season=${seasonId}. ` +
+        'Tracks are being withheld from participants. Raise the ceiling or filter server-side.',
     )
+  }
+
+  // ★The JS predicate stays as defence in depth, and it must now remove NOTHING --
+  // the SQL says the same thing. A non-zero difference means the two disagree, and
+  // the one that is wrong is whichever one let a row through, so it is reported
+  // rather than quietly applied. (An unsigned asset is still dropped here: that is
+  // a signature check, not a path check, and it has no SQL equivalent.)
+  const pathOk = (a: MusicScopeRow) => musicPickerPathOk(a, userId)
+  const dropped = data.filter((a) => !pathOk(a)).length
+  if (dropped > 0) {
+    console.error(`[music] ${dropped} row(s) passed the SQL path filter but failed the JS one -- the two disagree.`)
+  }
+
+  const assets: MusicAsset[] = data
+    .filter((a) => a.cryptobind_signature && pathOk(a))
     .map((a) => ({
       id: String(a.id),
       url: String(a.url),
       title: String(a.title ?? ''),
       mood: String(a.mood ?? ''),
       source: a.source as 'library' | 'ai',
+      // ★undefined, not '' / 0. MusicAsset declares both optional and the picker
+      // EXCLUDES a track from a facet it has no value for, rather than matching it
+      // against everything -- an unclassified track that answers every filter looks
+      // classified. Coercing to '' or 0 would defeat exactly that.
+      ...(a.genre === null || a.genre === undefined ? {} : { genre: String(a.genre) }),
+      ...(a.bpm === null || a.bpm === undefined ? {} : { bpm: Number(a.bpm) }),
     }))
-  return { enabled: true, assets }
+  return { enabled: true, assets, truncated }
 }
 
 export type CreateRenderResult =
@@ -1334,7 +1459,19 @@ export type CreateRenderResult =
 // on both sides. Returns { ok:true, signature:null } when the EDL has no music
 // (music-free renders keep their exact bundle -- append-only). Season gate is
 // checked by the caller (it holds the season row) via `musicEnabled`.
-async function resolveMusicSignature(
+//
+// ★EXPORTED FOR THE BOUNDARY HARNESS, and the reason is the render-jobs table.
+// This is the ONLY place the render side decides whether a bed may be used --
+// ownership, curation `active`, and the third-`source` refusal all live here and
+// nowhere else. Reaching it through createRender means satisfying compose config
+// and signed clip rows first, and the ACCEPT case then inserts a queued
+// render_jobs row -- which the deployed worker claims within seconds, because the
+// worker is season-blind. So a test that proved the guard lets a valid bed through
+// would also start a real render of placeholder clips. Calling this directly
+// tests both directions with zero render rows. e2e/music-boundary.mjs is the
+// caller; the refusal path is additionally checked through createRender there, so
+// the wiring is not taken on trust either.
+export async function resolveMusicSignature(
   admin: ReturnType<typeof createSupabaseAdmin>,
   music: MusicBed | undefined,
   userId: string,
@@ -1353,7 +1490,18 @@ async function resolveMusicSignature(
   if (asset.status !== 'ready') return { ok: false, reason: 'music_not_ready', detail: String(asset.status) }
   // library beds must be curation-active; AI beds must belong to this participant.
   if (asset.source === 'library' && !asset.active) return { ok: false, reason: 'music_not_found', detail: 'inactive' }
-  if (asset.source === 'ai' && asset.user_id !== userId) return { ok: false, reason: 'music_not_owned' }
+  else if (asset.source === 'ai' && asset.user_id !== userId) return { ok: false, reason: 'music_not_owned' }
+  // ★AND ANYTHING THAT IS NEITHER IS REFUSED. The two branches above enumerate the
+  // two known paths, and before this line a row whose `source` was some third value
+  // fell through both and rendered -- the code could not say which path it was on
+  // and let it pass anyway. Head office's rule (2026-08-07) is the opposite: when
+  // the path cannot be decided, block. A free pass accumulates loss silently; a
+  // refusal shows up immediately. There is no CHECK constraint on this column that
+  // this repo can prove ([[feedback-db-object-absence-unprovable-by-repo]]), so the
+  // third value is not hypothetical enough to leave open.
+  else if (asset.source !== 'library' && asset.source !== 'ai') {
+    return { ok: false, reason: 'music_not_found', detail: `unknown source: ${String(asset.source)}` }
+  }
   const av = verifyMusicAssetBind({
     id: String(asset.id),
     source: String(asset.source),
@@ -1423,7 +1571,7 @@ export async function createRender(args: {
   // 2b. Text/title overlays (EDL v2). Server is authority for the shape + the 5%
   //     size floor (client mirrors both). Content moderation is a later step.
   const texts = Array.isArray(args.edl) ? [] : (args.edl.texts ?? [])
-  const tv = validateTexts(texts, totalMs)
+  const tv = validateTexts(texts, totalMs, aspect)
   if (!tv.ok) return { ok: false, reason: tv.reason, detail: tv.index >= 0 ? `text#${tv.index + 1}` : undefined }
   // Trademark blocklist (no-deploy tunable). Cheap local check; the AI content
   // scan runs at submit (the public gate). Absent list -> no block.

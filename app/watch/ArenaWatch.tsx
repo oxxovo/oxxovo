@@ -12,12 +12,10 @@ import {
   getCurrentCompetitionStats,
   getJudgingProgress,
   isVoteWindowOpen,
-  getFinalistRevealState,
-  getFinalists,
-  getBannerStage,
   type WatchSort,
   type WatchRound,
 } from '@/lib/watch'
+import { resolveSeasonStage } from '@/lib/season-stage'
 import { getCurrentSeason, getCurrentSeasonId } from '@/lib/seasons'
 import { getUserOrNull } from '@/lib/user-auth'
 import { ArenaShell } from './ArenaShell'
@@ -67,12 +65,11 @@ export async function ArenaWatch({
   const currentSeasonId = currentSeason?.id ?? getCurrentSeasonId()
   const heroStats = await getCurrentCompetitionStats(currentSeasonId)
   const seasonNumber = currentSeason?.season_number ?? 0
-  const mainStart = currentSeason?.main_round_start_at
-    ? Date.parse(currentSeason.main_round_start_at)
-    : null
-  const inMainRound = mainStart != null && Date.now() >= mainStart
-  // Finalist-pending stage (advanced, before reveal): label + reveal countdown.
-  const finalistReveal = await getFinalistRevealState(currentSeasonId)
+  // Stage, finalists and theme all come from one resolver (lib/season-stage) so
+  // the landing shows the same answer at the same instant. Deriving them here a
+  // second time is what let the two surfaces disagree.
+  const { content: bannerStage, inMainRound, finalists, finalistReveal, theme } =
+    await resolveSeasonStage(currentSeason, currentSeasonId)
   const roundName = inMainRound
     ? 'Main Round'
     : finalistReveal
@@ -99,8 +96,6 @@ export async function ArenaWatch({
   const judging = await getJudgingProgress(currentSeasonId, inMainRound ? 'main' : 'application')
   const cardsJudging = judging.total > 0
   const voteOpen = await isVoteWindowOpen(currentSeasonId)
-  // Post-reveal (main_round_start_at passed): finalists show at the top of Watch.
-  const finalists = inMainRound ? await getFinalists(currentSeasonId) : []
 
   // Main round layout (TK 2026-07-13): TOP = the finalists' MAIN videos (the live
   // event), MIDDLE = their PRELIM entries tagged "본선 진출작" (reference). Derived
@@ -116,35 +111,6 @@ export async function ArenaWatch({
   // section, so the full gallery is the ELIMINATED entries (+ other seasons),
   // never a duplicate of what's above. No entry is hidden overall. (TK 2026-07-14)
   latest = latest.filter((v) => !(v.seasonId === currentSeasonId && finalistIds.has(v.applicationId)))
-
-  // Public main-round theme teaser. Shown from "Judging Complete" onward (once
-  // finalists are pending) through the main round -- the banner is a come-back
-  // hook, so the theme is teased early (TK 2026-07-12). Hidden during the open
-  // prelim (no theme leak). Reads season.main_round_theme (now on the public
-  // view) -- null until an operator sets it.
-  // Show the LABEL, never main_round_theme itself: the theme is a full brief
-  // (901 chars for season 0) and this is a one-line banner slot. Full text lives
-  // on /rules. main_round_theme stays untouched for the scorer.
-  const showTheme = finalistReveal != null || inMainRound
-  const theme = showTheme ? (currentSeason?.main_round_theme_label ?? null) : null
-
-  // Top announcement banner: a date-driven lifecycle stage machine. Everything
-  // comes from the current season's schedule columns (no hardcoding) so the
-  // banner auto-advances accepting -> judging -> finalists -> main live ->
-  // voting -> results as time passes.
-  const bannerStage = getBannerStage({
-    applicationCloseAt: closeAtISO,
-    mainRoundStartAt: currentSeason?.main_round_start_at ?? null,
-    voteStartAt: currentSeason?.community_vote_start_at ?? null,
-    voteEndAt: currentSeason?.community_vote_end_at ?? null,
-    awardsAt: currentSeason?.awards_announcement_at ?? null,
-    finalistCount: finalistReveal?.count ?? finalists.length,
-    finalistFilmCount: finalists.filter((f) => f.mainVideoUrl).length,
-    // Real winners, not the calendar: award_rank is written by a manual admin
-    // approval, so "announced" must never be claimed before any rank exists.
-    winnerCount: finalists.filter((f) => f.awardRank != null).length,
-    theme: currentSeason?.main_round_theme_label ?? null,
-  })
 
   // Stopgap (A안, 2026-07): the hero card's roundName is derived from the
   // TIMELINE only (inMainRound = now>=main_round_start, no upper bound), so once
@@ -180,7 +146,7 @@ export async function ArenaWatch({
       />
       <MainRoundSection videos={mainRoundVideos} seasonNames={seasonNames} voteOpen={voteOpen} stage={bannerStage.stage} />
       <FinalistPrelimSection videos={finalistPrelims} seasonNames={seasonNames} />
-      <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
+      <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} seasonName={currentSeason?.name} awardsAt={currentSeason?.awards_announcement_at} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />
     </ArenaShell>
   )

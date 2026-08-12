@@ -14,3 +14,11 @@ public/ChatGPT Image*
 public/*_reference.*
 public/*_mockup.*
 public/*_mock.*
+
+# ★Visual-review artefacts (frames, sample renders) kept in the worktree for TK to
+# look at. `.gitignore` already stops them being committed, but .gitignore is NOT
+# what `vercel deploy` reads -- this file is. Without this line a 16 MB sample mp4
+# dropped in for a shot-count check would be uploaded on the next CLI deploy.
+# Nothing here is served (it is outside public/), so this is about not shipping
+# what was never meant to leave the machine.
+reports/_shots/

@@ -7,6 +7,12 @@ season_0 real data is never touched.
 Canonical domain = **www.oxxovo.ai** (oxxovo.com 308-redirects and would make a
 Stripe webhook silently fail -- see [[reference-canonical-domain]]).
 
+**Not in this document:** the three build-baked items that must change when
+season_1 opens (env season pointer, prerendered /about, partner template). They are
+in `reports/season0_to_season1_transition.md`. They are deliberately not a Phase
+here -- doing them at season_0 launch is wasted work, and burying them among the
+launch steps is how they get missed at the transition.
+
 ## ★How to read a number on this list (added 2026-08-08, HQ)
 
 Two rules, both learned from defects that had already shipped and were reading
@@ -491,6 +497,46 @@ the prose above:
   harness can produce -- it needs a deliberately staged second claim attempt,
   which is future work this plan does not schedule.
 
+**★C9. `MUSIC_CONCURRENCY` STAYS UNSET. Setting it "just in case" stops the
+renders. Standing rule, not a launch-day step.**
+- THE RULE: **do not set `MUSIC_CONCURRENCY` on Railway.** Unset (or 0) is the
+  correct production value today and stays correct for the whole of season 0.
+- WHY setting it is worse than leaving it: `WORKER_CONCURRENCY` and
+  `RENDER_CONCURRENCY` are capacity knobs where a forgotten value means a slow
+  queue, so the worker refuses to boot without them. `MUSIC_CONCURRENCY` is not
+  that knob -- above zero it makes `main()` call `buildMusicProviderSlots()`,
+  which resolves a vendor adapter from `ADAPTERS` in `src/music-lane.ts`.
+  **`ADAPTERS` is empty and is meant to be** (an entry in it is a claim that we
+  may lawfully resell that vendor's output; no vendor is confirmed). So the call
+  throws, `main()` rejects, and the process exits -- **taking the generation and
+  render lanes with it.** The failure reads as "the worker is down", and its
+  cause is a music variable on a platform where music is off. Nothing else in the
+  worker fails this way.
+- ★It is also the WRONG variable for season 0 in the first place. 대표님 confirmed
+  on 2026-08-02, and re-confirmed on 2026-08-08 after a two-day round trip, that
+  season 0 music is the **pre-generated library ONLY** -- OXXOVO seeds **1,000**
+  tracks (revised up from 300 on 2026-08-08) and participants only pick. There is
+  no participant generation to give a lane to. `MUSIC_CONCURRENCY` belongs to
+  season 1's plan C.
+- WHICH SWITCH goes with it (and read C6 with this): the season 0 configuration
+  is `studio_music_enabled = true` (library picker) with
+  `studio_music_ai_enabled` left **false**. Measured 2026-08-02: with the AI
+  switch false, `assertMusicLaneConsistency()` does not object to a missing lane,
+  and every other music mechanism -- the worker lane, the lease sweep, refunds,
+  charging, the price fail-closed -- is out of the library path by construction,
+  not by luck. Library-only is a first-class state the code was written for.
+- VERIFY at deploy, on the worker's own boot line (C5 explains why that line, and
+  not `git push`, is the confirmation):
+  ```
+  music=OFF (MUSIC_CONCURRENCY unset)
+  ```
+  Anything else on a season-0 deploy is the mistake this rule exists for. And if
+  the container is not printing a boot line at all, check this variable before
+  anything else -- an empty-registry throw happens before the lanes start.
+- ★IF a future season really does turn AI music on, the order is C6's, plus a
+  vendor in `ADAPTERS` and `platform_config.studio_music_provider_primary`. All
+  three, or the boot fails again -- which is the intended direction.
+
 ---
 
 ## Phase D -- E2E (order matters; no prod exposure)
@@ -593,3 +639,58 @@ Do these at launch, not before:
 
 Until Phase E, checkout is double-gated (session6 AND purchase both off), so
 nothing is buyable/visible on prod even after Phases A-D.
+
+---
+
+## Phase F -- after the FIRST real load run: re-measure and reset the clocks
+
+Not a launch gate. An obligation that comes due the first time real traffic runs
+on the real fleet, and the reason it is written down is that nothing will fail
+loudly if it is skipped -- the values below are all plausible, and a wrong one
+shows up as a job killed mid-flight or a lease that never fires, months later.
+
+**Why they need re-measuring.** Every timeout and lease threshold in the two
+lanes that hold money was derived on 2026-08-02 from live `generation_jobs`
+(`worker_started_at` -> `worker_finished_at`, `FAL_FAKE` rows excluded): **43
+real generations, 34 of them video**, slowest success 518.0s
+(`kling-v3-pro-i2v`, 15s clip). That sample is honest but narrow:
+
+- n=34 is small.
+- It does **not** contain the premium model at maximum duration (`veo3.1` at 15s
+  never ran).
+- It contains **no account-level fal queueing** -- these were sparse jobs, not
+  500 applicants inside a 72h window. Contention moves wall clock, and wall
+  clock is the only input to every number below.
+- Renders in the same window were **n=11, max 22.1s**, on ONE machine.
+
+**F1. Re-derive the fal clocks (free -- no fal spend).** Same query, after the
+load run. `scripts/` has no runner for it because it is four lines of REST; the
+inputs are `generation_jobs.worker_started_at/worker_finished_at`, filtering out
+`fal_request_id LIKE 'fake-%'`. Recompute, then reset:
+
+| env | current | how it is derived |
+|---|---|---|
+| `FAL_GEN_TIMEOUT_MS` | 2100000 (35 min) | `(FAL_MAX_RETRIES + 1) x slowest_single_attempt + backoff_cap`. Never a chosen multiple: the deadline must not kill a job that would have succeeded, so it is the slowest such job the data allows for |
+| `FAL_DOWNLOAD_TIMEOUT_MS` | 300000 (5 min) | Order of magnitude above observed transfer. Sits inside `withRetry`, so being wrong costs one retry |
+| lease threshold (clip + music) | 70 min | `2 x FAL_GEN_TIMEOUT_MS`. The worker's own deadline must fire FIRST; the lease only catches a dead process |
+
+**F2. `MUSIC_GEN_TIMEOUT_MS` is not a measurement yet.** It is currently 2100000
+-- the fal number, **reused**, because no music vendor is chosen and there is no
+audio latency to derive from. Audio is not expected to exceed video and that
+expectation is **not measured**. The first real music generations must reset it
+from the vendor's own latency. (Until an adapter exists the music lane does not
+run at all, so this cannot bite before then.)
+
+**F3. Run the render fleet harness on Railway.** `scripts/render-loadtest.ts`
+(worker `1304f61`) measures compose-render throughput against concurrency. Its
+recorded numbers -- 30-40s final ~= 60s/lane, ~9 finals/hr/vCPU, c=8 on 8 cores
+thrashes, keep ~2 vCPU per render lane -- come from an **8-vCPU local machine**
+and have never been reproduced on Railway. Two live settings depend on them:
+`RENDER_CONCURRENCY` (Phase C) and `RENDER_LEASE_STALE_MS` (30 min, itself
+2x `RENDER_TIMEOUT_MS`, which was derived from a 20.6s local render). Different
+hardware, different numbers. Same load run, same sitting.
+
+**F4. Record where each number came from.** Table, run date, environment. A
+value with no source is how "3 hours" got into a lease threshold with nothing
+behind it, and how a parity figure survived two days before it was found to be
+measuring the wrong worktree.

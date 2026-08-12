@@ -15,6 +15,7 @@
 // follows). The editor picks the best available engine; the seam is this file.
 
 import type { EffectParams } from '@/lib/effects'
+import type { KeyframeTrack } from '@/lib/edl-keyframes'
 
 // ★Cache key for the raw (no-CORS) path. The GL engine and the media-pool
 // thumbnails load a clip at its BARE url in CORS mode; a no-cors load of the same
@@ -32,6 +33,11 @@ export type PreviewSegment = {
   endMs: number
   speed?: number
   effects?: EffectParams
+  // ★D keyframes (2026-08-10). Segment-relative atMs, same convention as the
+  // signed EDL's SegmentEffect.keyframes (lib/cryptobind.ts) -- this type is
+  // the client-side mirror the editor/GL preview work with before an EDL is
+  // ever built for signing.
+  keyframes?: Partial<Record<keyof EffectParams, KeyframeTrack>>
   // How this clip fills the output aspect box: 'cover' = crop-fill, else letterbox.
   fit?: 'contain' | 'cover'
 }

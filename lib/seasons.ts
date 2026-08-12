@@ -393,9 +393,23 @@ export async function getActiveApplicationCount(
   return typeof data === 'number' ? data : Number(data) || 0
 }
 
-export function isApplicationClosed(season: Season): boolean {
+// `now` is injectable for the same reason getThemeDisplay's is: this decides what
+// the landing hero shows, and the case that was wrong (the instant applications
+// close) cannot be asserted against the wall clock. Callers pass nothing.
+// ★The boundary is `>=`, not `>`. It used to be `>`, which left the deadline
+// instant itself OPEN while every other rule in the codebase had already closed
+// it: resolveSeasonCta below (`now < closeAt` = open), getBannerStage's judging
+// branch (`t >= close`), and lobby's mode machine (`t >= close` -> live). At
+// exactly application_close_at the landing therefore ran a countdown under a "Join
+// the waitlist" CTA, and a submission was still accepted after its own deadline.
+// One instant wide, and found by sweeping the timeline rather than by picking
+// dates. Callers affected: the two apply gates and the two studio submit gates.
+export function isApplicationClosed(
+  season: Pick<Season, 'application_close_at'>,
+  now: Date = new Date(),
+): boolean {
   if (!season.application_close_at) return false
-  return new Date() > new Date(season.application_close_at)
+  return now.getTime() >= Date.parse(season.application_close_at)
 }
 
 // Public CTA for a season by where we are in its application window -- shared by
@@ -406,8 +420,9 @@ export function isApplicationClosed(season: Season): boolean {
 //   after close  -> waitlist (next season)
 export function resolveSeasonCta(
   season: Pick<Season, 'name' | 'application_open_at' | 'application_close_at'>,
+  at: Date = new Date(),
 ): { href: string; label: string } {
-  const now = Date.now()
+  const now = at.getTime()
   const openAt = season.application_open_at ? new Date(season.application_open_at).getTime() : null
   const closeAt = season.application_close_at ? new Date(season.application_close_at).getTime() : null
   const isOpen = openAt != null && now >= openAt && (closeAt == null || now < closeAt)

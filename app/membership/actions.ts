@@ -7,14 +7,19 @@
 import { getUserOrNull } from '@/lib/user-auth'
 import { isMembershipEnabled, getFoundingStatus, getMembershipState } from '@/lib/membership'
 import { getPlatformConfigMap } from '@/lib/partners'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
 import type { MembershipLandingData } from './types'
 
 export async function getMembershipLandingData(): Promise<MembershipLandingData> {
-  const [enabled, founding, cfg, user] = await Promise.all([
+  const [enabled, founding, cfg, user, memberHostedEnabled] = await Promise.all([
     isMembershipEnabled(),
     getFoundingStatus(),
     getPlatformConfigMap(),
     getUserOrNull(),
+    // Reuses the master switch rather than reading the key off cfg above, so this
+    // page cannot end up with its own opinion of what "member-hosted is on" means.
+    // Fail-closed lives in that helper.
+    isMemberHostedEnabled(),
   ])
 
   const priceRaw = Number(cfg.get('membership_creator_price_usd') ?? 0)
@@ -38,5 +43,6 @@ export async function getMembershipLandingData(): Promise<MembershipLandingData>
     founding: { remaining: founding.remaining, cap: founding.cap, open: founding.open },
     signedIn: !!user,
     isActiveCreator,
+    memberHostedEnabled,
   }
 }

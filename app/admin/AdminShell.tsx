@@ -17,6 +17,8 @@ type NavItemKey =
   | 'emails'
   | 'credits'
   | 'promo'
+  | 'actors'
+  | 'music'
   | 'messages'
   | 'comments'
   | 'watch_home'
@@ -35,6 +37,8 @@ const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean 
   { href: '/admin/broadcasts', key: 'broadcasts', emoji: '📢' },
   { href: '/admin/credits', key: 'credits', emoji: '💳' },
   { href: '/admin/promo', key: 'promo', emoji: '🎬' },
+  { href: '/admin/actors', key: 'actors', emoji: '🎭' },
+  { href: '/admin/music', key: 'music', emoji: '🎵' },
   { href: '/admin/messages', key: 'messages', emoji: '💬' },
   { href: '/admin/comments', key: 'comments', emoji: '🗨️' },
   { href: '/admin/watch-home', key: 'watch_home', emoji: '📺' },

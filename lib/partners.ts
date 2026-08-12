@@ -99,18 +99,17 @@ export async function getTierConfig(tier: string): Promise<TierConfig | null> {
 // ─── partner profile helpers ──────────────────────────────────────────────
 
 // partner_status values, mirrored from the profiles CHECK. Centralized so the
-// admin UI and actions share one source.
-export const PARTNER_STATUSES = [
-  'none',
-  'auto_eligible',
-  'invited',
-  'active',
-  'suspended',
-] as const
-export type PartnerStatus = (typeof PARTNER_STATUSES)[number]
-
-// partner_source provenance. 'invitation' = admin-invited; 'auto' = threshold.
-export type PartnerSource = 'invitation' | 'auto' | null
+// admin UI and actions share one source. The list itself now lives in
+// lib/partner-statuses.ts -- a module with no imports, so unit tests can read it
+// (this file reaches next/headers and cannot be imported from a test). Re-exported
+// here so every existing call site keeps importing it from the same place.
+export {
+  PARTNER_STATUSES,
+  type PartnerStatus,
+  type PartnerSource,
+} from './partner-statuses'
+// A re-export does not bind the name locally, and this file annotates with it.
+import type { PartnerStatus } from './partner-statuses'
 
 // ─── partner_status_events (audit log) ────────────────────────────────────
 // See reports/partner_status_events_migration_2026-06.sql. profiles.partner_status

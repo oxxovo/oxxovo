@@ -36,8 +36,12 @@ import { getBalance, getStudioPricing, creditsForCostOrNull } from '@/lib/credit
 import { moderateSubmission } from '@/lib/moderation'
 import { buildMusicAssetBind, hashMusicAsset } from '@/lib/cryptobind'
 import { getMusicGate } from '@/lib/music-gate'
+import { isMusicLicenseType } from '@/lib/music-license'
+import type { MusicProvenance } from '@/lib/music-provider'
 import {
   validateMusicPrompt,
+  validateMusicPricing,
+  musicCostUsd,
   findImitation,
   parseArtistBlocklist,
   type MusicReason,
@@ -47,6 +51,16 @@ import {
 // Provider interface -- the vendor boundary, deliberately vendor-free. The caller
 // only knows: given a prompt + duration, eventually get audio bytes.
 // The provider owns whatever sync/async/polling the real API needs.
+//
+// ★SUPERSEDED, NOT YET REMOVED. lib/music-provider.ts is the boundary as of
+// 2026-08-01: it is pure (the worker can mirror it, this file it cannot), it
+// makes provenance a required field, and it names the primary/fallback slots.
+// The block below is the older, weaker version and is kept only so this file
+// keeps compiling until the adapter step lands. ★Import MusicProvider /
+// MusicGenParams / MusicGenOutput from lib/music-provider.ts, not from here --
+// the two MusicGenOutput shapes are NOT the same (the new one requires
+// provider / providerModel / generatedAt / licenseType). Deleting this block is
+// the first edit of step ③a-3.
 // ===========================================================================
 
 export interface MusicGenParams {
@@ -98,10 +112,12 @@ export function getMusicProvider(): MusicProvider {
 // and the server came to disagree. What stays here is genuinely global and not
 // a gate: price, length bound, blocklist.
 export interface MusicGenConfig {
-  // studio_music_gen_cost_usd -- raw provider cost per generation. Absent key
-  // reads as 0, which is NOT "free": creditsForCost refuses a non-positive
-  // charge, so an unpriced generator means AI music stays unavailable.
+  /** studio_music_gen_cost_usd -- flat provider cost per generated track. An
+   *  absent key reads as 0, which is NOT "free" -- see the note in
+   *  getMusicGenConfig and validateMusicPricing. */
   genCostUsd: number
+  /** studio_music_gen_cost_per_second_usd -- provider cost per second of audio */
+  genCostPerSecondUsd: number
   maxSeconds: number // studio_music_gen_max_seconds -- 0 => no explicit cap here
   artistBlocklist: string[] // studio_music_artist_blocklist
 }
@@ -113,18 +129,26 @@ export async function getMusicGenConfig(): Promise<MusicGenConfig> {
     .select('key, value')
     .in('key', [
       'studio_music_gen_cost_usd',
+      'studio_music_gen_cost_per_second_usd',
       'studio_music_gen_max_seconds',
       'studio_music_artist_blocklist',
     ])
   if (error) throw new Error('getMusicGenConfig: ' + error.message)
   const map = new Map<string, string>()
   for (const r of data ?? []) map.set(r.key as string, r.value as string)
+  // ★A missing PRICE key reads as 0, not as an error, because either half of the
+  // cost model may legitimately be zero (a per-output vendor has no per-second
+  // rate, and vice versa). What must never be zero is the TOTAL -- and that is
+  // enforced by validateMusicPricing at the point of charge, which refuses the
+  // generation instead of charging nothing. Cap and blocklist are not prices and
+  // keep their permissive default.
   const num = (k: string) => {
     const n = Number(map.get(k))
     return Number.isFinite(n) && n >= 0 ? n : 0
   }
   return {
     genCostUsd: num('studio_music_gen_cost_usd'),
+    genCostPerSecondUsd: num('studio_music_gen_cost_per_second_usd'),
     maxSeconds: num('studio_music_gen_max_seconds'),
     artistBlocklist: parseArtistBlocklist(map.get('studio_music_artist_blocklist')),
   }
@@ -199,6 +223,28 @@ export async function createMusicGeneration(args: {
   const hit = findImitation(prompt, cfg.artistBlocklist)
   if (hit) return { ok: false, reason: 'music_imitation', detail: hit }
 
+  // 3. ★Per-user cap, per season+round -- the same axis the clip caps use.
+  //    Counted in ROWS, and checked BEFORE the price/balance step below, so the
+  //    ceiling cannot be bought past. Single pool: there is no draft music (one
+  //    provider, one parameter set, one price, byte-identical output), so a
+  //    draft/competition split would only make a participant buy the same audio
+  //    twice. gate.cap 0 = explicit season opt-in to unlimited.
+  //
+  //    ★MOVED AHEAD OF MODERATION (2026-08-02). The guards now run cheapest
+  //    first: pure checks, then one indexed count, then the network call. Two
+  //    reasons, both found by the E2E rather than by reading:
+  //      - A participant at their ceiling used to burn an OpenAI moderation
+  //        request per attempt, for a request that was going to be refused.
+  //      - They were also told the wrong thing. With the moderation key absent
+  //        the refusal came back 'music_moderation' when the real reason was the
+  //        cap -- a misleading answer that also hid the ordering.
+  //    Nothing is weakened: the prompt is still never sent to a vendor, and
+  //    moderation still gates every generation that actually proceeds.
+  if (gate.cap > 0) {
+    const used = await countMusicGenerationsForRound(args.userId, args.seasonId, args.round)
+    if (used >= gate.cap) return { ok: false, reason: 'music_cap_reached', detail: `${used}/${gate.cap}` }
+  }
+
   // 2d. AI moderation of the prompt. flagged -> refused; pending (no key/timeout)
   //     -> ALSO refused here (never charge a credit for a prompt we could not
   //     clear). This is stricter than the video path's fail-safe-to-admin-queue,
@@ -208,27 +254,31 @@ export async function createMusicGeneration(args: {
     return { ok: false, reason: 'music_moderation', detail: mod.categories.join(',') || mod.status }
   }
 
-  // 3. ★Per-user cap, per season+round -- the same axis the clip caps use.
-  //    Counted in ROWS, and checked BEFORE the price/balance step below, so the
-  //    ceiling cannot be bought past. Single pool: there is no draft music (one
-  //    provider, one parameter set, one price, byte-identical output), so a
-  //    draft/competition split would only make a participant buy the same audio
-  //    twice. gate.cap 0 = explicit season opt-in to unlimited.
-  if (gate.cap > 0) {
-    const used = await countMusicGenerationsForRound(args.userId, args.seasonId, args.round)
-    if (used >= gate.cap) return { ok: false, reason: 'music_cap_reached', detail: `${used}/${gate.cap}` }
-  }
-
   // 4. Price + balance (platform_config pricing, like a clip generation).
+  //    ★Price is checked BEFORE the balance. An unpriced generation costs 0
+  //    credits, and `balance < 0` is false for everyone, so a missing config key
+  //    would otherwise hand out free music the moment the season switch is
+  //    flipped -- and that switch is a SQL UPDATE, not a deploy. Zero is "not
+  //    priced yet", never "free": the company pays nothing toward participant
+  //    generation.
+  const cost = { baseUsd: cfg.genCostUsd, perSecondUsd: cfg.genCostPerSecondUsd }
+  const priceReason = validateMusicPricing(cost, args.durationSeconds)
+  if (priceReason) return { ok: false, reason: priceReason }
+  const costUsd = musicCostUsd(cost, args.durationSeconds)
+
   const pricing = await getStudioPricing()
-  // ★genCostUsd reads 0 when studio_music_gen_cost_usd is absent from
-  // platform_config -- which it is today (measured 2026-08-01). At 0 credits the
-  // balance test below is `balance < 0`, false for everyone, so AI music would
-  // be free for a zero-balance account the moment the season switch goes on.
-  // Unpriced = not available, and the participant-facing meaning of that is the
-  // same as the AI switch being off; `detail` says which one it actually was.
-  const credits = creditsForCostOrNull(cfg.genCostUsd, pricing)
-  if (credits === null) return { ok: false, reason: 'music_ai_disabled', detail: 'pricing_unavailable' }
+  // ★Two guards, and they are not redundant. validateMusicPricing above rejects
+  // an unpriced generation on the COST side, before any arithmetic;
+  // creditsForCostOrNull is the shared guard that no charge path may skip, and
+  // it also catches a pricing row that rounds to nothing. It is fed `costUsd`
+  // (base + perSecond x duration), not cfg.genCostUsd -- passing the flat term
+  // alone would price a per-minute vendor at zero, which is the exact hole the
+  // unit-neutral cost model closed.
+  const credits = creditsForCostOrNull(costUsd, pricing)
+  // 'music_not_priced', not 'music_ai_disabled': nothing is charged and the
+  // participant is not at fault, and conflating it with the season switch would
+  // hide a misconfiguration behind a state that looks intentional.
+  if (credits === null) return { ok: false, reason: 'music_not_priced' }
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'music_insufficient_credits' }
 
@@ -259,7 +309,7 @@ export async function createMusicGeneration(args: {
     amount_credits: -credits,
     type: 'generation_charge',
     reason: 'studio_music_ai',
-    metadata: { music_asset_id: assetId, cost_usd: cfg.genCostUsd },
+    metadata: { music_asset_id: assetId, cost_usd: costUsd },
   })
   if (chErr) {
     await admin.from('studio_music_assets').delete().eq('id', assetId)
@@ -328,6 +378,20 @@ export async function markMusicGenerating(assetId: string): Promise<boolean> {
 //    object). Hash-based binding so a later r2_key repoint / byte tamper breaks the
 //    signature (verifyMusicAssetBind at render). Idempotent-safe: only a
 //    'generating' row is advanced.
+//    ★PROVENANCE IS REQUIRED, not optional. The four columns exist (migration Run
+//    2026-07-30) and a track with no provenance is a track whose licence we
+//    cannot state: which vendor made it, under which model version, when, and
+//    under what terms. Typing it as required means an adapter that does not
+//    report it fails to COMPILE rather than writing a null we discover later.
+//
+//    ★provider_generated_at is the VENDOR's stamp and is NOT
+//    cryptobind_generated_at, which this function sets itself, in our process,
+//    at signing time. They differ by the download and upload, and they answer
+//    different questions -- "when was this made" and "when did we sign it". Do
+//    not collapse them.
+//
+//    ★None of this is inside the v1m canonical (v1m|assetId|source|contentHash),
+//    so recording it cannot move a signature or a KAT golden.
 export async function finalizeMusicGeneration(args: {
   assetId: string
   audio: Buffer | Uint8Array
@@ -335,8 +399,28 @@ export async function finalizeMusicGeneration(args: {
   r2Key: string
   url: string
   title?: string
+  provenance: MusicProvenance
+  /** Optional CAS: only finalize if this attempt still owns the row. */
+  claimToken?: string | null
 }): Promise<{ ok: boolean; errorMessage?: string }> {
   const admin = createSupabaseAdmin()
+
+  // ★Last line of defence on the enumeration. studio_music_assets.license_type is
+  // plain nullable text with no DB-level enum (probed live 2026-08-01), so the
+  // column accepts any string and this is the only thing that does not. A label
+  // we do not recognise means the adapter is not the code that was classified at
+  // registration -- refuse rather than store a track whose terms we cannot name.
+  if (!isMusicLicenseType(args.provenance.licenseType)) {
+    return { ok: false, errorMessage: `unrecognised license_type: ${String(args.provenance.licenseType)}` }
+  }
+  const generatedAt = args.provenance.generatedAt
+  if (!(generatedAt instanceof Date) || Number.isNaN(generatedAt.getTime())) {
+    return { ok: false, errorMessage: 'provenance.generatedAt is not a valid date' }
+  }
+  if (!args.provenance.provider || !args.provenance.providerModel) {
+    return { ok: false, errorMessage: 'provenance must name both a provider and a model' }
+  }
+
   const contentHash = hashMusicAsset(args.audio)
   const bind = buildMusicAssetBind({
     assetId: args.assetId,
@@ -344,7 +428,7 @@ export async function finalizeMusicGeneration(args: {
     contentHash,
     generatedAt: new Date(),
   })
-  const { data, error } = await admin
+  let q = admin
     .from('studio_music_assets')
     .update({
       status: 'ready',
@@ -352,6 +436,10 @@ export async function finalizeMusicGeneration(args: {
       url: args.url,
       duration_seconds: Math.round(args.durationSeconds),
       ...(args.title ? { title: args.title } : {}),
+      provider: args.provenance.provider,
+      provider_model: args.provenance.providerModel,
+      provider_generated_at: generatedAt.toISOString(),
+      license_type: args.provenance.licenseType,
       cryptobind_content_hash: bind.cryptobind_content_hash,
       cryptobind_signature: bind.cryptobind_signature,
       cryptobind_generated_at: bind.cryptobind_generated_at,
@@ -361,7 +449,10 @@ export async function finalizeMusicGeneration(args: {
     })
     .eq('id', args.assetId)
     .in('status', ['queued', 'generating'])
-    .select('id')
+  // Status alone is not ownership: a reclaimed row is 'generating' again, so a
+  // revived worker would pass a status-only check and overwrite a live attempt.
+  if (args.claimToken) q = q.eq('claim_token', args.claimToken)
+  const { data, error } = await q.select('id')
   if (error) return { ok: false, errorMessage: error.message }
   if ((data?.length ?? 0) === 0) return { ok: false, errorMessage: 'asset not in a finalizable state' }
   return { ok: true }

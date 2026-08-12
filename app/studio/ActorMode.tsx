@@ -76,6 +76,27 @@ const DICT = {
     shots_model_pending: 'i2v 모델이 아직 활성화되지 않았습니다.',
     shots_title: '샷 스토리보드',
     shots_hint: (max: number) => `한 번의 생성으로 같은 배우의 멀티샷 영상이 나옵니다. 샷 최대 6개, 길이 합 최대 ${max}초.`,
+    // ★⑪ 기법 안내. 전부 2026-08-07 실호출 1건(6샷 x 2s, 12.042s 산출)에서 측정한
+    // 것이고, 첫 줄이 그 실호출의 핵심 발견이다. 추측·일반론은 넣지 않는다 --
+    // 참가자가 이 문장을 근거로 편집 계획을 세우기 때문이다.
+    //
+    // ★2026-08-08 정정. 초판의 둘째 줄은 "연달아 비슷한 프레이밍을 쓰면 두 샷이 한
+    // 샷처럼 이어집니다"였다. 그 문장의 근거는 씬 검출이 6샷에서 컷을 4개만 잡은
+    // 것이었는데, TK 육안 확인 결과 **프레임 6장이 서로 다른 장면**이었다 -- 컷은
+    // 6개 다 있고 검출 도구가 못 가른 것이다. 즉 내가 측정 도구의 한계를 모델의
+    // 거동으로 읽었고, 그 추론은 반증됐다.
+    // ★그래서 부드럽게 고치지 않고 **지웠다.** "샷이 합쳐진다"는 참가자에게 틀린
+    // 조언이고("6샷을 시켰는데 5샷이 될 수 있다"로 읽힌다), 남는 craft 조언
+    // ("프레이밍을 바꿔라")은 이 블록이 약속한 '실측' 밖의 일반론이다. 측정으로
+    // 뒷받침되는 사실 -- 6샷은 6샷으로 나온다 -- 로 대체한다.
+    shots_tips_title: '알아두면 결과가 달라지는 것',
+    shots_tips: [
+      '길이는 예산이지 컷 지점이 아닙니다. 합계는 정확히 지켜지지만, 모델이 실제로 컷을 넣는 지점은 입력한 초에 맞지 않습니다. (실측: 2초씩 6샷 → 총 12.0초는 정확, 컷은 1.6·3.7·7.6·10.0초) 편집에서 "3번째 샷은 4~6초"로 계산하지 마세요.',
+      '샷 개수는 지켜집니다. 6샷을 시키면 6개 장면이 나옵니다 — 다만 위처럼 각 장면이 시작되는 시각은 입력한 초와 다릅니다.',
+      '배우에 참조 컷이 1장 이상 있어야 촬영됩니다. 정면만 있으면 생성이 시작되지 않습니다(크레딧은 차감되지 않습니다).',
+      '영상의 가로세로 비율은 배우 시트가 결정합니다. 세로 시트로 만든 배우는 세로 영상이 나옵니다 — 최종 비율은 편집기에서 맞추게 됩니다.',
+      '같은 프롬프트를 다시 넣어도 같은 영상이 나오지 않습니다. 마음에 드는 결과는 그 자리에서 확보해 두세요.',
+    ],
     shot_n: (n: number) => `샷 ${n}`,
     shot_prompt_ph: '이 샷에서 배우가 하는 동작·장면을 묘사',
     shot_len: '길이(초)',
@@ -88,6 +109,10 @@ const DICT = {
     err_shots: '샷 프롬프트를 확인하세요.',
     err_duration: '길이 합계가 모델 허용 범위를 벗어났습니다.',
     err_i2v: '영상 생성 실패',
+    err_not_i2v: '이 모델은 배우 샷 촬영을 지원하지 않습니다. 다른 모델을 선택하세요.',
+    // ★Says what to DO, not that something failed -- nothing was generated and
+    // nothing was charged, and the participant can fix it in one step.
+    err_no_reference: '이 배우에는 참조 컷이 없어 샷 촬영을 할 수 없습니다. ② 내 배우에서 참조 컷을 1장 이상 추가해 주세요. (크레딧은 차감되지 않았습니다.)',
     err_insufficient: '크레딧이 부족합니다.',
     err_generic: '생성 실패',
     // status
@@ -102,7 +127,10 @@ const DICT = {
     models_pending: 'Image models are not active yet. Available soon.',
     model_label: 'Model',
     prompt_label: 'Actor description prompt',
-    prompt_ph: 'e.g. East Asian woman, mid-20s, dewy skin, a beauty mark below the left eye, small gold hoop earrings, soft studio light',
+    // ★'a beauty mark' -> 'a small mole': same facial feature, and the KO placeholder
+    // already said '점'. The word was the only reason 'beauty' could not be added to
+    // the theme-leak ban list, and it bought nothing here.
+    prompt_ph: 'e.g. East Asian woman, mid-20s, dewy skin, a small mole below the left eye, small gold hoop earrings, soft studio light',
     tip: 'Make one frontal face first, then press "More of this actor" on it to generate more shots that keep the same face.',
     ref_on: 'Generating from this actor',
     ref_clear: 'Clear',
@@ -139,6 +167,14 @@ const DICT = {
     shots_model_pending: 'i2v model is not active yet.',
     shots_title: 'Shot storyboard',
     shots_hint: (max: number) => `One generation yields a multi-shot video of the same actor. Up to 6 shots, ${max}s total.`,
+    shots_tips_title: 'Worth knowing before you shoot',
+    shots_tips: [
+      'Length is a budget, not a cut point. The total is honoured exactly, but the model does not place its cuts at the seconds you typed. (Measured: 6 shots of 2s gave exactly 12.0s, with cuts at 1.6 / 3.7 / 7.6 / 10.0s.) Do not plan your edit around "shot 3 is 4-6s".',
+      'The shot COUNT is honoured. Ask for 6 shots and you get 6 scenes -- but, as above, each one starts at a different second than the one you typed.',
+      'Your actor needs at least one reference cut. With a frontal only, the generation will not start (and you are not charged).',
+      "The video's aspect ratio comes from the actor sheet. An actor built from a portrait sheet produces portrait video -- you set the final ratio in the editor.",
+      'The same prompt will not give you the same video twice. When you get a take you like, keep it.',
+    ],
     shot_n: (n: number) => `Shot ${n}`,
     shot_prompt_ph: 'Describe the action / scene in this shot',
     shot_len: 'Length (s)',
@@ -151,6 +187,8 @@ const DICT = {
     err_shots: 'Check your shot prompts.',
     err_duration: 'Total length is outside the model range.',
     err_i2v: 'Video generation failed',
+    err_not_i2v: 'This model cannot shoot actor shots. Pick another model.',
+    err_no_reference: 'This actor has no reference cut, so shots cannot be shot from it. Add at least one reference cut in ② My actors. (You have not been charged.)',
     err_insufficient: 'Not enough credits.',
     err_generic: 'Generation failed',
     st_queued: 'Queued', st_generating: 'Generating', st_uploading: 'Uploading', st_ready: 'Ready', st_failed: 'Failed',
@@ -627,6 +665,14 @@ function Shots({
       case 'bad_duration': return t.err_duration
       case 'insufficient_credits': return t.err_insufficient
       case 'cap_reached': return t.cap_reached
+      // Reachable only if the picker offered a model the server does not accept
+      // for shooting -- i.e. the two disagree. Say so plainly instead of
+      // reporting it as a generation failure, because nothing was generated.
+      case 'not_i2v_model':
+      case 'not_video_model': return t.err_not_i2v
+      // Refused before any charge (fal would 422 on an empty reference list), so
+      // this must not fall through to "generation failed".
+      case 'character_no_reference': return t.err_no_reference
       default: return t.err_i2v
     }
   }
@@ -684,7 +730,23 @@ function Shots({
           <span className="text-[10px] uppercase tracking-wider text-white/40">{t.shots_title}</span>
           <span className={`text-[10px] ${durationOk ? 'text-white/45' : 'text-[#ff8888]'}`}>{t.total_len(total, maxTotal)}</span>
         </div>
-        <p className="mb-3 text-[11px] leading-relaxed text-white/45">🎬 {t.shots_hint(maxTotal)}</p>
+        <p className="mb-2 text-[11px] leading-relaxed text-white/45">🎬 {t.shots_hint(maxTotal)}</p>
+        {/* ⑪ technique guidance. Collapsed by default: it is five paragraphs of
+            measured behaviour, which is exactly what someone planning an edit
+            wants and exactly what someone shooting their first take will skip. */}
+        <details className="mb-3 rounded-lg border border-white/10 bg-white/[.02] px-3 py-2">
+          <summary className="cursor-pointer list-none text-[11px] font-semibold text-[#b66cff] marker:content-none">
+            💡 {t.shots_tips_title}
+          </summary>
+          <ul className="mt-2 space-y-1.5">
+            {t.shots_tips.map((tip, i) => (
+              <li key={i} className="flex gap-1.5 text-[10px] leading-relaxed text-white/50">
+                <span className="shrink-0 text-white/25">·</span>
+                <span>{tip}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
         <div className="space-y-2">
           {shots.map((s, i) => (
             <div key={i} className="flex gap-2">

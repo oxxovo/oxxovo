@@ -15,21 +15,29 @@
 //
 // Run: node scripts/text-parity.mjs
 import { readFileSync, existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import esbuild from 'esbuild'
 import { chromium } from 'playwright-core'
 import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
-// The worker(napi-rs) side imports the WORKER'S ACTUAL file -- so this harness
-// proves the file the render worker ships is byte-parity with the browser preview
-// (bundled from lib/text-render.ts below). If the worker mirror drifts, parity
-// FAILS here instead of shipping a mis-rendered video.
-import * as OT from '../../oxxovo-studio/src/text-render.ts'
+import { resolveWorkerRepo } from './worker-repo.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
 const APP_FONTS = join(ROOT, 'public', 'fonts')                       // browser side (woff2/ttf)
-const WORKER_FONTS = join(ROOT, '..', 'oxxovo-studio', 'assets', 'fonts') // worker side (ttf)
+
+// ★ Lane-aware (see scripts/worker-repo.mjs). The resolved path is printed in the
+// report so every number this harness emits carries its provenance.
+const WORKER_REPO = resolveWorkerRepo(ROOT)
+const WORKER_FONTS = join(WORKER_REPO, 'assets', 'fonts')             // worker side (ttf)
+
+// The worker(napi-rs) side imports the WORKER'S ACTUAL file -- so this harness
+// proves the file the render worker ships is byte-parity with the browser preview
+// (bundled from lib/text-render.ts below). If the worker mirror drifts, parity
+// FAILS here instead of shipping a mis-rendered video. Dynamic so the path above
+// can be resolved at runtime; the .ts loader hook is already installed by
+// `node --import ./scripts/test-register.mjs`.
+const OT = await import(pathToFileURL(join(WORKER_REPO, 'src', 'text-render.ts')).href)
 
 // Gate thresholds. Position/size use the SOLID glyph body (alpha>=128) so the AA
 // fringe never moves the box. Shape is judged AFTER a small blur that cancels the
@@ -165,6 +173,8 @@ async function main() {
 
   // report
   const pad = (s, n) => String(s).padEnd(n)
+  console.log(`\nAPP    : ${ROOT}`)
+  console.log(`WORKER : ${WORKER_REPO}`)
   console.log('\n' + pad('CASE', 26) + pad('dx', 5) + pad('dy', 5) + pad('dW%', 7) + pad('dH%', 7) + pad('SSIM', 8) + pad('MAE', 7) + 'RESULT')
   for (const r of rows) {
     console.log(pad(r.case, 26) + pad(r.dx, 5) + pad(r.dy, 5) + pad(r.dwPct.toFixed(2), 7) + pad(r.dhPct.toFixed(2), 7) +

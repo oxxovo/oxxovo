@@ -2,8 +2,15 @@
 // (preview-gl.ts) AND the re-verify parity harness (scripts/gl-engine-parity.mjs)
 // both use, so a ported shader can't drift from what's parity-tested. Client-safe
 // + node-importable (no browser APIs, no @/ alias). ★ The render (oxxovo-studio
-// render.ts) is authoritative; these mirror its B1 math in the SAME order:
-// eq(exposure/contrast/saturation) -> temperature -> tint -> LUT -> vignette.
+// render.ts) is authoritative; these mirror its B1 math in the SAME order,
+// confirmed by reading render.ts's effectVideoFilters(), not recalled:
+// eq(exposure/contrast/saturation) -> temperature -> tint -> LUT -> sharpen ->
+// chromatic -> motionBlur -> grain -> vignette. motionBlur (FRAG_MOTIONBLUR,
+// below) is TEMPORAL (worker's tmix averages several VIDEO FRAMES) -- it needs
+// a frame-history ring buffer fed independently of the single source texture
+// this file's other passes read, wired in preview-gl.ts via
+// video.requestVideoFrameCallback() (2026-08-10 spike, reports/
+// lane_c_item4_g_motionblur_spike_2026-08-10.md).
 import type { EffectParams } from './effects'
 
 // WebGL2 / GLSL ES 3.00 (glow needs FBO multipass + a dynamic-loop gaussian, so
@@ -13,16 +20,29 @@ in vec2 a_pos;
 out vec2 v_uv;
 void main() { v_uv = vec2((a_pos.x + 1.0) * 0.5, (1.0 - a_pos.y) * 0.5); gl_Position = vec4(a_pos, 0.0, 1.0); }`
 
-// Color grade + optional LUT + vignette (render order). LUT is a 2D-tiled cube
-// (size N tiles laid horizontally), trilinear-sampled on blue.
+// Color grade + optional LUT. LUT is a 2D-tiled cube (size N tiles laid
+// horizontally), trilinear-sampled on blue.
+//
+// ★VIGNETTE AND GRAIN USED TO LIVE HERE (baked into this shader, applied
+// vignette-then-grain) and moved out 2026-08-10. Two reasons, found together
+// while wiring sharpen (④-G): (1) the worker's real order (effectVideoFilters,
+// confirmed by reading it) is unsharp -> ... -> noise(grain) -> vignette --
+// sharpen fires right after the LUT, grain and vignette fire LAST, in that
+// order. Keeping them baked into the colour pass made it structurally
+// impossible to put sharpen between "after LUT" and "before grain/vignette"
+// without a separate pass for each. (2) the OLD internal order here was
+// vignette-then-grain -- backwards from the worker's grain-then-vignette --
+// found in the 2026-08-09 fused-unsharp probe (e47f040) and confirmed real
+// (not noise) by scripts/gl-combo-parity.mjs: reordering moves the image by
+// ~1-1.6x vignette's own magnitude on its own. See FRAG_GRAIN / FRAG_VIGNETTE
+// below, applied by the caller as separate passes in the worker's order.
 export const FRAG_COLOR_LUT = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 o;
 uniform sampler2D u_tex, u_lut;
-uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_vignette, u_hasLut, u_N, u_grain, u_seed;
+uniform float u_exposure, u_contrast, u_saturation, u_tempK, u_tint, u_hasLut, u_N, u_lutIntensity;
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
 // ★ffmpeg eq is a YUV filter, not an RGB one. Measured 2026-07-30 (24-patch chart
 // + 256-step sweeps, planes read directly as yuv444p):
@@ -80,11 +100,71 @@ void main() {
   c = eqGrade(c, u_exposure, u_contrast, u_saturation);
   float k = u_tempK / 3000.0; c.r -= k * 0.05; c.b += k * 0.05;
   c.g += u_tint * (1.0 - abs(2.0 * dot(c, LUMA) - 1.0));
-  if (u_hasLut > 0.5) c = lutSample(clamp(c, 0.0, 1.0));
-  if (u_vignette > 0.0) { float d = distance(v_uv, vec2(0.5)); c *= 1.0 - u_vignette * smoothstep(0.35, 0.75, d); }
-  // Grain: APPROXIMATE preview only (a different random field than the ffmpeg
-  // render; amplitude tracks the slider so the amount matches). UI shows a badge.
-  if (u_grain > 0.0) { float n = hash(v_uv * 1024.0 + u_seed) - 0.5; c += n * u_grain * 0.006; }
+  // ★lutIntensity (2026-08-10): worker's default (unset -> 100) is FULL
+  // strength, the one exception to this file's usual "0 == neutral" rule --
+  // matches render.ts's lut3d always applying at full strength when no
+  // lutIntensity was ever written, so every EDL signed before today renders
+  // byte-identical.
+  if (u_hasLut > 0.5) c = mix(c, lutSample(clamp(c, 0.0, 1.0)), u_lutIntensity);
+  o = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`
+
+// Grain: a separate pass now (was baked into FRAG_COLOR_LUT, see the note
+// above it). APPROXIMATE preview only -- a different random field than the
+// ffmpeg render's `noise=` filter; amplitude tracks the slider so the amount
+// matches, not the pixel pattern. UI shows a badge for this.
+export const FRAG_GRAIN = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex;
+uniform float u_grain, u_seed;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec3 c = texture(u_tex, v_uv).rgb;
+  float n = hash(v_uv * 1024.0 + u_seed) - 0.5;
+  c += n * u_grain * 0.006;
+  o = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`
+
+// Vignette: LUT-based, not a closed-form port. ★HISTORY: the original shader
+// here (distance-based smoothstep) was found 2026-08-10 to be a DIFFERENT
+// formula from ffmpeg's actual vignette= filter (lens-angle cosine falloff,
+// `ffmpeg -h filter=vignette`) -- GL vs ffmpeg was 19.53% off on a
+// 26.68%-magnitude effect, and this shader had never been independently
+// parity-verified (no vignette row existed in gl-engine-parity.mjs's CASES).
+// scripts/fit-vignette-model.mjs then tried to FIT a closed form (same method
+// as the unsharp kernel: flat field + known input) and could not clear 1%
+// tolerance anywhere in the slider's actual angle range (PI/6..PI/2,
+// render.ts) -- worst case 7.48% at vg=100, and freeing the cos power up to
+// 12 still only reached 4.97%. So this samples a MEASURED lookup
+// (public/vignette/vignette-lut.png, scripts/gen-vignette-lut.mjs) instead of
+// approximating: every value in it is ffmpeg's own output, not a fit.
+//
+// ★NORMALIZED BY CORNER DISTANCE (hypot(w/2,h/2)), not width or height --
+// verified 2026-08-10 across 4 aspect ratios (640x480 / 480x854 / 1080x1080 /
+// 1920x1080) that the attenuation curve vs distance/corner is IDENTICAL at
+// every sampled point, so one table generalizes to any canvas the editor
+// produces (u_res is read from the ACTUAL frame, not a baked reference size).
+// LUT layout: x = normalized distance 0..1, y = u_vignette (0..1, same
+// normalization as vg/100 -- render.ts's `angle = PI/(6 - vg/25)`), value =
+// attenuation. Baked at 51 angle rows (vg step 2); GL's bilinear sampling
+// interpolates both axes, so no per-frame ffmpeg call is needed at runtime.
+export const FRAG_VIGNETTE = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex, u_vignetteLut;
+uniform float u_vignette;
+uniform vec2 u_res;
+void main() {
+  vec3 c = texture(u_tex, v_uv).rgb;
+  vec2 center = u_res * 0.5;
+  vec2 pixel = v_uv * u_res;
+  float corner = length(center);
+  float dn = corner > 0.0 ? clamp(length(pixel - center) / corner, 0.0, 1.0) : 0.0;
+  float atten = texture(u_vignetteLut, vec2(dn, clamp(u_vignette, 0.0, 1.0))).r;
+  c *= atten;
   o = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`
 
@@ -221,6 +301,18 @@ export function activeLut(seg?: EffectParams, global?: EffectParams): string {
   return s || (typeof global?.lut === 'string' ? global.lut : '')
 }
 
+// LUT strength (0..1) for whichever of seg/global actually carries the active
+// LUT (same winner as activeLut -- intensity is read from THAT object, not
+// folded independently, matching render.ts calling effectVideoFilters(seg.effects)
+// and effectVideoFilters(global) as two separate calls). Unset -> 1.0 (full
+// strength, matches the worker's pre-2026-08-10 always-full-strength lut3d).
+export function activeLutIntensity(seg?: EffectParams, global?: EffectParams): number {
+  const src = typeof seg?.lut === 'string' && seg.lut ? seg : typeof global?.lut === 'string' && global.lut ? global : undefined
+  const raw = src?.lutIntensity
+  const pct = typeof raw === 'number' ? Math.max(0, Math.min(100, raw)) : 100
+  return pct / 100
+}
+
 // LUT id -> served .cube path (public/luts). Matches oxxovo-studio LUT_FILES.
 export const LUT_FILE: Record<string, string> = {
   'teal-orange': 'teal_orange.cube',
@@ -256,4 +348,142 @@ export function tileCube(lut: ParsedCube): { W: number; H: number; px: Uint8Arra
     px[dst] = cl(lut.rgb[src]) * 255; px[dst + 1] = cl(lut.rgb[src + 1]) * 255; px[dst + 2] = cl(lut.rgb[src + 2]) * 255; px[dst + 3] = 255
   }
   return { W, H, px }
+}
+
+// ---------------------------------------------------------------------------
+// ④-G  sharpen -- mirrors the render's `unsharp=5:5:amount:5:5:0`.
+//
+// ★WHAT ffmpeg's unsharp ACTUALLY DOES, because guessing it would have produced a
+// plausible shader that fails the gate. vf_unsharp builds its blur from CASCADED
+// 2-tap running sums, not a single box: with msize 5 the cascade runs 2*steps = 4
+// times per axis, which is a 2-tap box convolved with itself 4 times = the width-5
+// BINOMIAL kernel (1,4,6,4,1)/16. Both axes give 16 x 16 = 256, and that is exactly
+// the filter's own `scalebits = (steps_x + steps_y) * 2 = 8` (divide by 1<<8) --
+// the two numbers agreeing is the check that this reading is right. A uniform 5x5 box
+// would be a different operator, softer in the middle and wrong at the edges of detail.
+//
+// ★LUMA ONLY. The render passes chroma_amount=0, so U and V are copied through
+// untouched. And unsharp is a YUV filter, so the sharpen has to happen on Y in
+// BT.601 LIMITED range -- the same model the colour grade needed
+// (see FRAG_COLOR_LUT: doing it in RGB is a different operator entirely).
+//
+// ★Edges are CLAMP-to-edge in vf_unsharp (`x <= 0 ? src[0] : x >= width ? src[width-1]`),
+// which is what the sampler is already configured for, so no border special-case.
+//
+// amount comes from unsharpAmount() below, which mirrors render.ts's `sh / 50`.
+export const FRAG_UNSHARP = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex;
+uniform vec2 u_texel;
+uniform float u_amount;
+const float KR = 0.299, KG = 0.587, KB = 0.114;
+vec3 rgbToYuv601Limited(vec3 c) {
+  float y = dot(c, vec3(KR, KG, KB));
+  return vec3(16.0 + 219.0 * y,
+              128.0 + 224.0 * (c.b - y) / 1.772,
+              128.0 + 224.0 * (c.r - y) / 1.402);
+}
+vec3 yuv601LimitedToRgb(vec3 t) {
+  float y = (t.x - 16.0) / 219.0;
+  float u = (t.y - 128.0) / 224.0;
+  float v = (t.z - 128.0) / 224.0;
+  float r = y + 1.402 * v;
+  float b = y + 1.772 * u;
+  float g = (y - KR * r - KB * b) / KG;
+  return clamp(vec3(r, g, b), 0.0, 1.0);
+}
+float lumaAt(vec2 uv) { return rgbToYuv601Limited(texture(u_tex, uv).rgb).x; }
+void main() {
+  vec3 yuv = rgbToYuv601Limited(texture(u_tex, v_uv).rgb);
+  // separable binomial (1,4,6,4,1); 16 x 16 = 256 == 1 << scalebits
+  float w[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
+  float sum = 0.0;
+  for (int j = 0; j < 5; j++) {
+    for (int i = 0; i < 5; i++) {
+      vec2 off = vec2(float(i - 2) * u_texel.x, float(j - 2) * u_texel.y);
+      sum += w[i] * w[j] * lumaAt(v_uv + off);
+    }
+  }
+  float blurY = sum / 256.0;
+  yuv.x = clamp(yuv.x + (yuv.x - blurY) * u_amount, 0.0, 255.0);
+  o = vec4(yuv601LimitedToRgb(yuv), 1.0);
+}`
+
+/**
+ * Slider -> unsharp `luma_amount`. ★Mirrors render.ts (`unsharp=5:5:${sh/50}:5:5:0`)
+ * and nothing else: if that mapping changes, the parity row moves rather than quietly
+ * still passing. 0 means the render emits no unsharp at all.
+ */
+export function unsharpAmount(seg?: EffectParams, global?: EffectParams): number {
+  const v = seg?.sharpen ?? global?.sharpen ?? 0
+  const n = Math.round(Number(v))
+  if (!Number.isFinite(n) || n === 0) return 0
+  return n / 50
+}
+
+// ---------------------------------------------------------------------------
+// chromatic -- mirrors the render's `rgbashift=rh=round(ch/8):bh=-round(ch/8)`
+// (green untouched). ★DIRECTION MEASURED, NOT ASSUMED (2026-08-10): a known
+// red-channel edge fed through rgbashift=rh=5 moved 5 PIXELS RIGHT (x=50 ->
+// x=55) -- so a positive shift moves that channel's content toward +x, i.e.
+// output(x) = input(x - shift). Sampled here as v_uv - shift*u_texel, edge=
+// smear (clamp), which is what CLAMP_TO_EDGE already gives every texture in
+// this file -- no special-case needed.
+export const FRAG_CHROMATIC = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex;
+uniform vec2 u_texel;
+uniform float u_rh, u_bh;
+void main() {
+  float r = texture(u_tex, v_uv - vec2(u_rh * u_texel.x, 0.0)).r;
+  float g = texture(u_tex, v_uv).g;
+  float b = texture(u_tex, v_uv - vec2(u_bh * u_texel.x, 0.0)).b;
+  o = vec4(r, g, b, 1.0);
+}`
+
+/** Slider -> {rh, bh} in PIXELS. Mirrors render.ts's `round(ch/8)` / `-round(ch/8)`. */
+export function chromaticShift(seg?: EffectParams, global?: EffectParams): { rh: number; bh: number } {
+  const ch = iv(seg?.chromatic) || iv(global?.chromatic)
+  const shift = Math.round(ch / 8)
+  return { rh: shift, bh: -shift }
+}
+
+// ---------------------------------------------------------------------------
+// motionBlur -- mirrors the render's `tmix=frames=N` (unweighted average of
+// the N most recently decoded video frames, ffmpeg's tmix default weights).
+// Fed by a frame-history ring buffer (preview-gl.ts), NOT by re-sampling one
+// static texture like every other pass here -- so this shader takes N
+// explicit texture units instead of the usual single u_tex.
+export const FRAG_MOTIONBLUR = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_tex0, u_tex1, u_tex2, u_tex3, u_tex4, u_tex5;
+uniform int u_n;
+void main() {
+  vec3 acc = texture(u_tex0, v_uv).rgb;
+  if (u_n > 1) acc += texture(u_tex1, v_uv).rgb;
+  if (u_n > 2) acc += texture(u_tex2, v_uv).rgb;
+  if (u_n > 3) acc += texture(u_tex3, v_uv).rgb;
+  if (u_n > 4) acc += texture(u_tex4, v_uv).rgb;
+  if (u_n > 5) acc += texture(u_tex5, v_uv).rgb;
+  o = vec4(acc / float(u_n), 1.0);
+}`
+
+/**
+ * Slider -> ring-buffer frame count N (1..6). ★Mirrors render.ts EXACTLY
+ * (src/render.ts:133-134, read not recalled): `mb ? 1 + Math.round(mb/20) : 1`
+ * -- N=1 (no blend, the worker emits no tmix filter at all) when motionBlur
+ * is 0. The 2026-08-10 blocked-design note (lane_c_item4_g_blocked_design)
+ * wrote this as `2 + round(mb/20)`; that was a design-time guess made before
+ * this line of render.ts was read directly, and it is off by one -- this is
+ * the corrected version, taken from the worker source itself.
+ */
+export function motionBlurN(seg?: EffectParams, global?: EffectParams): number {
+  const mb = iv(seg?.motionBlur) || iv(global?.motionBlur)
+  return mb ? 1 + Math.round(mb / 20) : 1
 }

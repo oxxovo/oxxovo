@@ -232,7 +232,7 @@ export type CreateGenResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'unknown_preset' | 'invalid_param' | 'disabled' | 'failed' | 'not_image_model' | 'not_video_model' | 'character_not_found' | 'parent_not_found' | 'parent_not_ready' | 'parent_not_image' | 'bad_shots'
+      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'unknown_preset' | 'invalid_param' | 'disabled' | 'failed' | 'not_image_model' | 'not_video_model' | 'not_i2v_model' | 'character_not_found' | 'character_no_reference' | 'parent_not_found' | 'parent_not_ready' | 'parent_not_image' | 'bad_shots'
       detail?: string
     }
 
@@ -595,10 +595,15 @@ export type LoadComposeResult =
         // Account nickname the entry will publish as (option A: the compose form
         // no longer asks for a name; identity is the account, editable in /profile).
         nickname: string
-        // Music bed: allowlist gate (season studio_music_enabled) + the pickable
-        // library / own-AI tracks. enabled=false -> editor hides the music panel.
+        // Music bed: allowlist gate (season studio_music_enabled).
+        // enabled=false -> editor hides the music panel.
+        // ★The pickable tracks themselves are NOT here any more. Season 0's
+        // library is planned at 300 tracks, and EVERY compose-editor load was
+        // serialising all of them -- including the majority of loads where the
+        // participant never opens the music panel, and every reload during a
+        // long editing session. The editor fetches them through
+        // listMusicAssetsAction when the picker is first used.
         musicEnabled: boolean
-        musicAssets: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
         // AI music generation (Stage 6). aiEnabled=false -> the editor shows the
         // library picker only (no half-wired generate button). creditCost is the
         // whole-credit price of one AI generation (config cost x pricing).
@@ -714,7 +719,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
     // read the AI-gen switch + per-generation credit cost (both dynamic) so the
     // editor can show the AI panel only when it will actually work.
     const gate = await getMusicGate(season.id)
-    const { enabled: musicEnabled, assets: musicAssets } = await listMusicAssets(season.id, auth.userId)
+    const musicEnabled = gate.enabled
     let musicAiEnabled = gate.aiEnabled
     let musicCreditCost = 0
     let musicCap = 0
@@ -786,7 +791,6 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         resumeRender,
         restorableRender,
         musicEnabled,
-        musicAssets,
         musicAiEnabled,
         musicCreditCost,
         musicPromptMax: MAX_MUSIC_PROMPT,
@@ -802,6 +806,30 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
 // Owner-scoped poll for the AI-music panel: the editor calls this after
 // generateMusicAction to watch the queued track through to ready/failed. Returns
 // url/title/mood once ready so the editor can add it to the picker.
+export type MusicAssetDTO = { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }
+
+/**
+ * The pickable music beds, fetched when the editor's picker is first used.
+ *
+ * ★Split out of loadComposeState on 2026-08-02. It used to ride along with every
+ * compose-editor load, so the season-0 library (planned at 300 tracks) was
+ * serialised into the payload of every participant who opened the editor,
+ * whether or not they ever touched music -- and again on every reload.
+ *
+ * ★An empty array is returned for a closed gate, not an error: listMusicAssets
+ * checks the season switch itself and is the authority. This action adds only
+ * the session6 + token checks every other action here has.
+ */
+export async function listMusicAssetsAction(token: string): Promise<MusicAssetDTO[]> {
+  if (!(await isSession6Enabled())) return []
+  const auth = await verifyToken(token)
+  if (!auth) return []
+  const season = await getCurrentSeason()
+  if (!season) return []
+  const { assets } = await listMusicAssets(season.id, auth.userId)
+  return assets
+}
+
 export async function pollMusicAction(token: string, assetId: string): Promise<MusicAssetStatusDTO> {
   if (!(await isSession6Enabled())) return null
   const auth = await verifyToken(token)

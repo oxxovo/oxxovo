@@ -2,13 +2,21 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
+import { formatDeadlinePT } from '@/lib/seasons'
+import { useT } from '@/lib/admin-i18n'
 
 // Filter bar above the grid (arena-only). Fixed pill labels match 8_final exactly
 // -- "Current Competition" / "Newest First" / "🏆 Champions" -- each opening a
 // small menu. NO Trending / Staff Picks / Featured, ever (fairness policy): the
 // only orderings offered are submission-order ("Newest First") and the neutral
-// season/champion filters. Champions has no winners yet (Season 0), so its menu
-// shows the reveal-date note instead of names.
+// season/champion filters. Champions has no winners yet, so its menu shows the
+// reveal-date note instead of names.
+//
+// ★"Season 0 Champions revealed Sep 29" used to be a literal string -- caught
+// 2026-08-10 (제니3): a hardcoded date is a leak every time the schedule
+// shifts (already happened once this season, PT not PST/PDT). seasonName +
+// awardsAt now come from the caller's already-loaded season row, never typed
+// here.
 
 export type FilterSeason = { id: string; label: string }
 
@@ -16,17 +24,26 @@ export function ArenaFilterBar({
   seasons,
   activeSeason,
   basePath = '/watch',
+  seasonName,
+  awardsAt,
 }: {
   seasons: FilterSeason[]
   activeSeason?: string
   basePath?: string
+  // Current season's display name + awards_announcement_at (ISO), for the
+  // Champions dropdown's reveal note. Both optional -- the note degrades to a
+  // generic line rather than rendering "undefined" if either is unavailable.
+  seasonName?: string
+  awardsAt?: string | null
 }) {
+  const t = useT()
+  const revealedAt = formatDeadlinePT(awardsAt)
   return (
     <div className="mb-5 flex flex-wrap items-center gap-3">
       {/* Text-only tabs (8_final): the season tab is the active one (purple +
           underline); the others are grey. No pill boxes. */}
-      <Dropdown label="Current Competition" active>
-        <MenuLink href={basePath} label="All Competitions" active={!activeSeason} />
+      <Dropdown label={t.watch.filter_current} active>
+        <MenuLink href={basePath} label={t.watch.filter_all_competitions} active={!activeSeason} />
         {seasons.map((s) => (
           <MenuLink key={s.id} href={`${basePath}?season=${s.id}`} label={s.label} active={activeSeason === s.id} />
         ))}
@@ -34,17 +51,19 @@ export function ArenaFilterBar({
 
       <Separator />
 
-      <Dropdown label="Newest First">
+      <Dropdown label={t.watch.filter_newest}>
         {/* Submission order is the only ordering (no curation). */}
-        <MenuLink href={basePath} label="Newest First" active />
+        <MenuLink href={basePath} label={t.watch.filter_newest} active />
       </Dropdown>
 
       <Separator />
 
-      <Dropdown label="🏆 Champions" white>
-        <p className="px-3 py-2 text-[12px] leading-relaxed text-white/55">Season 0 Champions revealed Sep 29</p>
+      <Dropdown label={t.watch.filter_champions} white>
+        <p className="px-3 py-2 text-[12px] leading-relaxed text-white/55">
+          {t.watch.champions_note(seasonName ?? null, revealedAt)}
+        </p>
         <div aria-disabled className="cursor-not-allowed px-3 py-2 text-[12px] text-white/30">
-          All Champions
+          {t.watch.filter_all_champions}
         </div>
       </Dropdown>
 
@@ -52,7 +71,7 @@ export function ArenaFilterBar({
         href={basePath}
         className="ml-auto text-[13px] font-bold text-[#a855ff] transition hover:text-white"
       >
-        View All →
+        {t.watch.filter_viewall}
       </Link>
     </div>
   )

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState } from 'react'
+import { useT, useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
 
 // Fixed top bar (YouTube-style): hamburger + logo (left), video search (by
 // creator name / nickname), notifications + profile (right). Submitting the
@@ -14,6 +15,7 @@ export function WatchTopBar({
   onMenu: () => void
   user: { email: string } | null
 }) {
+  const t = useT()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [q, setQ] = useState(searchParams.get('q') ?? '')
@@ -56,13 +58,14 @@ export function WatchTopBar({
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search videos & creators"
+          placeholder={t.watch.search_placeholder}
           aria-label="Search videos and creators"
           className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-[#8b22ff]"
         />
       </form>
 
       <div className="flex items-center gap-3 shrink-0">
+        <LangSwitch />
         <span aria-label="Notifications" className="text-lg text-white/50">🔔</span>
         {user ? (
           <Link
@@ -74,10 +77,26 @@ export function WatchTopBar({
           </Link>
         ) : (
           <Link href="/login" className="text-sm font-bold text-white/80 hover:text-white">
-            Sign in
+            {t.watch.signin}
           </Link>
         )}
       </div>
     </header>
+  )
+}
+
+// Same KO|EN toggle as landing/membership/profile/ArenaTopBar -- shared
+// localStorage key, so a choice made anywhere follows the visitor everywhere.
+function LangSwitch() {
+  const lang = useAdminLang()
+  const cls = (active: boolean) =>
+    `px-2 py-1 text-[11px] transition ${active ? 'text-[#8b22ff] font-bold' : 'text-white/40 hover:text-white/70'}`
+  const set = (next: Lang) => setAdminLang(next)
+  return (
+    <div className="flex items-center border border-white/15 rounded overflow-hidden">
+      <button type="button" onClick={() => set('ko')} className={cls(lang === 'ko')}>KO</button>
+      <span className="text-white/20 text-[11px]">|</span>
+      <button type="button" onClick={() => set('en')} className={cls(lang === 'en')}>EN</button>
+    </div>
   )
 }

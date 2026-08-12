@@ -90,7 +90,14 @@ const DICT = {
     preset_clear: '해제',
     preset_group_action: '액션',
     preset_group_drama: '드라마',
-    preset_group_beauty: '뷰티/제품',
+    // ★A MOOD, NOT A PRODUCT CATEGORY. This pill used to read '뷰티/제품' --
+    // an industry/product-category word on the participant's screen, which is
+    // exactly what the main-round theme must not be leaked by. Its two siblings
+    // are moods ('액션'/'드라마'), so the odd one out was also the leaky one.
+    // The DB key stays `group_id='beauty'` (internal, never rendered); only the
+    // label moved. Keep this a mood or a camera behaviour -- never a product
+    // type, an industry, or "광고"/"CF".
+    preset_group_beauty: '엘레강스',
     preset_labels: {
       A1: 'FPV 체이스', A2: '휩팬 리빌', A3: '아크 오빗',
       D1: '슬로우 푸시인', D2: '핸드헬드 긴장',
@@ -216,7 +223,7 @@ const DICT = {
     preset_clear: 'Clear',
     preset_group_action: 'Action',
     preset_group_drama: 'Drama',
-    preset_group_beauty: 'Beauty/Product',
+    preset_group_beauty: 'Elegant', // mood, not a product category -- see the KO note
     preset_labels: {} as Record<string, string>, // en falls back to DB label_en
     preset_example_badge: 'Example',
     preset_example_note:
@@ -711,8 +718,15 @@ function Generator({
   prefill: Prefill | null
   onPrefillApplied: () => void
 }) {
-  const [modelId, setModelId] = useState(state.models[0]?.id ?? '')
-  const model = state.models.find((m) => m.id === modelId) ?? state.models[0]
+  // ★Text-to-video only. An i2v model (accepts_start_image) needs a start image
+  // this form has no way to supply -- it belongs to the AI-actor "shoot shots"
+  // step, which builds that input server-side. Today this filter removes nothing
+  // (the one i2v row is inactive, measured 2026-08-02), and that is exactly why
+  // it has to exist before ⑪ flips it on: activating the model for step ③ would
+  // otherwise also drop it into this picker, where every generation would 422.
+  const t2vModels = state.models.filter((m) => !m.acceptsI2v)
+  const [modelId, setModelId] = useState(t2vModels[0]?.id ?? '')
+  const model = t2vModels.find((m) => m.id === modelId) ?? t2vModels[0]
   const [duration, setDuration] = useState(model?.min_duration_seconds ?? 4)
   const [prompt, setPrompt] = useState('')
   // CameraDirector (Stage 1): chosen preset + advanced params. No preset = the
@@ -766,7 +780,7 @@ function Generator({
     ? state.draftGenerationsUsed >= state.maxDraftGenerations
     : state.generationsUsed >= state.maxGenerations
   const insufficient = credits > state.balance
-  const disabled = pending || !model || prompt.trim() === '' || capReached || insufficient || !state.models.length
+  const disabled = pending || !model || prompt.trim() === '' || capReached || insufficient || !t2vModels.length
 
   const errText = (e: string, detail?: string): string => {
     switch (e) {
@@ -811,8 +825,8 @@ function Generator({
     })
   }
 
-  const competitionModels = state.models.filter((m) => m.tier !== 'draft')
-  const draftModels = state.models.filter((m) => m.tier === 'draft')
+  const competitionModels = t2vModels.filter((m) => m.tier !== 'draft')
+  const draftModels = t2vModels.filter((m) => m.tier === 'draft')
   const optionLabel = (m: (typeof state.models)[number]) =>
     `${m.display_name} · ${m.tier}${m.hasAudio ? '' : ` · ${t.silent_marker}`}`
 

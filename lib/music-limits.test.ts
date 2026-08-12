@@ -5,6 +5,8 @@ import assert from 'node:assert/strict'
 import {
   validateMusicBed,
   validateMusicPrompt,
+  validateMusicPricing,
+  musicCostUsd,
   findImitation,
   parseArtistBlocklist,
   MAX_MUSIC_PROMPT,
@@ -91,4 +93,44 @@ test('parseArtistBlocklist accepts JSON array or delimited', () => {
   assert.deepEqual(parseArtistBlocklist('A, B\nC'), ['A', 'B', 'C'])
   assert.deepEqual(parseArtistBlocklist(''), [])
   assert.deepEqual(parseArtistBlocklist(null), [])
+})
+
+// ---------------------------------------------------------------------------
+// Cost model + price fail-closed
+//
+// Measured 2026-07-31 against the live DB: platform_config had NO studio_music_*
+// keys at all. getMusicGenConfig() therefore returned 0, creditsForCost(0) is 0,
+// and `balance < 0` is false for every user -- so flipping the season's music
+// switch (a SQL UPDATE, not a deploy) would have made AI music free. The company
+// pays nothing toward participant generation, so zero means "not priced yet".
+
+test('cost is base + perSecond x duration, so either vendor shape works', () => {
+  // per-output vendor: flat fee, no rate
+  assert.equal(musicCostUsd({ baseUsd: 0.4, perSecondUsd: 0 }, 30), 0.4)
+  assert.equal(musicCostUsd({ baseUsd: 0.4, perSecondUsd: 0 }, 120), 0.4)
+  // per-minute vendor: no fee, a rate (0.06/min -> 0.001/s)
+  assert.equal(musicCostUsd({ baseUsd: 0, perSecondUsd: 0.001 }, 30), 0.03)
+  assert.equal(musicCostUsd({ baseUsd: 0, perSecondUsd: 0.001 }, 120), 0.12)
+  // both at once
+  assert.ok(Math.abs(musicCostUsd({ baseUsd: 0.2, perSecondUsd: 0.001 }, 30) - 0.23) < 1e-9)
+})
+
+test('REGRESSION: an unconfigured price refuses the generation, it does not cost 0', () => {
+  assert.equal(validateMusicPricing({ baseUsd: 0, perSecondUsd: 0 }, 30), 'music_not_priced')
+})
+
+test('a per-second rate with zero duration is still unpriced', () => {
+  assert.equal(validateMusicPricing({ baseUsd: 0, perSecondUsd: 0.001 }, 0), 'music_not_priced')
+})
+
+test('either half alone is a valid configuration', () => {
+  assert.equal(validateMusicPricing({ baseUsd: 0.4, perSecondUsd: 0 }, 30), null)
+  assert.equal(validateMusicPricing({ baseUsd: 0, perSecondUsd: 0.001 }, 30), null)
+})
+
+test('negative or non-finite prices are refused, never charged', () => {
+  assert.equal(validateMusicPricing({ baseUsd: -1, perSecondUsd: 0 }, 30), 'music_not_priced')
+  assert.equal(validateMusicPricing({ baseUsd: 0, perSecondUsd: -1 }, 30), 'music_not_priced')
+  assert.equal(validateMusicPricing({ baseUsd: NaN, perSecondUsd: 0 }, 30), 'music_not_priced')
+  assert.equal(validateMusicPricing({ baseUsd: Infinity, perSecondUsd: 0 }, 30), 'music_not_priced')
 })
