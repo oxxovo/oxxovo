@@ -29,7 +29,7 @@ const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean 
   { href: '/admin/applications', key: 'applications', emoji: '📹' },
   { href: '/admin/pre-registrations', key: 'pre_registrations', emoji: '📨' },
   { href: '/admin/contacts', key: 'contacts', emoji: '📇' },
-  { href: '/admin/winners', key: 'winners', emoji: '🏆', soon: true },
+  { href: '/admin/winners', key: 'winners', emoji: '🏆' },
   { href: '/admin/partners', key: 'partners', emoji: '🤝' },
   { href: '/admin/emails', key: 'emails', emoji: '📧' },
   { href: '/admin/broadcasts', key: 'broadcasts', emoji: '📢' },
