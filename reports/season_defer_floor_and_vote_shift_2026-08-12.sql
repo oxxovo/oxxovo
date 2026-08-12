@@ -17,9 +17,9 @@
 --      means "never told a number" and holds for review the same way (see
 --      lib/seasons.ts comment) -- it is not "no floor enforced".
 --   3. season_0 values: min_participants 50 -> 100 (the number that actually
---      matters was stale -- confirmed against the live "확정값 시트" 2026-08-12,
---      NOT the unrelated Founding Creator free-membership cap, which is also
---      100 but a different, platform-lifetime number). New
+--      matters was stale -- confirmed against HQ's settled-values sheet,
+--      2026-08-12, NOT the unrelated Founding Creator free-membership cap,
+--      which is also 100 but a different, platform-lifetime number). New
 --      absolute_min_participants = 80. max_defer_count 2 -> 3.
 --
 -- ASCII-only. Run as one block in Supabase SQL Editor.
