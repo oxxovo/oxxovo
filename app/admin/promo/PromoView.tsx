@@ -25,11 +25,16 @@ export type PromoRow = {
 
 const BUCKET = 'promo-videos'
 
+// 'X' alone read as a close/dismiss icon, not a channel name -- it's a single
+// glyph sitting at the right edge of the row, exactly where a modal's close
+// button would be (TK misread it as delete, 2026-08-12). The other three
+// channels don't have this problem because their names are long enough to
+// read as text on sight.
 const CHANNEL_LABEL: Record<string, string> = {
   instagram: 'Instagram',
   tiktok: 'TikTok',
   youtube: 'YouTube',
-  x: 'X',
+  x: 'X (Twitter)',
 }
 
 const DICT = {
@@ -66,7 +71,8 @@ const DICT = {
     postiz_off: 'Postiz 미연결 — 키 주입 + 배포 후 발행이 활성됩니다.',
     delete_btn: '삭제',
     deleting: '삭제 중…',
-    confirm_delete: '이 영상을 삭제할까요? (Storage 파일도 함께 삭제)',
+    confirm_delete: (label: string) =>
+      `'${label}' 영상을 삭제할까요?\nStorage 파일도 함께 삭제되며, 되돌릴 수 없습니다.`,
     posted_none: '—',
     play: '재생',
     err_no_channel: '채널을 1개 이상 선택하세요.',
@@ -106,7 +112,8 @@ const DICT = {
     postiz_off: 'Postiz not connected — publishing activates after key injection + deploy.',
     delete_btn: 'Delete',
     deleting: 'Deleting…',
-    confirm_delete: 'Delete this video? (Storage file is removed too)',
+    confirm_delete: (label: string) =>
+      `Delete '${label}'?\nThe Storage file is removed too, and this cannot be undone.`,
     posted_none: '—',
     play: 'Play',
     err_no_channel: 'Select at least one channel.',
@@ -306,7 +313,11 @@ function PromoCard({
       : t.posted_none
 
   const handleDelete = () => {
-    if (!confirm(t.confirm_delete)) return
+    // Irreversible (lib/studio-actors-adjacent output, remade by hand if lost
+    // by mistake) -- names the specific video rather than a generic "this
+    // one", so a reflexive OK on the browser dialog still shows what it just
+    // agreed to.
+    if (!confirm(t.confirm_delete(row.label || row.id))) return
     startDelete(async () => {
       await deletePromoVideoAction(row.id)
       router.refresh()
@@ -356,11 +367,16 @@ function PromoCard({
 
           <PublishPanel t={t} row={row} channels={channels} postizEnabled={postizEnabled} />
 
+          {/* Irreversible (Storage file is gone, and it's 지수3's rendered
+              output -- redoing it means regenerating, not undoing). Was
+              faint gray text sitting right under Publish, easy to misread as
+              a secondary/harmless action (TK, 2026-08-12). A border + red
+              tint + its own spacing separates it from the publish flow. */}
           <button
             type="button"
             onClick={handleDelete}
             disabled={deleting}
-            className="mt-3 text-[11px] text-white/30 hover:text-[#ff8888] transition disabled:opacity-40"
+            className="mt-4 pt-3 border-t border-white/5 text-[11px] font-bold text-[#ff8888]/70 hover:text-[#ff4444] transition disabled:opacity-40 block"
           >
             {deleting ? t.deleting : t.delete_btn}
           </button>
