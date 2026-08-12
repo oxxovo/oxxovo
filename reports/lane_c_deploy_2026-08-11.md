@@ -59,6 +59,24 @@ Playwright로 이미 확인한 것:
 - `/admin/actors` 카드·잠금배지·provenance는 **이번 세션에서 건드리지
   않은 코드**(오늘 변경분과 무관) — 회귀 여부만 대표님 육안 확인 필요.
 
+## 4. 2차 재배포 (같은 날, 대표님 프로덕션 확인 3건 반영)
+
+앱만(워커는 그 사이 변경 0 — `git rev-list --count origin/main..HEAD`
+확인, `oxxovo-studio` main과 lane-c HEAD 동일).
+
+- 신규 3커밋: `85c9d94`(배포 기록 문서) · `eb88ad0`(AI 회사명 노출 제거 —
+  랜딩+/faq+/about, CTA·날짜 KO/EN) · `3ab56f4`(Noto Sans KR 한글 폰트).
+- 머지: `feat/studio-lane-c` → `main`, `--no-ff`(`a8b4f27`). 새 스크래치
+  워크트리(`/tmp/oxxovo-redeploy`, 이전 것은 이미 정리돼 있었음)에서 실행,
+  충돌 0건.
+- `npm install` → `npm run build`(42라우트 전부) → `npm test` 483/483,
+  전부 PASS 확인 후 push(`4d64c99..a8b4f27`).
+- `vercel deploy --prod --yes` 직접 실행 → `dpl_Tu6Cg8xGnu86UCjBRA8peJERj5SY`,
+  `www.oxxovo.ai` alias 완료.
+- 배포 후 실측: `data-dpl-id`가 새 배포ID와 일치(진짜 이 배포가 떠 있음),
+  `coming-soon` 문자열 여전히 존재(게이트 안 건드림 재확인).
+- 스크래치 워크트리 정리 완료.
+
 ## 관련
 `deploy_trains_2026-08-06.md`(배포됨 기준 갱신) ·
 `worker_deploy_procedure_2026-08-06.md`(이번에 따른 선례) ·
