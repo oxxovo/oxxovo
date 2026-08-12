@@ -263,7 +263,11 @@ export function LandingView() {
               {t.landing.eyebrow}
             </div>
 
-            <h1 className="text-[clamp(32px,3.2vw,54px)] font-black uppercase leading-[.96] tracking-[-.04em]">
+            <h1
+              className={`text-[clamp(32px,3.2vw,54px)] font-black uppercase leading-[.96] ${
+                lang === 'ko' ? 'tracking-[-.02em]' : 'tracking-[-.04em]'
+              }`}
+            >
               {t.landing.h1_line1}<br />
               <span className="text-[#8b22ff] drop-shadow-[0_0_30px_rgba(139,34,255,.5)]">{t.landing.h1_line2}</span>
             </h1>
