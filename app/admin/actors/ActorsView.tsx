@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAdminLang } from '@/lib/admin-i18n'
+import { AdminPageHeader } from '../AdminPageHeader'
 
 // Read-only. There is no server action imported here on purpose -- see
 // app/admin/actors/page.tsx and lib/studio-official-actors.ts.
@@ -47,6 +48,12 @@ const DICT = {
     copy: 'Copy',
     copied: 'Copied',
     raw: 'Raw JSON',
+    // Badge text, kept separate from lockNote (HQ 2026-08-12): the badge used
+    // to hardcode English regardless of lang while the note right under it
+    // was already localized -- the same fact said twice in two languages.
+    badgeSigned: '🔒 signed',
+    badgePolicy: '⏳ policy',
+    badgeReadonly: 'read-only',
   },
   ko: {
     title: '배우',
@@ -65,6 +72,9 @@ const DICT = {
     copy: '복사',
     copied: '복사됨',
     raw: '원본 JSON',
+    badgeSigned: '🔒 서명 잠금',
+    badgePolicy: '⏳ 정책 잠금',
+    badgeReadonly: '읽기 전용',
   },
 }
 
@@ -78,10 +88,7 @@ export function ActorsView({ rows }: { rows: ActorRow[] }) {
 
   return (
     <div className="p-8 max-w-5xl">
-      <header className="mb-8">
-        <h1 className="text-3xl font-black">{t.title}</h1>
-        <p className="mt-1 text-sm text-white/50 max-w-2xl">{t.subtitle}</p>
-      </header>
+      <AdminPageHeader title={t.title} subtitle={t.subtitle} />
 
       {rows.length === 0 ? (
         <p className="text-white/40 text-sm">{t.none}</p>
@@ -123,18 +130,18 @@ function ActorCard({ row, t }: { row: ActorRow; t: Dict }) {
 
       {/* display_name: locked, but for a different reason than everything below.
           The two notes are worded so neither can be mistaken for the other. */}
-      <Field label="display_name" lock="policy" lockNote={t.policyLocked}>
+      <Field label="display_name" lock="policy" lockNote={t.policyLocked} t={t}>
         <span className="text-white/80">{t.displayPending(row.displayName)}</span>
       </Field>
 
-      <Field label="status" lock="none" lockNote={t.notEditable}>
+      <Field label="status" lock="none" lockNote={t.notEditable} t={t}>
         <code className="text-white/80">{row.status}</code>
       </Field>
-      <Field label="kind" lock="none" lockNote={t.notEditable}>
+      <Field label="kind" lock="none" lockNote={t.notEditable} t={t}>
         <code className="text-white/80">{row.kind}</code>
       </Field>
 
-      <Field label="canonical_frontal_url" lock="signature" lockNote={t.sigLocked}>
+      <Field label="canonical_frontal_url" lock="signature" lockNote={t.sigLocked} t={t}>
         <a
           href={row.canonicalFrontalUrl}
           target="_blank"
@@ -145,7 +152,7 @@ function ActorCard({ row, t }: { row: ActorRow; t: Dict }) {
         </a>
       </Field>
 
-      <Field label={t.refs(row.referenceUrls.length)} lock="signature" lockNote={t.sigLocked}>
+      <Field label={t.refs(row.referenceUrls.length)} lock="signature" lockNote={t.sigLocked} t={t}>
         <ul className="space-y-1">
           {row.referenceUrls.map((u) => (
             <li key={u}>
@@ -162,13 +169,13 @@ function ActorCard({ row, t }: { row: ActorRow; t: Dict }) {
         </ul>
       </Field>
 
-      <Field label="cryptobind_algo" lock="signature" lockNote={t.sigLocked}>
+      <Field label="cryptobind_algo" lock="signature" lockNote={t.sigLocked} t={t}>
         <code className="text-white/60">{row.cryptobindAlgo ?? '-'}</code>
       </Field>
       <HexField label="cryptobind_hash" value={row.cryptobindHash} t={t} />
       <HexField label="cryptobind_signature" value={row.cryptobindSignature} t={t} />
 
-      <Field label={t.provenance} lock="signature" lockNote={t.sigLocked}>
+      <Field label={t.provenance} lock="signature" lockNote={t.sigLocked} t={t}>
         <ProvenanceBlock provenance={row.provenance} />
         <button
           type="button"
@@ -188,24 +195,28 @@ function ActorCard({ row, t }: { row: ActorRow; t: Dict }) {
 }
 
 // Lock kind drives the badge, so "cannot edit because crypto" and "cannot edit
-// because nobody has decided" are visibly different states.
+// because nobody has decided" are visibly different states. Badge TEXT is
+// localized (t), the three lock COLORS are not -- the color mapping is the
+// part of the design that stays fixed across languages.
 function Field({
   label,
   lock,
   lockNote,
+  t,
   children,
 }: {
   label: string
   lock: 'signature' | 'policy' | 'none'
   lockNote: string
+  t: Dict
   children: React.ReactNode
 }) {
   const badge =
     lock === 'signature'
-      ? { text: '🔒 signed', cls: 'border-[#8b22ff]/40 bg-[#8b22ff]/10 text-[#c79bff]' }
+      ? { text: t.badgeSigned, cls: 'border-[#8b22ff]/40 bg-[#8b22ff]/10 text-[#c79bff]' }
       : lock === 'policy'
-        ? { text: '⏳ policy', cls: 'border-[#ffaa44]/40 bg-[#ffaa44]/10 text-[#ffcc88]' }
-        : { text: 'read-only', cls: 'border-white/15 bg-white/5 text-white/40' }
+        ? { text: t.badgePolicy, cls: 'border-[#ffaa44]/40 bg-[#ffaa44]/10 text-[#ffcc88]' }
+        : { text: t.badgeReadonly, cls: 'border-white/15 bg-white/5 text-white/40' }
 
   return (
     <div className="mt-5 border-t border-white/5 pt-4">
@@ -224,7 +235,7 @@ function Field({
 function HexField({ label, value, t }: { label: string; value: string | null; t: Dict }) {
   const [copied, setCopied] = useState(false)
   return (
-    <Field label={label} lock="signature" lockNote={t.sigLocked}>
+    <Field label={label} lock="signature" lockNote={t.sigLocked} t={t}>
       <div className="flex items-center gap-3">
         <code className="text-white/70">{value ? `${value.slice(0, 16)}…` : '-'}</code>
         {value && (
