@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useAdminLang } from '@/lib/admin-i18n'
 import { GRADE_BADGE_CLASS, GRADE_LABEL_KO, GRADE_LABEL_EN, type Grade } from '@/lib/grades'
+import { AdminExternalLink } from '../AdminExternalLink'
 
 export type WinnerCard = {
   id: string
@@ -153,14 +154,12 @@ function WinnerTile({
         </div>
 
         {w.videoUrl && (
-          <a
+          <AdminExternalLink
             href={w.videoUrl}
-            target="_blank"
-            rel="noopener noreferrer"
             className="mt-2 inline-block text-[11px] text-[#ff8844] hover:underline font-bold"
           >
             {t.watch}
-          </a>
+          </AdminExternalLink>
         )}
       </div>
     </div>

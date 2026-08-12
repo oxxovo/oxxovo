@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useAdminLang } from '@/lib/admin-i18n'
 import { AdminPageHeader } from '../AdminPageHeader'
+import { AdminExternalLink } from '../AdminExternalLink'
 
 // Read-only. There is no server action imported here on purpose -- see
 // app/admin/actors/page.tsx and lib/studio-official-actors.ts.
@@ -142,28 +143,18 @@ function ActorCard({ row, t }: { row: ActorRow; t: Dict }) {
       </Field>
 
       <Field label="canonical_frontal_url" lock="signature" lockNote={t.sigLocked} t={t}>
-        <a
-          href={row.canonicalFrontalUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="break-all text-[#b66cff] hover:underline"
-        >
+        <AdminExternalLink href={row.canonicalFrontalUrl} className="break-all text-[#b66cff] hover:underline">
           {row.canonicalFrontalUrl}
-        </a>
+        </AdminExternalLink>
       </Field>
 
       <Field label={t.refs(row.referenceUrls.length)} lock="signature" lockNote={t.sigLocked} t={t}>
         <ul className="space-y-1">
           {row.referenceUrls.map((u) => (
             <li key={u}>
-              <a
-                href={u}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="break-all text-[#b66cff] hover:underline"
-              >
+              <AdminExternalLink href={u} className="break-all text-[#b66cff] hover:underline">
                 {u}
-              </a>
+              </AdminExternalLink>
             </li>
           ))}
         </ul>

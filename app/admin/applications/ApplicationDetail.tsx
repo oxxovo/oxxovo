@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { useT, useAdminLang } from '@/lib/admin-i18n'
 import { VideoEmbed } from '@/app/_components/VideoEmbed'
+import { AdminExternalLink } from '../AdminExternalLink'
 import { type ApplicationRow } from './ApplicationsView'
 import { saveAdminNotes, saveStatus, saveAwardRank } from './actions'
 import {
@@ -121,14 +122,9 @@ export function ApplicationDetail({
               label={t.application_detail.label_channel}
               value={
                 app.channel_url ? (
-                  <a
-                    href={app.channel_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[#ff8844] hover:underline break-all"
-                  >
+                  <AdminExternalLink href={app.channel_url} className="text-[#ff8844] hover:underline break-all">
                     {app.channel_url}
-                  </a>
+                  </AdminExternalLink>
                 ) : (
                   t.application_detail.no_channel
                 )

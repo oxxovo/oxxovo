@@ -3,6 +3,7 @@
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { setCommentHidden } from './actions'
+import { AdminExternalLink } from '../AdminExternalLink'
 
 export type ModComment = {
   id: string
@@ -33,14 +34,12 @@ export function ModerationRow({ c }: { c: ModComment }) {
       <td className="py-3 pr-3 text-xs font-bold text-white whitespace-nowrap">{c.authorName}</td>
       <td className="py-3 pr-3 text-sm text-white/80">
         <p className="whitespace-pre-wrap">{c.body}</p>
-        <a
+        <AdminExternalLink
           href={`/watch/${c.applicationId}?round=${c.round}`}
-          target="_blank"
-          rel="noopener noreferrer"
           className="text-[11px] text-[#b66cff] hover:underline"
         >
           view video →
-        </a>
+        </AdminExternalLink>
       </td>
       <td className="py-3 pr-3 text-xs whitespace-nowrap">
         <span className={hidden ? 'text-amber-400' : 'text-emerald-400'}>{c.status}</span>

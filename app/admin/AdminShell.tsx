@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { type ReactNode } from 'react'
 import { useT, useAdminLang, setAdminLang } from '@/lib/admin-i18n'
 import { LogoutButton } from './LogoutButton'
+import { AdminExternalLink } from './AdminExternalLink'
 import { type AdminProfile } from '@/lib/admin-auth'
 
 type NavItemKey =
@@ -96,12 +97,12 @@ export function AdminShell({
         </nav>
 
         <div className="px-3 py-4 border-t border-[#ff4444]/15 space-y-2">
-          <Link
+          <AdminExternalLink
             href="/"
             className="block px-3 py-2 text-xs text-white/40 hover:text-white/70 transition"
           >
             {t.layout.view_public_site}
-          </Link>
+          </AdminExternalLink>
           <LangToggle />
           <LogoutButton />
         </div>

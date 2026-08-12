@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useT, useAdminLang } from '@/lib/admin-i18n'
 import { ConfirmModal } from '@/app/_components/ConfirmModal'
+import { AdminExternalLink } from '../../../AdminExternalLink'
 import {
   GRADE_BADGE_CLASS,
   GRADE_LABEL_EN,
@@ -296,14 +297,9 @@ function RowItem({
           </Link>
           <div className="flex items-center gap-2 mt-0.5">
             {row.videoUrl ? (
-              <a
-                href={row.videoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-white/40 hover:text-[#ff8844]"
-              >
+              <AdminExternalLink href={row.videoUrl} className="text-[11px] text-white/40 hover:text-[#ff8844]">
                 {t.main_results.col_video} ↗
-              </a>
+              </AdminExternalLink>
             ) : (
               <span className="text-[11px] text-white/30">{t.main_results.no_video}</span>
             )}
