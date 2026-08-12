@@ -3,6 +3,7 @@ import { Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 import AuthSync from "./_components/AuthSync";
+import HtmlLangSync from "./_components/HtmlLangSync";
 
 // ★2026-08-12: replaces Geist (was loaded but never wired into body's
 // font-family -- a dead load, latin-only) and Noto Sans KR (TK: unbalanced
@@ -80,7 +81,10 @@ export default function RootLayout({
       lang="en"
       className={`${pretendard.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col"><AuthSync />{children}</body>
+      {/* lang="en" here is the SSR default (matches admin-i18n's SERVER_DEFAULT);
+          HtmlLangSync flips it client-side once localStorage's ko/en toggle is
+          readable. See HtmlLangSync.tsx for why that gap exists and stays. */}
+      <body className="min-h-full flex flex-col"><AuthSync /><HtmlLangSync />{children}</body>
     </html>
   );
 }
