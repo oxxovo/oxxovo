@@ -6,6 +6,7 @@
 // no transitions/effects (hard cut by design). Tone matches /studio (dark + purple).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ComposeEdl } from '@/lib/cryptobind'
 
 export type SourceClip = {
   id: string
@@ -20,6 +21,12 @@ export type EditorRenderStatus = {
   videoUrl: string | null
   totalSeconds: number
   error?: string | null
+  // Asynchronous submission (mirrors the server RenderStatusDTO): acceptedAt is when
+  // the submission was RECEIVED -- before the deadline -- and finalized says whether
+  // the rendered file has landed on the entry. Between the two the editor shows
+  // "accepted, processing" rather than pretending the submission has not happened.
+  acceptedAt?: string | null
+  finalized?: boolean
 }
 
 // Applicant info collected at submission ONLY when the application round has no
@@ -44,24 +51,100 @@ export type ComposeSubmitCtx = {
   statementMax: number
 }
 
+// Server-side acceptance state for an asynchronous submission. Mirrors the server
+// ComposeSubmissionStatus without importing the server module into this client file.
+// Non-null = this round's submission was already accepted; the editor must show
+// "accepted, processing" on re-entry instead of offering the submit form again.
+export type ComposeSubmission = {
+  acceptedAt: string
+  finalized: boolean
+  renderId: string | null
+  renderStatus: 'queued' | 'rendering' | 'uploading' | 'ready' | 'submitted' | 'failed' | null
+  state: 'intent' | 'finalized' | 'render_failed' | 'render_requeued' | 'render_overdue' | 'finalize_rejected' | null
+} | null
+
+// The participant's latest resumable render (server-persisted), so re-entry can
+// restore the composition instead of starting over. Shape mirrors the server
+// ResumeRender without importing the server module into this client file.
+export type ComposeResumeRender = {
+  id: string
+  status: EditorRenderStatus['status']
+  videoUrl: string | null
+  totalSeconds: number
+  edl: { jobId: string; startMs: number; endMs: number }[]
+}
+
 export type ComposeEditorProps = {
   lang: 'ko' | 'en'
+  // Scopes the localStorage draft (omitted in the demo -> no persistence).
+  seasonId?: string
   clips: SourceClip[]
   minSeconds: number
   maxSeconds: number
   maxClips: number
   demo?: boolean
+  resumeRender?: ComposeResumeRender | null
+  // ★A FAILED render offered only for its arrangement. Never resumed (the row is
+  // dead); its EDL is the last server-side copy of the timeline, which is all a
+  // participant on a second device has after a stalled render was swept away.
+  restorableRender?: (Omit<ComposeResumeRender, 'status'> & { status: 'failed' }) | null
+  // Account nickname the entry publishes as (option A: no name/country fields;
+  // identity is the account, shown as a notice and editable in /profile).
+  nickname?: string
+  // Music bed assets available to the participant (platform library + their own
+  // AI-generated tracks), mood-grouped. Omitted in the demo / when music is off.
+  // ★NOT the normal path any more -- see loadMusicAssets. Kept for the demo,
+  // which has a fixed handful and no server action to call.
+  musicAssets?: { id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]
+  // ★Fetch the pickable beds ON DEMAND, instead of shipping them with the page.
+  //
+  // Season 0's library is planned at 300 tracks (대표님, 2026-08-02). Sending all
+  // of them inside loadComposeState meant every editor load carried the whole
+  // catalogue -- including the majority of loads where the participant never
+  // opens the music panel. This is called the first time the picker is needed.
+  //
+  // ★This is the seam a filtered picker needs anyway: 300 items do not belong in
+  // one <select>, and whatever replaces it will filter server-side, through here.
+  // The filter arguments are not invented yet because the classification axis is
+  // head office's call (see reports/lane_c_library_pipeline_design_2026-08-02.md).
+  loadMusicAssets?: () => Promise<{ id: string; url: string; title: string; mood: string; source: 'library' | 'ai' }[]>
+  // Allowlist gate: the season's studio_music_enabled. When false the editor hides
+  // the music panel entirely (createRender also rejects music with music_disabled).
+  musicEnabled?: boolean
+  // AI music generation (Stage 6). aiEnabled=false -> the editor shows the library
+  // picker only (no generate UI), so a half-wired button never appears while no
+  // provider is live. creditCost = whole credits per generation; promptMax =
+  // the prompt char cap. onGenerateMusic/pollMusic are omitted in the demo.
+  musicAiEnabled?: boolean
+  musicCreditCost?: number
+  musicPromptMax?: number
+  // Per-round AI-music ceiling + spend so far. cap 0 = unlimited -> no counter.
+  musicCap?: number
+  musicUsed?: number
+  onGenerateMusic?: (
+    prompt: string,
+    durationSeconds: number,
+  ) => Promise<{ ok: true; assetId: string; credits: number } | { ok: false; error: string; detail?: string }>
+  pollMusic?: (
+    assetId: string,
+  ) => Promise<{ status: 'queued' | 'generating' | 'ready' | 'failed'; url: string | null; title: string; mood: string; error: string | null } | null>
   onRender: (
-    edl: { jobId: string; startMs: number; endMs: number }[],
+    edl: ComposeEdl | { jobId: string; startMs: number; endMs: number }[],
   ) => Promise<{ ok: true; renderId: string } | { ok: false; error: string }>
   pollRender: (renderId: string) => Promise<EditorRenderStatus | null>
   // Submission step (optional -- the editor renders the submit UI only when both
   // are provided). The demo stubs these like onRender/pollRender.
   submitCtx?: ComposeSubmitCtx
+  // Server-side acceptance for this round (asynchronous submission). Omitted in the
+  // demo. Present + not finalized -> the "accepted, processing" screen.
+  submission?: ComposeSubmission
   onSubmit?: (
     renderId: string,
     applicant?: ComposeApplicant,
   ) => Promise<{ ok: true } | { ok: false; error: string }>
+  // Discard a rendered final (soft-delete). Optional -- the demo omits it. A
+  // submitted final is competition record and is never offered for deletion.
+  onDelete?: (renderId: string) => Promise<{ ok: true } | { ok: false; error: string }>
 }
 
 type Segment = { uid: string; jobId: string; startMs: number; endMs: number }
@@ -96,6 +179,8 @@ const DICT = {
     under: (n: number) => `최소 ${n}초가 필요합니다. 클립을 추가하거나 트림을 늘리세요.`,
     over: (n: number) => `${n}초를 초과했습니다. 트림하거나 클립을 줄이세요.`,
     clip_over: (n: number) => `클립 수가 최대 ${n}개를 초과했습니다.`,
+    clip_count: (n: number, max: number) => `클립 ${n} / ${max}`,
+    clip_max_reached: (max: number) => `최대 ${max}개까지 담을 수 있습니다. 더 넣으려면 기존 클립을 빼세요.`,
     preview: '시퀀스 미리보기',
     stop: '정지',
     render: '완성본 만들기',
@@ -111,10 +196,14 @@ const DICT = {
       r === 'main' ? '본선 라운드' : '예선 라운드',
     submit_btn: '제출하기',
     submitting: '제출 중…',
+    delete_final: '이 완성작 삭제',
+    deleting: '삭제 중…',
+    delete_final_confirm: '이 완성작을 삭제할까요? 편집 화면으로 돌아갑니다. (제출 전에만 가능)',
     submitted_ok: '제출 완료 — 채점 대기 중입니다. 제출 후에는 수정할 수 없습니다.',
     already_submitted: '이번 라운드에 이미 제출했습니다.',
     submit_warn: '제출하면 이 완성본이 채점에 들어가며 되돌릴 수 없습니다.',
-    need_info: '예선은 이 제출이 곧 참가 신청입니다 — 아래 정보를 입력하세요.',
+    need_info: '예선은 이 제출이 곧 참가 신청입니다 — 작품 설명과 동의만 입력하세요.',
+    publish_as: (n: string) => `이 작품은 '${n}'(으)로 공개됩니다 — 이름은 프로필에서 변경할 수 있어요.`,
     f_name: '창작자 이름',
     f_statement: (n: number, m: number) => `작품 설명 (${n}~${m}자)`,
     f_country: '국가 (선택)',
@@ -155,6 +244,8 @@ const DICT = {
     under: (n: number) => `At least ${n}s required. Add a clip or extend a trim.`,
     over: (n: number) => `Over ${n}s. Trim or remove a clip.`,
     clip_over: (n: number) => `More than the max of ${n} clips.`,
+    clip_count: (n: number, max: number) => `Clips ${n} / ${max}`,
+    clip_max_reached: (max: number) => `You can add up to ${max} clips. Remove one to add another.`,
     preview: 'Preview sequence',
     stop: 'Stop',
     render: 'Make final',
@@ -170,10 +261,14 @@ const DICT = {
       r === 'main' ? 'Main round' : 'Application round',
     submit_btn: 'Submit',
     submitting: 'Submitting…',
+    delete_final: 'Delete this final',
+    deleting: 'Deleting…',
+    delete_final_confirm: 'Delete this final? You return to editing. (Only before submission.)',
     submitted_ok: 'Submitted — awaiting scoring. Submissions cannot be edited.',
     already_submitted: 'Already submitted for this round.',
     submit_warn: 'Submitting enters this final into scoring and cannot be undone.',
-    need_info: 'In the application round this submission is your entry — fill in your info below.',
+    need_info: 'In the application round this submission is your entry — just add your statement and agree below.',
+    publish_as: (n: string) => `This entry will be published as '${n}' — you can change your name in your profile.`,
     f_name: 'Creator name',
     f_statement: (n: number, m: number) => `Creator statement (${n}–${m} chars)`,
     f_country: 'Country (optional)',
@@ -216,6 +311,99 @@ export default function ComposeEditor(props: ComposeEditorProps) {
     agreedPrivacy: false,
     agreedIntegrity: false,
   })
+
+  // --- draft persistence (item 7) --------------------------------------------
+  // The render + its R2 video are server-persisted, but the arrangement +
+  // statement live only in React state. Restore them on re-entry so navigating
+  // away doesn't lose work.
+  const draftKey = props.seasonId ? `oxxovo_compose_draft_${props.seasonId}` : null
+  const restored = useRef(false)
+
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    type Edl = { jobId: string; startMs: number; endMs: number }
+    const edlEq = (a: Edl[], b: Edl[]) =>
+      a.length === b.length &&
+      a.every((s, i) => s.jobId === b[i].jobId && s.startMs === b[i].startMs && s.endMs === b[i].endMs)
+
+    // Read the local draft (same-browser latest edits).
+    let draftSegs: Edl[] | null = null
+    let draftAp: Partial<ComposeApplicant> | null = null
+    if (draftKey && typeof window !== 'undefined') {
+      try {
+        const raw = window.localStorage.getItem(draftKey)
+        if (raw) {
+          const d = JSON.parse(raw) as { segments?: Edl[]; ap?: Partial<ComposeApplicant> }
+          draftSegs = Array.isArray(d.segments) ? d.segments : null
+          draftAp = d.ap ?? null
+        }
+      } catch {
+        /* malformed draft -- ignore */
+      }
+    }
+
+    // Arrangement: the local draft wins (it reflects the newest same-browser
+    // edits); the server render's EDL is the fallback (cleared storage / other
+    // device). Drop segments whose source clip no longer exists.
+    const rr = props.resumeRender
+    const sourceEdl: Edl[] = draftSegs && draftSegs.length ? draftSegs : rr?.edl ?? []
+    const rebuilt = sourceEdl
+      .filter((e) => clipById.has(e.jobId))
+      .map((e) => ({ uid: nextUid(), jobId: e.jobId, startMs: e.startMs, endMs: e.endMs }))
+    if (rebuilt.length) setSegments(rebuilt)
+
+    // Bind a ready server render as directly submittable ONLY when it matches the
+    // restored arrangement -- otherwise the user edited after rendering and must
+    // re-render so the submitted composition matches what they see.
+    if (rr && rr.status === 'ready' && rr.videoUrl) {
+      const chosen = rebuilt.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs }))
+      if (edlEq(chosen, rr.edl)) {
+        setRenderId(rr.id)
+        setRenderState({ status: 'ready', videoUrl: rr.videoUrl, totalSeconds: rr.totalSeconds })
+      }
+    }
+
+    // Statement is restored from the local draft (name/country are no longer
+    // collected here -- option A resolves identity server-side from the account).
+    // Agreements are NOT restored -- re-affirmed every submission.
+    if (draftAp?.creatorStatement) {
+      setAp((a) => ({ ...a, creatorStatement: draftAp.creatorStatement ?? a.creatorStatement }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Persist arrangement + statement draft (not agreements) on change. Skip the
+  // empty state so the initial mount does not clobber an existing draft before
+  // the restore effect above has hydrated it.
+  useEffect(() => {
+    if (!draftKey || typeof window === 'undefined' || submitDone) return
+    const empty =
+      segments.length === 0 && !ap.creatorName.trim() && !ap.creatorStatement.trim() && !(ap.country ?? '').trim()
+    if (empty) return
+    try {
+      window.localStorage.setItem(
+        draftKey,
+        JSON.stringify({
+          segments: segments.map((s) => ({ jobId: s.jobId, startMs: s.startMs, endMs: s.endMs })),
+          ap: { creatorName: ap.creatorName, creatorStatement: ap.creatorStatement, country: ap.country },
+        }),
+      )
+    } catch {
+      /* quota / disabled storage -- non-fatal */
+    }
+  }, [segments, ap, submitDone, draftKey])
+
+  // A successful submission is permanent -> drop the draft.
+  useEffect(() => {
+    if (submitDone && draftKey && typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(draftKey)
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [submitDone, draftKey])
 
   const totalMs = segments.reduce((a, s) => a + (s.endMs - s.startMs), 0)
   const minMs = props.minSeconds * 1000
@@ -346,10 +534,11 @@ export default function ComposeEditor(props: ComposeEditorProps) {
   const sMin = props.submitCtx?.statementMin ?? 150
   const sMax = props.submitCtx?.statementMax ?? 250
   const stmtLen = ap.creatorStatement.trim().length
+  // Name/country are resolved server-side from the account (option A); the form
+  // only requires the statement + the three consents.
   const infoValid =
     !needInfo ||
-    (ap.creatorName.trim().length > 0 &&
-      stmtLen >= sMin &&
+    (stmtLen >= sMin &&
       stmtLen <= sMax &&
       ap.agreedRules &&
       ap.agreedPrivacy &&
@@ -361,12 +550,12 @@ export default function ComposeEditor(props: ComposeEditorProps) {
     if (!props.onSubmit || !renderId) return
     setSubmitErr(null)
     setSubmitting(true)
+    // Option A: name/country are omitted -- the server resolves them from the
+    // account (profile -> nickname). Only statement + consents come from here.
     const applicant: ComposeApplicant | undefined = needInfo
       ? {
-          creatorName: ap.creatorName.trim(),
+          creatorName: '',
           creatorStatement: ap.creatorStatement.trim(),
-          country: ap.country?.trim() || undefined,
-          channelUrl: ap.channelUrl?.trim() || undefined,
           agreedRules: ap.agreedRules,
           agreedPrivacy: ap.agreedPrivacy,
           agreedIntegrity: ap.agreedIntegrity,
@@ -376,6 +565,24 @@ export default function ComposeEditor(props: ComposeEditorProps) {
     if (res.ok) setSubmitDone(true)
     else setSubmitErr(res.error)
     setSubmitting(false)
+  }
+
+  // Discard the current rendered final (soft-delete) and return to editing. Only
+  // reachable before submission -- a submitted final is protected server-side.
+  const [deleting, setDeleting] = useState(false)
+  const doDeleteRender = async () => {
+    if (!props.onDelete || !renderId) return
+    if (typeof window !== 'undefined' && !window.confirm(t.delete_final_confirm)) return
+    setDeleting(true)
+    const res = await props.onDelete(renderId)
+    setDeleting(false)
+    if (res.ok) {
+      setRenderState(null)
+      setRenderId(null)
+      setSubmitErr(null)
+    } else {
+      setSubmitErr(res.error)
+    }
   }
 
   // ---------- render ----------
@@ -429,7 +636,16 @@ export default function ComposeEditor(props: ComposeEditorProps) {
 
       {/* My clips */}
       <section>
-        <h2 className={`${headCls} mb-3`}>{t.my_clips}</h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className={headCls}>{t.my_clips}</h2>
+          {/* Live clip count vs the cap, so a disabled Add button is explained. */}
+          <span className={`text-[11px] ${segments.length >= props.maxClips ? 'text-amber-300' : 'text-white/40'}`}>
+            {t.clip_count(segments.length, props.maxClips)}
+          </span>
+        </div>
+        {segments.length >= props.maxClips && (
+          <p className="mb-2 text-[11px] text-amber-300/80">{t.clip_max_reached(props.maxClips)}</p>
+        )}
         {props.clips.length === 0 ? (
           <p className="text-sm text-white/45">{t.no_clips}</p>
         ) : (
@@ -613,16 +829,16 @@ export default function ComposeEditor(props: ComposeEditorProps) {
                     {needInfo && (
                       <div className="space-y-2.5">
                         <p className="text-[11px] text-[#d9b8ff]">{t.need_info}</p>
+                        {/* Option A: identity is the account -- no name/country
+                            fields here. The entry publishes as the account
+                            nickname (resolved server-side), editable in /profile. */}
+                        {props.nickname && (
+                          <p className="rounded border border-white/10 bg-white/[.03] px-3 py-2 text-[11px] text-white/65">
+                            {t.publish_as(props.nickname)}
+                          </p>
+                        )}
                         <label className="block">
-                          <span className="text-[10px] uppercase tracking-wider text-white/40">{t.f_name}</span>
-                          <input
-                            value={ap.creatorName}
-                            onChange={(e) => setAp((a) => ({ ...a, creatorName: e.target.value }))}
-                            className="mt-1 w-full rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white focus:border-[#8b22ff] focus:outline-none"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/40">
+                          <span className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/70">
                             <span>{t.f_statement(sMin, sMax)}</span>
                             <span className={stmtLen < sMin || stmtLen > sMax ? 'text-[#ff8888]' : 'text-[#b66cff]'}>
                               {stmtLen}{t.chars}
@@ -632,29 +848,15 @@ export default function ComposeEditor(props: ComposeEditorProps) {
                             value={ap.creatorStatement}
                             onChange={(e) => setAp((a) => ({ ...a, creatorStatement: e.target.value }))}
                             rows={3}
-                            className="mt-1 w-full rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white focus:border-[#8b22ff] focus:outline-none"
+                            className="mt-1 w-full rounded border border-white/20 bg-[#070610] px-3 py-2 text-sm text-[#ededed] focus:border-[#8b22ff] focus:outline-none"
                           />
                         </label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            value={ap.country}
-                            onChange={(e) => setAp((a) => ({ ...a, country: e.target.value }))}
-                            placeholder={t.f_country}
-                            className="rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white placeholder-white/30 focus:border-[#8b22ff] focus:outline-none"
-                          />
-                          <input
-                            value={ap.channelUrl}
-                            onChange={(e) => setAp((a) => ({ ...a, channelUrl: e.target.value }))}
-                            placeholder={t.f_channel}
-                            className="rounded border border-white/10 bg-[#070610] px-3 py-2 text-sm text-white placeholder-white/30 focus:border-[#8b22ff] focus:outline-none"
-                          />
-                        </div>
                         {([
                           ['agreedRules', t.agree_rules],
                           ['agreedPrivacy', t.agree_privacy],
                           ['agreedIntegrity', t.agree_integrity],
                         ] as const).map(([key, label]) => (
-                          <label key={key} className="flex items-center gap-2 text-[12px] text-white/70">
+                          <label key={key} className="flex items-center gap-2 text-[12px] text-white/80">
                             <input
                               type="checkbox"
                               checked={ap[key]}
@@ -677,6 +879,19 @@ export default function ComposeEditor(props: ComposeEditorProps) {
                       {submitting ? t.submitting : t.submit_btn}
                     </button>
                   </div>
+                )}
+
+                {/* Discard this rendered final (soft-delete). Hidden once
+                    submitted -- a submitted final is competition record. */}
+                {props.onDelete && !submitDone && !props.submitCtx?.alreadySubmitted && (
+                  <button
+                    type="button"
+                    onClick={doDeleteRender}
+                    disabled={deleting}
+                    className="text-[11px] text-white/40 transition hover:text-[#ff8888] disabled:opacity-40"
+                  >
+                    {deleting ? t.deleting : t.delete_final}
+                  </button>
                 )}
               </div>
             )}

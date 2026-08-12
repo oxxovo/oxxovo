@@ -12,12 +12,14 @@ import { isWatchPublic } from '@/lib/watch-gate'
 //
 // Both flip back to allow-all automatically when their switch is lifted.
 // "/watch" also covers /watch/[id] and /watch-arena by prefix.
+// `host` names the canonical domain (www.oxxovo.ai — every other host 308s there);
+// it is only meaningful once something is indexable, so the total block omits it.
 export default function robots(): MetadataRoute.Robots {
   if (process.env.SITE_PUBLIC_ENABLED === 'false') {
     return { rules: { userAgent: '*', disallow: '/' } }
   }
   if (isWatchPublic()) {
-    return { rules: { userAgent: '*', allow: '/' } }
+    return { rules: { userAgent: '*', allow: '/' }, host: 'https://www.oxxovo.ai' }
   }
-  return { rules: { userAgent: '*', disallow: '/watch' } }
+  return { rules: { userAgent: '*', disallow: '/watch' }, host: 'https://www.oxxovo.ai' }
 }

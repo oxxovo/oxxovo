@@ -10,9 +10,9 @@ export const SEASON_ZONE = 'America/Los_Angeles'
 
 // Every auto-created season inherits the SAME community-vote weight, read by the
 // cron from platform_config.default_community_vote_weight (0.5) and passed in
-// here — there is deliberately NO per-season branching. Only season_0, the
-// hand-seeded bootstrap row, carries a different weight (0), and that lives
-// purely as a data value on that one row; the cron never creates season_0, so it
+// here — there is deliberately NO per-season branching. season_0 used to be the
+// exception (weight 0, Soak), but TK set it to 0.5 on 2026-08-06, so every
+// official season now runs AI 50 / audience 50; the cron never creates season_0, so it
 // never has to special-case it. ai_score_weight is derived as 1 - community so
 // the pair always sums to 1.0 (the seasonSchema invariant). If the policy ever
 // changes, edit the platform_config value, not this code. See
@@ -25,6 +25,7 @@ export type SeasonSchedule = {
   main_round_start_at: string
   main_round_end_at: string
   awards_announcement_at: string
+  prelim_results_announcement_at: string
 }
 
 // Given a season's opening Monday (00:00 PT, week 1) as a zoned DateTime, derive
@@ -50,6 +51,16 @@ export function computeSeasonSchedule(
     .plus({ days: 6 })
     .set({ hour: 23, minute: 59, second: 0, millisecond: 0 })
   const scoringComplete = open.plus({ weeks: 1 })
+  // ★Noon PT on the day scoring completes. This IS a number picked here, unlike
+  // the scoring buffer below which deliberately is not -- and the difference is
+  // whether it moves anything. The buffer shifts every downstream date, so it
+  // belongs to whoever owns the calendar. An announcement instant sits inside an
+  // interval that already exists (scoring completes Monday 00:00, the main round
+  // opens Wednesday 21:00) and moves nothing, so declining to pick one would not
+  // be caution: it would leave the column NULL and the result mail would simply
+  // never fire, silently. Noon is the convention season_0 set by hand (11/8
+  // 12:00 PT); changing a season is one UPDATE, no deploy.
+  const prelimResultsAnnouncement = scoringComplete.set({ hour: 12 })
   const mainStart = open
     .plus({ weeks: 1, days: 2 })
     .set({ hour: 21, minute: 0, second: 0, millisecond: 0 })
@@ -69,11 +80,28 @@ export function computeSeasonSchedule(
   return {
     application_open_at: toIso(open),
     application_close_at: toIso(close),
-    // Scoring begins the moment applications close.
+    // ★Scoring begins the moment applications close -- i.e. NO processing buffer.
+    //
+    // ★This is not what season_0 does. Its scoring_start_at sits 24h after close,
+    // set by hand, and the worker's buffer gate (oxxovo-scoring src/gate.ts) enforces
+    // that gap: renders land asynchronously, and a cohort that is still arriving must
+    // not be scored. An auto-created season gets close == scoring_start_at, so that
+    // gate passes the instant the window shuts and the protection is silently absent.
+    //
+    // Not changed here: the buffer length is a schedule decision (it moves every
+    // downstream date), so it belongs to whoever owns the calendar, not to this
+    // helper quietly picking a number. Recorded 2026-08-06.
     scoring_start_at: toIso(close),
     scoring_complete_at: toIso(scoringComplete),
+    prelim_results_announcement_at: toIso(prelimResultsAnnouncement),
     main_round_start_at: toIso(mainStart),
     main_round_end_at: toIso(mainEnd),
+    // ★No community_vote_start_at / _end_at here -- an auto-created season gets
+    // them as NULL while community_vote_weight is 0.5. That is caught rather than
+    // silent: the awards gate refuses with "the window can never close" when the
+    // weight is non-zero and the end date is unset (lib/awards-gate.ts). So an admin
+    // must set the vote window per season, and the failure surfaces at the button
+    // rather than in the podium.
     awards_announcement_at: toIso(awards),
   }
 }
@@ -105,6 +133,10 @@ const NON_CLONED_KEYS = [
   'name',
   'display_name',
   'main_round_theme',
+  // Same rule as main_round_theme: per-season, set by an admin before the main
+  // round. Without this, a cloned season silently inherits season 0's
+  // "Cosmetic Commercial Film" label. (TK 2026-07-15)
+  'main_round_theme_label',
   'application_open_at',
   'application_close_at',
   'scoring_start_at',
@@ -116,6 +148,10 @@ const NON_CLONED_KEYS = [
   // fresh season.
   'application_defer_count',
   'awards_announcement_at',
+  // Same rule as every other date: a schedule belongs to its own season. Left
+  // cloned, season 1 would have inherited season 0's literal 2026-11-08 noon and
+  // announced its preliminary results in the past.
+  'prelim_results_announcement_at',
   'ai_score_weight',
   'community_vote_weight',
 ] as const
@@ -142,8 +178,20 @@ export function buildNextSeasonRow(prev: Season, communityVoteWeight: number): N
   // Round to 4 decimals to avoid 1 - 0.7 = 0.30000000000000004 floating drift.
   const ai_score_weight = Math.round((1 - communityVoteWeight) * 10000) / 10000
 
-  const clone: Record<string, unknown> = { ...(prev as unknown as Record<string, unknown>) }
+  const prevRow = prev as unknown as Record<string, unknown>
+  const clone: Record<string, unknown> = { ...prevRow }
   for (const key of NON_CLONED_KEYS) delete clone[key]
+
+  // ★The newest schedule field is only named in the INSERT when the source row
+  // proves the database has the column. `prev` comes from `select('*')`, so the
+  // key is present exactly when the column is. PostgREST rejects an INSERT that
+  // names a column it does not know, so without this, create-ahead would stop
+  // dead in the window between this code shipping and the migration being run --
+  // the ordering hazard the repo has now been bitten by twice.
+  const scheduleForInsert: Record<string, unknown> = { ...schedule }
+  if (!('prelim_results_announcement_at' in prevRow)) {
+    delete scheduleForInsert.prelim_results_announcement_at
+  }
 
   return {
     ...clone,
@@ -157,8 +205,15 @@ export function buildNextSeasonRow(prev: Season, communityVoteWeight: number): N
     display_name: `OXXOVO Season ${seasonNumber}`,
     // Theme is set per-season by an admin before the main round; never inherited.
     main_round_theme: null,
+    main_round_theme_label: null,
     community_vote_weight: communityVoteWeight,
     ai_score_weight,
-    ...schedule,
+    ...scheduleForInsert,
+    // is_fixture is NOT in NON_CLONED_KEYS on purpose. An auto-created official
+    // season is a real competition, and it inherits that assertion from the real
+    // season it was cloned from -- season-tick now refuses to clone a fixture at
+    // all. Before the migration the key is simply absent from `prev`, the INSERT
+    // does not name it, and the DB default (true) applies: the season is filed as
+    // a fixture until someone says otherwise, which is the safe direction.
   }
 }

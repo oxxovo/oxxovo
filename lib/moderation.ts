@@ -36,11 +36,17 @@ export async function moderateSubmission(input: ModerationInput): Promise<Modera
     return { status: 'pending', categories: [] }
   }
 
+  // Bound the OpenAI call: at launch (up to 500 concurrent submissions) a slow or
+  // hung moderation API must not stall the submit request. On timeout the fetch
+  // aborts -> caught below -> 'pending' (fail-safe: not public, admin queue).
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000)
   try {
     const res = await fetch('https://api.openai.com/v1/moderations', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'omni-moderation-latest', input: content }),
+      signal: controller.signal,
     })
     if (!res.ok) {
       console.error('[moderation] API error', res.status)
@@ -61,7 +67,11 @@ export async function moderateSubmission(input: ModerationInput): Promise<Modera
     ]
     return flagged ? { status: 'flagged', categories } : { status: 'approved', categories: [] }
   } catch (e) {
-    console.error('[moderation] fetch failed:', e instanceof Error ? e.message : e)
+    const msg = e instanceof Error ? e.message : String(e)
+    // AbortError (5s timeout) lands here too -> pending, never a hung submit.
+    console.error('[moderation] fetch failed/timeout (-> pending):', msg)
     return { status: 'pending', categories: [] }
+  } finally {
+    clearTimeout(timeout)
   }
 }

@@ -69,7 +69,7 @@ export function useT(): Messages {
 // Messages
 // ─────────────────────────────────────────────────────────────────
 
-type Messages = {
+export type Messages = {
   layout: {
     admin_console: string
     admin_mode_banner: string
@@ -88,6 +88,8 @@ type Messages = {
       emails: string
       credits: string
       promo: string
+      actors: string
+      music: string
       messages: string
     }
   }
@@ -278,6 +280,13 @@ type Messages = {
     segment_waitlist: string
     segment_awarded: string
     segment_rejected: string
+    // Judging axis -- orthogonal to the competition-status segments above.
+    judging_axis_label: string
+    judging_all: string
+    judging_unjudged: string
+    judging_in_progress: string
+    judging_failed: string
+    judging_completed: string
     segment_count: (n: number) => string
     search_placeholder: string
     sort_label: string
@@ -539,7 +548,14 @@ type Messages = {
     // Main round submission (2026-05-29) — single-submission model
     main_round_section_title: string
     main_round_theme_label: string
+    // Link to the full brief on /rules. The card shows the short label
+    // (seasons.main_round_theme_label); the full main_round_theme is a brief
+    // too long for this slot. (TK 2026-07-15)
+    main_round_theme_full_link: string
     main_round_allowed_platforms_label: string
+    // Shown instead of the URL field when the season's allowed sources contain
+    // no linkable platform. Takes the sources so the wording follows the column.
+    main_round_external_url_closed: (allowed: string) => string
     main_round_video_url_label: string
     main_round_video_url_placeholder: string
     main_round_submitted_video_label: string
@@ -564,6 +580,9 @@ type Messages = {
     apply_err_agreements_required: string
     apply_err_statement_length: string
     apply_err_duration_range: (min: number, max: number) => string
+    // Takes the season's allowed sources so the wording cannot name a platform
+    // the column does not ([[feedback-no-hardcode]]).
+    apply_err_video_platform_not_allowed: (allowed: string) => string
     apply_err_season_not_found: string
     apply_err_season_not_open: string
     apply_err_season_closed: string
@@ -601,6 +620,13 @@ type Messages = {
     approve_err_season_not_found: string
     approve_err_no_scored: string
     approve_err_update_failed: string
+    // Three-gate block reasons (lib/awards-gate.ts). Each one says what is
+    // holding AND what to do, because "blocked" with no next step reads as a bug.
+    approve_err_schedule_not_reached: string
+    approve_err_already_awarded: string
+    approve_err_nothing_submitted: string
+    approve_err_scoring_incomplete: string
+    approve_err_vote_window_open: string
     col_rank: string
     col_creator: string
     col_final: string
@@ -653,6 +679,270 @@ type Messages = {
     cta_creator_note: string
     back_home: string
   }
+  // ★2026-08-11 (지수2C). Landing page (app/_landing/LandingView.tsx). Source:
+  // reports/lane_c_i18n_translation_list_2026-08-10.md (English keys, read
+  // directly off the component) + the approved translation
+  // (제니2 번역 → 제니3 검수 → 고문 확인 → 대표님 승인,
+  // "watch 메인 페이지/i18n_ko_landing_watch_2026-08-10.md"). Integrity-related
+  // strings (faq_a8, faq_a4_outro, step3_body) use the 2026-08-11 TK ruling
+  // text instead of that document's draft -- the ruling landed after the
+  // document did and supersedes it (numbers/model/threshold never shown).
+  landing: {
+    nav_tournament: string
+    nav_studio: string
+    nav_watch: string
+    nav_how: string
+    nav_about: string
+    nav_membership: string
+    nav_faq: string
+    greeting: (username: string) => string
+    logout: string
+    login: string
+    cta_default: string
+    eyebrow: string
+    h1_line1: string
+    h1_line2: string
+    sub1: string
+    sub2: string
+    hero_tournament_btn: string
+    hero_submit_prefix: string
+    hero_submit_fallback: string
+    countdown_label: string
+    countdown_days: string
+    countdown_hrs: string
+    countdown_min: string
+    countdown_sec: string
+    watch_link: string
+    feat1_title: string
+    feat1_desc: string
+    feat2_title: string
+    feat2_desc: string
+    feat3_title: string
+    feat3_desc: string
+    feat4_title: string
+    feat4_desc: string
+    feat5_title: string
+    feat5_desc: string
+    how_eyebrow: string
+    how_h2: string
+    step1_title: string
+    step1_body: (min: number, max: number) => string
+    step2_title: (panelLabel: string) => string
+    step2_body: (modelCount: number) => string
+    step3_title: string
+    step3_body: (intentPct: string, execPct: string, origPct: string) => string
+    step4_title: string
+    step4_body: (advanceLabel: string, seasonName: string, total: string, first: string, second: string, third: string) => string
+    about_eyebrow: string
+    about_h2_line1: string
+    about_h2_line2: string
+    about_body: (panelLabel: string) => string
+    stat1_label: string
+    stat2_value: string
+    stat2_label: string
+    stat3_value: string
+    stat3_label: string
+    faq_eyebrow: string
+    faq_h2: string
+    faq_q1: (seasonName: string) => string
+    faq_a1: (min: number, max: number) => string
+    faq_q2: string
+    faq_q3: string
+    faq_a3: string
+    faq_q4: string
+    faq_a4_intro: (modelCount: number) => string
+    faq_a4_outro: (intentPct: string, execPct: string, origPct: string) => string
+    faq_q5: (n: number) => string
+    faq_a5: (n: number, panelLabel: string) => string
+    faq_q6: (maxApplicants: number) => string
+    faq_a6: (seasonName: string, maxApplicants: number) => string
+    faq_q7: string
+    faq_a7: (seasonName: string, total: string, first: string, second: string, third: string, advanceLabel: string) => string
+    faq_q8: string
+    faq_a8: string
+    faq_q9: string
+    faq_a9: string
+    footer_tagline: string
+    footer_tournament: string
+    footer_membership: string
+    footer_terms: string
+    footer_privacy: string
+    footer_rules: string
+    loading: string
+  }
+  // ★2026-08-11 (지수2C). Watch grid (/watch, Arena*.tsx) + detail
+  // (/watch/[id], Watch*.tsx + social-action components). Same sourcing as
+  // `landing` above. A subset of these keys (marked below) have NO entry in
+  // that document -- they were Korean text hardcoded UNCONDITIONALLY in the
+  // current code (shown to every visitor regardless of language) that the
+  // 08-10 extraction missed because it only captured English strings. Per
+  // 제니2 2026-08-11 ("네 판단대로 가라. 영어를 네가 써라"): English for
+  // these is 지수2C-authored, matched to vocabulary already live elsewhere in
+  // the same files (Main Round / Preliminary / Judging / Voting / Finalist),
+  // never "결선". Logged for a batch 제니3 review in reports/
+  // lane_c_watch_selfauthored_en_2026-08-11.md -- do not read the presence of
+  // an English string here as "approved," only as "shipped and tracked."
+  watch: {
+    banner_tagline1: string
+    banner_tagline2: string
+    banner_learnmore: string
+    hero_current: (seasonNumber: number) => string
+    hero_ctx_results: string
+    hero_ctx_voting: string
+    hero_ctx_judged: (dateStr: string | null) => string
+    hero_ctx_default: (roundName: string) => string
+    hero_cta_results: string
+    hero_cta_default: string
+    finalists_kicker: string
+    finalists_title: string
+    finalist_badge: string
+    featured_kicker: string
+    featured_title: string
+    leaderboard_kicker: string
+    leaderboard_title: string
+    roundbadge_main: string
+    roundbadge_prelim: string
+    badge_verified: string
+    center_mainround: string
+    empty_entries: string
+    // n is a PRE-FORMATTED string (fmtCount()'s "1.2K" etc.), not a raw
+    // number -- matches how Arena.tsx's cardStatusText already composes this.
+    votecount: (n: string) => string
+    // ★self-authored (see file-header note)
+    finalist_pending_note: string
+    results_kicker: string
+    finalist_prelim_kicker: string
+    main_round_results_title: string
+    main_round_live_title: string
+    finalist_prelim_title: string
+    finalist_prelim_tag: string
+    card_judging: string
+    card_voting: string
+    card_awaiting_judgment: string
+    featured_stats: (viewsStr: string, votesStr: string) => string
+    score_suffix: (score: string) => string
+    live_judging: (complete: boolean) => string
+    live_close_label: (isMain: boolean) => string
+    live_reveal_label: string
+    live_vote_label: string
+    live_theme_main: string
+    live_theme_next: string
+    live_countries_suffix: string
+    champions_note: (seasonName: string | null, dateStr: string | null) => string
+    // sidebar / top bar (doc-covered)
+    search_placeholder: string
+    signin: string
+    badge_watch: string
+    badge_subtitle: string
+    nav_home: string
+    nav_home_sub: string
+    nav_tournament: string
+    nav_tournament_sub: string
+    nav_how: string
+    nav_how_sub: string
+    nav_membership: string
+    nav_membership_sub: string
+    nav_faq: string
+    nav_faq_sub: string
+    nav_about: string
+    nav_about_sub: string
+    library_label: string
+    lib_myvideos: string
+    lib_mylikes: string
+    lib_watchlater: string
+    lib_history: string
+    footer_tip_title: string
+    footer_tip_body: string
+    filter_current: string
+    filter_all_competitions: string
+    filter_newest: string
+    filter_champions: string
+    filter_all_champions: string
+    filter_viewall: string
+    host_suffix: (seasonName: string) => string
+    sort_trending: string
+    sort_latest: string
+    sort_award: string
+    round_prelim: string
+    round_main: string
+    winner_1st: string
+    winner_2nd: string
+    winner_3rd: string
+    sidebar_home: string
+    sidebar_tournament: string
+    sidebar_sort_label: string
+    sidebar_seasons_label: string
+    sidebar_all: string
+    sidebar_allrounds: string
+    sidebar_round_label: string
+    sidebar_winners_label: string
+    sidebar_more_label: string
+    sidebar_membership: string
+    sidebar_about: string
+    sidebar_how: string
+    sidebar_qa: string
+    sidebar_subs_label: string
+    // detail page (doc-covered + 1 self-authored)
+    detail_roundlabel_main: string
+    detail_roundlabel_prelim: string
+    detail_staffpick: string
+    detail_winner: string
+    detail_rank1: string
+    detail_rank2: string
+    detail_rank3: string
+    detail_winner_generic: string
+    detail_views: (n: number) => string
+    detail_comments_count: (n: number) => string
+    detail_madewith: (ai: string) => string
+    detail_related_title: string
+    detail_related_empty: string
+    detail_related_views_likes: (views: number, likes: number) => string
+    detail_main_round_pending: string
+    // social actions (doc-covered)
+    comments_count: (n: number) => string
+    comments_guidelines: string
+    comment_placeholder: string
+    comment_submit: string
+    comment_signin_prompt: string
+    comments_empty: string
+    comment_edited: string
+    comment_save: string
+    comment_cancel: string
+    comment_edit: string
+    comment_delete: string
+    comment_delete_confirm: string
+    comment_report: string
+    comment_reported: string
+    follow_following: (creatorName: string) => string
+    follow_follow: (creatorName: string) => string
+    follow_btn_following: string
+    follow_btn_follow: string
+    save_saved: string
+    save_save: string
+    report_reported: string
+    report_report: string
+    share_copied: string
+    share_share: string
+    staffpick_on: string
+    staffpick_off: string
+    vote_error_limit: (n: number) => string
+    vote_error_closed: string
+    vote_notopen: string
+    vote_title: string
+    vote_count: (n: number) => string
+    vote_remaining: (remaining: number, cap: number) => string
+    vote_closed_suffix: string
+    vote_btn_voted: string
+    vote_btn_vote: string
+    vote_btn_closed: string
+    vote_cap_used: (n: number) => string
+    // score panel
+    score_title: string
+    score_intent: string
+    score_execution: string
+    score_originality: string
+    score_integrity_verified: string
+  }
 }
 
 const MESSAGES_EN: Messages = {
@@ -674,6 +964,8 @@ const MESSAGES_EN: Messages = {
       emails: 'Emails',
       credits: 'Credits',
       promo: 'Promo videos',
+      actors: 'Actors',
+      music: 'Music library',
       messages: 'Messages',
     },
   },
@@ -867,7 +1159,13 @@ const MESSAGES_EN: Messages = {
     segment_top50: 'Top 50',
     segment_waitlist: 'Waitlist',
     segment_awarded: 'Awarded',
-    segment_rejected: 'Rejected',
+    segment_rejected: 'Not advanced',
+    judging_axis_label: 'Judging',
+    judging_all: 'Any',
+    judging_unjudged: '★Never enqueued',
+    judging_in_progress: 'In progress',
+    judging_failed: 'Failed',
+    judging_completed: 'Judged',
     segment_count: (n) => `(${n})`,
     search_placeholder: 'Search name, email, channel…',
     sort_label: 'Sort',
@@ -1021,7 +1319,7 @@ const MESSAGES_EN: Messages = {
     template_application_received: 'Application received',
     template_waitlisted: 'Waitlisted',
     template_selected_top50: 'Selected (Top 50)',
-    template_not_selected: 'Not selected',
+    template_not_selected: 'Season result — not advanced',
     template_main_round_start: 'Main round start',
     template_submission_deadline: 'Submission deadline',
     template_results_announced: 'Results announced',
@@ -1137,7 +1435,10 @@ const MESSAGES_EN: Messages = {
     celebration_season_label: (n, name) => `Season ${n} — ${name}`,
     main_round_section_title: 'Main Round Submission',
     main_round_theme_label: 'Main Round Theme',
+    main_round_theme_full_link: 'Read the full brief →',
     main_round_allowed_platforms_label: 'Allowed Platforms',
+    main_round_external_url_closed: (allowed) =>
+      `${allowed} is the only entry source for this season's main round, so there is no link to submit here.`,
     main_round_video_url_label: 'Video URL',
     main_round_video_url_placeholder: 'YouTube, Vimeo, or other video link',
     main_round_submitted_video_label: 'Submitted Video',
@@ -1162,6 +1463,8 @@ const MESSAGES_EN: Messages = {
     apply_err_statement_length: 'Creator statement must be 150–250 characters.',
     apply_err_duration_range: (min, max) =>
       `Video duration must be between ${min} and ${max} seconds.`,
+    apply_err_video_platform_not_allowed: (allowed) =>
+      `This season accepts entries from ${allowed} only.`,
     apply_err_season_not_found: 'Season configuration not found. Please try again later.',
     apply_err_season_not_open: 'Applications for this season have not opened yet.',
     apply_err_season_closed: 'Applications for this season are closed.',
@@ -1202,6 +1505,15 @@ const MESSAGES_EN: Messages = {
     approve_err_season_not_found: 'Season not found.',
     approve_err_no_scored: 'No scored main-round submissions yet.',
     approve_err_update_failed: 'Failed to set award ranks. Please try again.',
+    approve_err_schedule_not_reached:
+      'Too early. Approval opens once the main round and community voting are both over.',
+    approve_err_already_awarded:
+      'Winners are already recorded. Use the per-entry override (with a reason) to change a rank.',
+    approve_err_nothing_submitted: 'No main-round submissions to rank yet.',
+    approve_err_scoring_incomplete:
+      'Main-round scoring is not finished. Approving now would build the podium from a partial set — unscored entries are dropped, not flagged.',
+    approve_err_vote_window_open:
+      'Community voting has not closed. Votes count toward the final score this season, so the tally would be partial.',
     col_rank: 'Rank',
     col_creator: 'Creator',
     col_final: 'Final',
@@ -1262,6 +1574,260 @@ const MESSAGES_EN: Messages = {
     cta_creator_note: 'Membership unlocks tournament entry and Studio.',
     back_home: '← Back to Home',
   },
+  landing: {
+    nav_tournament: 'Tournament Info',
+    nav_studio: 'Studio',
+    nav_watch: 'Watch',
+    nav_how: 'How It Works',
+    nav_about: 'About',
+    nav_membership: 'Membership',
+    nav_faq: 'FAQ',
+    greeting: (username) => `Hi, ${username}`,
+    logout: 'Log out',
+    login: 'Log in',
+    cta_default: 'Apply now',
+    eyebrow: 'AI Competitive Creation Platform',
+    h1_line1: 'The Global Arena',
+    h1_line2: 'for AI Creators.',
+    sub1: 'AI is easy. Winning is hard.',
+    sub2: 'Same tools. Same clock. Skill decides.',
+    hero_tournament_btn: 'Tournament Info',
+    hero_submit_prefix: 'Submit your AI video.',
+    hero_submit_fallback: 'AI verified scoring.',
+    countdown_label: 'Application Closes In',
+    countdown_days: 'Days',
+    countdown_hrs: 'Hrs',
+    countdown_min: 'Min',
+    countdown_sec: 'Sec',
+    watch_link: 'Watch the competition →',
+    feat1_title: 'Real-time',
+    feat1_desc: 'Live tournaments. Feel the pressure.',
+    feat2_title: 'Verified',
+    feat2_desc: 'Same prompt. Same conditions.',
+    feat3_title: 'Ranked',
+    feat3_desc: 'Global leaderboard. Earn your reputation.',
+    feat4_title: 'Global',
+    feat4_desc: 'Creators from around the world.',
+    feat5_title: 'Built for Creators',
+    feat5_desc: 'Made by creators. For creators.',
+    how_eyebrow: 'How It Works',
+    how_h2: 'Submit. Get Verified. Win.',
+    step1_title: 'Share Your Video',
+    step1_body: (min, max) =>
+      `Make your video in OXXOVO Studio (${min}–${max} seconds) and submit it there. Everyone works with the same toolset — what separates entries is your direction, not your budget.`,
+    step2_title: (panelLabel) => `${panelLabel} Judges`,
+    step2_body: (modelCount) =>
+      `${modelCount === 3 ? 'Three' : modelCount} independent AI models from ${modelCount === 3 ? 'three' : modelCount} different companies score your work in parallel. Eliminates single-AI bias.`,
+    step3_title: 'Get Your Score',
+    step3_body: (intentPct, execPct, origPct) =>
+      `You get an OXXOVO score across three published components — Intent Clarity (${intentPct}), Execution (${execPct}), Originality (${origPct}). Every entry also passes an automated integrity check.`,
+    step4_title: 'Earn Your Title',
+    step4_body: (advanceLabel, seasonName, total, first, second, third) =>
+      `The ${advanceLabel} advance as Finalists, competing for the ${seasonName} prize pool of $${total} ($${first} / $${second} / $${third}).`,
+    about_eyebrow: 'About',
+    about_h2_line1: 'The First Verified Arena',
+    about_h2_line2: 'for AI Video Creators.',
+    about_body: (panelLabel) =>
+      `OXXOVO is the global arena for AI video creators. Independent ${panelLabel} scoring verifies every entry and keeps each round fair. OXXOVO Labs Inc., based in Las Vegas, operates the AI Creator League — a season-based competition where creators compete, get verified, and get discovered.`,
+    stat1_label: 'Independent AI Judges',
+    stat2_value: 'Global',
+    stat2_label: 'Open to All Creators',
+    stat3_value: 'Verified',
+    stat3_label: 'Same Rules. Skill Decides.',
+    faq_eyebrow: 'FAQ',
+    faq_h2: 'Common Questions',
+    faq_q1: (seasonName) => `Who can participate in ${seasonName}?`,
+    faq_a1: (min, max) =>
+      `Anyone, anywhere. There are no nationality, age, or experience requirements. You just need an AI-generated video (${min}–${max} seconds) and a free OXXOVO account.`,
+    faq_q2: 'What does it cost to compete?',
+    faq_q3: 'How do I create my video?',
+    faq_a3:
+      'Everyone creates in OXXOVO Studio — the same models, the same limits, for everyone. You don’t bring outside tools, and you don’t need a subscription anywhere else. That’s what makes the result comparable.',
+    faq_q4: 'How exactly are submissions scored?',
+    faq_a4_intro: (modelCount) => `Each video is judged by ${modelCount} AI models in parallel:`,
+    faq_a4_outro: (intentPct, execPct, origPct) =>
+      `Your final OXXOVO score is a weighted average. Three components are shown — Intent Clarity (${intentPct}), Execution (${execPct}), and Originality (${origPct}) — and integrity is verified automatically. Outlier scores are discarded.`,
+    faq_q5: (n) => `Why ${n} AIs instead of one?`,
+    faq_a5: (n, panelLabel) =>
+      `Every AI has bias. By using ${n} independent models from ${n} different companies, individual biases cancel out. When the panel agrees, the result is far more trustworthy than any single AI’s verdict. This is what makes OXXOVO scoring ${panelLabel} Verified.`,
+    faq_q6: (maxApplicants) => `What if ${maxApplicants} people apply before me?`,
+    faq_a6: (seasonName, maxApplicants) =>
+      `${seasonName} accepts up to ${maxApplicants} applicants. If the limit is reached before you apply, you’ll be automatically added to the ${seasonName} Waitlist with priority access to the next season. We never turn anyone away.`,
+    faq_q7: 'What are the prizes?',
+    faq_a7: (seasonName, total, first, second, third, advanceLabel) =>
+      `${seasonName} features a $${total} prize pool ($${first} for 1st, $${second} for 2nd, $${third} for 3rd). The ${advanceLabel} earn the Finalist title.`,
+    faq_q8: 'How does OXXOVO prevent cheating?',
+    faq_a8:
+      "An automated integrity check flags misrepresentation. Anything it flags gets a human review. Misstating your tools or sources is grounds for disqualification. We don't publish the thresholds or weighting.",
+    faq_q9: 'When do I get my results?',
+    faq_a9:
+      'Scoring runs in a batch after the application period closes. Your individual score and the panel’s reasoning arrive with your preliminary-round results notification, and you can also check them in your profile.',
+    footer_tagline: 'The New Standard for AI Creativity',
+    footer_tournament: 'Tournament Info',
+    footer_membership: 'Membership',
+    footer_terms: 'Terms',
+    footer_privacy: 'Privacy',
+    footer_rules: 'Rules',
+    loading: 'Loading…',
+  },
+  watch: {
+    banner_tagline1: 'OXXOVO is the global arena for AI creators.',
+    banner_tagline2: 'Built under the same conditions. Judged on skill alone.',
+    banner_learnmore: 'Learn More on Landing Page ↗',
+    hero_current: (seasonNumber) => `Current Competition — Season ${seasonNumber}`,
+    hero_ctx_results: 'The winners have been announced. See who took the top spots this season.',
+    hero_ctx_voting: 'Community voting is open. Watch the main-round films and vote for your favorite creator.',
+    hero_ctx_judged: (dateStr) => `Judging is complete. Finalists will be revealed ${dateStr ? `on ${dateStr}` : 'soon'}.`,
+    hero_ctx_default: (roundName) =>
+      `${roundName} is in progress. Videos are shown in the order they were entered. Join OXXOVO for free to vote in the Main Round and support your favorite creators.`,
+    hero_cta_results: 'See who won →',
+    hero_cta_default: 'Join free to vote →',
+    finalists_kicker: 'Main Round',
+    finalists_title: '🏆 Finalists',
+    finalist_badge: 'Finalist',
+    featured_kicker: 'Spotlight',
+    featured_title: 'Featured Competitors',
+    leaderboard_kicker: 'Standings',
+    leaderboard_title: 'Leaderboard',
+    roundbadge_main: 'Main Round',
+    roundbadge_prelim: 'Preliminary',
+    badge_verified: '✓ Verified',
+    center_mainround: 'MAIN ROUND',
+    empty_entries: 'No entries yet. They appear here as creators submit.',
+    votecount: (n) => `${n} votes`, // n pre-formatted (fmtCount)
+    finalist_pending_note: 'Main round video coming soon',
+    results_kicker: 'Results',
+    finalist_prelim_kicker: 'Finalists',
+    main_round_results_title: '🏆 Main Round Results',
+    main_round_live_title: '🏆 Main Round · Live Now',
+    finalist_prelim_title: 'Finalist Entries · Preliminary Round',
+    finalist_prelim_tag: 'Finalist Entry',
+    card_judging: '⚡ Judging',
+    card_voting: '🔥 Voting',
+    card_awaiting_judgment: 'Awaiting judgment',
+    featured_stats: (viewsStr, votesStr) => `${viewsStr} views · ${votesStr} votes`,
+    score_suffix: (score) => `Triple-AI ${score}`,
+    live_judging: (complete) => `Triple-AI ${complete ? 'Judging Complete' : 'Judging'}`,
+    live_close_label: (isMain) => `${isMain ? 'Main Round' : 'Preliminary'} closes in`,
+    live_reveal_label: 'Finalists revealed in',
+    live_vote_label: 'Voting closes in',
+    live_theme_main: 'Main Round Theme',
+    live_theme_next: 'Next Round Theme',
+    live_countries_suffix: 'countries',
+    champions_note: (seasonName, dateStr) =>
+      dateStr
+        ? `${seasonName ?? 'Season'} Champions revealed ${dateStr}`
+        : 'Champions revealed after judging completes',
+    search_placeholder: 'Search videos & creators',
+    signin: 'Sign in',
+    badge_watch: 'WATCH',
+    badge_subtitle: 'AI Creator League',
+    nav_home: 'Home',
+    nav_home_sub: 'Go to Landing Page',
+    nav_tournament: 'Tournament Info',
+    nav_tournament_sub: 'Rules, Schedule, Prizes',
+    nav_how: 'How It Works',
+    nav_how_sub: 'Learn the process',
+    nav_membership: 'Membership',
+    nav_membership_sub: 'Join & Benefits',
+    nav_faq: 'FAQ',
+    nav_faq_sub: 'Frequently Asked Questions',
+    nav_about: 'About',
+    nav_about_sub: 'About OXXOVO',
+    library_label: 'Library',
+    lib_myvideos: 'My Videos',
+    lib_mylikes: 'My Likes',
+    lib_watchlater: 'Watch Later',
+    lib_history: 'History',
+    footer_tip_title: 'All Information in One Place',
+    footer_tip_body: 'You are in WATCH. Click menu items to open in a new tab.',
+    filter_current: 'Current Competition',
+    filter_all_competitions: 'All Competitions',
+    filter_newest: 'Newest First',
+    filter_champions: '🏆 Champions',
+    filter_all_champions: 'All Champions',
+    filter_viewall: 'View All →',
+    host_suffix: (seasonName) => `${seasonName} · Host`,
+    sort_trending: 'Trending',
+    sort_latest: 'Latest',
+    sort_award: 'Award Winners',
+    round_prelim: 'Preliminary',
+    round_main: 'Main Round',
+    winner_1st: '🥇 1st Place',
+    winner_2nd: '🥈 2nd Place',
+    winner_3rd: '🥉 3rd Place',
+    sidebar_home: 'Home',
+    sidebar_tournament: 'Tournament',
+    sidebar_sort_label: 'Sort',
+    sidebar_seasons_label: 'Seasons',
+    sidebar_all: 'All',
+    sidebar_allrounds: 'All rounds',
+    sidebar_round_label: 'Round',
+    sidebar_winners_label: 'Winners',
+    sidebar_more_label: 'More',
+    sidebar_membership: 'Membership',
+    sidebar_about: 'About',
+    sidebar_how: 'How It Works',
+    sidebar_qa: 'Q&A',
+    sidebar_subs_label: 'Subscriptions',
+    detail_roundlabel_main: 'Main Round',
+    detail_roundlabel_prelim: 'Preliminary',
+    detail_staffpick: 'Staff Pick',
+    detail_winner: '🏆 Winner',
+    detail_rank1: '🥇 1st Place',
+    detail_rank2: '🥈 2nd Place',
+    detail_rank3: '🥉 3rd Place',
+    detail_winner_generic: '🏆 Winner',
+    detail_views: (n) => `${n.toLocaleString()} views`,
+    detail_comments_count: (n) => `${n.toLocaleString()} comments`,
+    detail_madewith: (ai) => `Made with ${ai}`,
+    detail_related_title: 'More from this season',
+    detail_related_empty: 'Nothing else here yet.',
+    detail_related_views_likes: (views, likes) => `${views.toLocaleString()} views · ${likes.toLocaleString()} likes`,
+    detail_main_round_pending: '🏆 Finalist entry · Main round video coming soon.',
+    comments_count: (n) => `${n} comments`,
+    comments_guidelines: 'Community Guidelines',
+    comment_placeholder: 'Add a comment…',
+    comment_submit: 'Comment',
+    comment_signin_prompt: 'Sign in to comment…',
+    comments_empty: 'No comments yet. Be the first.',
+    comment_edited: '(edited)',
+    comment_save: 'Save',
+    comment_cancel: 'Cancel',
+    comment_edit: 'Edit',
+    comment_delete: 'Delete',
+    comment_delete_confirm: 'Delete this comment?',
+    comment_report: 'Report',
+    comment_reported: 'Reported',
+    follow_following: (creatorName) => `Following ${creatorName}`,
+    follow_follow: (creatorName) => `Follow ${creatorName}`,
+    follow_btn_following: 'Following',
+    follow_btn_follow: 'Follow',
+    save_saved: 'Saved',
+    save_save: 'Save',
+    report_reported: 'Reported',
+    report_report: 'Report',
+    share_copied: 'Copied',
+    share_share: 'Share',
+    staffpick_on: 'Staff Pick',
+    staffpick_off: 'Mark Staff Pick',
+    vote_error_limit: (n) => `You've used all ${n} votes. Un-vote another to switch.`,
+    vote_error_closed: 'Voting is closed.',
+    vote_notopen: 'Community voting is not open.',
+    vote_title: 'Community vote',
+    vote_count: (n) => `${n.toLocaleString()} votes`,
+    vote_remaining: (remaining, cap) => `${remaining} of ${cap} left`,
+    vote_closed_suffix: 'voting closed',
+    vote_btn_voted: '✓ Voted',
+    vote_btn_vote: 'Vote',
+    vote_btn_closed: 'Closed',
+    vote_cap_used: (n) => `All ${n} votes used — un-vote one to switch.`,
+    score_title: 'Triple-AI score',
+    score_intent: 'Intent / clarity',
+    score_execution: 'Execution',
+    score_originality: 'Originality',
+    score_integrity_verified: 'Integrity Verified',
+  },
 }
 
 const MESSAGES_KO: Messages = {
@@ -1283,6 +1849,8 @@ const MESSAGES_KO: Messages = {
       emails: '이메일',
       credits: '크레딧',
       promo: '홍보영상',
+      actors: '배우',
+      music: '음악 라이브러리',
       messages: '메시지',
     },
   },
@@ -1476,7 +2044,13 @@ const MESSAGES_KO: Messages = {
     segment_top50: 'Top 50',
     segment_waitlist: '대기자',
     segment_awarded: '시상자',
-    segment_rejected: '탈락',
+    segment_rejected: '미진출',
+    judging_axis_label: '심사',
+    judging_all: '전체',
+    judging_unjudged: '★미채점',
+    judging_in_progress: '진행 중',
+    judging_failed: '실패',
+    judging_completed: '완료',
     segment_count: (n) => `(${n})`,
     search_placeholder: '이름, 이메일, 채널 검색…',
     sort_label: '정렬',
@@ -1630,7 +2204,7 @@ const MESSAGES_KO: Messages = {
     template_application_received: '신청 접수',
     template_waitlisted: '대기자 등록',
     template_selected_top50: '본선 진출 (Top 50)',
-    template_not_selected: '탈락 통보',
+    template_not_selected: '예선 결과 안내 (미진출)',
     template_main_round_start: '본선 시작',
     template_submission_deadline: '제출 마감 임박',
     template_results_announced: '결과 발표',
@@ -1708,7 +2282,7 @@ const MESSAGES_KO: Messages = {
     status_selected_msg: '축하합니다 — Top 50에 선발되셨습니다.',
     status_awarded_msg:
       '축하합니다! 시상자로 선정되셨습니다. 상금/상패 발송을 위해 아래 연락처를 입력해주세요.',
-    status_rejected_msg: '이번 시즌은 아쉽게 탈락하셨습니다. 다음 시즌에서 다시 만나뵙길 바랍니다.',
+    status_rejected_msg: '이번 시즌 본선에는 오르지 못했습니다. 다음 시즌에서 다시 만나요.',
     scoring_placeholder: 'Triple-AI 채점 결과는 3차 통합 후 표시됩니다.',
     winner_form_intro:
       '상금/상패 발송을 위해 전화번호와 우편 주소가 필요합니다. 메신저 ID는 선택 사항이며, 긴급한 연락이 필요한 경우에만 사용됩니다.',
@@ -1744,7 +2318,10 @@ const MESSAGES_KO: Messages = {
     celebration_season_label: (n, name) => `시즌 ${n} — ${name}`,
     main_round_section_title: '본선 영상 제출',
     main_round_theme_label: '본선 테마',
+    main_round_theme_full_link: '전체 규정 보기 →',
     main_round_allowed_platforms_label: '허용 플랫폼',
+    main_round_external_url_closed: (allowed) =>
+      `이번 시즌 본선은 ${allowed}에서만 제출할 수 있어, 여기에 입력할 링크가 없습니다.`,
     main_round_video_url_label: '영상 URL',
     main_round_video_url_placeholder: 'YouTube, Vimeo 등 영상 링크',
     main_round_submitted_video_label: '제출한 본선 영상',
@@ -1769,6 +2346,8 @@ const MESSAGES_KO: Messages = {
     apply_err_statement_length: 'Creator Statement는 150~250자 사이여야 합니다.',
     apply_err_duration_range: (min, max) =>
       `영상 길이는 ${min}~${max}초 사이여야 합니다.`,
+    apply_err_video_platform_not_allowed: (allowed) =>
+      `이번 시즌은 ${allowed} 작품만 접수합니다.`,
     apply_err_season_not_found: '시즌 설정을 찾을 수 없습니다. 잠시 후 다시 시도해주세요.',
     apply_err_season_not_open: '이번 시즌 신청이 아직 시작되지 않았습니다.',
     apply_err_season_closed: '이번 시즌 신청이 마감되었습니다.',
@@ -1805,6 +2384,15 @@ const MESSAGES_KO: Messages = {
       '최종 점수 상위 3명을 수상자 1/2/3위로 승인할까요? 수상 순위가 설정되고 상금 지급 요청 이메일이 발송됩니다.',
     approve_confirm_btn: '승인',
     approve_cancel_btn: '취소',
+    approve_err_schedule_not_reached:
+      '아직 이릅니다. 본선과 커뮤니티 투표가 모두 끝나야 승인이 열립니다.',
+    approve_err_already_awarded:
+      '이미 수상자가 기록되어 있습니다. 순위를 바꾸려면 개별 override(사유 필수)를 쓰세요.',
+    approve_err_nothing_submitted: '순위를 매길 본선 제출작이 없습니다.',
+    approve_err_scoring_incomplete:
+      '본선 채점이 끝나지 않았습니다. 지금 승인하면 채점 안 된 작품이 경고 없이 빠진 채로 상위 3위가 정해집니다.',
+    approve_err_vote_window_open:
+      '커뮤니티 투표가 아직 안 끝났습니다. 이번 시즌은 투표가 최종점수에 반영되므로 집계가 미완입니다.',
     approve_err_season_not_found: '시즌을 찾을 수 없습니다.',
     approve_err_no_scored: '아직 채점된 본선 제출이 없습니다.',
     approve_err_update_failed: '수상 순위 설정에 실패했습니다. 다시 시도해 주세요.',
@@ -1864,6 +2452,258 @@ const MESSAGES_KO: Messages = {
     cta_youre_creator: '크리에이터입니다 ✓ — 프로필로',
     cta_creator_note: '멤버십으로 시합 참가와 Studio가 열립니다.',
     back_home: '← 홈으로',
+  },
+  landing: {
+    nav_tournament: '대회 안내',
+    nav_studio: '스튜디오',
+    nav_watch: '감상',
+    nav_how: '참가 방법',
+    nav_about: '소개',
+    nav_membership: '멤버십',
+    nav_faq: '자주 묻는 질문',
+    greeting: (username) => `${username}님`,
+    logout: '로그아웃',
+    login: '로그인',
+    cta_default: '참가 신청',
+    eyebrow: 'AI 창작 경쟁 플랫폼',
+    h1_line1: 'AI 크리에이터를 위한',
+    h1_line2: '글로벌 아레나.',
+    sub1: 'AI는 쉽습니다. 이기는 건 어렵습니다.',
+    sub2: '같은 도구. 같은 시간. 오직 실력으로.',
+    hero_tournament_btn: '대회 안내',
+    hero_submit_prefix: 'AI 영상을 제출하세요.',
+    hero_submit_fallback: 'AI 검증 채점.',
+    countdown_label: '신청 마감까지',
+    countdown_days: '일',
+    countdown_hrs: '시',
+    countdown_min: '분',
+    countdown_sec: '초',
+    watch_link: '대회 감상하기 →',
+    feat1_title: '실시간',
+    feat1_desc: '라이브 대회. 긴장을 느껴보세요.',
+    feat2_title: '검증',
+    feat2_desc: '같은 주제. 같은 조건.',
+    feat3_title: '랭킹',
+    feat3_desc: '글로벌 리더보드. 실력으로 증명하세요.',
+    feat4_title: '글로벌',
+    feat4_desc: '전 세계 크리에이터가 모입니다.',
+    feat5_title: '크리에이터를 위해',
+    feat5_desc: '크리에이터가 만들었습니다. 크리에이터를 위해.',
+    how_eyebrow: '참가 방법',
+    how_h2: '제출하고. 검증받고. 우승하세요.',
+    step1_title: '영상 공유',
+    step1_body: (min, max) =>
+      `OXXOVO 스튜디오에서 영상(${min}~${max}초)을 만들고 그대로 제출하세요. 모두가 같은 도구로 작업합니다 — 작품을 가르는 건 예산이 아니라 당신의 연출입니다.`,
+    step2_title: (panelLabel) => `${panelLabel} 심사`,
+    step2_body: (modelCount) =>
+      `서로 다른 ${modelCount}개 회사의 독립 AI 모델 ${modelCount}개가 동시에 작품을 채점합니다. 단일 AI 편향을 제거합니다.`,
+    step3_title: '점수 확인',
+    step3_body: (intentPct, execPct, origPct) =>
+      `공개 항목 세 가지 — 기획 명확성(${intentPct}), 완성도(${execPct}), 독창성(${origPct}) — 로 OXXOVO 점수를 받습니다. 모든 작품은 무결성 자동 검증을 함께 거칩니다.`,
+    step4_title: '타이틀 획득',
+    step4_body: (advanceLabel, seasonName, total, first, second, third) =>
+      `${advanceLabel}가 본선에 진출해 ${seasonName} 총상금 $${total}($${first} / $${second} / $${third})를 두고 겨룹니다.`,
+    about_eyebrow: '소개',
+    about_h2_line1: 'AI 영상 크리에이터를 위한',
+    about_h2_line2: '첫 번째 검증 아레나.',
+    about_body: (panelLabel) =>
+      `OXXOVO는 AI 영상 크리에이터를 위한 글로벌 아레나입니다. 독립적인 ${panelLabel} 채점으로 모든 출품작을 검증해 매 라운드의 공정성을 지킵니다. 라스베이거스에 설립된 OXXOVO Labs Inc.가 시즌제 대회인 AI Creator League를 운영합니다 — 겨루고, 검증받고, 발견되는 곳입니다.`,
+    stat1_label: '독립 AI 심사',
+    stat2_value: '글로벌',
+    stat2_label: '누구나 참가',
+    stat3_value: '검증',
+    stat3_label: '같은 규칙. 오직 실력으로.',
+    faq_eyebrow: '자주 묻는 질문',
+    faq_h2: '이런 점이 궁금하실 겁니다',
+    faq_q1: (seasonName) => `${seasonName}에는 누가 참가할 수 있나요?`,
+    faq_a1: (min, max) =>
+      `누구나, 어디서든 참가할 수 있습니다. 국적·나이·경력 제한이 없습니다. AI로 만든 영상(${min}~${max}초)과 무료 OXXOVO 계정만 있으면 됩니다.`,
+    faq_q2: '참가 비용이 얼마인가요?',
+    faq_q3: '어떤 도구로 만드나요?',
+    faq_a3:
+      '모두 OXXOVO 스튜디오에서 만듭니다. 같은 모델, 같은 조건으로 전원 동일합니다. 외부 도구를 가져올 필요도, 다른 곳에 구독할 필요도 없습니다. 그래야 결과를 견줄 수 있습니다.',
+    faq_q4: '채점은 정확히 어떻게 이뤄지나요?',
+    faq_a4_intro: (modelCount) => `각 영상은 AI 모델 ${modelCount}개가 동시에 심사합니다.`,
+    faq_a4_outro: (intentPct, execPct, origPct) =>
+      `최종 OXXOVO 점수는 여러 항목의 가중 평균입니다. 공개되는 항목은 기획 명확성(${intentPct}), 완성도(${execPct}), 독창성(${origPct}) 세 가지이며, 무결성은 별도로 자동 검증됩니다. 편차가 큰 점수는 자동으로 제외됩니다.`,
+    faq_q5: (n) => `왜 AI 한 개가 아니라 ${n}개인가요?`,
+    faq_a5: (n, panelLabel) =>
+      `모든 AI에는 편향이 있습니다. 서로 다른 ${n}개 회사의 독립 모델 ${n}개를 쓰면 개별 편향이 서로 상쇄됩니다. 심사단이 같은 판단을 내렸을 때, 그 결과는 어떤 단일 AI의 판정보다 훨씬 믿을 수 있습니다. OXXOVO 채점이 ${panelLabel} 검증이라 불리는 이유입니다.`,
+    faq_q6: (maxApplicants) => `저보다 먼저 ${maxApplicants}명이 신청하면 어떻게 되나요?`,
+    faq_a6: (seasonName, maxApplicants) =>
+      `${seasonName}은 최대 ${maxApplicants}명까지 받습니다. 신청 전에 정원이 차면 자동으로 ${seasonName} 대기자 명단에 오르고, 다음 시즌에 우선 참가하실 수 있습니다. 누구도 돌려보내지 않습니다.`,
+    faq_q7: '상금은 어떻게 되나요?',
+    faq_a7: (seasonName, total, first, second, third, advanceLabel) =>
+      `${seasonName}의 총상금은 $${total}입니다(1등 $${first}, 2등 $${second}, 3등 $${third}). ${advanceLabel}가 본선 진출자 타이틀을 얻습니다.`,
+    faq_q8: 'OXXOVO는 부정행위를 어떻게 막나요?',
+    faq_a8:
+      '무결성 검증이 허위 표기를 자동으로 잡아냅니다. 검증에 걸린 작품은 사람이 다시 확인합니다. 사용한 AI 도구나 콘텐츠 출처를 거짓으로 밝히면 자동 실격됩니다. 검증 기준과 비중은 공개하지 않습니다.',
+    faq_q9: '결과는 언제 나오나요?',
+    faq_a9:
+      '채점은 제출 마감 이후 일괄로 진행됩니다. 개인 점수와 심사 근거는 예선 결과 안내와 함께 받으시고, 프로필에서도 확인하실 수 있습니다.',
+    footer_tagline: 'AI 창작의 새로운 기준',
+    footer_tournament: '대회 안내',
+    footer_membership: '멤버십',
+    footer_terms: '이용약관',
+    footer_privacy: '개인정보처리방침',
+    footer_rules: '대회 규정',
+    loading: '불러오는 중…',
+  },
+  watch: {
+    banner_tagline1: 'OXXOVO는 AI 크리에이터를 위한 글로벌 아레나입니다.',
+    banner_tagline2: '같은 조건에서 만들고, 실력으로 경쟁합니다.',
+    banner_learnmore: '랜딩 페이지에서 자세히 보기 ↗',
+    hero_current: (seasonNumber) => `진행 중인 대회 — 시즌 ${seasonNumber}`,
+    hero_ctx_results: '우승자가 발표됐습니다. 이번 시즌 상위 입상작을 확인해 보세요.',
+    hero_ctx_voting: '관객 투표가 열렸습니다. 본선 작품을 보고 마음에 드는 크리에이터에게 투표하세요.',
+    hero_ctx_judged: (dateStr) => `심사가 끝났습니다. 본선 진출자는 ${dateStr ? `${dateStr}에` : '곧'} 공개됩니다.`,
+    hero_ctx_default: (roundName) =>
+      `${roundName} 진행 중입니다. 영상은 제출된 순서대로 표시됩니다. 무료로 가입하시면 본선에서 투표하고 좋아하는 크리에이터를 응원하실 수 있습니다.`,
+    hero_cta_results: '우승작 보기 →',
+    hero_cta_default: '무료 가입하고 투표 →',
+    finalists_kicker: '본선',
+    finalists_title: '🏆 본선 진출자',
+    finalist_badge: '본선 진출',
+    featured_kicker: '주목',
+    featured_title: '주목할 참가자',
+    leaderboard_kicker: '순위',
+    leaderboard_title: '리더보드',
+    roundbadge_main: '본선',
+    roundbadge_prelim: '예선',
+    badge_verified: '✓ 검증됨',
+    center_mainround: '본선',
+    empty_entries: '아직 출품작이 없습니다. 참가자가 제출하면 여기에 표시됩니다.',
+    votecount: (n) => `${n}표`,
+    finalist_pending_note: '본선 영상 준비 중',
+    results_kicker: '결과',
+    finalist_prelim_kicker: '본선 진출자',
+    main_round_results_title: '🏆 본선 결과',
+    main_round_live_title: '🏆 본선 · 지금 시합 중',
+    finalist_prelim_title: '본선 진출작 · 예선 라운드 작품',
+    finalist_prelim_tag: '본선 진출작',
+    card_judging: '⚡ AI 심사 중',
+    card_voting: '🔥 투표중',
+    card_awaiting_judgment: '심사 대기',
+    featured_stats: (viewsStr, votesStr) => `조회 ${viewsStr} · 투표 ${votesStr}`,
+    score_suffix: (score) => `Triple-AI ${score}점`,
+    live_judging: (complete) => `Triple-AI ${complete ? '심사 완료' : '심사 중'}`,
+    live_close_label: (isMain) => `${isMain ? '본선' : '예선'} 마감까지`,
+    live_reveal_label: '본선 진출작 공개까지',
+    live_vote_label: '투표 마감까지',
+    live_theme_main: '본선 주제',
+    live_theme_next: '다음 라운드 주제',
+    live_countries_suffix: '개국 참가',
+    champions_note: (seasonName, dateStr) =>
+      dateStr ? `${seasonName ?? '시즌'} 우승자, ${dateStr} 발표` : '우승자는 심사가 끝난 뒤 발표됩니다.',
+    search_placeholder: '영상·크리에이터 검색',
+    signin: '로그인',
+    badge_watch: 'WATCH',
+    badge_subtitle: 'AI 크리에이터 리그',
+    nav_home: '홈',
+    nav_home_sub: '랜딩 페이지로 이동',
+    nav_tournament: '대회 안내',
+    nav_tournament_sub: '규정 · 일정 · 상금',
+    nav_how: '참가 방법',
+    nav_how_sub: '진행 과정 안내',
+    nav_membership: '멤버십',
+    nav_membership_sub: '가입 및 혜택',
+    nav_faq: '자주 묻는 질문',
+    nav_faq_sub: '궁금한 점 모아보기',
+    nav_about: '소개',
+    nav_about_sub: 'OXXOVO 소개',
+    library_label: '보관함',
+    lib_myvideos: '내 영상',
+    lib_mylikes: '좋아요한 영상',
+    lib_watchlater: '나중에 볼 영상',
+    lib_history: '시청 기록',
+    footer_tip_title: '모든 정보를 한곳에서',
+    footer_tip_body: '지금 WATCH에 계십니다. 메뉴를 누르면 새 탭에서 열립니다.',
+    filter_current: '진행 중인 대회',
+    filter_all_competitions: '전체 대회',
+    filter_newest: '최신순',
+    filter_champions: '🏆 역대 우승자',
+    filter_all_champions: '전체 우승자',
+    filter_viewall: '전체 보기 →',
+    host_suffix: (seasonName) => `${seasonName} · 주최`,
+    sort_trending: '인기순',
+    sort_latest: '최신순',
+    sort_award: '수상작',
+    round_prelim: '예선',
+    round_main: '본선',
+    winner_1st: '🥇 1위',
+    winner_2nd: '🥈 2위',
+    winner_3rd: '🥉 3위',
+    sidebar_home: '홈',
+    sidebar_tournament: '대회',
+    sidebar_sort_label: '정렬',
+    sidebar_seasons_label: '시즌',
+    sidebar_all: '전체',
+    sidebar_allrounds: '전체 라운드',
+    sidebar_round_label: '라운드',
+    sidebar_winners_label: '수상',
+    sidebar_more_label: '더보기',
+    sidebar_membership: '멤버십',
+    sidebar_about: '소개',
+    sidebar_how: '참가 방법',
+    sidebar_qa: '질문과 답변',
+    sidebar_subs_label: '구독',
+    detail_roundlabel_main: '본선',
+    detail_roundlabel_prelim: '예선',
+    detail_staffpick: '운영진 추천',
+    detail_winner: '🏆 수상작',
+    detail_rank1: '🥇 1위',
+    detail_rank2: '🥈 2위',
+    detail_rank3: '🥉 3위',
+    detail_winner_generic: '🏆 수상작',
+    detail_views: (n) => `조회 ${n.toLocaleString()}회`,
+    detail_comments_count: (n) => `댓글 ${n.toLocaleString()}개`,
+    detail_madewith: (ai) => `${ai}로 제작`,
+    detail_related_title: '이 시즌의 다른 작품',
+    detail_related_empty: '아직 다른 작품이 없습니다.',
+    detail_related_views_likes: (views, likes) => `조회 ${views.toLocaleString()}회 · 좋아요 ${likes.toLocaleString()}개`,
+    detail_main_round_pending: '🏆 본선 진출작입니다 · 본선 영상은 준비 중입니다.',
+    comments_count: (n) => `댓글 ${n}개`,
+    comments_guidelines: '커뮤니티 가이드',
+    comment_placeholder: '댓글을 남겨보세요…',
+    comment_submit: '등록',
+    comment_signin_prompt: '로그인하고 댓글 남기기',
+    comments_empty: '아직 댓글이 없습니다. 첫 댓글을 남겨보세요.',
+    comment_edited: '(수정됨)',
+    comment_save: '저장',
+    comment_cancel: '취소',
+    comment_edit: '수정',
+    comment_delete: '삭제',
+    comment_delete_confirm: '이 댓글을 삭제할까요?',
+    comment_report: '신고',
+    comment_reported: '신고됨',
+    follow_following: (creatorName) => `${creatorName} 팔로우 중`,
+    follow_follow: (creatorName) => `${creatorName} 팔로우`,
+    follow_btn_following: '팔로우 중',
+    follow_btn_follow: '팔로우',
+    save_saved: '저장됨',
+    save_save: '저장',
+    report_reported: '신고됨',
+    report_report: '신고',
+    share_copied: '복사됨',
+    share_share: '공유',
+    staffpick_on: '운영진 추천',
+    staffpick_off: '운영진 추천으로 지정',
+    vote_error_limit: (n) => `${n}표를 모두 사용하셨습니다. 다른 작품의 투표를 취소하면 바꾸실 수 있습니다.`,
+    vote_error_closed: '투표가 마감됐습니다.',
+    vote_notopen: '관객 투표가 아직 열리지 않았습니다.',
+    vote_title: '관객 투표',
+    vote_count: (n) => `${n.toLocaleString()}표`,
+    vote_remaining: (remaining, cap) => `${remaining}/${cap}표 남음`,
+    vote_closed_suffix: '투표 마감',
+    vote_btn_voted: '✓ 투표함',
+    vote_btn_vote: '투표',
+    vote_btn_closed: '마감',
+    vote_cap_used: (n) => `${n}표를 모두 쓰셨습니다 — 하나를 취소하면 바꿀 수 있습니다.`,
+    score_title: 'Triple-AI 점수',
+    score_intent: '기획 명확성',
+    score_execution: '완성도',
+    score_originality: '독창성',
+    score_integrity_verified: '무결성 검증됨',
   },
 }
 

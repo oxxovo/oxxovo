@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { setStaffPick } from './actions'
+import { useT } from '@/lib/admin-i18n'
 
 // Admin-only control on the detail page. Score-independent editorial curation.
 export function StaffPickToggle({
@@ -12,6 +13,7 @@ export function StaffPickToggle({
   applicationId: string
   initial: boolean
 }) {
+  const t = useT()
   const router = useRouter()
   const [on, setOn] = useState(initial)
   const [pending, start] = useTransition()
@@ -38,7 +40,7 @@ export function StaffPickToggle({
       }`}
     >
       <span aria-hidden>{on ? '★' : '☆'}</span>
-      {on ? 'Staff Pick' : 'Mark Staff Pick'}
+      {on ? t.watch.staffpick_on : t.watch.staffpick_off}
       <span className="text-[10px] font-normal text-white/40">admin</span>
     </button>
   )

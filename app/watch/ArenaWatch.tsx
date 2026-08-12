@@ -15,11 +15,12 @@ import {
   type WatchSort,
   type WatchRound,
 } from '@/lib/watch'
+import { resolveSeasonStage } from '@/lib/season-stage'
 import { getCurrentSeason, getCurrentSeasonId } from '@/lib/seasons'
 import { getUserOrNull } from '@/lib/user-auth'
 import { ArenaShell } from './ArenaShell'
 import { ArenaFilterBar, type FilterSeason } from './ArenaFilterBar'
-import { ArenaBanner, ArenaHero, LatestEntries } from './Arena'
+import { ArenaBanner, ArenaHero, LatestEntries, MainRoundSection, FinalistPrelimSection } from './Arena'
 
 export async function ArenaWatch({
   sort,
@@ -64,11 +65,16 @@ export async function ArenaWatch({
   const currentSeasonId = currentSeason?.id ?? getCurrentSeasonId()
   const heroStats = await getCurrentCompetitionStats(currentSeasonId)
   const seasonNumber = currentSeason?.season_number ?? 0
-  const mainStart = currentSeason?.main_round_start_at
-    ? Date.parse(currentSeason.main_round_start_at)
-    : null
-  const inMainRound = mainStart != null && Date.now() >= mainStart
-  const roundName = inMainRound ? 'Main Round' : 'Preliminary Round'
+  // Stage, finalists and theme all come from one resolver (lib/season-stage) so
+  // the landing shows the same answer at the same instant. Deriving them here a
+  // second time is what let the two surfaces disagree.
+  const { content: bannerStage, inMainRound, finalists, finalistReveal, theme } =
+    await resolveSeasonStage(currentSeason, currentSeasonId)
+  const roundName = inMainRound
+    ? 'Main Round'
+    : finalistReveal
+      ? 'Judging Complete'
+      : 'Preliminary Round'
 
   // LIVE status: the application window is genuinely open (open <= now < close).
   // Drives the blinking LIVE dot, the deadline countdown, and the stats polling.
@@ -79,31 +85,68 @@ export async function ArenaWatch({
   const isAccepting = openMs != null && closeMs != null && now >= openMs && now < closeMs
   const closeAtISO = currentSeason?.application_close_at ?? null
 
-  // Stage flags for the ⚡ judging bar (Hero) and the card status badges:
-  //   showJudgingBar = prelim judging window (applications closed, results not out)
-  //                    -> Hero shows the Triple-AI progress bar for the PRELIM pool.
-  //   cardsJudging   = any post-close scoring phase -> cards may show "⚡ 심사 중".
-  //   voteOpen       = community vote window -> main cards show "🔥 {votes}".
-  const applicationsClosed = closeMs != null && now >= closeMs
-  const showJudgingBar = applicationsClosed && !inMainRound
-  const cardsJudging = applicationsClosed
+  // Live judging: the Triple-AI worker scores entries as they arrive (rolling),
+  // so the progress bar + card badges can run WHILE the application window is
+  // still open (prelim can be "LIVE" and "20/21 판정" at once). The boxed
+  // LiveStatusBar shows the bar whenever the pool is non-zero; cards show
+  // "⚡ AI 심사 중" for entries in that pool that are not scored yet.
+  // Progress bar tracks the round that is actually live: main once the season is
+  // in the main round, prelim before that (else a finished prelim shows a stale
+  // "41/41" during the main event). (TK 2026-07-13)
+  const judging = await getJudgingProgress(currentSeasonId, inMainRound ? 'main' : 'application')
+  const cardsJudging = judging.total > 0
   const voteOpen = await isVoteWindowOpen(currentSeasonId)
-  const judging = showJudgingBar ? await getJudgingProgress(currentSeasonId) : { scored: 0, total: 0 }
+
+  // Main round layout (TK 2026-07-13): TOP = the finalists' MAIN videos (the live
+  // event), MIDDLE = their PRELIM entries tagged "본선 진출작" (reference). Derived
+  // from the already-loaded public videos so nothing extra is fetched.
+  const finalistIds = new Set(finalists.map((f) => f.applicationId))
+  const currentSeasonVideos = allVideos.filter((v) => v.seasonId === currentSeasonId)
+  const mainRoundVideos = currentSeasonVideos.filter((v) => v.round === 'main')
+  const finalistPrelims = currentSeasonVideos.filter(
+    (v) => v.round === 'application' && finalistIds.has(v.applicationId),
+  )
+  // Gallery excludes the current-season finalists — their prelim films already
+  // show in the "본선 진출작" section and their main films in the Main Round
+  // section, so the full gallery is the ELIMINATED entries (+ other seasons),
+  // never a duplicate of what's above. No entry is hidden overall. (TK 2026-07-14)
+  latest = latest.filter((v) => !(v.seasonId === currentSeasonId && finalistIds.has(v.applicationId)))
+
+  // Stopgap (A안, 2026-07): the hero card's roundName is derived from the
+  // TIMELINE only (inMainRound = now>=main_round_start, no upper bound), so once
+  // a season reaches the terminal stages it stays stuck on "Main Round" while the
+  // top banner correctly says voting/results -> a self-contradicting screen (e.g.
+  // "우승 발표됨" + "본선 · 심사 중"). Reflect the banner stage in the card label at
+  // those stages so the two never disagree. The judging row is suppressed in the
+  // card the same way (see LiveStatusBar `stage`). This whole patch is absorbed
+  // once a canonical getSeasonPhase() unifies banner + card + awards gate.
+  const cardRoundName =
+    bannerStage.stage === 'results'
+      ? 'Results'
+      : bannerStage.stage === 'voting'
+        ? 'Community Vote'
+        : roundName
 
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
-      <ArenaBanner />
+      <ArenaBanner content={bannerStage} />
       <ArenaHero
         seasonNumber={seasonNumber}
-        roundName={roundName}
-        stats={heroStats}
+        roundName={cardRoundName}
+        stage={bannerStage.stage}
         seasonId={currentSeasonId}
+        stats={heroStats}
         closeAtISO={closeAtISO}
         isAccepting={isAccepting}
-        showJudging={showJudgingBar}
         judging={judging}
+        revealAtISO={finalistReveal?.revealAt ?? null}
+        theme={theme}
+        voteOpen={voteOpen}
+        voteEndISO={currentSeason?.community_vote_end_at ?? null}
       />
-      <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} />
+      <MainRoundSection videos={mainRoundVideos} seasonNames={seasonNames} voteOpen={voteOpen} stage={bannerStage.stage} />
+      <FinalistPrelimSection videos={finalistPrelims} seasonNames={seasonNames} />
+      <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} seasonName={currentSeason?.name} awardsAt={currentSeason?.awards_announcement_at} />
       <LatestEntries videos={latest} seasonNames={seasonNames} showJudging={cardsJudging} voteOpen={voteOpen} />
     </ArenaShell>
   )

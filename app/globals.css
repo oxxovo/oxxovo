@@ -32,3 +32,27 @@ body {
 details > summary::-webkit-details-marker {
   display: none;
 }
+
+/* Watch judging bar shimmer -- a light streak sweeps L->R OVER the real progress
+   fill. The fill's width stays the true scored/total ratio and the fill is
+   overflow-hidden, so the streak is clipped to the real progress and never
+   implies more than is genuinely judged. Rendered only while judging is in
+   progress (removed at completion). Honors reduced-motion. */
+@keyframes watch-shimmer-move {
+  0% {
+    transform: translateX(-130%);
+  }
+  100% {
+    transform: translateX(240%);
+  }
+}
+.watch-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: watch-shimmer-move 1.8s ease-in-out infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .watch-shimmer {
+    animation: none;
+  }
+}

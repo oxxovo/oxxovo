@@ -276,7 +276,7 @@ export function SeasonDetail({ season, mem }: { season: Season; mem: MembershipL
       <section className="px-6 pb-4 text-center">
         <p className="text-sm text-white/45">
           Questions? Ask the OXXOVO assistant below, or email{' '}
-          <a href="mailto:info@oxxovo.com" className="text-white/70 underline hover:text-white">info@oxxovo.com</a>.
+          <a href="mailto:info@oxxovo.ai" className="text-white/70 underline hover:text-white">info@oxxovo.ai</a>.
         </p>
       </section>
 

@@ -83,8 +83,17 @@ export function MainResultsView({
         season_not_found: t.main_results.approve_err_season_not_found,
         no_scored_submissions: t.main_results.approve_err_no_scored,
         update_failed: t.main_results.approve_err_update_failed,
+        // Three-gate blocks. The server also returns `detail` with the measured
+        // numbers ("7/10 scored"); show it, because a gate that will not say what
+        // it counted is indistinguishable from a broken button.
+        schedule_not_reached: t.main_results.approve_err_schedule_not_reached,
+        already_awarded: t.main_results.approve_err_already_awarded,
+        nothing_submitted: t.main_results.approve_err_nothing_submitted,
+        scoring_incomplete: t.main_results.approve_err_scoring_incomplete,
+        vote_window_open: t.main_results.approve_err_vote_window_open,
       }
-      setActionError(map[res.error] ?? res.error)
+      const base = map[res.error] ?? res.error
+      setActionError(res.detail ? `${base} (${res.detail})` : base)
       return
     }
     router.refresh()
@@ -147,7 +156,9 @@ export function MainResultsView({
             </span>
           )}
         </div>
-        {/* 본선 공통 주제 — 모든 영상이 같은 주제(=statement)라 1회만 표시 */}
+        {/* 본선 공통 주제 — 모든 영상이 같은 주제(=statement)라 1회만 표시.
+            표시는 짧은 라벨(main_round_theme_label). 채점에 실제로 쓰인 전문은
+            main_round_theme이며 /rules에 공개된다. (TK 2026-07-15) */}
         {mainRoundTheme && (
           <div className="mt-4 rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.08] px-4 py-3">
             <span className="text-[11px] uppercase tracking-wider text-white/50">

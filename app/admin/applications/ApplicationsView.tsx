@@ -16,6 +16,7 @@ import {
   type IntegrityConfidence,
   type IntegrityRecommendation,
 } from '@/lib/grades'
+import { isUnjudged } from '@/lib/scoring-coverage'
 import { RecommendationsPanel } from './RecommendationsPanel'
 
 export type RecommendationRow = {
@@ -73,6 +74,12 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 type Segment = 'all' | 'pending' | 'flagged' | 'selected' | 'waitlist' | 'awarded' | 'rejected'
+// ★⑥G gap 2. A SECOND axis, not a seventh segment. Competition status
+// (selected / rejected) and judging status (completed / failed) are orthogonal,
+// and folding them into one row of tabs makes the combination that matters on
+// judging day -- "selected AND failed" -- impossible to express. The list was
+// already carrying judged_status per row and never using it.
+type Judging = 'any' | 'unjudged' | 'in_progress' | 'failed' | 'completed'
 type Sort = 'submitted_desc' | 'submitted_asc' | 'score_desc' | 'name_asc'
 
 export function ApplicationsView({
@@ -92,6 +99,7 @@ export function ApplicationsView({
   const lang = useAdminLang()
   const router = useRouter()
   const [segment, setSegment] = useState<Segment>('all')
+  const [judging, setJudging] = useState<Judging>('any')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>('submitted_desc')
 
@@ -104,6 +112,18 @@ export function ApplicationsView({
     return m
   }, [applications])
 
+  const countsByJudging = useMemo(
+    () => ({
+      unjudged: applications.filter(isUnjudged).length,
+      in_progress: applications.filter(
+        (a) => a.judged_status === 'pending' || a.judged_status === 'in_progress',
+      ).length,
+      failed: applications.filter((a) => a.judged_status === 'failed').length,
+      completed: applications.filter((a) => a.judged_status === 'completed').length,
+    }),
+    [applications],
+  )
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     let rows = applications
@@ -113,6 +133,15 @@ export function ApplicationsView({
     else if (segment === 'waitlist') rows = rows.filter((a) => a.status === 'waitlist')
     else if (segment === 'awarded') rows = rows.filter((a) => a.status === 'awarded')
     else if (segment === 'rejected') rows = rows.filter((a) => a.status === 'rejected')
+
+    // ★'unjudged' is entries with a film and NO scoring row -- absent, not
+    // pending. isUnjudged is the same rule the dashboard counts with, so the tab
+    // and the headline number cannot disagree.
+    if (judging === 'unjudged') rows = rows.filter(isUnjudged)
+    else if (judging === 'in_progress')
+      rows = rows.filter((a) => a.judged_status === 'pending' || a.judged_status === 'in_progress')
+    else if (judging === 'failed') rows = rows.filter((a) => a.judged_status === 'failed')
+    else if (judging === 'completed') rows = rows.filter((a) => a.judged_status === 'completed')
 
     if (q) {
       rows = rows.filter((a) => {
@@ -137,7 +166,7 @@ export function ApplicationsView({
       })
     }
     return sorted
-  }, [applications, segment, query, sort])
+  }, [applications, segment, judging, query, sort])
 
   const handleSeasonChange = (newId: string) => {
     const params = new URLSearchParams()
@@ -254,6 +283,18 @@ export function ApplicationsView({
         <Segment label={t.applications.segment_rejected} count={countsByStatus.rejected ?? 0} active={segment === 'rejected'} onClick={() => setSegment('rejected')} t={t} />
       </div>
 
+      {/* ★Judging axis -- combines with the tabs above rather than replacing them */}
+      <div className="flex flex-wrap items-center gap-1 mb-5">
+        <span className="mr-2 text-[11px] font-bold uppercase tracking-wider text-white/35">
+          {t.applications.judging_axis_label}
+        </span>
+        <Segment label={t.applications.judging_all} count={applications.length} active={judging === 'any'} onClick={() => setJudging('any')} t={t} />
+        <Segment label={t.applications.judging_unjudged} count={countsByJudging.unjudged} active={judging === 'unjudged'} onClick={() => setJudging('unjudged')} t={t} accent={countsByJudging.unjudged > 0 ? 'urgent' : undefined} />
+        <Segment label={t.applications.judging_in_progress} count={countsByJudging.in_progress} active={judging === 'in_progress'} onClick={() => setJudging('in_progress')} t={t} />
+        <Segment label={t.applications.judging_failed} count={countsByJudging.failed} active={judging === 'failed'} onClick={() => setJudging('failed')} t={t} accent={countsByJudging.failed > 0 ? 'urgent' : undefined} />
+        <Segment label={t.applications.judging_completed} count={countsByJudging.completed} active={judging === 'completed'} onClick={() => setJudging('completed')} t={t} />
+      </div>
+
       {/* Table */}
       <div className="border border-white/10 rounded overflow-hidden">
         <table className="w-full text-sm">
@@ -291,7 +332,7 @@ export function ApplicationsView({
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-white/90">
-                    {a.verified_score != null ? Math.round(a.verified_score) : <span className="text-white/40 font-normal">{t.applications.score_pending}</span>}
+                    {a.verified_score != null ? Number(a.verified_score).toFixed(2) : <span className="text-white/40 font-normal">{t.applications.score_pending}</span>}
                   </td>
                   <td className="px-4 py-3">
                     {derived ? (

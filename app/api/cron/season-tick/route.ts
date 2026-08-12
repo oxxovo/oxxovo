@@ -28,12 +28,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { buildNextSeasonRow } from '@/lib/season-schedule'
+import { releasePrelimHoldCore } from '@/lib/watch-hold'
+import { sweepAsyncSubmissions, type AsyncSweepReport } from '@/lib/studio'
+import { sweepStudioLeases, type StudioLeaseReport } from '@/lib/studio-lease'
+import {
+  watchScoringLeases,
+  stuckAlertHtml,
+  type ScoringLeaseWatchReport,
+} from '@/lib/scoring-lease-watch'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
+import {
+  reportPricingHealth,
+  pricingAlertHtml,
+  summarizeProblems,
+  type PricingHealthReport,
+} from '@/lib/pricing-health'
 import type { Season } from '@/lib/seasons'
+import { isFixtureSeason } from '@/lib/lobby'
 
 // Run at request time — a prerendered 'now' would silently ignore time-based
 // triggers.
 export const dynamic = 'force-dynamic'
+
+// ★DECLARED, not inherited. Nothing here set maxDuration, so the tick ran on the
+// platform default -- a number nobody in this repo had written down, and one the
+// finalize byte-check (a real download per submission) can exceed. An undeclared
+// budget also made the 60s download timeout unreachable: the function would be
+// killed before the timeout it was supposed to enforce. 300s is the Pro ceiling
+// for the Node runtime; the per-tick finalize cap below is sized against it.
+export const maxDuration = 300
 
 // Forward-only lifecycle order. 'upcoming' sits between draft and active: it is
 // an announced teaser (shown on the lobby as "COMING SOON", no applications) that
@@ -69,9 +92,24 @@ type SeasonTickReport = {
   created: { id: string; season_number: number; application_open_at: string | null } | null
   transitions: { id: string; from: string; to: string }[]
   deferrals: { id: string; newClose: string | null; deferCount: number }[]
+  prelimReleases: { id: string; released: number }[]
   advancements: { id: string; advanced: number; rejected: number; nTarget: number }[]
   skippedCreation?: string
   errors: string[]
+  asyncSweep?: AsyncSweepReport
+  // Lane C's lease recovery over the rows lane A's sweep does not own: clips, AI
+  // music, and renders nobody submitted. Ownership is declared in
+  // lib/studio-sweep-scope.ts and pinned by lib/studio-sweep-scope.test.ts.
+  leaseSweep?: StudioLeaseReport
+  // ★The other half of the scoring lease: the worker reclaims its own stale
+  // claims, but cannot notice that it is not running. Always present so the
+  // threshold this tick used is readable next to the worker's own -- two repos
+  // cannot share a constant, so they are compared instead of assumed equal.
+  scoringLeases?: ScoringLeaseWatchReport
+  // Always present, alert or not: the tick's JSON is the one place ops can read
+  // the CURRENT pricing state on demand, rather than waiting for the mail that
+  // only fires on a change.
+  pricing?: { signature: string; alerted: boolean; problems: string[] }
 }
 
 async function handle(request: NextRequest) {
@@ -111,10 +149,33 @@ async function handle(request: NextRequest) {
   let created: SeasonTickReport['created'] = null
   let skippedCreation: string | undefined
 
-  const latest = [...seasons].sort((a, b) => b.season_number - a.season_number)[0]
+  // ★Fixtures are excluded before "latest" is picked, and that one filter fixes
+  // all four things `latest` is used for: the next number, the next id, the
+  // teaser check, and the row buildNextSeasonRow clones from.
+  //
+  // Measured 2026-08-08: max(season_number) over ALL rows is 1006, because nine
+  // rehearsal seasons (season_test2 #998, season_test #999, season_1000..1006)
+  // sit in the table. So the unfiltered rule made the next real season #1007 --
+  // and it would then have been cloned from season_1006, a rehearsal row, and
+  // published as season_1007 on the lobby. Over the real rows the max is 4, so
+  // the next season is season_5.
+  const realSeasons = seasons.filter((s) => !isFixtureSeason(s))
+  const latest = [...realSeasons].sort((a, b) => b.season_number - a.season_number)[0]
   if (!latest) {
-    skippedCreation = 'no seasons exist yet — nothing to clone from'
-    errors.push('season-tick: seasons table is empty; cannot bootstrap season_0')
+    // Distinguish "no rows at all" from "rows, but every one of them is a
+    // fixture". The second is not a bootstrap failure, it is a table that has
+    // only rehearsal data in it, and calling it "empty" would send someone
+    // looking for the wrong problem.
+    if (seasons.length === 0) {
+      skippedCreation = 'no seasons exist yet — nothing to clone from'
+      errors.push('season-tick: seasons table is empty; cannot bootstrap season_0')
+    } else {
+      skippedCreation = `all ${seasons.length} seasons are fixtures — no real season to clone from`
+      errors.push(
+        `season-tick: every season row is is_fixture=true (${seasons.length} rows); ` +
+          'create-ahead refuses to clone a rehearsal into a public season',
+      )
+    }
   } else if (!latest.application_open_at) {
     // The latest season is a teaser with no open date set yet (e.g. an
     // announced "COMING SOON" season whose schedule is still TBD). That is a
@@ -207,6 +268,31 @@ async function handle(request: NextRequest) {
     }
   }
 
+  // ── 1.6. PRELIM HOLD RELEASE ─────────────────────────────────────────────
+  // A season running the anti-copy hold keeps every prelim entry invisible until
+  // the whole cohort is released together. This is the AUTO path: once the
+  // application window has closed, release them all at once. Opt-in per season
+  // (studio_prelim_auto_publish, default false) -- while it is off the release
+  // is the admin's button on /admin/watch-videos, which is where season_0 stands
+  // until the schedule is final. Idempotent: the release matches only still-held
+  // rows, so later ticks release 0 and touch nothing.
+  //
+  // Runs AFTER deferral for the same reason transitions do: a season deferred
+  // this tick has a shifted (future) close date, so releasing on its stale
+  // in-memory date would publish the cohort while the window is still open.
+  const prelimReleases: SeasonTickReport['prelimReleases'] = []
+  for (const s of seasons) {
+    if (deferredThisTick.has(s.id)) continue
+    if (!s.studio_prelim_auto_publish) continue
+    if (!s.application_close_at || nowMs < new Date(s.application_close_at).getTime()) continue
+    const { released, error } = await releasePrelimHoldCore(s.id)
+    if (error) {
+      errors.push(`season-tick: prelim hold release ${s.id} failed: ${error}`)
+      continue
+    }
+    if (released > 0) prelimReleases.push({ id: s.id, released })
+  }
+
   // ── 2. STATUS TRANSITIONS ────────────────────────────────────────────────
   const transitions: SeasonTickReport['transitions'] = []
   for (const s of seasons) {
@@ -264,8 +350,36 @@ async function handle(request: NextRequest) {
     }
   }
 
+  // ── 2.6. PRICING HEALTH ───────────────────────────────────────────────────
+  // Can everything that can be spent on still be priced? The charge paths refuse
+  // rather than charge 0 (lib/credits.ts), so a broken price gives nothing away --
+  // it BLOCKS the participant, who sees a generic failure, while nothing is
+  // written anywhere: the refusal happens before the job row exists. This is the
+  // half that tells us. It alerts only when the set of problems CHANGES (a
+  // standing condition would otherwise mail every tick), recovery included.
+  // Never throws -- a pricing probe must not cost the tick its other work.
+  let pricingHealth: PricingHealthReport | undefined
+  try {
+    pricingHealth = await reportPricingHealth()
+    if (pricingHealth.stateError) {
+      errors.push(`season-tick: pricing alert state: ${pricingHealth.stateError}`)
+    }
+  } catch (e) {
+    errors.push(`season-tick: pricing health check threw: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   // ── 3. NOTIFY ────────────────────────────────────────────────────────────
   const alerts: Promise<boolean>[] = []
+  if (pricingHealth?.changed) {
+    alerts.push(
+      sendAdminAlert(
+        pricingHealth.recovered
+          ? '[OXXOVO] Studio pricing healthy again'
+          : `[OXXOVO] Studio pricing problem: ${summarizeProblems(pricingHealth.problems)}`,
+        pricingAlertHtml(pricingHealth),
+      ),
+    )
+  }
   for (const d of deferrals) {
     alerts.push(
       sendAdminAlert(
@@ -275,6 +389,19 @@ async function handle(request: NextRequest) {
           <p><strong>${d.id}</strong> had fewer than the minimum applicants at close,
              so the whole calendar shifted forward (deferral #${d.deferCount}).</p>
           <p>New application close: <strong>${d.newClose}</strong> (UTC)</p>
+        </div>`,
+      ),
+    )
+  }
+  for (const p of prelimReleases) {
+    alerts.push(
+      sendAdminAlert(
+        `[OXXOVO] ${p.id}: ${p.released} prelim entries published`,
+        `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
+          <h2 style="color: #8B22FF;">Preliminary cohort released</h2>
+          <p>The application window for <strong>${p.id}</strong> closed, so the
+             anti-copy hold was lifted on <strong>${p.released}</strong> entries.
+             They are now visible on <a href="https://www.oxxovo.ai/watch">/watch</a>.</p>
         </div>`,
       ),
     )
@@ -336,14 +463,71 @@ async function handle(request: NextRequest) {
   }
   if (alerts.length > 0) await Promise.allSettled(alerts)
 
+  // ★Asynchronous submission: finalize accepted-and-rendered entries, recover dead
+  // render leases, flag overdue ones. Deliberately part of THIS tick rather than a new
+  // cron entry -- see sweepAsyncSubmissions for why (Vercel cron plan limit).
+  let asyncSweep: Awaited<ReturnType<typeof sweepAsyncSubmissions>> | undefined
+  try {
+    asyncSweep = await sweepAsyncSubmissions()
+  } catch (e) {
+    errors.push(`asyncSweep: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  // ★Same tick, not a new cron entry -- the plan's cron limit is 3 and exceeding
+  // it deploys fine while the schedule silently never fires. Runs after the
+  // submission sweep so a render finalized this tick is never also seen as stale,
+  // and isolated the same way: a throw here must not cost the tick its other work.
+  let leaseSweep: StudioLeaseReport | undefined
+  try {
+    leaseSweep = await sweepStudioLeases()
+    if (leaseSweep.errors?.length) errors.push(...leaseSweep.errors.map((e) => `studioLease: ${e}`))
+  } catch (e) {
+    errors.push(`studioLease: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  // ★Watch, do not reclaim. The scoring worker reclaims its own claims at the
+  // top of every batch; what it cannot do is notice that it is not running. A
+  // row stuck in_progress is invisible to every counter (not 'failed', skipped
+  // by pickPending as already claimed), so the preliminary just never finalizes.
+  // Isolated like the sweeps above: this must not cost the tick its other work.
+  let scoringLeases: ScoringLeaseWatchReport | undefined
+  try {
+    scoringLeases = await watchScoringLeases(now)
+    if (scoringLeases.error) errors.push(`scoringLeaseWatch: ${scoringLeases.error}`)
+    if (scoringLeases.stuck.length > 0) {
+      // ★Repeats hourly while it lasts, deliberately. This only fires when the
+      // scoring fleet is down during a scoring window, which is an outage, and
+      // an outage that stops mentioning itself is one nobody finishes fixing.
+      await sendAdminAlert(
+        `[OXXOVO] scoring worker not reclaiming — ${scoringLeases.stuck.length} row(s) stuck in_progress`,
+        stuckAlertHtml(scoringLeases),
+      )
+    }
+  } catch (e) {
+    errors.push(`scoringLeaseWatch: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   const report: SeasonTickReport = {
     ok: true,
     ranAt: now.toISOString(),
     created,
     transitions,
     deferrals,
+    prelimReleases,
     advancements,
     ...(skippedCreation ? { skippedCreation } : {}),
+    ...(asyncSweep ? { asyncSweep } : {}),
+    ...(leaseSweep ? { leaseSweep } : {}),
+    ...(scoringLeases ? { scoringLeases } : {}),
+    ...(pricingHealth
+      ? {
+          pricing: {
+            signature: pricingHealth.signature,
+            alerted: pricingHealth.changed,
+            problems: pricingHealth.problems.map((p) => `${p.kind}:${p.id} ${p.detail}`),
+          },
+        }
+      : {}),
     errors,
   }
   return NextResponse.json(report)

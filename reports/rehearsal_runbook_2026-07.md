@@ -56,6 +56,18 @@ node --env-file=.env.local scripts/rehearsal-stage.mjs open
 node --env-file=.env.local scripts/rehearsal-stage.mjs close
 ```
 → active→closed (cron이 날짜 보고 자동).
+★`close`는 **채점을 열지 않는다**. 24h 처리버퍼(렌더·확정·이메일)가 먼저 돌고,
+예선 워커는 `scoring_start_at`에 게이트가 걸린다. 이 단계에서 워커를 돌리면
+**정상적으로 0건**이고 로그에 `처리버퍼 진행 중`이 찍힌다 — 이게 프로덕션 동작이다.
+버퍼 길이는 `REHEARSAL_BUFFER`(분, 기본 = `REHEARSAL_WINDOW`). 기다리기 싫으면 `0`.
+
+### 2.5) 처리버퍼 종료 (수동 — 렌더가 다 내려앉았다고 판단할 때)
+```
+node --env-file=.env.local scripts/rehearsal-stage.mjs buffer-done
+```
+→ `scoring_start_at` 과거 세팅. **여기서부터 예선 워커 게이트가 열린다.**
+**확인:** `rehearsal-status.mjs`에 `scoringStart=PAST`. 아직 future/null이면
+대시보드가 `PRELIM WORKER BLOCKED`를 직접 찍어준다.
 
 ### 3) Triple-AI 예선 채점 — ★워커 수동 실행
 `oxxovo-scoring`에서 (예선 20편, `BATCH_SIZE`는 1잡당 처리량; 20편이면 여러 번 or 크게):
@@ -113,6 +125,51 @@ node --env-file=.env.local scripts/rehearsal-approve-awards.mjs
 - 다시 리셋하거나(`rehearsal-reset.mjs`) season_test를 원 상태로. season_test 날짜/`min_participants`(리허설에 5로 낮춤)는 리허설 전용 값.
 - `scripts/.rehearsal-stash.json` 삭제 가능.
 - **발사 전 복귀 목록(별도):** ① 테스트 시즌(1000~1006) open/close는 NULL 처리됨 — 유지 or 삭제. ② season_0 draft 해제 + 7/25 오픈(발사 시퀀싱). ③ 워커 `SEASON_REQUIRED_STATUS=''` + Railway 스케줄 등록 확인. ④ (후속) 워커 season 필터.
+
+## ★★리허설 시즌을 새로 만들 때 — 이름/번호 규칙 (2026-08-07)
+
+**공개 로비(`/`의 TOURNAMENTS, `/tournament`)는 리허설 시즌을 코드로 거른다**
+(`isRehearsalFixture`, `lib/lobby.ts`). 규칙은 **둘 중 하나만 맞으면** 걸러진다:
+
+1. **id가** `zz_` · `season_test…` · `season_e2e…` · `season_loadtest…` 로 시작
+2. **`season_number` ≥ 900**
+
+★**둘 다 아니면 그 리허설 시즌은 공개 홈에 뜬다.** 예: `rehearsal_nov`(번호 7)은
+**샌다.** 안 새게 하려면 둘 중 하나를 반드시 지켜라.
+
+★**왜 이런 휴리스틱인가** — 실측(2026-08-07) 결과 `seasons`에 리허설을 표시하는
+컬럼이 **없다**. `is_test`·`visibility`는 존재하지 않고, `host_type`·
+`lobby_featured`·`max_applicants`·`poster_url`은 진짜/픽스처가 **전부 같으며**,
+`total_prize_pool`은 **거꾸로**다(season_0과 픽스처가 3000, 진짜 season_1~4가 0).
+**항구적 해결은 `seasons`에 컬럼 하나이고 그건 DB 변경이라 본부/본체 소관이다.**
+컬럼이 생기면 이 절과 `isRehearsalFixture`를 같이 지운다.
+
+★**번호 대역을 믿지 마라** — `app/host/new/actions.ts`가 새 시즌 번호를
+`max+1`로 잡는다(오늘 기준 **1007**). 대역은 픽스처들 때문에 **이미 오염됐고 계속
+위로 밀린다**. 그래서 id 규약 쪽이 더 안전한 축이다.
+
+## ★리허설에 반드시 포함 — 좀비 방어 실측 (본부 2026-08-07, 발사 전 필수)
+
+이 리허설은 **일정 자동화**를 검증한다. 그 옆에 **아직 한 번도 관측된 적 없는 방어
+장치**가 하나 있고, 리허설이 그것을 보는 유일한 기회다.
+
+- **사실**: `render_jobs` 실측(2026-08-07) = 프로젝트 전체 **20행, 최신 생성
+  2026-07-15, 그 이후 활동 0**. claim-token CAS는 **2026-08-02**(`2069b8d`)에
+  들어갔다. 즉 **CAS 빌드는 프로덕션 렌더를 한 건도 처리한 적이 없다.**
+- ★그래서 "좀비 방어 들어갔다"는 **빌드에 들어갔다**는 뜻이지 **작동을 봤다**는
+  뜻이 아니다. 두 문장은 다르고, 2026-08-03 건(있지도 않은 컬럼에 쓰면서 몇 주간
+  "성공" 로그만 남긴 게시 경로)이 그 차이가 무엇을 값으로 치르는지 보여줬다.
+- **하는 법**: 리허설 중 렌더가 한 번이라도 돌면 `npm run test:reachability` 한 줄로
+  판정이 나온다(`e2e/reachability-queued-submit.mjs:199`).
+  - `DEPLOY: the running worker stamps claim_token …` → **통과.**
+  - `★DEPLOY WARNING: … left claim_token NULL` → 배포된 게 CAS 빌드가 아니다.
+    **Studio 열기 전에 멈추고 배포부터 고친다.**
+- ★**0건은 통과가 아니다.** 같은 창에서 토큰이 찍힌 행이 하나도 없으면 NULL은
+  아무것도 증명하지 않는다. `scripts/inspect-claim-token-null.mjs`가 그 대조군을
+  같이 찍고, 못 하는 구간은 못 한다고 말한다.
+- ★**범위**: 렌더 레인만이다. `generation_jobs.claim_token`은 **53행 전부 NULL**
+  (두 배포 빌드 다 안 쓴다), `r2_key`로도 빌드를 구분할 수 없다 — 생성 레인은
+  행 수준 방어도, 행 수준 포렌식도 없다. 상세는 go-live 체크리스트 **C8**.
 
 ## 발사 시 "수동 개입" 필수 4곳 (이 리허설이 드러낸 것)
 1. 🔴 채점 워커 실행 — Railway 스케줄 등록돼 있으면 자동, 아니면 수동 (발사 전 확인).

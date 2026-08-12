@@ -1,0 +1,61 @@
+name: checks
+
+# ★Stage 1 is an ALARM, not a gate. Vercel deploys from a controlled CLI run, so a red
+# check here does not block anything by itself; it tells us a regression landed. It
+# becomes a real gate when a branch protection rule requires it, and that only happens
+# AFTER this workflow has been green once -- requiring a check that has never passed
+# would block every merge immediately. The worker's workflow had never once been green
+# from the day it was introduced (2026-07-30), which is exactly the failure mode this
+# ordering avoids.
+#
+# What is NOT here on purpose: the parity harnesses (test:parity:engine /
+# test:parity:transition). They need a Playwright browser download and an ffmpeg
+# install, which dominates CI time, and the job's purpose is regression blocking --
+# tsc + tests + build cover that. If parity needs to be enforced in CI it belongs in a
+# separate job with its own caching, not bolted onto this one.
+
+on: [push, pull_request]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      # ★The step the worker's workflow was missing, which is why it exited 1 in ~1s on
+      # every run for a month. package-lock.json is committed, so `npm ci` is exact.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # 92 tests: CryptoBind KAT + v1i/v1ic/v1v + EDL v2 canonical (incl. the
+      # requireFinal split used by asynchronous submission) + moderation + music
+      # limits + the credit pricing guard. The KAT goldens are byte-mirrored with
+      # oxxovo-studio, so a one-byte drift in a canonical string fails here AND in
+      # the worker repo.
+      - name: Tests
+        run: npm test
+
+      # Catches what tsc cannot: route/server-component regressions, and any page that
+      # reaches for the database while prerendering.
+      #
+      # ★It needs PLACEHOLDERS, not secrets. Measured 2026-07-30 by moving the local
+      # .env.local aside: with no env at all the build FAILS, because prerendering /faq
+      # reaches createSupabaseAdmin() and that throws on a missing URL/key. With the
+      # obviously-fake values below the build completes (exit 0) -- the client is
+      # constructed, the query fails with "fetch failed", and the page falls back to its
+      # no-season state, which is exactly the path a real outage would take.
+      #
+      # These are not credentials and nothing reaches a real database. If a future page
+      # needs REAL data to build, the fix is to stop depending on data at build time,
+      # not to add secrets here.
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key

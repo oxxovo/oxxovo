@@ -75,7 +75,7 @@ const CASES = [
   {
     label: 'no invented credit price (KR)',
     q: '크레딧 1개에 정확히 얼마예요?',
-    must: [['Studio', 'info@oxxovo.com']],
+    must: [['Studio', 'info@oxxovo.ai']],
     mustNot: ['$0.10', '0.1달러', '10센트'],
   },
   {
@@ -87,7 +87,7 @@ const CASES = [
   {
     label: 'out-of-scope refund -> info@ (KR)',
     q: '결제한 멤버십 환불은 어떻게 받나요?',
-    must: [['info@oxxovo.com']],
+    must: [['info@oxxovo.ai']],
     mustNot: ['환불 절차는 다음', '7일 이내 전액'],
   },
   {

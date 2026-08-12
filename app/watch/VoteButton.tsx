@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toggleWatchVote } from './actions'
 import type { VoteContext } from '@/lib/watch'
+import { useT } from '@/lib/admin-i18n'
 
 // Main-round community vote. Distinct from Like (Like = popularity, anytime;
 // Vote = official, windowed, up to N). Shown only on main-round videos.
@@ -16,6 +17,7 @@ export function VoteButton({
   ctx: VoteContext
   isLoggedIn: boolean
 }) {
+  const t = useT()
   const router = useRouter()
   const [voted, setVoted] = useState(ctx.voted)
   const [used, setUsed] = useState(ctx.usedVotes)
@@ -44,25 +46,29 @@ export function VoteButton({
       } else if (res.error === 'auth') {
         goLogin()
       } else if (res.error === 'limit') {
-        setMsg(`You've used all ${ctx.cap} votes. Un-vote another to switch.`)
+        setMsg(t.watch.vote_error_limit(ctx.cap))
       } else if (res.error === 'closed') {
-        setMsg('Voting is closed.')
+        setMsg(t.watch.vote_error_closed)
       }
     })
   }
 
-  if (!ctx.open && total === 0) {
-    return <p className="text-sm text-white/40">Community voting is not open.</p>
+  // Before the window opens (and no votes yet) there is nothing to show. Once
+  // voting has opened -- or closed with a final tally -- the box stays visible so
+  // the vote count is public during AND after voting (TK 2026-07-12).
+  if (!ctx.open && !ctx.closed && total === 0) {
+    return <p className="text-sm text-white/40">{t.watch.vote_notopen}</p>
   }
 
   return (
     <div className="rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/[.06] p-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-sm font-bold text-white">Community vote</p>
+          <p className="text-sm font-bold text-white">{t.watch.vote_title}</p>
           <p className="text-xs text-white/50">
-            {total.toLocaleString()} votes
-            {ctx.open && isLoggedIn && <> · {remaining} of {ctx.cap} left</>}
+            {t.watch.vote_count(total)}
+            {ctx.open && isLoggedIn && <> · {t.watch.vote_remaining(remaining, ctx.cap)}</>}
+            {ctx.closed && <> · {t.watch.vote_closed_suffix}</>}
           </p>
         </div>
         <button
@@ -75,11 +81,11 @@ export function VoteButton({
               : 'bg-[#8b22ff] text-white hover:bg-[#7a1de0]'
           }`}
         >
-          {voted ? '✓ Voted' : ctx.open ? 'Vote' : 'Closed'}
+          {voted ? t.watch.vote_btn_voted : ctx.open ? t.watch.vote_btn_vote : t.watch.vote_btn_closed}
         </button>
       </div>
       {atCap && !msg && (
-        <p className="mt-2 text-xs text-white/40">All {ctx.cap} votes used — un-vote one to switch.</p>
+        <p className="mt-2 text-xs text-white/40">{t.watch.vote_cap_used(ctx.cap)}</p>
       )}
       {msg && <p className="mt-2 text-xs text-[#ff9db0]">{msg}</p>}
     </div>

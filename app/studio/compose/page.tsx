@@ -2,19 +2,26 @@
 
 // Real compose editor route. Behind the /studio layout gate (session6). Loads
 // the participant's ready clips + compose caps, wires the editor to the real
-// createRender / pollRender server actions. Demo lives at /compose-demo.
+// createRender / pollRender server actions.
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAdminLang, setAdminLang } from '@/lib/admin-i18n'
 import { useLocalToken } from '@/lib/use-local-user'
-import ComposeEditor, { type ComposeApplicant, type ComposeSubmitCtx } from './ComposeEditor'
+import ProComposeEditor from './ProComposeEditor'
+import { type ComposeApplicant, type ComposeSubmitCtx, type ComposeSubmission } from './ComposeEditor'
 import {
   loadComposeState,
   createRenderAction,
   pollRenderAction,
   submitRenderAction,
+  deleteRenderAction,
+  generateMusicAction,
+  listMusicAssetsAction,
+  pollMusicAction,
   type ComposeClip,
+  type ResumeRender,
+  type RestorableRender,
 } from '../actions'
 import type { EdlSegment } from '@/lib/studio'
 
@@ -28,11 +35,22 @@ export default function ComposePage() {
   const lang = useAdminLang()
   const t = T[lang]
   const [data, setData] = useState<{
+    seasonId: string
     clips: ComposeClip[]
     minSeconds: number
     maxSeconds: number
     maxClips: number
     submit: ComposeSubmitCtx
+    submission: ComposeSubmission
+    resumeRender: ResumeRender | null
+    restorableRender: RestorableRender | null
+    nickname: string
+    musicEnabled: boolean
+    musicAiEnabled: boolean
+    musicCreditCost: number
+    musicPromptMax: number
+    musicCap: number
+    musicUsed: number
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -71,7 +89,7 @@ export default function ComposePage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-4xl px-6 py-8">
+      <div className="mx-auto max-w-[1600px] px-6 py-8">
         {loading ? (
           <p className="px-6 py-24 text-center text-white/40">{t.loading}</p>
         ) : !token ? (
@@ -84,18 +102,35 @@ export default function ComposePage() {
         ) : err || !data ? (
           <p className="px-6 py-24 text-center text-[#ff8888]">{err ?? 'load failed'}</p>
         ) : (
-          <ComposeEditor
+          <ProComposeEditor
             lang={lang}
+            seasonId={data.seasonId}
             clips={data.clips}
             minSeconds={data.minSeconds}
             maxSeconds={data.maxSeconds}
             maxClips={data.maxClips}
             submitCtx={data.submit}
-            onRender={(edl: EdlSegment[]) => createRenderAction(token, edl)}
+            submission={data.submission}
+            resumeRender={data.resumeRender}
+            restorableRender={data.restorableRender}
+            nickname={data.nickname}
+            musicEnabled={data.musicEnabled}
+            loadMusicAssets={() => listMusicAssetsAction(token)}
+            musicAiEnabled={data.musicAiEnabled}
+            musicCreditCost={data.musicCreditCost}
+            musicPromptMax={data.musicPromptMax}
+            musicCap={data.musicCap}
+            musicUsed={data.musicUsed}
+            onGenerateMusic={(prompt: string, durationSeconds: number) =>
+              generateMusicAction(token, { prompt, durationSeconds })
+            }
+            pollMusic={(assetId: string) => pollMusicAction(token, assetId)}
+            onRender={(edl) => createRenderAction(token, edl)}
             pollRender={(renderId: string) => pollRenderAction(token, renderId)}
             onSubmit={(renderId: string, applicant?: ComposeApplicant) =>
               submitRenderAction(token, renderId, applicant)
             }
+            onDelete={(renderId: string) => deleteRenderAction(token, renderId)}
           />
         )}
       </div>

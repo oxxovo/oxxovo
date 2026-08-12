@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
   }
 
   const from = normalizeAddr(body.from)
-  const to = normalizeAddr(body.to) || 'info@oxxovo.com'
+  const to = normalizeAddr(body.to) || 'info@oxxovo.ai'
   const subject = (body.subject ?? '').trim()
   const text = (body.text ?? '').trim()
   const messageId = (body.messageId ?? '').trim() || null
@@ -210,8 +210,8 @@ export async function POST(req: NextRequest) {
       from: EMAIL_FROM,
       to: from,
       subject: replySubject,
-      text: `${decision.reply}\n\n— OXXOVO Team\ninfo@oxxovo.com`,
-      replyTo: 'info@oxxovo.com',
+      text: `${decision.reply}\n\n— OXXOVO Team\ninfo@oxxovo.ai`,
+      replyTo: 'info@oxxovo.ai',
       headers: replyHeaders,
     })
     if (error) {
@@ -258,8 +258,8 @@ async function sendReceiptAck(o: {
 }): Promise<boolean> {
   const kr = isKorean(`${o.subject}\n${o.body}`)
   const text = kr
-    ? '문의해 주셔서 감사합니다. 메일이 정상 접수되었으며, 담당자가 확인 후 곧 답변드리겠습니다.\n\n— OXXOVO 팀\ninfo@oxxovo.com'
-    : 'Thank you for contacting us. Your message has been received, and our team will review it and reply to you shortly.\n\n— OXXOVO Team\ninfo@oxxovo.com'
+    ? '문의해 주셔서 감사합니다. 메일이 정상 접수되었으며, 담당자가 확인 후 곧 답변드리겠습니다.\n\n— OXXOVO 팀\ninfo@oxxovo.ai'
+    : 'Thank you for contacting us. Your message has been received, and our team will review it and reply to you shortly.\n\n— OXXOVO Team\ninfo@oxxovo.ai'
   const replySubject = /^re:/i.test(o.subject) ? o.subject : `Re: ${o.subject || 'Your message'}`
   try {
     const resend = getResend()
@@ -268,7 +268,7 @@ async function sendReceiptAck(o: {
       to: o.from,
       subject: replySubject,
       text,
-      replyTo: 'info@oxxovo.com',
+      replyTo: 'info@oxxovo.ai',
       headers: {
         'Auto-Submitted': 'auto-replied',
         'X-Auto-Response-Suppress': 'All',

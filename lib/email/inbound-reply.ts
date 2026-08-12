@@ -79,7 +79,7 @@ export async function classifyAndDraft(input: {
   const client = new Anthropic({ apiKey })
   // Frame the inbound email as the user turn. The KB system prompt handles
   // language detection + the "contact info@" guardrail for anything uncertain.
-  const userTurn = `The following is an inbound email to info@oxxovo.com. Answer it as the OXXOVO Help Assistant, in the sender's language, using only the knowledge base. If you cannot answer from the knowledge base, use the standard "contact info@oxxovo.com" reply.
+  const userTurn = `The following is an inbound email to info@oxxovo.ai. Answer it as the OXXOVO Help Assistant, in the sender's language, using only the knowledge base. If you cannot answer from the knowledge base, use the standard "contact info@oxxovo.ai" reply.
 
 This reply is sent as a PLAIN-TEXT email, so use NO markdown formatting: no **bold**, no markdown links [text](url), no backticks, no headings. Write any URL as a bare address only (e.g. https://www.oxxovo.ai/apply), so it stays clickable in email.
 

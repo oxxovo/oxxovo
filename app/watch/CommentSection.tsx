@@ -11,6 +11,7 @@ import {
 } from './actions'
 import { COMMENT_MAX } from './constants'
 import type { WatchComment } from '@/lib/watch'
+import { useT } from '@/lib/admin-i18n'
 
 // Comments: members write; author edits/deletes own; others report; admin hides
 // via the admin queue. Replies/pins/mentions intentionally deferred.
@@ -25,6 +26,7 @@ export function CommentSection({
   comments: WatchComment[]
   currentUserId: string | null
 }) {
+  const t = useT()
   const router = useRouter()
   const [text, setText] = useState('')
   const [pending, start] = useTransition()
@@ -52,10 +54,10 @@ export function CommentSection({
   return (
     <section className="mt-10">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-lg font-black">{comments.length} comments</h2>
+        <h2 className="text-lg font-black">{t.watch.comments_count(comments.length)}</h2>
         {/* Policy link placeholder -- copy supplied by HQ / 제니3. */}
         <Link href="/guidelines" className="text-xs text-white/40 hover:text-white/70 transition">
-          Community Guidelines
+          {t.watch.comments_guidelines}
         </Link>
       </div>
 
@@ -68,7 +70,7 @@ export function CommentSection({
               onChange={(e) => setText(e.target.value)}
               maxLength={COMMENT_MAX}
               rows={3}
-              placeholder="Add a comment…"
+              placeholder={t.watch.comment_placeholder}
               className="w-full rounded-lg border border-white/15 bg-white/[.03] px-3 py-2 text-sm text-white placeholder-white/30 focus:border-[#8b22ff]/60 focus:outline-none"
             />
             <div className="mt-2 flex items-center justify-end gap-2">
@@ -81,7 +83,7 @@ export function CommentSection({
                 disabled={pending || !text.trim()}
                 className="rounded-full bg-[#8b22ff] px-4 py-1.5 text-sm font-bold text-white transition hover:bg-[#7a1de0] disabled:opacity-40"
               >
-                Comment
+                {t.watch.comment_submit}
               </button>
             </div>
           </>
@@ -91,7 +93,7 @@ export function CommentSection({
             onClick={goLogin}
             className="w-full rounded-lg border border-white/15 bg-white/[.03] px-3 py-3 text-left text-sm text-white/40 hover:border-white/30 transition"
           >
-            Sign in to comment…
+            {t.watch.comment_signin_prompt}
           </button>
         )}
       </div>
@@ -99,7 +101,7 @@ export function CommentSection({
       {/* List */}
       <div className="mt-6 space-y-5">
         {comments.length === 0 ? (
-          <p className="text-sm text-white/35">No comments yet. Be the first.</p>
+          <p className="text-sm text-white/35">{t.watch.comments_empty}</p>
         ) : (
           comments.map((c) => (
             <CommentRow
@@ -130,6 +132,7 @@ function CommentRow({
   onChanged: () => void
   onNeedLogin: () => void
 }) {
+  const t = useT()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.body)
   const [reported, setReported] = useState(false)
@@ -148,7 +151,7 @@ function CommentRow({
   }
 
   function remove() {
-    if (!confirm('Delete this comment?')) return
+    if (!confirm(t.watch.comment_delete_confirm)) return
     start(async () => {
       const res = await deleteWatchComment(comment.id)
       if (res.ok) onChanged()
@@ -167,7 +170,7 @@ function CommentRow({
     <div className="border-b border-white/5 pb-4 last:border-0">
       <div className="flex items-center gap-2">
         <span className="text-sm font-bold text-white">{comment.authorName}</span>
-        {comment.editedAt && <span className="text-[10px] text-white/30">(edited)</span>}
+        {comment.editedAt && <span className="text-[10px] text-white/30">{t.watch.comment_edited}</span>}
       </div>
 
       {editing ? (
@@ -186,7 +189,7 @@ function CommentRow({
               disabled={pending}
               className="rounded-full bg-[#8b22ff] px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
             >
-              Save
+              {t.watch.comment_save}
             </button>
             <button
               type="button"
@@ -196,7 +199,7 @@ function CommentRow({
               }}
               className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/60"
             >
-              Cancel
+              {t.watch.comment_cancel}
             </button>
           </div>
         </div>
@@ -209,10 +212,10 @@ function CommentRow({
           {isOwner ? (
             <>
               <button type="button" onClick={() => setEditing(true)} className="hover:text-white transition">
-                Edit
+                {t.watch.comment_edit}
               </button>
               <button type="button" onClick={remove} disabled={pending} className="hover:text-[#ff7d97] transition">
-                Delete
+                {t.watch.comment_delete}
               </button>
             </>
           ) : (
@@ -222,7 +225,7 @@ function CommentRow({
               disabled={pending || reported}
               className="hover:text-[#ff7d97] transition disabled:opacity-50"
             >
-              {reported ? 'Reported' : 'Report'}
+              {reported ? t.watch.comment_reported : t.watch.comment_report}
             </button>
           )}
         </div>

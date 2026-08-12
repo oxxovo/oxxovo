@@ -12,6 +12,8 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { getDisplayName } from '@/lib/nickname'
+import { revalidateWatchList } from '@/lib/watch-cache'
+import { releasePrelimHoldCore, type PrelimHoldRelease } from '@/lib/watch-hold'
 import { COMMENT_MAX } from './constants'
 import type { WatchRound } from '@/lib/watch'
 
@@ -145,8 +147,9 @@ export async function addWatchComment(
   if (text.length > COMMENT_MAX) return { ok: false, error: 'too_long' }
 
   const r = normRound(round)
-  // Ensure the account has a nickname so the comment renders with a name.
-  await getDisplayName(user.id)
+  // Ensure the account has a nickname (and a profiles row) so the comment
+  // renders with a name. Self path -- session email lets it create the row.
+  await getDisplayName(user.id, user.email)
 
   const admin = createSupabaseAdmin()
   const { error } = await admin
@@ -391,6 +394,7 @@ export async function setWatchHidden(
     .eq('id', applicationId)
   if (error) return { ok: false, error: 'failed' }
 
+  revalidateWatchList()
   revalidatePath(`/watch/${applicationId}`)
   revalidatePath('/watch')
   revalidatePath('/admin/watch-videos')
@@ -410,10 +414,40 @@ export async function approveModeration(applicationId: string): Promise<HideResu
     .eq('id', applicationId)
   if (error) return { ok: false, error: 'failed' }
 
+  revalidateWatchList()
   revalidatePath(`/watch/${applicationId}`)
   revalidatePath('/watch')
   revalidatePath('/admin/watch-videos')
   return { ok: true, hidden: false }
+}
+
+// ─── Prelim fairness release (anti-copy hold) ────────────────────────────────
+// Held prelim entries (watch_hold=true) are invisible to everyone until the whole
+// cohort is released together, so an early submitter's video can't be copied by a
+// later entrant. Two release paths share this one mutation:
+//   MANUAL: admin clicks "예선 전체 공개" (this action).
+//   AUTO:   the season cron calls releasePrelimHold when studio_prelim_auto_publish
+//           is on and now >= application_close_at (OFF until the schedule is final).
+// Visibility only -- never touches status/scoring. Prelim only (main uses the
+// main_round_start_at reveal).
+
+export type PublishResult = { ok: true; released: number } | { ok: false; error: 'forbidden' | 'failed' }
+
+// The mutation itself lives in lib/watch-hold so the season-tick cron can share
+// it (a cron route cannot import a 'use server' module's actions as plain
+// functions). Re-exported here for the callers that already import it.
+export async function releasePrelimHold(seasonId: string): Promise<PrelimHoldRelease> {
+  return releasePrelimHoldCore(seasonId)
+}
+
+// MANUAL admin trigger. Admin-gated; delegates to the shared release.
+export async function publishPrelim(seasonId: string): Promise<PublishResult> {
+  const adminUser = await getAdminOrNull()
+  if (!adminUser) return { ok: false, error: 'forbidden' }
+  if (!seasonId?.trim()) return { ok: false, error: 'failed' }
+  const r = await releasePrelimHold(seasonId.trim())
+  if (r.error) return { ok: false, error: 'failed' }
+  return { ok: true, released: r.released }
 }
 
 // ─── Staff Pick ──────────────────────────────────────────────────────────────
@@ -435,6 +469,7 @@ export async function setStaffPick(applicationId: string, on: boolean): Promise<
     .eq('id', applicationId)
   if (error) return { ok: false, error: 'failed' }
 
+  revalidateWatchList()
   revalidatePath(`/watch/${applicationId}`)
   revalidatePath('/watch')
   return { ok: true, staffPick: on }

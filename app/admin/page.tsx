@@ -2,6 +2,7 @@ import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { type Season } from '@/lib/seasons'
 import { DashboardView, type ScoringStats } from './DashboardView'
+import { scoringCoverage } from '@/lib/scoring-coverage'
 
 export default async function AdminDashboard() {
   const admin = await requireAdmin()
@@ -26,9 +27,20 @@ export default async function AdminDashboard() {
   if (currentSeason) {
     const { data: scoringRows, error: scoringErr } = await supabase
       .from('scoring_results')
-      .select('integrity_confidence, judged_status')
+      .select('application_id, integrity_confidence, judged_status')
       .eq('season_id', currentSeason.id)
       .eq('round', 'application')
+
+    // ★⑥G gap 1: the DENOMINATOR. The three counts below are counts of rows
+    // that exist, so an entry nobody enqueued is in none of them -- the panel
+    // read the same at full coverage and at half. `free_entry_url IS NOT NULL`
+    // is what makes an entry scorable to the scorer, so it is what "scorable"
+    // means here.
+    const { data: filmRows } = await supabase
+      .from('genesis_applications')
+      .select('id')
+      .eq('season_id', currentSeason.id)
+      .not('free_entry_url', 'is', null)
 
     if (!scoringErr && scoringRows) {
       const counts = { none: 0, low: 0, medium: 0, high: 0 }
@@ -42,7 +54,11 @@ export default async function AdminDashboard() {
         const conf = row.integrity_confidence as keyof typeof counts | null
         if (conf && conf in counts) counts[conf]++
       }
-      scoringStats = { ...counts, completed, in_progress: inProgress, failed }
+      const coverage = scoringCoverage(
+        ((filmRows ?? []) as { id: string }[]).map((r) => r.id),
+        (scoringRows as { application_id: string }[]).map((r) => r.application_id),
+      )
+      scoringStats = { ...counts, completed, in_progress: inProgress, failed, ...coverage }
     }
   }
 

@@ -13,7 +13,8 @@ import {
   getWatchSeasonGroups,
   getFollowedCreators,
   isFollowing,
-  getPublicMainScore,
+  getPublicScore,
+  isMainRoundPending,
   type WatchRound,
   type WatchVideo,
 } from '@/lib/watch'
@@ -33,6 +34,18 @@ import { VoteButton } from '../VoteButton'
 import { ShareButton } from '../ShareButton'
 import { SaveButton, VideoReportButton } from '../SaveReportButtons'
 import { ScorePanel } from '../ScorePanel'
+import {
+  RoundLabel,
+  StaffPickLabel,
+  WinnerBadgeLabel,
+  RankLabel,
+  MainRoundPendingNote,
+  ViewsCommentsLine,
+  MadeWithLine,
+  RelatedTitle,
+  RelatedEmpty,
+  RelatedCardMeta,
+} from '../WatchDetailI18n'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,16 +93,21 @@ export default async function WatchDetailPage({
   const showRound = allVids.some((v) => v.round === 'main')
   const showWinners = allVids.some((v) => v.awardRank != null)
 
-  // Main-round videos carry a community vote (windowed) + public Triple-AI score
-  // (finalists only; null until judging completes). Prelim scores are owner-only
-  // (shown on /profile), never here.
-  const [comments, voteCtx, related, mainScore] = await Promise.all([
+  // Public Triple-AI score is shown for BOTH rounds (scores are public -- TK
+  // 2026-07-10); null until THIS round is judged. The community vote is still
+  // main-round only (windowed).
+  const [comments, voteCtx, related, publicScore, mainRoundPending] = await Promise.all([
     getWatchComments(id, round),
     round === 'main'
       ? getVoteContext(video.applicationId, video.seasonId, user?.id ?? null)
       : Promise.resolve(null),
     getRelatedVideos(video.seasonId, video.applicationId, video.round),
-    round === 'main' ? getPublicMainScore(video.applicationId) : Promise.resolve(null),
+    getPublicScore(video.applicationId, round),
+    // On a finalist's prelim page (linked here when the main film isn't in yet),
+    // note that the main round is still coming. Only relevant on ?round=application.
+    round === 'application'
+      ? isMainRoundPending(video.applicationId)
+      : Promise.resolve(false),
   ])
 
   // Whether the signed-in member already liked this video (initial button state).
@@ -115,19 +133,11 @@ export default async function WatchDetailPage({
   const initialFollowing =
     user && canFollowCreator ? await isFollowing(user.id, video.creatorUserId!) : false
 
-  const roundLabel = round === 'main' ? 'Main Round' : 'Preliminary'
   // Ranking: medal for a placed winner, generic trophy for an awarded entry
-  // without a numeric rank.
-  const rankLabel =
-    video.awardRank === 1
-      ? '🥇 1st Place'
-      : video.awardRank === 2
-        ? '🥈 2nd Place'
-        : video.awardRank === 3
-          ? '🥉 3rd Place'
-          : video.awarded
-            ? '🏆 Winner'
-            : ''
+  // without a numeric rank. Rendered via <RankLabel/> (client leaf, see
+  // ../WatchDetailI18n.tsx -- this page is a server component and can't call
+  // useT() itself).
+  const hasRankOrAward = video.awardRank === 1 || video.awardRank === 2 || video.awardRank === 3 || video.awarded
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
@@ -150,19 +160,25 @@ export default async function WatchDetailPage({
 
           <div className="mt-6 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center rounded bg-white/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white/75">
-              {roundLabel}
+              <RoundLabel round={round} />
             </span>
             {video.staffPick && (
               <span className="inline-flex items-center rounded bg-[#8b22ff]/85 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">
-                Staff Pick
+                <StaffPickLabel />
               </span>
             )}
             {video.awarded && (
               <span className="inline-flex items-center rounded bg-amber-500/90 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-black">
-                🏆 Winner
+                <WinnerBadgeLabel />
               </span>
             )}
           </div>
+
+          {mainRoundPending && (
+            <p className="mt-3 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/10 px-3 py-2 text-[13px] font-medium text-[#d9c2ff]">
+              <MainRoundPendingNote />
+            </p>
+          )}
 
           <h1 className="mt-3 text-2xl font-black">{video.videoTitle || video.creatorName}</h1>
 
@@ -200,16 +216,14 @@ export default async function WatchDetailPage({
           <div className="mt-4 rounded-xl bg-white/[.04] p-4 text-sm text-white/70">
             <p className="text-xs font-bold uppercase tracking-wider text-[#b66cff]">{seasonName}</p>
             <p className="mt-1 font-bold text-white/90">
-              {roundLabel}
-              {rankLabel && ` · ${rankLabel}`}
-              {video.staffPick && ' · Staff Pick'}
+              <RoundLabel round={round} />
+              {hasRankOrAward && <> · <RankLabel awardRank={video.awardRank} awarded={video.awarded} /></>}
+              {video.staffPick && <> · <StaffPickLabel /></>}
             </p>
             <p className="mt-1 text-white/50">
-              {video.viewCount.toLocaleString()} views
-              {video.commentCount > 0 && <> · {video.commentCount.toLocaleString()} comments</>}
-              {video.submittedAt && <> · {new Date(video.submittedAt).toLocaleDateString()}</>}
+              <ViewsCommentsLine views={video.viewCount} comments={video.commentCount} submittedAtISO={video.submittedAt ?? null} />
             </p>
-            {video.aiService && <p className="mt-1 text-xs text-white/40">Made with {video.aiService}</p>}
+            {video.aiService && <p className="mt-1 text-xs text-white/40"><MadeWithLine aiService={video.aiService} /></p>}
           </div>
 
           {video.videoDescription && (
@@ -224,7 +238,7 @@ export default async function WatchDetailPage({
             </div>
           )}
 
-          {mainScore && <ScorePanel score={mainScore} />}
+          {publicScore && <ScorePanel score={publicScore} />}
 
           <CommentSection
             applicationId={video.applicationId}
@@ -237,10 +251,10 @@ export default async function WatchDetailPage({
         {/* Right: related (same season, trending) */}
         <aside className="lg:w-80 shrink-0">
           <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/40 mb-4">
-            More from this season
+            <RelatedTitle />
           </h2>
           {related.length === 0 ? (
-            <p className="text-sm text-white/35">Nothing else here yet.</p>
+            <p className="text-sm text-white/35"><RelatedEmpty /></p>
           ) : (
             <div className="space-y-3">
               {related.map((v) => (
@@ -276,10 +290,10 @@ function RelatedCard({ v }: { v: WatchVideo }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-white">{v.creatorName}</p>
         <p className="mt-0.5 text-[11px] text-white/45">
-          {v.viewCount.toLocaleString()} views · {v.likeCount.toLocaleString()} likes
+          <RelatedCardMeta views={v.viewCount} likes={v.likeCount} />
         </p>
         <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/30">
-          {v.round === 'main' ? 'Main Round' : 'Preliminary'}
+          <RoundLabel round={v.round} />
         </p>
       </div>
     </Link>

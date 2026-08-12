@@ -12,9 +12,16 @@
 // public view to leak through.
 
 import 'server-only'
+import { unstable_cache } from 'next/cache'
 import { createSupabaseAdmin } from './supabase-admin'
 import { parseVideoUrl } from './video-url'
-import { getDisplayName, getDisplayNames } from './nickname'
+// getDisplayNameReadOnly (not getDisplayName): Watch renders OTHER people's
+// entries, and a public read must never write a profiles row. See lib/nickname.ts.
+import { getDisplayNameReadOnly, getDisplayNames } from './nickname'
+import { formatDeadlinePT } from './seasons'
+import { WATCH_LIST_TAG, WATCH_LIST_TTL } from './watch-cache'
+import { publicScoreSeasons, areScoresPublic } from './watch-scores'
+import { isRowPublic } from './watch-visibility'
 
 export type WatchRound = 'application' | 'main'
 export type WatchSort = 'trending' | 'latest' | 'award'
@@ -45,13 +52,12 @@ export type WatchVideo = {
   likeCount: number
   viewCount: number
   commentCount: number
-  // Public Triple-AI verified score for the card badge. MAIN round ONLY -- prelim
-  // scores are owner-only and never surfaced ([[project-scoring-integrity-rules]],
-  // low-score-shaming guard). null until the main round is judged.
+  // Public Triple-AI verified score for the card badge. Shown for BOTH rounds --
+  // scores are public everywhere (transparency; TK 2026-07-10 reversed the old
+  // prelim-owner-only policy). null until THIS round is judged.
   publicScore: number | null
   // Whether THIS round's Triple-AI scoring completed. Flips the card badge from
-  // "⚡ AI 심사 중" to Verified. For prelim it only CLEARS the 심사중 badge -- the
-  // prelim score itself stays private.
+  // "⚡ AI 심사 중" to the Verified score.
   scored: boolean
   // Community votes for this main-round video (0 for prelim).
   voteCount: number
@@ -67,25 +73,21 @@ export type WatchSeasonGroup = {
 
 // Applications in these states are never shown on Watch: 'rejected' (not in the
 // competition) and 'flagged' (integrity suspicion, pending review).
-const HIDDEN_STATUSES = new Set(['rejected', 'flagged'])
-
-// A video is PUBLIC only when: competition status isn't hidden, an admin hasn't
-// hidden it (watch_hidden), AND AI pre-moderation approved it. New submissions
-// start moderation_status='pending' (not public) until the scan passes -- the
-// content-safety gate (TK 2026-06-28, Patent 3). Existing rows default
-// 'approved' so nothing already present disappears.
-function isPublicRow(row: Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'>): boolean {
-  if (HIDDEN_STATUSES.has(row.status)) return false
-  if (row.watch_hidden) return false
-  if (row.moderation_status !== 'approved') return false
-  return true
-}
+// 'flagged' (integrity-suspect) stays hidden -- never promote questionable work.
+// 'rejected' (scored but didn't advance) is NOT hidden: eliminated entries stay
+// public on Watch, which the NotSelected email explicitly promises ("your work
+// stays public"). Hiding them would break that link. (TK/advisor 2026-07-11)
+// ★The rule itself lives in lib/watch-visibility.ts, not here. The growth-engine
+// email fires on the moment this flips to true, and it must read the same rule
+// rather than a copy of it. This alias keeps the call sites below unchanged.
+const isPublicRow = isRowPublic
 
 type AppRow = {
   id: string
   season_id: string
   status: string
   watch_hidden: boolean | null
+  watch_hold: boolean | null
   moderation_status: string
   user_id: string | null
   creator_name: string | null
@@ -94,6 +96,9 @@ type AppRow = {
   staff_pick: boolean | null
   free_entry_url: string | null
   main_round_video_url: string | null
+  thumbnail_url: string | null
+  studio_application_render_id: string | null
+  studio_main_render_id: string | null
   created_at: string | null
   studio_application_submitted_at: string | null
   main_round_submitted_at: string | null
@@ -120,13 +125,56 @@ function deriveThumbnail(url: string): string | null {
   return null
 }
 
+// Batch-load each round's render poster so the application card and the main
+// card show their OWN frame -- the single genesis_applications.thumbnail_url
+// column is last-write-wins across the two rounds. Returns renderId ->
+// thumbnail_url (value may be null when the render has no poster yet). A render
+// id absent from the map (deleted row) lets the caller fall back to genesis.
+async function loadRenderThumbnails(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  renderIds: (string | null)[],
+): Promise<Map<string, string | null>> {
+  const ids = [...new Set(renderIds.filter((x): x is string => !!x))]
+  if (!ids.length) return new Map()
+  const { data, error } = await admin.from('render_jobs').select('id, thumbnail_url').in('id', ids)
+  if (error) {
+    console.error('[watch] render thumbnail load failed:', error.message)
+    return new Map()
+  }
+  return new Map((data ?? []).map((r) => [r.id as string, (r.thumbnail_url as string | null) ?? null]))
+}
+
+// Resolve THIS round's render poster: the render's own thumbnail when it has
+// one, so a round never shows the other round's frame. Otherwise undefined, so
+// toWatchVideo falls back (genesis_applications.thumbnail_url, the scoring
+// worker's backfill).
+//
+// The null case used to return null = "authoritative, show nothing". That made
+// the backfill useless in exactly the case it exists for: the Studio worker
+// keeps thumbnail_url=null on ANY poster failure (worker.ts, isolated try/catch),
+// so a participant whose poster step failed got a permanently blank tile even
+// though scoring had already backfilled a real frame for them. At 500 entrants
+// that is a handful of blank cards.
+//
+// Trade-off (accepted, TK 2026-07-15): genesis_applications.thumbnail_url is one
+// column for both rounds, last-write-wins, so the fallback can show the other
+// round's frame. A slightly-wrong frame beats a blank tile, and it only applies
+// when this round's render has no poster of its own.
+function roundThumb(
+  renderThumbs: Map<string, string | null>,
+  renderId: string | null,
+): string | null | undefined {
+  if (!renderId) return undefined
+  return renderThumbs.get(renderId) ?? undefined
+}
+
 function toWatchVideo(
   row: AppRow,
   round: WatchRound,
   videoUrl: string,
   counts: { likes: number; views: number; comments: number },
   displayName?: string,
-  extra: { publicScore?: number | null; scored?: boolean; voteCount?: number } = {},
+  extra: { publicScore?: number | null; scored?: boolean; voteCount?: number; thumbnailUrl?: string | null } = {},
 ): WatchVideo {
   const submittedAt =
     round === 'application'
@@ -149,7 +197,16 @@ function toWatchVideo(
     staffPick: !!row.staff_pick,
     awarded: row.status === 'awarded',
     submittedAt,
-    thumbnailUrl: deriveThumbnail(videoUrl),
+    // Per-round render poster: when THIS round's render is known (extra.
+    // thumbnailUrl is defined, even if null) it is authoritative so the
+    // application and main cards each show their own frame and never bleed the
+    // other round's poster. When it is not applicable (undefined -- external
+    // YouTube entry, or the render row is gone) fall back to the single genesis
+    // column, then a derived thumbnail, else null -> gradient tile.
+    thumbnailUrl:
+      extra.thumbnailUrl !== undefined
+        ? extra.thumbnailUrl
+        : row.thumbnail_url ?? deriveThumbnail(videoUrl),
     likeCount: counts.likes,
     viewCount: counts.views,
     commentCount: counts.comments,
@@ -189,7 +246,12 @@ function sortVideos(videos: WatchVideo[], sort: WatchSort): WatchVideo[] {
 
 // Loads every publicly visible video as a flat, sorted list. opt.seasonId
 // filters to one season; opt.sort picks the ordering (default 'latest').
-export async function getWatchVideos(
+//
+// Six full-table selects per call, and /watch calls it twice per render
+// (getWatchSeasonGroups reuses it). Exported through unstable_cache below so a
+// release-moment herd collapses onto one execution per TTL window -- callers
+// keep using getWatchVideos and get the cached path for free.
+async function loadWatchVideos(
   opt: { seasonId?: string; sort?: WatchSort } = {},
 ): Promise<WatchVideo[]> {
   const sort = opt.sort ?? 'latest'
@@ -198,7 +260,7 @@ export async function getWatchVideos(
   let q = admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
+      'id, season_id, status, watch_hidden, watch_hold, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, studio_application_render_id, studio_main_render_id, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
   if (opt.seasonId) q = q.eq('season_id', opt.seasonId)
 
@@ -226,42 +288,64 @@ export async function getWatchVideos(
     comments: comments.get(`${id}:${round}`) ?? 0,
   })
 
-  // Per-(app,round) Triple-AI state for the card badges. scored = judging done;
-  // mainScore is exposed ONLY for the main round (prelim scores stay private).
+  // Per-(app,round) Triple-AI state for the card badges. scored = judging done
+  // (a progress signal, always shown). The verified SCORE is disclosed only for
+  // seasons whose watch_scores_public switch is on -- off until the Defect 1
+  // rubric fix ships (lib/watch-scores). Cards fall back to "심사 대기" / season
+  // name and drop the ✓ Verified badge on their own when publicScore is null.
+  const scoreOpenSeasons = await publicScoreSeasons()
   const scoredKeys = new Set<string>()
-  const mainScore = new Map<string, number>()
+  const scoreByKey = new Map<string, number>()
   for (const s of (scoreAgg.data ?? []) as {
     application_id: string; round: string; judged_status: string; verified_score: number | null
   }[]) {
     if (s.judged_status !== 'completed') continue
     scoredKeys.add(`${s.application_id}:${s.round}`)
-    if (s.round === 'main' && s.verified_score != null) mainScore.set(s.application_id, s.verified_score)
+    if (s.verified_score != null) scoreByKey.set(`${s.application_id}:${s.round}`, s.verified_score)
   }
 
   const rows = (apps ?? []) as AppRow[]
   const names = await getDisplayNames(rows.map((r) => r.user_id))
+  const renderThumbs = await loadRenderThumbnails(
+    admin,
+    rows.flatMap((r) => [r.studio_application_render_id, r.studio_main_render_id]),
+  )
 
   const videos: WatchVideo[] = []
   for (const row of rows) {
     if (!isPublicRow(row)) continue
+    const scoresOpen = scoreOpenSeasons.has(row.season_id)
+    const scoreFor = (key: string) => (scoresOpen ? scoreByKey.get(key) ?? null : null)
     const displayName = row.user_id ? names.get(row.user_id) : undefined
     if (row.free_entry_url?.trim()) {
-      // Prelim: scored flips the 심사중 badge off, but the score itself is private.
+      // Prelim: scored flips the 심사중 badge to the public verified score.
       videos.push(toWatchVideo(row, 'application', row.free_entry_url.trim(), countsFor(row.id, 'application'), displayName, {
         scored: scoredKeys.has(`${row.id}:application`),
+        publicScore: scoreFor(`${row.id}:application`),
+        thumbnailUrl: roundThumb(renderThumbs, row.studio_application_render_id),
       }))
     }
     if (row.main_round_video_url?.trim()) {
       videos.push(toWatchVideo(row, 'main', row.main_round_video_url.trim(), countsFor(row.id, 'main'), displayName, {
         scored: scoredKeys.has(`${row.id}:main`),
-        publicScore: mainScore.get(row.id) ?? null,
+        publicScore: scoreFor(`${row.id}:main`),
         voteCount: votes.get(`${row.id}:main`) ?? 0,
+        thumbnailUrl: roundThumb(renderThumbs, row.studio_main_render_id),
       }))
     }
   }
 
   return sortVideos(videos, sort)
 }
+
+// Cached public entry point. Invalidated on release / hide / moderation / staff
+// pick via revalidateWatchList(); otherwise refreshed every WATCH_LIST_TTL
+// seconds, so like/view counts may lag by that much (deliberate -- see
+// lib/watch-cache).
+export const getWatchVideos = unstable_cache(loadWatchVideos, ['watch-videos'], {
+  tags: [WATCH_LIST_TAG],
+  revalidate: WATCH_LIST_TTL,
+})
 
 // Live stats for the "Current Competition" Hero panel. All derived from the DB
 // (never hardcoded): ENTRIES = public applications in the season that have a
@@ -270,11 +354,11 @@ export async function getWatchVideos(
 // placeholder.
 export type CompetitionStats = { entries: number; creators: number; countries: number }
 
-export async function getCurrentCompetitionStats(seasonId: string): Promise<CompetitionStats> {
+async function loadCurrentCompetitionStats(seasonId: string): Promise<CompetitionStats> {
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('genesis_applications')
-    .select('status, watch_hidden, moderation_status, user_id, creator_name, country, free_entry_url, main_round_video_url')
+    .select('status, watch_hidden, watch_hold, moderation_status, user_id, creator_name, country, free_entry_url, main_round_video_url')
     .eq('season_id', seasonId)
 
   if (error || !data) {
@@ -285,7 +369,7 @@ export async function getCurrentCompetitionStats(seasonId: string): Promise<Comp
   const creators = new Set<string>()
   const countries = new Set<string>()
   let entries = 0
-  for (const row of data as (Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'> & {
+  for (const row of data as (Pick<AppRow, 'status' | 'watch_hidden' | 'watch_hold' | 'moderation_status'> & {
     user_id: string | null
     creator_name: string | null
     country: string | null
@@ -302,33 +386,51 @@ export async function getCurrentCompetitionStats(seasonId: string): Promise<Comp
   return { entries, creators: creators.size, countries: countries.size }
 }
 
+// Cached for the same reason as the list: the Hero panel and /api/watch/stats
+// both hit this on every /watch view. Same tag, so a hold release refreshes the
+// ENTRIES counter at the same instant the videos appear.
+export const getCurrentCompetitionStats = unstable_cache(
+  loadCurrentCompetitionStats,
+  ['watch-competition-stats'],
+  { tags: [WATCH_LIST_TAG], revalidate: WATCH_LIST_TTL },
+)
+
 // Triple-AI preliminary-judging progress for the Hero "⚡ 심사 중 {scored}/{total}"
 // bar. total = public prelim entries (the pool being judged); scored = those whose
 // preliminary scoring_results is completed. Real DB values -- the bar fills as the
 // scoring worker actually finishes each video. No score numbers are exposed here.
 export type JudgingProgress = { scored: number; total: number }
 
-export async function getJudgingProgress(seasonId: string): Promise<JudgingProgress> {
+// Round-aware (TK 2026-07-13): before the main round the bar tracks the PRELIM
+// pool (free_entry_url); once the season is in the main round the caller passes
+// round='main' so the bar tracks the MAIN submissions (main_round_video_url) and
+// their scoring_results(round='main') -- otherwise a finished prelim shows a
+// stale "41/41" while the main round is actually the live event.
+export async function getJudgingProgress(
+  seasonId: string,
+  round: WatchRound = 'application',
+): Promise<JudgingProgress> {
   const admin = createSupabaseAdmin()
   const [{ data: apps }, { data: scores }] = await Promise.all([
     admin
       .from('genesis_applications')
-      .select('id, status, watch_hidden, moderation_status, free_entry_url')
+      .select('id, status, watch_hidden, watch_hold, moderation_status, free_entry_url, main_round_video_url')
       .eq('season_id', seasonId),
     admin
       .from('scoring_results')
       .select('application_id, judged_status')
       .eq('season_id', seasonId)
-      .eq('round', 'application')
+      .eq('round', round)
       .eq('judged_status', 'completed'),
   ])
 
   const pool = new Set<string>()
-  for (const row of (apps ?? []) as (Pick<AppRow, 'status' | 'watch_hidden' | 'moderation_status'> & {
-    id: string; free_entry_url: string | null
+  for (const row of (apps ?? []) as (Pick<AppRow, 'status' | 'watch_hidden' | 'watch_hold' | 'moderation_status'> & {
+    id: string; free_entry_url: string | null; main_round_video_url: string | null
   })[]) {
     if (!isPublicRow(row)) continue
-    if (!row.free_entry_url?.trim()) continue
+    const url = round === 'main' ? row.main_round_video_url : row.free_entry_url
+    if (!url?.trim()) continue
     pool.add(row.id)
   }
   let scored = 0
@@ -336,6 +438,231 @@ export async function getJudgingProgress(seasonId: string): Promise<JudgingProgr
     if (pool.has(s.application_id)) scored++
   }
   return { scored, total: pool.size }
+}
+
+// ── Announcement banner stage machine (top of Watch) ────────────────────────
+// Pure, date-driven (no I/O, no hardcoding -- every transition is a seasons
+// column). The banner is a come-back hook, so each stage tells the audience
+// exactly what to DO right now. Precedence is latest-stage-first:
+//   results          now >= awards_announcement_at        -> see who won
+//   voting           vote window open                     -> go vote
+//   main_live        main_round_start passed, pre-vote     -> come watch
+//   finalists_pending finalists selected, pre-reveal       -> come back on {date}
+//   judging          applications closed, no finalists yet -> results soon
+//   accepting        applications open (default)           -> brand identity
+// 'accepting' carries no copy: the caller renders the existing brand strip
+// (unchanged size/color). Every other stage reuses the finalist-banner layout.
+export type BannerStageName =
+  | 'accepting'
+  | 'judging'
+  | 'finalists_pending'
+  | 'main_live'
+  | 'voting'
+  | 'results'
+
+export type BannerContent =
+  | { stage: 'accepting' }
+  | {
+      stage: Exclude<BannerStageName, 'accepting'>
+      icon: string
+      title: string
+      subtitle: string
+    }
+
+export type BannerStageInput = {
+  applicationCloseAt: string | null
+  mainRoundStartAt: string | null
+  voteStartAt: string | null
+  voteEndAt: string | null
+  awardsAt: string | null
+  // Finalist headcount (dynamic: top 10% clamp 10..50 -- never hardcoded) and
+  // how many of them have actually submitted their main-round film. The
+  // main_live copy uses filmCount to avoid claiming films are up before any land.
+  finalistCount: number
+  finalistFilmCount: number
+  // How many entries actually carry an award_rank. The results stage is gated on
+  // this, not on the calendar: writing the ranks is a MANUAL admin approval
+  // (approveTop3Awards), so awards_announcement_at can pass with none written.
+  winnerCount: number
+  theme: string | null
+}
+
+export function getBannerStage(input: BannerStageInput, now: Date = new Date()): BannerContent {
+  const t = now.getTime()
+  const ms = (s: string | null) => (s ? Date.parse(s) : null)
+  const close = ms(input.applicationCloseAt)
+  const mainStart = ms(input.mainRoundStartAt)
+  const voteStart = ms(input.voteStartAt)
+  const voteEnd = ms(input.voteEndAt)
+  const awards = ms(input.awardsAt)
+  const fmt = (m: number) => new Date(m).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+
+  // 5. Results announced. The date alone is NOT enough: award_rank is written by
+  // approveTop3Awards, a manual admin approval, so this instant can pass with
+  // zero winners recorded -- and then the banner sends the audience to a grid of
+  // "Finalist" badges and no winner. Gate on real winners, same honesty rule the
+  // main_live stage already applies with finalistFilmCount. When the ranking is
+  // late we fall through to the main-round copy, which is still true.
+  // Time is formatted with formatDeadlinePT (canonical PT + explicit label) --
+  // the local fmt() below is date-only and renders in the SERVER's timezone.
+  if (awards != null && t >= awards && input.winnerCount > 0) {
+    const announcedAt = formatDeadlinePT(input.awardsAt)
+    return {
+      stage: 'results',
+      icon: '🏆',
+      title: 'The winners have been announced.',
+      subtitle: announcedAt
+        ? `Announced ${announcedAt}. See who took the top spots this season.`
+        : 'See who took the top spots this season.',
+    }
+  }
+  // 4. Community voting open.
+  if (voteStart != null && voteEnd != null && t >= voteStart && t < voteEnd) {
+    return {
+      stage: 'voting',
+      icon: '🔥',
+      title: 'Community voting is open.',
+      subtitle: `Watch the main-round films and vote for your favorite. Voting closes ${fmt(voteEnd)}.`,
+    }
+  }
+  // 3b. Main round live (finalists revealed), before voting opens.
+  if (mainStart != null && t >= mainStart) {
+    const themePart = input.theme ? ` — ${input.theme}` : ''
+    const voteWhen = voteStart != null ? ` Community voting opens ${fmt(voteStart)}.` : ''
+    // Before any main-round film has been submitted, don't claim films are up --
+    // the prelim entries + finalists' qualifying films are already watchable, so
+    // invite the audience to meet the finalists. Once >=1 main film lands, switch
+    // to the watch/vote call. finalistCount is dynamic (TK: never hardcoded).
+    if (input.finalistFilmCount <= 0) {
+      return {
+        stage: 'main_live',
+        icon: '🎬',
+        title: `The Main Round has begun${themePart}.`,
+        subtitle: `Meet the ${input.finalistCount} finalists.${voteWhen}`,
+      }
+    }
+    return {
+      stage: 'main_live',
+      icon: '🎬',
+      title: "The finalists' films are up — come watch and vote.",
+      subtitle: `${input.theme ? `${input.theme}.` : 'The Main Round is live.'}${voteWhen}`,
+    }
+  }
+  // 3a. Finalists selected, before the reveal date.
+  if (input.finalistCount > 0 && mainStart != null && t < mainStart) {
+    return {
+      stage: 'finalists_pending',
+      icon: '🏆',
+      title: `${input.finalistCount} finalists have advanced to the Main Round.`,
+      subtitle: `Main-round films are revealed on ${fmt(mainStart)}. Check back to watch and vote.`,
+    }
+  }
+  // 2. Applications closed, judging under way (no finalists yet).
+  if (close != null && t >= close) {
+    return {
+      stage: 'judging',
+      icon: '⚡',
+      title: 'Triple-AI judging is under way.',
+      subtitle: 'Finalists will be announced soon. Check back to see who advanced.',
+    }
+  }
+  // 1. Applications open (default) — caller renders the brand strip.
+  return { stage: 'accepting' }
+}
+
+// Finalist-reveal banner state. Between advancement (finalists selected) and the
+// reveal date (main_round_start_at), the audience should see "N finalists
+// advanced -- revealed on {date}" so nobody is left wondering what happened.
+// Returns null when there are no finalists yet, no reveal date, or the reveal
+// has already passed (at which point the finalist section shows instead).
+export async function getFinalistRevealState(
+  seasonId: string,
+): Promise<{ count: number; revealAt: string } | null> {
+  const admin = createSupabaseAdmin()
+  const [selRes, seasonRes] = await Promise.all([
+    admin.from('genesis_applications').select('id').eq('season_id', seasonId).eq('status', 'selected'),
+    admin.from('seasons').select('main_round_start_at').eq('id', seasonId).maybeSingle(),
+  ])
+  const count = selRes.data?.length ?? 0
+  const revealAt = (seasonRes.data?.main_round_start_at as string | null) ?? null
+  if (count === 0 || !revealAt) return null
+  if (Date.now() >= Date.parse(revealAt)) return null
+  return { count, revealAt }
+}
+
+// Finalists for the post-reveal Watch header (status selected/submitted/awarded).
+// mainVideoUrl null = advanced but hasn't submitted the main-round film yet
+// (the card shows a "준비 중" state). Sorted by prelim verified_score desc.
+export type Finalist = {
+  applicationId: string
+  creatorName: string
+  videoTitle: string | null
+  thumbnailUrl: string | null
+  mainVideoUrl: string | null
+  verifiedScore: number | null
+  awardRank: number | null
+}
+
+export async function getFinalists(seasonId: string): Promise<Finalist[]> {
+  const admin = createSupabaseAdmin()
+  const { data: apps } = await admin
+    .from('genesis_applications')
+    .select('id, creator_name, video_title, thumbnail_url, main_round_video_url, award_rank, created_at')
+    .eq('season_id', seasonId)
+    .in('status', ['selected', 'main_round_submitted', 'awarded'])
+  const rows = (apps ?? []) as {
+    id: string; creator_name: string; video_title: string | null
+    thumbnail_url: string | null; main_round_video_url: string | null; award_rank: number | null
+    created_at: string | null
+  }[]
+  if (rows.length === 0) return []
+
+  // With disclosure off we withhold BOTH the number and the score ordering --
+  // ranking finalists by score is itself a disclosure. Fall back to entry order.
+  const scoresOpen = await areScoresPublic(seasonId)
+  const { data: scores } = await admin
+    .from('scoring_results')
+    .select('application_id, verified_score')
+    .eq('season_id', seasonId)
+    .eq('round', 'application')
+    .eq('judged_status', 'completed')
+    .in('application_id', rows.map((r) => r.id))
+  const scoreMap = new Map(
+    (scores ?? []).map((s: { application_id: string; verified_score: number | null }) => [
+      s.application_id,
+      s.verified_score,
+    ]),
+  )
+  return rows
+    .map((r) => ({
+      applicationId: r.id,
+      creatorName: r.creator_name,
+      videoTitle: r.video_title,
+      thumbnailUrl: r.thumbnail_url,
+      mainVideoUrl: r.main_round_video_url,
+      verifiedScore: scoresOpen ? scoreMap.get(r.id) ?? null : null,
+      awardRank: r.award_rank,
+      sortKey: scoresOpen ? -(scoreMap.get(r.id) ?? 0) : Date.parse(r.created_at ?? '') || 0,
+    }))
+    .sort((a, b) => a.sortKey - b.sortKey)
+    .map(({ sortKey: _sortKey, ...f }) => f)
+}
+
+// True when this application advanced to the Main Round but hasn't submitted the
+// main-round film yet. A Finalist card links to the prelim (?round=application)
+// until the main film lands, so the prelim detail page shows a "본선 영상 준비 중"
+// note explaining why the main round isn't here yet. Same advanced-status set as
+// getFinalists. (TK 2026-07-13)
+export async function isMainRoundPending(applicationId: string): Promise<boolean> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('genesis_applications')
+    .select('status, main_round_video_url')
+    .eq('id', applicationId)
+    .single()
+  if (!data) return false
+  const advanced = ['selected', 'main_round_submitted', 'awarded'].includes(data.status as string)
+  return advanced && !data.main_round_video_url
 }
 
 // Whether the community vote window is currently open for a season. Read from the
@@ -362,6 +689,12 @@ export type PublicScore = {
   execution: number | null
   originality: number | null
   ai: AiCritique[]
+  // ★2026-08-11 (제니2, TK integrity-copy ruling): boolean ONLY -- pass/fail,
+  // never the underlying score or threshold ([[project-scoring-integrity-rules]]).
+  // false/unflagged reads as "verified"; a genuine flag stays internal (no
+  // "not verified" state is ever surfaced -- that would itself hint the
+  // threshold, which is the leak TK's ruling closed).
+  integrityVerified: boolean
 }
 
 // Parse the ai_outputs JSONB ({claude,gpt,gemini}: {strengths,weaknesses,aiSummary})
@@ -385,19 +718,32 @@ function parseAiOutputs(raw: unknown): AiCritique[] {
   return out
 }
 
-// Public Triple-AI score for a MAIN-ROUND video (finalists only). Returns null
-// unless judging is completed. Integrity fields are never included here
-// ([[project-scoring-integrity-rules]] -- low-score shaming guard: prelim
-// scores are owner-only via /profile, not here).
-export async function getPublicMainScore(applicationId: string): Promise<PublicScore | null> {
+// Public Triple-AI score for a video, for EITHER round. Returns null unless
+// judging is completed AND the entry's season has score disclosure switched on
+// (off until the Defect 1 rubric fix -- lib/watch-scores). The detail page
+// renders the panel only when this is non-null, so the gate needs no UI change.
+// Integrity fields are never included here ([[project-scoring-integrity-rules]]
+// -- integrity stays internal; the verified score/critique are what go public).
+export async function getPublicScore(
+  applicationId: string,
+  round: WatchRound = 'main',
+): Promise<PublicScore | null> {
   const admin = createSupabaseAdmin()
+
+  const { data: app } = await admin
+    .from('genesis_applications')
+    .select('season_id')
+    .eq('id', applicationId)
+    .maybeSingle()
+  if (!(await areScoresPublic((app as { season_id: string | null } | null)?.season_id))) return null
+
   const { data } = await admin
     .from('scoring_results')
     .select(
-      'verified_score, grade, consensus_intent, consensus_execution, consensus_originality, ai_outputs, judged_status',
+      'verified_score, grade, consensus_intent, consensus_execution, consensus_originality, ai_outputs, judged_status, integrity_flag',
     )
     .eq('application_id', applicationId)
-    .eq('round', 'main')
+    .eq('round', round)
     .maybeSingle()
 
   if (!data || data.judged_status !== 'completed') return null
@@ -408,6 +754,7 @@ export async function getPublicMainScore(applicationId: string): Promise<PublicS
     execution: data.consensus_execution as number | null,
     originality: data.consensus_originality as number | null,
     ai: parseAiOutputs(data.ai_outputs),
+    integrityVerified: data.integrity_flag === false,
   }
 }
 
@@ -436,7 +783,7 @@ export async function getWatchVideo(
   const { data, error } = await admin
     .from('genesis_applications')
     .select(
-      'id, season_id, status, watch_hidden, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
+      'id, season_id, status, watch_hidden, watch_hold, moderation_status, user_id, creator_name, ai_service, video_duration_seconds, staff_pick, free_entry_url, main_round_video_url, thumbnail_url, studio_application_render_id, studio_main_render_id, created_at, studio_application_submitted_at, main_round_submitted_at, video_title, video_description, award_rank',
     )
     .eq('id', applicationId)
     .maybeSingle()
@@ -448,7 +795,9 @@ export async function getWatchVideo(
   const url = (round === 'application' ? row.free_entry_url : row.main_round_video_url)?.trim()
   if (!url) return null
 
-  const displayName = row.user_id ? await getDisplayName(row.user_id) : undefined
+  // Read-only: this renders SOMEONE ELSE's entry on a public page, so it must
+  // never create a profiles row. See lib/nickname.ts getDisplayNameReadOnly.
+  const displayName = row.user_id ? await getDisplayNameReadOnly(row.user_id) : undefined
 
   const [likeAgg, viewAgg, commentAgg] = await Promise.all([
     admin
@@ -469,6 +818,9 @@ export async function getWatchVideo(
       .eq('status', 'visible'),
   ])
 
+  const renderId = round === 'application' ? row.studio_application_render_id : row.studio_main_render_id
+  const renderThumbs = await loadRenderThumbnails(admin, [renderId])
+
   return toWatchVideo(
     row,
     round,
@@ -479,19 +831,39 @@ export async function getWatchVideo(
       comments: commentAgg.count ?? 0,
     },
     displayName,
+    { thumbnailUrl: roundThumb(renderThumbs, renderId) },
   )
 }
 
 export type VoteContext = {
   open: boolean // vote window currently active
+  closed: boolean // vote window has ENDED (now > end) -- show the final tally
   cap: number // max videos a person may vote for this season/round
   usedVotes: number // how many this user has used this season/round
   voted: boolean // has this user voted for THIS video
-  totalVotes: number // this video's public vote count
+  totalVotes: number // this video's public vote count (shown during AND after)
 }
 
 // Vote state for a main-round video. Public count is always returned; the
 // per-user fields require a userId. Window/cap come from seasons (admin-set).
+// Raw community vote tally for a season's MAIN round: application_id -> vote
+// count (one watch_votes row per user per video). Feeds computeCommunityScore
+// for the final_score blend on the admin main-results page. Cheap -- bounded by
+// (voters x per-user cap). Returns an empty map when no votes exist yet.
+export async function getMainRoundVoteTally(seasonId: string): Promise<Map<string, number>> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('watch_votes')
+    .select('application_id')
+    .eq('season_id', seasonId)
+    .eq('round', 'main')
+  const tally = new Map<string, number>()
+  for (const r of (data ?? []) as { application_id: string }[]) {
+    tally.set(r.application_id, (tally.get(r.application_id) ?? 0) + 1)
+  }
+  return tally
+}
+
 export async function getVoteContext(
   applicationId: string,
   seasonId: string,
@@ -508,6 +880,7 @@ export async function getVoteContext(
   const start = season?.community_vote_start_at ? Date.parse(season.community_vote_start_at as string) : null
   const end = season?.community_vote_end_at ? Date.parse(season.community_vote_end_at as string) : null
   const open = start != null && end != null && now >= start && now <= end
+  const closed = end != null && now > end
   const cap = (season?.community_vote_max_per_user as number | null) ?? 3
 
   const { count: totalVotes } = await admin
@@ -538,7 +911,7 @@ export async function getVoteContext(
     voted = !!mineRes.data
   }
 
-  return { open, cap, usedVotes, voted, totalVotes: totalVotes ?? 0 }
+  return { open, closed, cap, usedVotes, voted, totalVotes: totalVotes ?? 0 }
 }
 
 export type WatchComment = {

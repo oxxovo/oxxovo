@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 
 export default function PrivacyPage() {
@@ -40,7 +41,7 @@ export default function PrivacyPage() {
 
         <div>
           <h2 className="text-xl font-bold text-white mb-3">7. Your Rights</h2>
-          <p>You have the right to access, correct, or delete your personal data at any time. To exercise these rights, contact us at oxxovolabs@gmail.com.</p>
+          <p>You have the right to access, correct, or delete your personal data at any time. To exercise these rights, contact us at info@oxxovo.ai.</p>
         </div>
 
         <div>
@@ -62,13 +63,19 @@ export default function PrivacyPage() {
 
         <div>
           <h2 className="text-xl font-bold text-white mb-3">11. Contact</h2>
-          <p>For privacy-related questions, contact us at <a href="mailto:oxxovolabs@gmail.com" className="text-[#8b22ff] hover:underline">oxxovolabs@gmail.com</a></p>
+          <p>For privacy-related questions, contact us at <a href="mailto:info@oxxovo.ai" className="text-[#8b22ff] hover:underline">info@oxxovo.ai</a></p>
         </div>
 
       </section>
 
       <div className="mt-16 pt-8 border-t border-white/10 text-center text-white/30 text-sm">
-        OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.
+        {/* Same wiring as /terms, same link markup as the four pages that already
+            have one. Both legal pages are linked FROM the landing footer and from
+            /pre-register, and neither offered a way back. */}
+        <Link href="/" className="mb-4 inline-block text-xs tracking-[0.2em] text-white/40 transition hover:text-white">
+          &larr; OXXOVO
+        </Link>
+        <p>OXXOVO&trade; &copy; 2026 OXXOVO Labs Inc. All Rights Reserved.</p>
         <p className="text-xs text-white/30 mt-1">{formatFooterStatusLine()}</p>
       </div>
     </main>

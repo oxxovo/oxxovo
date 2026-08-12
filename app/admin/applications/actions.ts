@@ -5,12 +5,15 @@ import { getAdminOrNull, requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getSeasonById, type Season } from '@/lib/seasons'
-import { computeFinalScore } from '@/lib/scoring'
+import { evaluateAwardsGate, type AwardsGateBlock } from '@/lib/awards-gate'
+import { computeFinalScore, computeCommunityScore } from '@/lib/scoring'
+import { getMainRoundVoteTally } from '@/lib/watch'
 import {
   sendSelectedTop50,
   sendNotSelected,
   sendAwardedContactRequest,
 } from '@/lib/email/send'
+import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { recomputePartnerStats } from '@/lib/partners'
 
 export type AdminActionState = {
@@ -97,22 +100,35 @@ export async function saveStatus(id: string, status: string): Promise<AdminActio
       if (!season) {
         console.error('[saveStatus] season missing — skipping email', row.season_id)
       } else if (status === 'selected') {
+        const ranks = await loadScoredRanks(supabase, season.id)
         await sendSelectedTop50({
           toEmail: row.email,
           country: row.country,
           creatorName: row.creator_name,
           seasonName: season.display_name,
           topNAdvance: season.top_n_advance,
+          totalParticipants: ranks.size,
           mainRoundStartAt: season.main_round_start_at,
           applicationId: row.id,
           seasonId: season.id,
         })
       } else {
+        const ranks = await loadScoredRanks(supabase, season.id)
+        const next = await loadNextSeason(supabase)
+        const m = ranks.get(row.id)
         await sendNotSelected({
           toEmail: row.email,
           country: row.country,
           creatorName: row.creator_name,
           seasonName: season.display_name,
+          score: m?.score ?? 0,
+          rank: m?.rank ?? ranks.size,
+          total: m?.total ?? ranks.size,
+          percentile: m?.percentile ?? 0,
+          strength: m?.strength ?? '',
+          improvement: m?.improvement ?? '',
+          nextSeasonName: next.name,
+          nextSeasonOpenAt: next.openAt,
           applicationId: row.id,
           seasonId: season.id,
         })
@@ -273,6 +289,9 @@ export async function applyRecommendation(
   const rejectedApps = rejRes.data ?? []
 
   // 5. Promise.allSettled 병렬 발송. 부분 실패 허용 (executeSend가 email_logs 기록).
+  // Season Report(순위/피드백) + 다음 시즌 CTA는 email-tick과 동일 헬퍼 사용.
+  const ranks = await loadScoredRanks(admin, input.seasonId)
+  const next = await loadNextSeason(admin)
   const emailPromises = [
     ...selectedApps.map((a) =>
       sendSelectedTop50({
@@ -281,21 +300,31 @@ export async function applyRecommendation(
         creatorName: a.creator_name,
         seasonName: season.display_name,
         topNAdvance: season.top_n_advance,
+        totalParticipants: ranks.size,
         mainRoundStartAt: season.main_round_start_at,
         applicationId: a.id,
         seasonId: season.id,
       }),
     ),
-    ...rejectedApps.map((a) =>
-      sendNotSelected({
+    ...rejectedApps.map((a) => {
+      const m = ranks.get(a.id)
+      return sendNotSelected({
         toEmail: a.email,
         country: a.country,
         creatorName: a.creator_name,
         seasonName: season.display_name,
+        score: m?.score ?? 0,
+        rank: m?.rank ?? ranks.size,
+        total: m?.total ?? ranks.size,
+        percentile: m?.percentile ?? 0,
+        strength: m?.strength ?? '',
+        improvement: m?.improvement ?? '',
+        nextSeasonName: next.name,
+        nextSeasonOpenAt: next.openAt,
         applicationId: a.id,
         seasonId: season.id,
-      }),
-    ),
+      })
+    }),
   ]
   const emailResults = await Promise.allSettled(emailPromises)
   let emailsSent = 0
@@ -328,14 +357,16 @@ type MainRoundRanked = {
   finalScore: number
 }
 
+type MainRoundCounts = { submittedCount: number; scoredCount: number; winnerCount: number; maxVotes: number }
+
 async function rankMainRound(
   seasonId: string,
-): Promise<{ season: Season; ranked: MainRoundRanked[] } | null> {
+): Promise<{ season: Season; ranked: MainRoundRanked[]; counts: MainRoundCounts } | null> {
   const season = await getSeasonById(seasonId)
   if (!season) return null
 
   const supabase = await createSupabaseServer()
-  const [appsRes, scoringRes] = await Promise.all([
+  const [appsRes, scoringRes, voteTally] = await Promise.all([
     supabase
       .from('genesis_applications')
       .select('id, email, country, creator_name, award_rank, main_round_submitted_at')
@@ -346,6 +377,7 @@ async function rankMainRound(
       .select('application_id, verified_score, judged_status')
       .eq('season_id', seasonId)
       .eq('round', 'main'),
+    getMainRoundVoteTally(seasonId),
   ])
 
   // 채점 완료(completed)된 것만 verified_score 인정 — 진행 중/실패는 랭킹 제외.
@@ -353,6 +385,10 @@ async function rankMainRound(
   for (const s of scoringRes.data ?? []) {
     scoreByApp.set(s.application_id, s.judged_status === 'completed' ? s.verified_score : null)
   }
+
+  // 최다 득표수 (B안 정규화 기준, main-results와 동일). 투표 0건이면 0 →
+  // computeCommunityScore가 null → 가중 시즌은 final=null(pending). 시즌0은 무관.
+  const maxVotes = voteTally.size > 0 ? Math.max(...voteTally.values()) : 0
 
   const ranked: MainRoundRanked[] = (appsRes.data ?? [])
     .map((a) => ({
@@ -363,20 +399,42 @@ async function rankMainRound(
         creator_name: a.creator_name,
         award_rank: a.award_rank,
       },
-      // Layer-2: Soak 모드(community_vote_weight=0)에선 final === verified.
-      finalScore: computeFinalScore(scoreByApp.get(a.id) ?? null, null, season),
+      // Layer-2: Soak(community_vote_weight=0)엔 final===verified(커뮤니티 무시).
+      // 가중 시즌(0.5)엔 AI50 + 관객50 블렌드로 우승자 선정.
+      finalScore: computeFinalScore(
+        scoreByApp.get(a.id) ?? null,
+        computeCommunityScore(voteTally.get(a.id) ?? 0, maxVotes),
+        season,
+      ),
     }))
     .filter((r): r is MainRoundRanked => r.finalScore != null)
     .sort((a, b) => b.finalScore - a.finalScore)
 
-  return { season, ranked }
+  // Counts for the approval gate. ★These come from the SAME query the ranking is
+  // built from, so "how many were scored" cannot disagree with "what got ranked".
+  const submittedIds = (appsRes.data ?? []).map((a) => a.id)
+  const submittedSet = new Set(submittedIds)
+  const scoredCount = (scoringRes.data ?? []).filter(
+    (s) => s.judged_status === 'completed' && submittedSet.has(s.application_id),
+  ).length
+  const winnerCount = (appsRes.data ?? []).filter((a) => a.award_rank != null).length
+
+  return {
+    season,
+    ranked,
+    counts: { submittedCount: submittedIds.length, scoredCount, winnerCount, maxVotes },
+  }
 }
 
 export type ApproveAwardsResult =
   | { ok: true; awardedCount: number }
   | {
       ok: false
-      error: 'season_not_found' | 'no_scored_submissions' | 'update_failed'
+      error:
+        | 'season_not_found'
+        | 'no_scored_submissions'
+        | 'update_failed'
+        | AwardsGateBlock
       detail?: string
     }
 
@@ -387,6 +445,44 @@ export async function approveTop3Awards(seasonId: string): Promise<ApproveAwards
   const r = await rankMainRound(seasonId)
   if (!r) return { ok: false, error: 'season_not_found' }
   if (r.ranked.length === 0) return { ok: false, error: 'no_scored_submissions' }
+
+  // ★Three gates before anything is written. Until now requireAdmin() was the
+  // only one, and each missing check failed QUIETLY: a partial scoring set is
+  // silently dropped from the ranking rather than raising, a mid-vote tally still
+  // normalises to something, and no code looked at the calendar at all. All three
+  // produce a plausible podium -- and the payout email that follows cannot be
+  // unsent. Rules + tests live in lib/awards-gate.ts.
+  const gate = evaluateAwardsGate({
+    season: {
+      status: r.season.status,
+      applicationOpenAt: r.season.application_open_at,
+      applicationCloseAt: r.season.application_close_at,
+      // Not on the Season type (the public view carries it, the type does not).
+      // Only feeds isProcessingBuffer, which this gate does not read.
+      scoringStartAt: null,
+      mainRoundStartAt: r.season.main_round_start_at,
+      mainRoundEndAt: r.season.main_round_end_at,
+      voteStartAt: r.season.community_vote_start_at,
+      voteEndAt: r.season.community_vote_end_at,
+      awardsAt: r.season.awards_announcement_at,
+      // Everyone who submitted a main-round film is a finalist. Only used by the
+      // pre-reveal phase, which is long past by the time this button is live.
+      finalistCount: r.counts.submittedCount,
+      winnerCount: r.counts.winnerCount,
+    },
+    submittedCount: r.counts.submittedCount,
+    scoredCount: r.counts.scoredCount,
+    communityVoteWeight: r.season.community_vote_weight,
+    // Same number the ranking normalises against -- measured, not assumed.
+    maxVotes: r.counts.maxVotes,
+    voteEndAt: r.season.community_vote_end_at,
+  })
+  if (!gate.blocked) {
+    console.log(`[awards] ${seasonId} gate passed: ${gate.detail}`)
+  } else {
+    console.warn(`[awards] ${seasonId} BLOCKED (${gate.blocked}): ${gate.detail}`)
+    return { ok: false, error: gate.blocked, detail: gate.detail }
+  }
 
   const supabase = await createSupabaseServer()
   const top3 = r.ranked.slice(0, 3)

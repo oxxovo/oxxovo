@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 
 // UTM + referrer are read straight from the live URL at submit time — this
 // runs only on user interaction (client), so window is always available and
@@ -52,7 +53,13 @@ export default function PreRegisterPage() {
     <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-black text-[#8b22ff] mb-2">OXXOVO</h1>
+          {/* Same as /login: the wordmark existed but was not a link, so a visitor
+              who arrived here from the landing CTA was stranded -- and this is the
+              CTA target whenever the application window is not open, which is most
+              of a season. Wiring the wordmark keeps the centred card intact. */}
+          <Link href="/" className="inline-block">
+            <h1 className="text-3xl font-black text-[#8b22ff] mb-2">OXXOVO</h1>
+          </Link>
           <p className="text-white/50 text-sm">
             Be the first to know when applications open.
           </p>

@@ -195,7 +195,7 @@ export function RecommendationsPanel({
                       <td className="px-4 py-2 text-white/70">{app?.email ?? '—'}</td>
                       <td className="px-4 py-2 text-right font-bold text-white/90 tabular-nums">
                         {r.verified_score != null
-                          ? r.verified_score.toFixed(1)
+                          ? r.verified_score.toFixed(2)
                           : t.applications.score_pending}
                       </td>
                       <td className="px-4 py-2">
@@ -306,7 +306,7 @@ function FlaggedAppsTable({
               <td className="py-1.5 text-white/70">{a.email}</td>
               <td className="py-1.5 text-right tabular-nums text-white/90">
                 {a.verified_score != null
-                  ? a.verified_score.toFixed(1)
+                  ? a.verified_score.toFixed(2)
                   : t.applications.score_pending}
               </td>
               <td className="py-1.5">

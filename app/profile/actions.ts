@@ -9,6 +9,9 @@ import { validateVideoUrl } from '@/lib/video-url'
 import { getMembershipState, isMembershipEnabled } from '@/lib/membership'
 import { getStripe } from '@/lib/stripe'
 import { getDisplayName, setDisplayName, validateNickname } from '@/lib/nickname'
+import { isMemberHostedEnabled } from '@/lib/member-hosted'
+import { partnerHostLinkVisible } from '@/lib/partner-host-link'
+import { sendSubmissionReceipts } from '@/lib/email/submission-receipts'
 import type {
   MembershipDashboard,
   MembershipActionResult,
@@ -295,7 +298,7 @@ export async function loadMyScores(): Promise<MyRoundScore[]> {
 export async function loadDisplayName(): Promise<string | null> {
   const user = await getUserOrNull()
   if (!user) return null
-  return getDisplayName(user.id)
+  return getDisplayName(user.id, user.email)
 }
 
 export type SaveNicknameResult =
@@ -308,9 +311,12 @@ export async function saveDisplayName(value: string): Promise<SaveNicknameResult
   const v = validateNickname(value)
   if (!v.ok) return { ok: false, error: v.error }
   try {
-    await setDisplayName(user.id, v.value)
+    await setDisplayName(user.id, user.email, v.value)
     return { ok: true, value: v.value }
-  } catch {
+  } catch (e) {
+    // setDisplayName now throws instead of silently doing nothing, so this
+    // branch is reachable and the user sees a real failure.
+    console.error('[profile] nickname save failed', { userId: user.id, error: String(e) })
     return { ok: false, error: 'failed' }
   }
 }
@@ -351,6 +357,37 @@ export async function loadSmsConsent(): Promise<
       optIn: Boolean(data?.sms_opt_in),
       consentAt: (data?.sms_consent_at as string | null) ?? null,
     },
+  }
+}
+
+// ─── partner host return link ────────────────────────────────────────────
+// An activated partner has no route back to their host area: the only link to
+// /host/new is on /partner/activate, which they pass through once. This supplies
+// the two facts lib/partner-host-link.ts needs and applies the rule there.
+//
+// Fail-closed: any failure to establish both facts hides the link, because the
+// failure mode of showing it is a signed-in user clicking through to a 404
+// (switch off) or to a form that rejects them (not active).
+export async function isHostLinkVisible(): Promise<boolean> {
+  try {
+    const user = await getUserOrNull()
+    if (!user) return false
+    // Switch first: with member-hosted off there is nothing to link to, so the
+    // profiles round-trip would be wasted work on every profile view.
+    if (!(await isMemberHostedEnabled())) return false
+    const admin = createSupabaseAdmin()
+    const { data, error } = await admin
+      .from('profiles')
+      .select('partner_status')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (error || !data) return false
+    return partnerHostLinkVisible({
+      memberHostedEnabled: true,
+      partnerStatus: (data.partner_status as string | null) ?? null,
+    })
+  } catch {
+    return false
   }
 }
 
@@ -524,6 +561,20 @@ export async function saveMainRoundSubmission(
   // 8. revalidate admin caches
   revalidatePath('/admin/applications')
   revalidatePath(`/admin/applications/${input.applicationId}`)
+
+  // ⑪ -- the receipt for a main-round submission, sent from the act that
+  // produced it. Awaited, and never able to fail the submission: the row is
+  // already committed by the CAS above, so a mail error is logged and the
+  // email-tick sweep retries it. The Studio paths reach the same function from
+  // app/studio/actions.
+  try {
+    await sendSubmissionReceipts({ season, applicationId: input.applicationId })
+  } catch (e) {
+    console.error(
+      '[profile] main-round receipt failed (non-fatal):',
+      e instanceof Error ? e.message : String(e),
+    )
+  }
 
   return { ok: true }
 }

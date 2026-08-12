@@ -15,6 +15,7 @@ import { getResend, EMAIL_FROM } from './client'
 import type { RankAward } from '@/lib/seasons'
 import { detectEmailLang, type EmailLang } from './lang'
 import { logEmail, alreadySent, type TemplateKey } from './log'
+import { isRateLimitError } from './deferral'
 import {
   PreRegistered,
   subjectFor as preRegisteredSubject,
@@ -80,12 +81,41 @@ import {
   subjectFor as membershipFoundingExpirySubject,
   type MembershipFoundingExpiryProps,
 } from './templates/MembershipFoundingExpiry'
+import {
+  VideoLivePrelim,
+  subjectFor as videoLivePrelimSubject,
+  type VideoLivePrelimProps,
+} from './templates/VideoLivePrelim'
+import {
+  VideoLiveMain,
+  subjectFor as videoLiveMainSubject,
+  type VideoLiveMainProps,
+} from './templates/VideoLiveMain'
+import {
+  SubmissionReceived,
+  subjectFor as submissionReceivedSubject,
+  type SubmissionReceivedProps,
+} from './templates/SubmissionReceived'
+import {
+  MainRoundSubmissionReceived,
+  subjectFor as mainRoundSubmissionReceivedSubject,
+  type MainRoundSubmissionReceivedProps,
+} from './templates/MainRoundSubmissionReceived'
+import type { SubmissionFileState } from '@/lib/submission-receipt'
+import {
+  prelimReceiptLines,
+  mainReceiptLines,
+  type ReceiptSeason,
+} from './schedule-lines'
+import { buildShareUrl } from '@/lib/share-kit'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 
 export type SendResult =
   | { ok: true; messageId: string | null; skipped?: false }
   | { ok: true; messageId: null; skipped: true; reason: 'already_sent' | 'member_hosted_disabled' }
-  | { ok: false; error: string }
+  // ★`deferred` separates "this send must not be attempted again soon" from
+  // "not now". Only the first deserves the failure backoff; see rateLimited().
+  | { ok: false; error: string; deferred?: true }
 
 type ExecuteSendInput = {
   toEmail: string
@@ -136,6 +166,12 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
     })
 
     if (error) {
+      // ★A rate limit is logged 'queued', not 'failed'. canSend only counts
+      // 'failed' rows toward the backoff and only 'sent' rows toward dedup, so
+      // 'queued' leaves the recipient fully eligible on the very next tick --
+      // which is the correct answer to "not now". /admin/emails already renders
+      // the status, so the deferral is visible rather than invented.
+      const deferred = isRateLimitError(error as { name?: string; message?: string; statusCode?: number })
       await logEmail({
         applicationId: input.applicationId,
         seasonId: input.seasonId,
@@ -143,11 +179,15 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
         templateKey: input.templateKey,
         language: input.language,
         subject: input.subject,
-        status: 'failed',
+        status: deferred ? 'queued' : 'failed',
         errorMessage: error.message,
-        metadata: baseMetadata,
+        metadata: deferred
+          ? { ...(baseMetadata ?? {}), deferred_reason: 'rate_limited' }
+          : baseMetadata,
       })
-      return { ok: false, error: error.message }
+      return deferred
+        ? { ok: false, error: error.message, deferred: true }
+        : { ok: false, error: error.message }
     }
 
     await logEmail({
@@ -285,6 +325,7 @@ type SendSelectedTop50Input = {
   creatorName: string
   seasonName: string
   topNAdvance: number
+  totalParticipants: number
   mainRoundStartAt: string | null
   applicationId?: string | null
   seasonId?: string | null
@@ -300,6 +341,7 @@ export async function sendSelectedTop50(
     creatorName: input.creatorName,
     seasonName: input.seasonName,
     topNAdvance: input.topNAdvance,
+    totalParticipants: input.totalParticipants,
     mainRoundStartAt: input.mainRoundStartAt,
   }
   return executeSend({
@@ -318,6 +360,14 @@ type SendNotSelectedInput = {
   country: string | null | undefined
   creatorName: string
   seasonName: string
+  score: number
+  rank: number
+  total: number
+  percentile: number
+  strength: string
+  improvement: string
+  nextSeasonName: string
+  nextSeasonOpenAt: string | null
   applicationId?: string | null
   seasonId?: string | null
   forceLang?: EmailLang
@@ -327,10 +377,27 @@ export async function sendNotSelected(
   input: SendNotSelectedInput,
 ): Promise<SendResult> {
   const lang = input.forceLang ?? detectEmailLang(input.country)
+  const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
+  const nextSeasonDate = input.nextSeasonOpenAt
+    ? new Date(input.nextSeasonOpenAt).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
+        dateStyle: 'long',
+      })
+    : ''
   const props: NotSelectedProps = {
     lang,
     creatorName: input.creatorName,
     seasonName: input.seasonName,
+    score: input.score,
+    rank: input.rank,
+    total: input.total,
+    percentile: input.percentile,
+    strength: input.strength,
+    improvement: input.improvement,
+    videoUrl: input.applicationId ? `${base}/watch/${input.applicationId}` : `${base}/watch`,
+    profileUrl: `${base}/profile`,
+    nextSeasonName: input.nextSeasonName,
+    nextSeasonDate,
+    applyUrl: `${base}/apply`,
   }
   return executeSend({
     toEmail: input.toEmail,
@@ -623,5 +690,195 @@ export async function sendMembershipFoundingExpiry(
     language: lang,
     subject: membershipFoundingExpirySubject(props),
     element: <MembershipFoundingExpiry {...props} />,
+  })
+}
+
+// ─── ⑤ submission receipt ──────────────────────────────────────────────────
+// Application-scoped -> executeSend's per-application dedup makes it once-only.
+// Fired from the Studio submit action for the participant's own row, and swept
+// by email-tick for anything that send missed -- both go through the same dedup,
+// so the sweep is a no-op whenever the immediate send worked.
+
+type SendSubmissionReceivedInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  videoTitle: string | null
+  submittedAtLabel: string | null
+  fileState: SubmissionFileState
+  // The season's own schedule columns. The receipt renders only the bullets it
+  // can source from these -- no dates are typed into the template.
+  season: ReceiptSeason
+  applicationId: string
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendSubmissionReceived(
+  input: SendSubmissionReceivedInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: SubmissionReceivedProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    videoTitle: input.videoTitle,
+    submittedAtLabel: input.submittedAtLabel,
+    fileState: input.fileState,
+    scheduleLines: prelimReceiptLines(input.season, lang),
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'studio_submission_received',
+    language: lang,
+    subject: submissionReceivedSubject(props),
+    element: <SubmissionReceived {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+export async function sendMainRoundSubmissionReceived(
+  input: SendSubmissionReceivedInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: MainRoundSubmissionReceivedProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    videoTitle: input.videoTitle,
+    submittedAtLabel: input.submittedAtLabel,
+    fileState: input.fileState,
+    scheduleLines: mainReceiptLines(input.season, lang),
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'main_round_submission_received',
+    language: lang,
+    subject: mainRoundSubmissionReceivedSubject(props),
+    element: <MainRoundSubmissionReceived {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+// ─── growth-engine "your film is live" emails ─────────────────────────────
+// Application-scoped -> executeSend's per-application dedup makes them once-only.
+// "Watch your film" uses a plain URL (the creator viewing their own film); the
+// "share to fans" link carries a ?ref= + utm so their fans' signups + votes
+// credit back to them (the growth loop). creatorUserId null -> no attribution.
+// Data (score/rank/AI notes for prelim; vote deadline/views for main) is gathered
+// by the caller (email-tick fire trigger) and passed in.
+
+const APP_BASE = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
+
+// ★An entry with no title is "Untitled", not the season name and not the
+// creator's name (Jenny3, 2026-08-08). The card already shows the creator
+// separately, so putting it in the title slot prints the same name twice; and
+// the season name would give every untitled entry in the season one identical
+// title. "Untitled" is the standard art/film convention for exactly this.
+// Resolved HERE because it is language-dependent and the caller does not know
+// which language the send resolved to.
+function titleOrUntitled(title: string | null | undefined, lang: EmailLang): string {
+  const t = title?.trim()
+  if (t) return t
+  return lang === 'ko' ? '제목 없음' : 'Untitled'
+}
+
+function shareLink(watchUrl: string, creatorUserId: string | null, campaign: string): string {
+  return creatorUserId
+    ? buildShareUrl(watchUrl, creatorUserId, { source: 'email_share', medium: 'email', campaign })
+    : watchUrl
+}
+
+type SendVideoLivePrelimInput = {
+  toEmail: string
+  country: string | null | undefined
+  // Referrer id for the ?ref= share link (the creator's user id). null when the
+  // entry has no linked account -> the email still sends, without attribution.
+  creatorUserId: string | null
+  nickname: string
+  seasonName: string
+  // Nullable at the CALLER; resolved to '제목 없음' / 'Untitled' below, where the
+  // language is known. The template still takes a plain string.
+  videoTitle: string | null
+  thumbnailUrl: string | null
+  score: number | null
+  percentile: number | null
+  rank: number | null
+  aiStrength: string
+  aiImprove: string
+  applicationId: string
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendVideoLivePrelim(input: SendVideoLivePrelimInput): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const watchUrl = `${APP_BASE}/watch/${input.applicationId}?round=application`
+  const props: VideoLivePrelimProps = {
+    lang,
+    nickname: input.nickname,
+    seasonName: input.seasonName,
+    videoTitle: titleOrUntitled(input.videoTitle, lang),
+    thumbnailUrl: input.thumbnailUrl,
+    watchUrl,
+    shareUrl: shareLink(watchUrl, input.creatorUserId, 'prelim_published'),
+    reportUrl: watchUrl,
+    score: input.score,
+    percentile: input.percentile,
+    rank: input.rank,
+    aiStrength: input.aiStrength,
+    aiImprove: input.aiImprove,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'video_live_prelim',
+    language: lang,
+    subject: videoLivePrelimSubject(props),
+    element: <VideoLivePrelim {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+type SendVideoLiveMainInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorUserId: string | null
+  nickname: string
+  seasonName: string
+  videoTitle: string | null
+  thumbnailUrl: string | null
+  voteDeadline: string
+  viewCount: number
+  applicationId: string
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendVideoLiveMain(input: SendVideoLiveMainInput): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const watchUrl = `${APP_BASE}/watch/${input.applicationId}?round=main`
+  const props: VideoLiveMainProps = {
+    lang,
+    nickname: input.nickname,
+    seasonName: input.seasonName,
+    videoTitle: titleOrUntitled(input.videoTitle, lang),
+    thumbnailUrl: input.thumbnailUrl,
+    watchUrl,
+    shareUrl: shareLink(watchUrl, input.creatorUserId, 'main_round_live'),
+    voteDeadline: input.voteDeadline,
+    viewCount: input.viewCount,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'video_live_main',
+    language: lang,
+    subject: videoLiveMainSubject(props),
+    element: <VideoLiveMain {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
   })
 }

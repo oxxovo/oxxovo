@@ -12,6 +12,7 @@ import { useT, useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 import { getMembershipLandingData } from './actions'
 import type { MembershipLandingData } from './types'
+import { buildMembershipTable } from '@/lib/membership-tiers'
 
 export default function MembershipPage() {
   const t = useT()
@@ -40,21 +41,29 @@ export default function MembershipPage() {
     return { label: m.cta_become_creator, href: '/apply', disabled: false }
   }, [data, m])
 
-  // Comparison rows: cells = [Visitor, Member, Creator, Partner].
-  const rows: { label: string; cells: boolean[] }[] = [
-    { label: m.row_browse, cells: [true, true, true, true] },
-    { label: m.row_vote, cells: [false, true, true, true] },
-    { label: m.row_compete, cells: [false, false, true, true] },
-    { label: m.row_studio, cells: [false, false, true, true] },
-    { label: m.row_host, cells: [false, false, false, true] },
-  ]
-
-  const columns = [
-    { name: m.col_anonymous, sub: '', highlight: false },
-    { name: m.col_general, sub: m.price_free, highlight: false },
-    { name: m.col_creator, sub: priceText ?? '', highlight: true },
-    { name: m.col_partner, sub: m.partner_track_caption, highlight: false },
-  ]
+  // The comparison table. Which tiers appear (and therefore which capability rows
+  // still have a checkmark) is decided by lib/membership-tiers.ts -- Partner is
+  // gated on member_hosted_enabled, the same switch that 404s /host and /partner.
+  // Until `data` arrives the switch is unknown, so the gated column is treated as
+  // off: the table can only ever gain a column, never flash one away.
+  const { columns, rows } = buildMembershipTable({
+    // Until `data` arrives the switch is unknown, so the gated column is treated
+    // as off: the table can only ever gain a column, never flash one away.
+    memberHostedEnabled: data?.memberHostedEnabled ?? false,
+    tierLabels: {
+      visitor: { name: m.col_anonymous, sub: '', highlight: false },
+      member: { name: m.col_general, sub: m.price_free, highlight: false },
+      creator: { name: m.col_creator, sub: priceText ?? '', highlight: true },
+      partner: { name: m.col_partner, sub: m.partner_track_caption, highlight: false },
+    },
+    rowLabels: {
+      browse: m.row_browse,
+      vote: m.row_vote,
+      compete: m.row_compete,
+      studio: m.row_studio,
+      host: m.row_host,
+    },
+  })
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
@@ -92,20 +101,22 @@ export default function MembershipPage() {
           )}
         </div>
 
-        {/* Four-tier comparison */}
+        {/* Tier comparison. Three columns, or four when member-hosted is on. */}
         <h2 className="text-[11px] uppercase tracking-[0.16em] text-[#b66cff] mb-5 font-bold text-center">
           {m.compare_title}
         </h2>
 
         {/* Mobile: stacked tier cards (the desktop table would otherwise need
             awkward horizontal scrolling). Each card = tier name + price + its
-            ✓ perks. Creator (the main product) is highlighted. */}
+            ✓ perks. Creator (the main product) is highlighted. Same `columns` as
+            the table below, so the gate reaches both surfaces from one place --
+            this list is why hiding the column in the table alone was not enough. */}
         <div className="md:hidden space-y-4 mb-4">
           {columns.map((col, ci) => {
             const perks = rows.filter((r) => r.cells[ci]).map((r) => r.label)
             return (
               <div
-                key={ci}
+                key={col.id}
                 className={`rounded-xl border px-5 py-4 ${
                   col.highlight
                     ? 'border-[#8b22ff]/50 bg-[#8b22ff]/[.08]'
@@ -142,19 +153,21 @@ export default function MembershipPage() {
         {/* Desktop: full comparison table. */}
         <div className="hidden md:block overflow-x-auto -mx-6 px-6 mb-4">
           <table className="w-full min-w-[600px] table-fixed border-collapse text-sm">
+            {/* One <col> per rendered column, not five hardcoded ones: the label
+                column keeps 34% and the tiers split the remaining 66% evenly, so
+                gating Partner widens the other three instead of leaving a gap. */}
             <colgroup>
               <col className="w-[34%]" />
-              <col className="w-[16.5%]" />
-              <col className="w-[16.5%]" />
-              <col className="w-[16.5%]" />
-              <col className="w-[16.5%]" />
+              {columns.map((col) => (
+                <col key={col.id} style={{ width: `${66 / columns.length}%` }} />
+              ))}
             </colgroup>
             <thead>
               <tr>
                 <th className="py-3 pr-3" />
-                {columns.map((col, i) => (
+                {columns.map((col) => (
                   <th
-                    key={i}
+                    key={col.id}
                     className={`py-3 px-2 text-center align-top ${
                       col.highlight ? 'rounded-t-lg bg-[#8b22ff]/10' : ''
                     }`}
@@ -176,13 +189,18 @@ export default function MembershipPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, ri) => (
-                <tr key={ri} className="border-t border-white/[.06]">
+              {rows.map((row) => (
+                <tr key={row.id} className="border-t border-white/[.06]">
                   <td className="text-white/70 py-3 pr-3">{row.label}</td>
                   {row.cells.map((on, ci) => (
                     <td
-                      key={ci}
-                      className={`py-3 px-2 text-center ${ci === 2 ? 'bg-[#8b22ff]/[.06]' : ''}`}
+                      key={columns[ci].id}
+                      // Tinted from the column's own highlight flag. This used to
+                      // be `ci === 2`, which only pointed at Creator while nothing
+                      // was ever removed from the left of it.
+                      className={`py-3 px-2 text-center ${
+                        columns[ci].highlight ? 'bg-[#8b22ff]/[.06]' : ''
+                      }`}
                     >
                       {on ? (
                         <span className="text-[#b66cff] font-bold">✓</span>
