@@ -190,13 +190,41 @@ seasons에 두고, `registration_close_at - N일`에 도달하면 그 시점의
 
 ## 다음 확인 필요 (TK/제니2)
 
-1. §5 -- "100명"이 정말 100인가(그럼 `min_participants` 50->100도 같이),
-   아니면 계속 50이고 "100"은 통보 문구용 별개 숫자인가.
+1. ~~§5 -- "100명"이 정말 100인가~~ **해소(HQ 2026-08-12)**: 둘 다 100,
+   별개 숫자. `min_participants`=100(대회 개최 조건), Founding 100=별개.
+   ★추가로 "3회 연기 후 80명 하한" 확정 -- §7 갱신판 참조.
 2. §2 -- 신규 "등록" 액션의 UI 모양(폼 필드가 지금 apply 폼과 얼마나
    겹치는지, "일단 등록만" 버튼을 어디에 놓을지)은 화면 설계가 필요하다 --
-   이 문서는 서버 게이트 설계까지만.
-3. §7 결함(community_vote 미이동)을 이번 작업과 같이 고칠지, 별도 항목으로
-   뺄지.
+   이 문서는 서버 게이트 설계까지만. **다음 착수 항목(②), 아직 시작 안 함.**
+3. ~~§7 결함~~ **해소** -- 아래 참조.
+
+## ★착수 순서 갱신 (HQ 2026-08-12) -- ① 완료, ②③ 대기
+
+HQ가 설계를 승인하고 `registration_close_at` 이름도 승인했다. 착수 순서는
+①연기 RPC 결함+100/80 임계 → ②`registration_close_at` → ③등록수 알림,
+"SQL은 초안만, 실행은 대표님". **①만 이번 턴에 완료.**
+
+**코드 완료(커밋 예정), SQL은 초안만 -- TK Run 대기**:
+- `reports/season_defer_floor_and_vote_shift_2026-08-12.sql` (초안, 미실행):
+  신규 컬럼 `absolute_min_participants`(nullable) + season_0 값
+  갱신(`min_participants` 100, `absolute_min_participants` 80,
+  `max_defer_count` 3) + `defer_season_schedule` RPC 재정의(community_vote
+  두 컬럼 이동 추가 + 연기예산 소진 시 80 미만이면 `reason='below_floor'`
+  반환, 종전 `max_reached`는 80 이상일 때만).
+- `lib/seasons.ts`/`lib/season-schema.ts`/`SeasonForm.tsx`/`admin-i18n.ts`:
+  새 필드 배선(폼에 노출, EN/KO 라벨 -- **기술 라벨이라 문안 경계 밖**,
+  참가자 대상 문구 아님). `min_participants` 기본값도 50->100.
+- `app/api/cron/season-tick/route.ts`: RPC가 `below_floor`를 반환하면 그
+  시즌의 상태전환(active->closed)과 예선홀드 자동공개를 **이번 틱은
+  건너뛴다**(연기와 동일한 스킵 메커니즘) + 관리자 알림(매 틱 반복, 해결될
+  때까지 -- 채점 lease 정체 알림과 같은 원칙). **해소 방법은 이 코드에
+  없다** -- 관리자가 `max_defer_count`를 더 늘리거나 수동으로 시즌 상태를
+  바꿔야 한다(둘 다 기존 어드민/DB 접근으로 이미 가능, 신규 UI 없음).
+- 507/507 테스트, tsc clean, eslint clean.
+
+**아직 없는 것**: below_floor 상태를 해소하는 전용 어드민 버튼(지금은
+`max_defer_count` 수정 또는 수동 status 변경으로 우회). 필요하면 별도
+요청.
 
 관련: [[project-season0-3stage]] [[project-membership-season0]]
 [[feedback-no-hardcode]] [[feedback-absent-is-not-zero]]

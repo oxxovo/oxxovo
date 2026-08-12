@@ -50,6 +50,12 @@ export type Season = {
   application_defer_count: number
   defer_extension_days: number
   max_defer_count: number
+  // The floor that governs what happens once max_defer_count is exhausted.
+  // Nullable on purpose (HQ 2026-08-12): a season with no floor set is not
+  // "no floor enforced" -- defer_season_schedule treats NULL as "always hold
+  // for manual review" (fail-closed), same posture as the pre-existing
+  // "cap reached -> admin decides" policy this floor formalizes with a number.
+  absolute_min_participants: number | null
   // Preliminary -> main round advancement policy. top_n_advance stores the
   // computed RESULT; computeAdvanceCount() is the single source of the math
   // (clamp(round(N * advance_pct), advance_min, advance_max)).

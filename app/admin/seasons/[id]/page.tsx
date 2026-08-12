@@ -45,6 +45,11 @@ export default async function SeasonEditPage({
     // 3-stage advancement policy. Fallbacks cover rows read before the
     // season0_3stage migration adds the columns (?? null/undefined -> default).
     min_participants: season.min_participants ?? 50,
+    // ★Nullable in the DB (existing rows predate this column) but the form
+    // wants a number to edit -- 80 is the fallback default, not a claim that
+    // this row was actually set to 80 (see lib/seasons.ts comment: NULL means
+    // the RPC holds for manual review, it does not mean "no floor").
+    absolute_min_participants: season.absolute_min_participants ?? 80,
     defer_extension_days: season.defer_extension_days ?? 7,
     max_defer_count: season.max_defer_count ?? 2,
     advance_pct: season.advance_pct ?? 0.1,

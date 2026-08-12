@@ -50,6 +50,12 @@ export const seasonSchema = z
     // application_defer_count is NOT here: it's a system counter managed by the
     // cron, not an admin-set field, so the form never sends/clobbers it.
     min_participants: z.coerce.number().int().positive(),
+    // Floor once max_defer_count is exhausted (HQ 2026-08-12 "확정값 시트": 3
+    // defers max, 80 minimum after that). Required here (unlike the DB column,
+    // which stays nullable for rows created before this field existed) --
+    // going forward an admin must say what it is, the same posture as
+    // is_fixture having no default.
+    absolute_min_participants: z.coerce.number().int().positive(),
     defer_extension_days: z.coerce.number().int().positive(),
     max_defer_count: z.coerce.number().int().nonnegative(),
     advance_pct: z.coerce.number().gt(0).max(1),
@@ -154,6 +160,11 @@ export const seasonSchema = z
     message: 'min_participants must be <= max_applicants',
     path: ['min_participants'],
   })
+  // The post-defer floor is a fallback FROM min_participants, not a higher bar.
+  .refine((s) => s.absolute_min_participants <= s.min_participants, {
+    message: 'absolute_min_participants must be <= min_participants',
+    path: ['absolute_min_participants'],
+  })
   .refine(
     (s) =>
       Math.abs(s.prize_first_pct + s.prize_second_pct + s.prize_third_pct - 100) < 0.01,
@@ -186,9 +197,13 @@ export const DEFAULT_SEASON: SeasonFormInitial = {
   status: 'draft',
   max_applicants: 500,
   top_n_advance: 50,
-  min_participants: 50,
+  // HQ 2026-08-12: 50 was stale. 100 = the real "does this tournament open"
+  // bar (distinct from the Founding Creator free-membership cap, which is
+  // also 100 but an unrelated, platform-lifetime number).
+  min_participants: 100,
+  absolute_min_participants: 80,
   defer_extension_days: 7,
-  max_defer_count: 2,
+  max_defer_count: 3,
   advance_pct: 0.1,
   advance_min: 10,
   advance_max: 50,

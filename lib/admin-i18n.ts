@@ -182,6 +182,8 @@ export type Messages = {
     field_top_n: string
     group_advancement: string
     field_min_participants: string
+    field_absolute_min_participants: string
+    hint_absolute_min_participants: string
     field_defer_days: string
     field_max_defer: string
     field_advance_pct: string
@@ -1071,6 +1073,9 @@ const MESSAGES_EN: Messages = {
     field_top_n: 'Top N advance (computed result)',
     group_advancement: 'Advancement & deferral (2-stage)',
     field_min_participants: 'Min participants (preliminary)',
+    field_absolute_min_participants: 'Absolute floor (after max defers)',
+    hint_absolute_min_participants:
+      'Once max defer count is used up: at or above this, the season proceeds; below it, holds for manual review instead of auto-closing',
     field_defer_days: 'Defer extension (days)',
     field_max_defer: 'Max defer count',
     field_advance_pct: 'Advance % (prelim → main round)',
@@ -1968,6 +1973,9 @@ const MESSAGES_KO: Messages = {
     field_top_n: '본선 진출자 수 (자동 산출 결과)',
     group_advancement: '진출 및 연기 정책 (2단계)',
     field_min_participants: '최소 참가자 (예선)',
+    field_absolute_min_participants: '절대 하한 (연기 소진 후)',
+    hint_absolute_min_participants:
+      '최대 연기 횟수를 다 쓴 뒤: 이 값 이상이면 개최, 미만이면 자동 마감 대신 수동 검토 대기',
     field_defer_days: '연기 연장 (일)',
     field_max_defer: '최대 연기 횟수',
     field_advance_pct: '진출 비율 (예선 → 본선)',

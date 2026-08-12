@@ -122,6 +122,7 @@ export function SeasonForm({
         <Field label={t.season_form.field_advance_max} name="advance_max" type="number" defaultValue={initial.advance_max} error={fieldError('advance_max')} />
         <Field label={t.season_form.field_defer_days} name="defer_extension_days" type="number" defaultValue={initial.defer_extension_days} error={fieldError('defer_extension_days')} hint={t.season_form.hint_defer} />
         <Field label={t.season_form.field_max_defer} name="max_defer_count" type="number" defaultValue={initial.max_defer_count} error={fieldError('max_defer_count')} />
+        <Field label={t.season_form.field_absolute_min_participants} name="absolute_min_participants" type="number" defaultValue={initial.absolute_min_participants} error={fieldError('absolute_min_participants')} hint={t.season_form.hint_absolute_min_participants} />
       </Group>
 
       <Group title={t.season_form.group_video}>

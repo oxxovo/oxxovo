@@ -92,6 +92,9 @@ type SeasonTickReport = {
   created: { id: string; season_number: number; application_open_at: string | null } | null
   transitions: { id: string; from: string; to: string }[]
   deferrals: { id: string; newClose: string | null; deferCount: number }[]
+  // Defer budget exhausted AND still under the absolute floor -- the season is
+  // held out of the normal status transition below instead of auto-closing.
+  belowFloor: { id: string; active: number; floor: number | null }[]
   prelimReleases: { id: string; released: number }[]
   advancements: { id: string; advanced: number; rejected: number; nTarget: number }[]
   skippedCreation?: string
@@ -250,6 +253,11 @@ async function handle(request: NextRequest) {
   // would wrongly mark the season 'closed'. Next tick reads the shifted dates.
   const deferrals: SeasonTickReport['deferrals'] = []
   const deferredThisTick = new Set<string>()
+  // Defer budget exhausted AND still under the absolute floor -- held out of
+  // this tick's status transition (below), same skip mechanism as an actual
+  // defer, so a season under review is never silently marked 'closed'.
+  const belowFloor: SeasonTickReport['belowFloor'] = []
+  const belowFloorThisTick = new Set<string>()
   for (const s of seasons) {
     if (!s.application_close_at || nowMs < new Date(s.application_close_at).getTime()) continue
     const { data, error } = await supabase.rpc('defer_season_schedule', { p_season_id: s.id })
@@ -264,6 +272,13 @@ async function handle(request: NextRequest) {
         id: s.id,
         newClose: row.new_close ?? null,
         deferCount: Number(row.new_defer_count ?? 0),
+      })
+    } else if (row?.reason === 'below_floor') {
+      belowFloorThisTick.add(s.id)
+      belowFloor.push({
+        id: s.id,
+        active: Number(row.active_count ?? 0),
+        floor: s.absolute_min_participants ?? null,
       })
     }
   }
@@ -283,6 +298,9 @@ async function handle(request: NextRequest) {
   const prelimReleases: SeasonTickReport['prelimReleases'] = []
   for (const s of seasons) {
     if (deferredThisTick.has(s.id)) continue
+    // A season under floor review hasn't been decided yet -- publishing the
+    // cohort to /watch is not reversible, so it waits with everything else.
+    if (belowFloorThisTick.has(s.id)) continue
     if (!s.studio_prelim_auto_publish) continue
     if (!s.application_close_at || nowMs < new Date(s.application_close_at).getTime()) continue
     const { released, error } = await releasePrelimHoldCore(s.id)
@@ -297,6 +315,12 @@ async function handle(request: NextRequest) {
   const transitions: SeasonTickReport['transitions'] = []
   for (const s of seasons) {
     if (deferredThisTick.has(s.id)) continue
+    // Held for manual review (defer budget spent, still under the absolute
+    // floor) -- the season stays 'active' rather than auto-closing. This
+    // repeats every tick until an admin resolves it, by design (mirrors the
+    // stuck-scoring-lease alert below: a condition that stops mentioning
+    // itself is one nobody finishes fixing).
+    if (belowFloorThisTick.has(s.id)) continue
     const desired = desiredStatus(s, nowMs)
     const currentRank = STATUS_RANK[s.status] ?? -1
     const desiredRank = STATUS_RANK[desired] ?? -1
@@ -389,6 +413,23 @@ async function handle(request: NextRequest) {
           <p><strong>${d.id}</strong> had fewer than the minimum applicants at close,
              so the whole calendar shifted forward (deferral #${d.deferCount}).</p>
           <p>New application close: <strong>${d.newClose}</strong> (UTC)</p>
+        </div>`,
+      ),
+    )
+  }
+  for (const b of belowFloor) {
+    alerts.push(
+      sendAdminAlert(
+        `[OXXOVO] Season ${b.id} held for review -- under the absolute floor`,
+        `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
+          <h2 style="color: #c0392b;">Manual decision needed</h2>
+          <p><strong>${b.id}</strong> has used its full defer budget and still has
+             ${b.active} active applicant(s), under the floor of
+             ${b.floor ?? 'unset'}. The season stays <strong>active</strong> instead
+             of auto-closing.</p>
+          <p>This repeats every tick until resolved in
+             <a href="https://www.oxxovo.ai/admin/seasons">/admin/seasons</a> --
+             raise the defer budget for one more extension, or close it manually.</p>
         </div>`,
       ),
     )
@@ -513,6 +554,7 @@ async function handle(request: NextRequest) {
     created,
     transitions,
     deferrals,
+    belowFloor,
     prelimReleases,
     advancements,
     ...(skippedCreation ? { skippedCreation } : {}),
