@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import type { Lang } from './admin-i18n'
 
 export type AIModel = {
   name: string
@@ -396,19 +397,25 @@ export function isApplicationClosed(
 //   before open  -> pre-register ("get notified")
 //   open..close  -> apply
 //   after close  -> waitlist (next season)
+// ★state (2026-08-11): added alongside the existing English `label` so
+// bilingual callers (landing) can pick their own translated text without
+// duplicating this open/close-window logic -- `label` is untouched (still
+// English) for callers that haven't been wired for i18n (e.g. /tournament).
+export type SeasonCtaState = 'open' | 'before_open' | 'waitlist'
+
 export function resolveSeasonCta(
   season: Pick<Season, 'name' | 'application_open_at' | 'application_close_at'>,
   at: Date = new Date(),
-): { href: string; label: string } {
+): { href: string; label: string; state: SeasonCtaState } {
   const now = at.getTime()
   const openAt = season.application_open_at ? new Date(season.application_open_at).getTime() : null
   const closeAt = season.application_close_at ? new Date(season.application_close_at).getTime() : null
   const isOpen = openAt != null && now >= openAt && (closeAt == null || now < closeAt)
-  if (isOpen) return { href: '/apply', label: `Apply to ${season.name}` }
+  if (isOpen) return { href: '/apply', label: `Apply to ${season.name}`, state: 'open' }
   if (openAt != null && now < openAt) {
-    return { href: '/pre-register', label: 'Get notified when applications open' }
+    return { href: '/pre-register', label: 'Get notified when applications open', state: 'before_open' }
   }
-  return { href: '/pre-register', label: 'Join the waitlist' }
+  return { href: '/pre-register', label: 'Join the waitlist', state: 'waitlist' }
 }
 
 // True before the application window opens. The CTA on /tournament already hides
@@ -449,11 +456,6 @@ export function formatList(items: string[]): string {
 
 export function formatAiModelList(models: AIModel[]): string {
   return formatList(models.map((m) => formatModelName(m.name)))
-}
-
-export function formatAiProviderList(models: AIModel[]): string {
-  const providers = models.map((m) => m.provider).filter((p): p is string => !!p)
-  return formatList(providers)
 }
 
 export function getIntegrityModel(models: AIModel[]): AIModel | null {
@@ -581,17 +583,23 @@ export function advanceCountLabel(
 // Format a season deadline (UTC timestamptz) in OXXOVO's canonical competition
 // timezone (US Pacific) so the shown date is stable regardless of the visitor's
 // locale. Returns null for a missing/invalid value -> caller hides the line.
-export function formatDeadlinePT(iso: string | null | undefined): string | null {
+// ★lang (2026-08-11, TK found the landing countdown date was English-only
+// under the KO toggle): optional and defaults to 'en', so every existing
+// caller (apply/profile/email templates/etc.) is byte-identical unless it
+// explicitly opts in. Type-only import -- erased at compile, no client-
+// boundary issue pulling from a 'use client' module into this shared lib.
+export function formatDeadlinePT(iso: string | null | undefined, lang: Lang = 'en'): string | null {
   if (!iso) return null
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return null
-  const date = d.toLocaleDateString('en-US', {
+  const locale = lang === 'ko' ? 'ko-KR' : 'en-US'
+  const date = d.toLocaleDateString(locale, {
     timeZone: 'America/Los_Angeles',
-    month: 'short',
+    month: lang === 'ko' ? 'long' : 'short',
     day: 'numeric',
     year: 'numeric',
   })
-  const time = d.toLocaleTimeString('en-US', {
+  const time = d.toLocaleTimeString(locale, {
     timeZone: 'America/Los_Angeles',
     hour: 'numeric',
     minute: '2-digit',

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { formatDeadlinePT } from '@/lib/seasons'
-import { useT } from '@/lib/admin-i18n'
+import { useT, useAdminLang } from '@/lib/admin-i18n'
 
 // Filter bar above the grid (arena-only). Fixed pill labels match 8_final exactly
 // -- "Current Competition" / "Newest First" / "🏆 Champions" -- each opening a
@@ -37,7 +37,8 @@ export function ArenaFilterBar({
   awardsAt?: string | null
 }) {
   const t = useT()
-  const revealedAt = formatDeadlinePT(awardsAt)
+  const lang = useAdminLang()
+  const revealedAt = formatDeadlinePT(awardsAt, lang)
   return (
     <div className="mb-5 flex flex-wrap items-center gap-3">
       {/* Text-only tabs (8_final): the season tab is the active one (purple +
