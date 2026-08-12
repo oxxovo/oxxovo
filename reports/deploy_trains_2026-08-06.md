@@ -3,6 +3,13 @@
 **2026-08-06 · 지수 본체 · 본부 지시로 문서화.**
 섞으면 사고다. 두 트레인은 **레포도 배포처도 위험도도 다르다.**
 
+★★**"배포됨"의 기준(2026-08-11, 제니2 확정)**: **Railway/Vercel이 새
+이미지를 실제로 빌드한 것**이다. "코드가 main에 올라감"이 아니다 — git
+push는 fast-forward든 머지든 그 자체로는 아무것도 증명하지 않는다(Vercel은
+`git.deploymentEnabled.main=false`면 push만으로 안 붙고, Railway는 서비스가
+Offline이면 push해도 재기동 안 함). 확인은 항상 대시보드/CLI에서
+"Deployment successful" + 해당 커밋 메시지를 직접 보는 것으로 한다.
+
 ---
 
 ## 0. 한눈에
