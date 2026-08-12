@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
 import AuthSync from "./_components/AuthSync";
 
@@ -11,6 +11,24 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// ★2026-08-11 (TK found Korean text "too heavy" -- 제니2 traced it to layout.tsx
+// only loading Geist's latin subset, so Hangul was falling back to the OS's
+// default Korean font entirely uncoordinated with the site's actual type).
+// Verified before wiring, not assumed: next/font auto-splits this into 249
+// unicode-range @font-face rules covering the full modern Hangul Syllables
+// block (U+AC00..U+D7A3, confirmed by grep on the generated CSS -- no gaps
+// like the Black Han Sans precedent). Real page weight is small because the
+// browser only fetches the specific range files it needs, not the whole
+// font -- a handful of ~15-20KB chunks for the site's actual Korean
+// vocabulary, not a multi-MB download. `subsets: ['latin']` is what Google
+// Fonts' own metadata calls this font's base config; the Hangul ranges come
+// through regardless (verified in the build output, not from the subset name).
+const notoKr = Noto_Sans_KR({
+  variable: "--font-noto-kr",
+  subsets: ["latin"],
+  weight: ["400", "700"],
 });
 
 // While the public site is gated (SITE_PUBLIC_ENABLED=false), the root <head>
@@ -67,7 +85,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${notoKr.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col"><AuthSync />{children}</body>
     </html>
