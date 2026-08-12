@@ -445,6 +445,7 @@ export function LandingView() {
         <div className="text-center mb-14">
           <span className="text-[#b66cff] uppercase tracking-widest text-sm font-bold">{t.landing.faq_eyebrow}</span>
           <h2 className="text-4xl md:text-5xl font-black mt-3">{t.landing.faq_h2}</h2>
+          <p className="text-white/50 mt-3">{t.landing.faq_subtitle}</p>
         </div>
 
         {season ? (

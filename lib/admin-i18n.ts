@@ -757,6 +757,7 @@ export type Messages = {
     stat3_label: string
     faq_eyebrow: string
     faq_h2: string
+    faq_subtitle: string
     faq_q1: (seasonName: string) => string
     faq_a1: (min: number, max: number) => string
     faq_q2: string
@@ -1653,6 +1654,7 @@ const MESSAGES_EN: Messages = {
     stat3_label: 'Same Rules. Skill Decides.',
     faq_eyebrow: 'FAQ',
     faq_h2: 'Common Questions',
+    faq_subtitle: 'New to OXXOVO?',
     faq_q1: (seasonName) => `Who can participate in ${seasonName}?`,
     faq_a1: (min, max) =>
       `Anyone, anywhere. There are no nationality, age, or experience requirements. You just need an AI-generated video (${min}–${max} seconds) and a free OXXOVO account.`,
@@ -2536,6 +2538,7 @@ const MESSAGES_KO: Messages = {
     stat3_label: '같은 규칙. 오직 실력으로.',
     faq_eyebrow: '자주 묻는 질문',
     faq_h2: '이런 점이 궁금하실 겁니다',
+    faq_subtitle: 'OXXOVO가 처음이신가요?',
     faq_q1: (seasonName) => `${seasonName}에는 누가 참가할 수 있나요?`,
     faq_a1: (min, max) =>
       `누구나, 어디서든 참가할 수 있습니다. 국적·나이·경력 제한이 없습니다. AI로 만든 영상(${min}~${max}초)과 무료 OXXOVO 계정만 있으면 됩니다.`,
