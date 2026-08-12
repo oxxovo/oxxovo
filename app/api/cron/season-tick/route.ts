@@ -320,6 +320,14 @@ async function handle(request: NextRequest) {
     // repeats every tick until an admin resolves it, by design (mirrors the
     // stuck-scoring-lease alert below: a condition that stops mentioning
     // itself is one nobody finishes fixing).
+    //
+    // ★INCOMPLETE ON PURPOSE (HQ 2026-08-12, execution model still
+    // undecided): this only blocks the status flip and prelim-hold release.
+    // scoring_start_at/scoring_complete_at were never shifted (deferred was
+    // false), so scoring and advancement below still run on the ORIGINAL
+    // schedule regardless of this hold -- "does not meet the floor" today
+    // does not actually stop the tournament from proceeding. See
+    // reports/season_defer_timestamp_audit_2026-08-12.md "below_floor 집행".
     if (belowFloorThisTick.has(s.id)) continue
     const desired = desiredStatus(s, nowMs)
     const currentRank = STATUS_RANK[s.status] ?? -1

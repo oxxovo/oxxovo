@@ -5,10 +5,18 @@
 --
 -- Three independent changes bundled because they all touch the same
 -- function/row:
---   1. defer_season_schedule was missing community_vote_start_at/end_at from
---      the columns it shifts on defer (those two columns were added to the
---      schema after this RPC was written). A real gap, found while designing
---      item 2 below -- independent of the application/registration split.
+--   1. defer_season_schedule was missing THREE columns from the dates it
+--      shifts on defer: community_vote_start_at/end_at AND
+--      prelim_results_announcement_at (all three added to the schema after
+--      this RPC was written -- HQ caught the third one after reviewing the
+--      first two, and ordered a full audit of every seasons timestamp
+--      column instead of patching one at a time. That audit is
+--      reports/season_defer_timestamp_audit_2026-08-12.md -- 9 columns
+--      shift, 5 do not, each with its own reason (application_open_at is
+--      already in the past by the time this runs; created_at/prelim_
+--      released_at/prize_pool_escrow_paid_at are event records, not target
+--      dates; updated_at is the mutation stamp this function already sets
+--      itself). Independent of the application/registration split below.
 --   2. New "absolute floor" behavior: once max_defer_count is exhausted, the
 --      RPC used to let the season close no matter how few applicants it had.
 --      Now: >= absolute_min_participants -> proceeds (reason='max_reached',
@@ -124,25 +132,39 @@ BEGIN
                         v_season.application_defer_count, 'enough', v_active; RETURN;
   END IF;
 
-  -- Shortfall + budget remains -> shift the whole downstream calendar,
-  -- including community_vote (previously missing).
+  -- Shortfall + budget remains -> shift the whole downstream calendar.
+  --
+  -- ***IF YOU ADD A NEW seasons TIMESTAMP COLUMN, DECIDE HERE TOO.***
+  -- This list is a manually maintained subset of every timestamptz column on
+  -- seasons (audit: reports/season_defer_timestamp_audit_2026-08-12.md).
+  -- Three columns have already been missed by being added to the schema
+  -- after this function was last touched (community_vote_start_at/end_at,
+  -- prelim_results_announcement_at) -- all three looked identical: nothing
+  -- broke until a defer actually fired, then a downstream date sat stranded
+  -- relative to everything else. A new date column does NOT get shifted by
+  -- being added to the table -- it has to be added below, on purpose, after
+  -- answering "does this move when the season slips a week" the way the
+  -- audit doc does per column. registration_close_at (planned, not yet a
+  -- column) belongs here too the moment it exists.
   v_days := v_season.defer_extension_days;
   UPDATE public.seasons SET
-    application_close_at    = application_close_at + (v_days || ' days')::interval,
-    scoring_start_at        = CASE WHEN scoring_start_at IS NOT NULL
-                                   THEN scoring_start_at + (v_days || ' days')::interval END,
-    scoring_complete_at     = CASE WHEN scoring_complete_at IS NOT NULL
-                                   THEN scoring_complete_at + (v_days || ' days')::interval END,
-    main_round_start_at     = CASE WHEN main_round_start_at IS NOT NULL
-                                   THEN main_round_start_at + (v_days || ' days')::interval END,
-    main_round_end_at       = CASE WHEN main_round_end_at IS NOT NULL
-                                   THEN main_round_end_at + (v_days || ' days')::interval END,
-    community_vote_start_at = CASE WHEN community_vote_start_at IS NOT NULL
-                                   THEN community_vote_start_at + (v_days || ' days')::interval END,
-    community_vote_end_at   = CASE WHEN community_vote_end_at IS NOT NULL
-                                   THEN community_vote_end_at + (v_days || ' days')::interval END,
-    awards_announcement_at  = CASE WHEN awards_announcement_at IS NOT NULL
-                                   THEN awards_announcement_at + (v_days || ' days')::interval END,
+    application_close_at             = application_close_at + (v_days || ' days')::interval,
+    scoring_start_at                 = CASE WHEN scoring_start_at IS NOT NULL
+                                            THEN scoring_start_at + (v_days || ' days')::interval END,
+    scoring_complete_at              = CASE WHEN scoring_complete_at IS NOT NULL
+                                            THEN scoring_complete_at + (v_days || ' days')::interval END,
+    prelim_results_announcement_at   = CASE WHEN prelim_results_announcement_at IS NOT NULL
+                                            THEN prelim_results_announcement_at + (v_days || ' days')::interval END,
+    main_round_start_at              = CASE WHEN main_round_start_at IS NOT NULL
+                                            THEN main_round_start_at + (v_days || ' days')::interval END,
+    main_round_end_at                = CASE WHEN main_round_end_at IS NOT NULL
+                                            THEN main_round_end_at + (v_days || ' days')::interval END,
+    community_vote_start_at          = CASE WHEN community_vote_start_at IS NOT NULL
+                                            THEN community_vote_start_at + (v_days || ' days')::interval END,
+    community_vote_end_at            = CASE WHEN community_vote_end_at IS NOT NULL
+                                            THEN community_vote_end_at + (v_days || ' days')::interval END,
+    awards_announcement_at           = CASE WHEN awards_announcement_at IS NOT NULL
+                                            THEN awards_announcement_at + (v_days || ' days')::interval END,
     application_defer_count = application_defer_count + 1,
     updated_at = now()
   WHERE id = p_season_id
