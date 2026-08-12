@@ -8,7 +8,6 @@ import {
   advanceCountLabel,
   formatAccessCopy,
   formatDeadlinePT,
-  formatAiProviderList,
   formatModelName,
   formatPanelLabel,
   formatWeightPercent,
@@ -31,6 +30,7 @@ const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '
 
 export function LandingView() {
   const t = useT()
+  const lang = useAdminLang()
   const [user, setUser] = useState<{ email: string } | null>(null)
   const [season, setSeason] = useState<Season | null>(null)
   const [membership, setMembership] = useState<MembershipLandingData | null>(null)
@@ -84,7 +84,18 @@ export function LandingView() {
   // before open -> "Get notified" (pre-register), open -> "Apply to <season>".
   const cta = season
     ? resolveSeasonCta(season)
-    : { href: '/apply', label: t.landing.cta_default }
+    : { href: '/apply', label: t.landing.cta_default, state: 'waitlist' as const }
+  // ★ctaLabel (2026-08-11, TK found on prod): cta.label is resolveSeasonCta's
+  // OWN English default (unchanged, other callers like /tournament still read
+  // it directly) -- this is the translated text landing actually renders,
+  // picked off cta.state rather than duplicating the open/close-window logic.
+  const ctaLabel = season
+    ? cta.state === 'open'
+      ? t.landing.cta_open(season.name)
+      : cta.state === 'before_open'
+        ? t.landing.cta_before_open
+        : t.landing.cta_waitlist
+    : t.landing.cta_default
 
   useEffect(() => {
     if (!targetDate) return
@@ -210,7 +221,7 @@ export function LandingView() {
                   ungated. Keeping both costs 191-342px depending on the label, and
                   the pre-open label alone is wider than the whole mobile row. */}
               <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110 max-md:hidden" href={cta.href}>
-                {cta.label}
+                {ctaLabel}
               </a>
               <button
                 onClick={handleLogout}
@@ -226,7 +237,7 @@ export function LandingView() {
                   opens and after it closes, /pre-register has no login link. */}
               <a className="text-[14px] text-white/60" href="/login">{t.landing.login}</a>
               <a className="rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-6 py-3 text-[14px] font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] transition hover:brightness-110 max-md:hidden" href={cta.href}>
-                {cta.label}
+                {ctaLabel}
               </a>
             </>
           )}
@@ -267,7 +278,7 @@ export function LandingView() {
                 href={cta.href}
                 className="flex h-[64px] items-center justify-center rounded-lg bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] px-8 text-[16px] font-extrabold uppercase tracking-wide text-white shadow-[0_0_28px_rgba(139,34,255,.5)] transition hover:brightness-110"
               >
-                {cta.label}
+                {ctaLabel}
               </a>
               <a
                 href="/tournament"
@@ -277,9 +288,7 @@ export function LandingView() {
               </a>
               <p className="mt-2.5 text-xs text-white/50">
                 {t.landing.hero_submit_prefix} {season ? (
-                  <>
-                    {panelLabel} scoring by {formatAiProviderList(season.ai_models)}.
-                  </>
+                  <>{t.landing.hero_submit_scoring(panelLabel)}</>
                 ) : (
                   <>{t.landing.hero_submit_fallback}</>
                 )}
@@ -291,9 +300,9 @@ export function LandingView() {
                 <div className="mb-1 text-[12px] font-bold uppercase tracking-widest text-[#b66cff]">
                   {t.landing.countdown_label}
                 </div>
-                {formatDeadlinePT(season?.application_close_at) && (
+                {formatDeadlinePT(season?.application_close_at, lang) && (
                   <div className="mb-3.5 text-[12px] text-white/50">
-                    {formatDeadlinePT(season?.application_close_at)}
+                    {formatDeadlinePT(season?.application_close_at, lang)}
                   </div>
                 )}
                 <div className="grid max-w-[400px] grid-cols-4">
