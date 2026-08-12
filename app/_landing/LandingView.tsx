@@ -390,11 +390,7 @@ export function LandingView() {
             <Step
               num="03"
               title={t.landing.step3_title}
-              body={t.landing.step3_body(
-                formatWeightPercent(season.scoring_intent_clarity_weight),
-                formatWeightPercent(season.scoring_execution_weight),
-                formatWeightPercent(season.scoring_originality_weight),
-              )}
+              body={t.landing.step3_body}
             />
             <Step
               num="04"

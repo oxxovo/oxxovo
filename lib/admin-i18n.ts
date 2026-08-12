@@ -743,7 +743,7 @@ export type Messages = {
     step2_title: (panelLabel: string) => string
     step2_body: (modelCount: number) => string
     step3_title: string
-    step3_body: (intentPct: string, execPct: string, origPct: string) => string
+    step3_body: string
     step4_title: string
     step4_body: (advanceLabel: string, seasonName: string, total: string, first: string, second: string, third: string) => string
     about_eyebrow: string
@@ -1618,10 +1618,10 @@ const MESSAGES_EN: Messages = {
     countdown_min: 'Min',
     countdown_sec: 'Sec',
     watch_link: 'Watch the competition →',
-    feat1_title: 'Real-time',
-    feat1_desc: 'Live tournaments. Feel the pressure.',
+    feat1_title: 'Official Competition',
+    feat1_desc: 'Made in a set window. Judged on a set standard.',
     feat2_title: 'Verified',
-    feat2_desc: 'Same prompt. Same conditions.',
+    feat2_desc: 'Same tools. Same conditions. Fair judging.',
     feat3_title: 'Ranked',
     feat3_desc: 'Global leaderboard. Earn your reputation.',
     feat4_title: 'Global',
@@ -1637,8 +1637,8 @@ const MESSAGES_EN: Messages = {
     step2_body: (modelCount) =>
       `${modelCount === 3 ? 'Three' : modelCount} independent AI models from ${modelCount === 3 ? 'three' : modelCount} different companies score your work in parallel. Eliminates single-AI bias.`,
     step3_title: 'Get Your Score',
-    step3_body: (intentPct, execPct, origPct) =>
-      `You get an OXXOVO score across three published components — Intent Clarity (${intentPct}), Execution (${execPct}), Originality (${origPct}). Every entry also passes an automated integrity check.`,
+    step3_body:
+      'Three published criteria — Intent Clarity, Execution, and Originality — determine your OXXOVO score. Every entry also goes through a separate integrity check.',
     step4_title: 'Earn Your Title',
     step4_body: (advanceLabel, seasonName, total, first, second, third) =>
       `The ${advanceLabel} advance as Finalists, competing for the ${seasonName} prize pool of $${total} ($${first} / $${second} / $${third}).`,
@@ -2502,10 +2502,10 @@ const MESSAGES_KO: Messages = {
     countdown_min: '분',
     countdown_sec: '초',
     watch_link: '대회 감상하기 →',
-    feat1_title: '실시간',
-    feat1_desc: '라이브 대회. 긴장을 느껴보세요.',
+    feat1_title: '공식 경쟁',
+    feat1_desc: '정해진 기간에 만들고, 정해진 기준으로 겨룹니다.',
     feat2_title: '검증',
-    feat2_desc: '같은 주제. 같은 조건.',
+    feat2_desc: '같은 도구. 같은 조건. 공정한 평가.',
     feat3_title: '랭킹',
     feat3_desc: '글로벌 리더보드. 실력으로 증명하세요.',
     feat4_title: '글로벌',
@@ -2521,8 +2521,8 @@ const MESSAGES_KO: Messages = {
     step2_body: (modelCount) =>
       `서로 다른 ${modelCount}개 회사의 독립 AI 모델 ${modelCount}개가 동시에 작품을 채점합니다. 단일 AI 편향을 제거합니다.`,
     step3_title: '점수 확인',
-    step3_body: (intentPct, execPct, origPct) =>
-      `공개 항목 세 가지 — 기획 명확성(${intentPct}), 완성도(${execPct}), 독창성(${origPct}) — 로 OXXOVO 점수를 받습니다. 모든 작품은 무결성 자동 검증을 함께 거칩니다.`,
+    step3_body:
+      '기획력, 완성도, 독창성 세 가지 공개 평가 기준에 따라 작품의 OXXOVO 점수가 산정됩니다. 모든 출품작은 별도의 무결성 검증 절차를 함께 거칩니다.',
     step4_title: '타이틀 획득',
     step4_body: (advanceLabel, seasonName, total, first, second, third) =>
       `${advanceLabel}가 본선에 진출해 ${seasonName} 총상금 $${total}($${first} / $${second} / $${third})를 두고 겨룹니다.`,
