@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useT } from '@/lib/admin-i18n'
 import { type Season } from '@/lib/seasons'
+import { AdminPageHeader } from '../AdminPageHeader'
 
 const STATUS_STYLES: Record<string, string> = {
   active: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
@@ -31,18 +32,18 @@ export function SeasonsListView({
 
   return (
     <div className="p-8 max-w-6xl">
-      <header className="flex items-baseline justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-black mb-1">{t.seasons_list.title}</h1>
-          <p className="text-sm text-white/40">{t.seasons_list.subtitle}</p>
-        </div>
-        <Link
-          href="/admin/seasons/new"
-          className="px-5 py-2.5 rounded bg-gradient-to-br from-[#ff4444] to-[#cc3333] text-white font-bold text-sm hover:brightness-110 transition"
-        >
-          {t.seasons_list.new_season}
-        </Link>
-      </header>
+      <AdminPageHeader
+        title={t.seasons_list.title}
+        subtitle={t.seasons_list.subtitle}
+        right={
+          <Link
+            href="/admin/seasons/new"
+            className="px-5 py-2.5 rounded bg-gradient-to-br from-[#ff4444] to-[#cc3333] text-white font-bold text-sm hover:brightness-110 transition"
+          >
+            {t.seasons_list.new_season}
+          </Link>
+        }
+      />
 
       {showDeleted && (
         <div className="mb-6 px-4 py-3 rounded border border-emerald-500/30 bg-emerald-500/10 text-sm text-emerald-300">

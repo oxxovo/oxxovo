@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { useT } from '@/lib/admin-i18n'
+import { AdminPageHeader } from '../AdminPageHeader'
 
 export type EmailLogRow = {
   id: string
@@ -155,10 +156,7 @@ export function EmailsView({
 
   return (
     <div className="p-8 max-w-7xl">
-      <header className="mb-6">
-        <h1 className="text-3xl font-black mb-1">{t.emails.title}</h1>
-        <p className="text-sm text-white/40">{t.emails.subtitle}</p>
-      </header>
+      <AdminPageHeader title={t.emails.title} subtitle={t.emails.subtitle} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard label={t.emails.stat_total} value={stats.total} />

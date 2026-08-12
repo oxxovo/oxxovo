@@ -5,6 +5,7 @@ import { useState, useTransition } from 'react'
 import { useT, useAdminLang } from '@/lib/admin-i18n'
 import { VideoEmbed } from '@/app/_components/VideoEmbed'
 import { AdminExternalLink } from '../AdminExternalLink'
+import { AdminPageHeader } from '../AdminPageHeader'
 import { type ApplicationRow } from './ApplicationsView'
 import { saveAdminNotes, saveStatus, saveAwardRank } from './actions'
 import {
@@ -95,10 +96,12 @@ export function ApplicationDetail({
       <Link href="/admin/applications" className="text-xs text-[#ff8844] hover:underline">
         {t.application_detail.back}
       </Link>
-      <header className="mt-3 mb-8 flex items-baseline justify-between">
-        <h1 className="text-3xl font-black">{app.creator_name}</h1>
-        <span className="text-xs text-white/40">{seasonLabel}</span>
-      </header>
+      <div className="mt-3">
+        <AdminPageHeader
+          title={app.creator_name}
+          right={<span className="text-xs text-white/40">{seasonLabel}</span>}
+        />
+      </div>
 
       {/* Top-of-page urgency banner when flagged for review */}
       {isFlagged && (

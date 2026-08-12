@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminLang } from '@/lib/admin-i18n'
+import { AdminPageHeader } from '../AdminPageHeader'
 import {
   previewBroadcastRecipients,
   queueBroadcast,
@@ -213,10 +214,7 @@ export function BroadcastsView({
 
   return (
     <div className="p-8 max-w-3xl">
-      <header className="mb-8">
-        <h1 className="text-3xl font-black">{t.title}</h1>
-        <p className="mt-1 text-sm text-white/50 max-w-2xl">{t.subtitle}</p>
-      </header>
+      <AdminPageHeader title={t.title} subtitle={t.subtitle} />
 
       {step === 'compose' ? (
         <section className="border border-white/10 rounded p-5 bg-white/[.02] mb-10">

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAdminLang } from '@/lib/admin-i18n'
 import { GRADE_BADGE_CLASS, GRADE_LABEL_KO, GRADE_LABEL_EN, type Grade } from '@/lib/grades'
 import { AdminExternalLink } from '../AdminExternalLink'
+import { AdminPageHeader } from '../AdminPageHeader'
 
 export type WinnerCard = {
   id: string
@@ -69,10 +70,7 @@ export function WinnersView({
 
   return (
     <div className="p-8 max-w-5xl">
-      <header className="mb-6">
-        <h1 className="text-3xl font-black">{t.title}</h1>
-        <p className="mt-1 text-sm text-white/50 max-w-2xl">{t.subtitle}</p>
-      </header>
+      <AdminPageHeader title={t.title} subtitle={t.subtitle} />
 
       <div className="mb-8 max-w-xs">
         <select

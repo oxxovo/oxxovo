@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { useT, useAdminLang } from '@/lib/admin-i18n'
+import { AdminPageHeader } from '../AdminPageHeader'
 import {
   deriveGrade,
   GRADE_BADGE_CLASS,
@@ -204,10 +205,7 @@ export function ApplicationsView({
 
   return (
     <div className="p-8 max-w-7xl">
-      <header className="mb-6">
-        <h1 className="text-3xl font-black mb-1">{t.applications.title}</h1>
-        <p className="text-sm text-white/40">{t.applications.subtitle}</p>
-      </header>
+      <AdminPageHeader title={t.applications.title} subtitle={t.applications.subtitle} />
 
       {/* Apply Recommendation panel — 작업 5/6 */}
       {selectedSeasonId && (

@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminLang } from '@/lib/admin-i18n'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
+import { AdminPageHeader } from '../AdminPageHeader'
 import {
   createUploadUrlAction,
   createPromoVideoAction,
@@ -138,10 +139,7 @@ export function PromoView({
 
   return (
     <div className="p-8 max-w-5xl">
-      <header className="mb-8">
-        <h1 className="text-3xl font-black">{t.title}</h1>
-        <p className="mt-1 text-sm text-white/50 max-w-2xl">{t.subtitle}</p>
-      </header>
+      <AdminPageHeader title={t.title} subtitle={t.subtitle} />
 
       {!postizEnabled && (
         <div className="mb-6 border border-[#ff8844]/30 bg-[#ff8844]/[.06] rounded px-4 py-3 text-[12px] text-[#ffb488]">

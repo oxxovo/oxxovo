@@ -8,6 +8,7 @@ import { getDisplayNames } from '@/lib/nickname'
 import { WatchVideoModRow, type ModVideo } from './WatchVideoModRow'
 import { PrelimHoldPanel, type HeldSeason } from './PrelimHoldPanel'
 import { countPrelimEntries, type PrelimEntry } from '@/lib/prelim-release'
+import { AdminPageHeader } from '../AdminPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -206,11 +207,10 @@ export default async function AdminWatchVideosPage() {
   return (
     <main className="min-h-screen bg-[#030305] text-white px-6 py-10">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-black">Video moderation</h1>
-        <p className="mt-2 text-sm text-white/50">
-          Reported, AI-flagged, or hidden videos. Hide removes a video from Watch without changing
-          its competition status (scoring/awards are unaffected).
-        </p>
+        <AdminPageHeader
+          title="Video moderation"
+          subtitle="Reported, AI-flagged, or hidden videos. Hide removes a video from Watch without changing its competition status (scoring/awards are unaffected)."
+        />
 
         <PrelimHoldPanel seasons={heldSeasons} />
 

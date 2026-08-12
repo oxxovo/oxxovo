@@ -5,6 +5,7 @@
 
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { AdminPageHeader } from '../AdminPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,10 +38,10 @@ export default async function MessagesPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-black text-white mb-1">Help Assistant — Out-of-scope</h1>
-      <p className="text-sm text-white/40 mb-6">
-        Questions the chatbot could not answer from the knowledge base (pointed to info@oxxovo.ai).
-      </p>
+      <AdminPageHeader
+        title="Help Assistant — Out-of-scope"
+        subtitle="Questions the chatbot could not answer from the knowledge base (pointed to info@oxxovo.ai)."
+      />
 
       {tableMissing ? (
         <div className="rounded-lg border border-amber-400/30 bg-amber-400/[.05] px-5 py-4 text-sm text-amber-200/80">

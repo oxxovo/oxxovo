@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useAdminLang } from '@/lib/admin-i18n'
+import { AdminPageHeader } from '../AdminPageHeader'
 import {
   grantCreditsAction,
   lookupBalanceAction,
@@ -98,10 +99,7 @@ export function CreditsView({ rows }: { rows: LedgerDisplayRow[] }) {
 
   return (
     <div className="p-8 max-w-5xl">
-      <header className="mb-8">
-        <h1 className="text-3xl font-black">{t.title}</h1>
-        <p className="mt-1 text-sm text-white/50 max-w-2xl">{t.subtitle}</p>
-      </header>
+      <AdminPageHeader title={t.title} subtitle={t.subtitle} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
         <GrantForm t={t} />
