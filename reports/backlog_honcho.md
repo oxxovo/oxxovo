@@ -20,6 +20,7 @@
 | 15 | 앱 배포(+283 커밋) | — | 본부 판정: 지수2C의 [C]④ 완료 뒤(제니2 트랙 완료 후). 이 세션의 판단 사항 아님, 대기만 | [C]④ 완료 시 |
 | 16 | 이메일 해지 후 재동의 경로 없음(EmailConsentCard는 해지만, 재동의는 로그아웃 후 재로그인으로 안내) | 설계 필요 시 | 9/9 이후 실사용자가 재동의를 요청하는 사례가 생길 때 | 미정 |
 | 17 | 발송 콘솔 완료(`d791091`) / cron 실트리거 미확인 — 배포 후 | $0 | [C]④ 완료 → 앱 배포(#15)와 같은 게이트. 확인 항목은 `reports/studio_go_live_checklist_2026-07.md` Phase C3에 등재 완료 | 배포 후 첫 :07/:22/:37/:52 |
+| 18 | **다음 배포 대기: 6건** — 전부 `feat/studio-budget-guard`(2026-08-12, `b9ae3e4`)에는 있고 `origin/main`엔 없음(개별 확인 완료, "머지했다"≠"main에 있다"): ①가입 시 이메일 동의(Privacy§11/Terms§12/로그인 UI/콜백 기록/수신거부) ②참가자 연락처 발송 콘솔(`admin_broadcasts`+cron+화면) ③`/admin/winners` ④AI배우 ANNA가 YUZU 교체(`lib/studio-actors.ts`, main은 아직 KIRA/YUZU 2인) ⑤`/admin/actors` 잠금배지 한국어화 ⑥어드민 공통 헤더(`AdminPageHeader`, 제목 크기) | $0(코드 완료, 배포 비용만) | #15(앱 배포)와 같은 게이트 — main으로 못 감(배포는 한 번에) | [C]④ 완료 → 앱 배포 시 |
 
 ## CLOSED (기록 보존)
 
