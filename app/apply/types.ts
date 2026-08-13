@@ -15,3 +15,12 @@ export type ApplyMembershipState = {
     open: boolean
   }
 }
+
+// Has THIS user already registered (or already submitted) for this season --
+// HQ 2026-08-12. 'submitted' means free_entry_url is set (the row is already
+// filled in, whether via a fresh mint-and-submit or a later fill-in of a
+// registered row).
+export type MyRegistrationStatus =
+  | { status: 'none' }
+  | { status: 'registered'; entryStatus: 'pending' | 'waitlist' }
+  | { status: 'submitted' }
