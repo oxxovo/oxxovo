@@ -489,7 +489,7 @@ export default function StudioPage() {
           <p className="mt-1 text-sm text-white/50">{t.subtitle}</p>
         </div>
 
-        <ThemeBanner t={t} state={state} />
+        <ThemeBanner t={t} state={state} lang={lang} />
         <StatusBar t={t} state={state} />
         <BuyCredits token={token} />
 
@@ -594,7 +594,7 @@ export default function StudioPage() {
   )
 }
 
-function ThemeBanner({ t, state }: { t: Dict; state: StudioState }) {
+function ThemeBanner({ t, state, lang }: { t: Dict; state: StudioState; lang: Lang }) {
   const roundLabel = state.season.round === 'main' ? t.round_main : t.round_application
   return (
     <div className="rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/[.06] p-5">
@@ -615,7 +615,7 @@ function ThemeBanner({ t, state }: { t: Dict; state: StudioState }) {
         {state.season.twistRevealed && state.season.twist ? (
           <div className="text-sm text-[#d9b8ff]">{state.season.twist}</div>
         ) : (
-          <div className="text-sm text-white/35 italic">{t.twist_hidden}</div>
+          <div className={`text-sm text-white/35 ${lang === 'ko' ? '' : 'italic'}`}>{t.twist_hidden}</div>
         )}
       </div>
     </div>
