@@ -1,6 +1,12 @@
 -- =========================================================================
 -- Registration-count reminder (HQ 2026-08-12, item 3 of the deadline split).
--- DRAFT ONLY -- TK runs this. Six blocks, read each result before the next.
+-- RUN IN PRODUCTION 2026-08-12 (TK). BLOCK 0-4 all passed: registration_
+-- reminder_days={14,7,3,1} on season_0, count_active_registrations callable
+-- via anon/authenticated (verified directly, not just granted) and via
+-- service_role, defer_season_schedule('season_0') still returns
+-- reason='not_at_close', and pg_indexes shows all 3 email_logs_dedup*
+-- indexes with the expected WHERE clauses. Kept as the historical record of
+-- what was run.
 --
 -- WHAT THIS DOES
 --   1. New column seasons.registration_reminder_days (INT[]) -- the D-14/7/

@@ -284,8 +284,8 @@ Founding 잔여 슬롯이 있으면 무료 클레임 CTA, 없으면 유료 구�
    신설(`lib/studio.ts`) + `isRegistrationClosed()`(`lib/seasons.ts`) +
    두 제출 함수의 mint 분기(5a/7a)가 `isRegistrationClosed`로,
    fill-in 분기(5c/7c)가 신규 `isApplicationClosed` 체크로 전환 + 어드민
-   폼 필드 + SQL 초안(`reports/season_registration_close_2026-08-12.sql`,
-   TK Run 대기). **UI(등록 전용 화면/버튼)는 아직 없음** -- HQ 요청에
+   폼 필드 + SQL(`reports/season_registration_close_2026-08-12.sql`,
+   **Run 완료**). **UI(등록 전용 화면/버튼)는 아직 없음** -- HQ 요청에
    화면 설계 언급이 없었고, 서버 게이트 정합성이 먼저라 이번 범위는
    거기까지. 필요 시 별도 요청.
    ★부수 발견(backlog #21): `checkApplyGate`/Founding 클레임이 Studio
@@ -293,13 +293,14 @@ Founding 잔여 슬롯이 있으면 무료 클레임 CTA, 없으면 유료 구�
    반영, 손 안 댐(오늘 범위 밖).
 3. ~~§7 결함~~ **해소** -- 아래 참조.
 
-## ★착수 순서 갱신 (HQ 2026-08-12) -- ① 완료, ②③ 대기
+## ★착수 순서 (HQ 2026-08-12) -- ①②③ 전부 완료, SQL 3건 전부 Run 완료
 
 HQ가 설계를 승인하고 `registration_close_at` 이름도 승인했다. 착수 순서는
-①연기 RPC 결함+100/80 임계 → ②`registration_close_at` → ③등록수 알림,
-"SQL은 초안만, 실행은 대표님". **①만 이번 턴에 완료.**
+①연기 RPC 결함+100/80 임계 → ②`registration_close_at` → ③등록수 알림 --
+**세 항목 SQL 전부 대표님이 Run 완료(2026-08-12)**, 코드는 push 완료
+(`463b197`). 남은 건 브랜치 머지 → main 배포뿐.
 
-**코드 완료(커밋 예정), SQL은 초안만 -- TK Run 대기**:
+**코드 완료, SQL도 Run 완료**:
 - `reports/season_defer_floor_and_vote_shift_2026-08-12.sql` (초안, 미실행):
   신규 컬럼 `absolute_min_participants`(nullable) + season_0 값
   갱신(`min_participants` 100, `absolute_min_participants` 80,
