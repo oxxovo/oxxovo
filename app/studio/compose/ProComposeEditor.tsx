@@ -31,7 +31,7 @@ import { isSubmittableRenderStatus } from '@/lib/studio-shared'
 import { createRawPreview, type PreviewEngine, type PreviewTransition } from './preview'
 import { createGLPreview } from './preview-gl'
 import { hasAnyEffect, EXPOSED_SLIDERS, LUT_OPTIONS, EXPOSED_TRANSITIONS, type EffectParams } from '@/lib/effects'
-import { valueAt, type KeyframeTrack } from '@/lib/edl-keyframes'
+import { valueAt, speedRampSourceConsumedMs, type KeyframeTrack } from '@/lib/edl-keyframes'
 import { FONT_SPECS, type TextLayer } from '@/lib/text-render'
 import { TEXT_LIMITS, TEXT_CANVAS, validateTexts, type TextReason } from '@/lib/text-limits'
 import { TextOverlay } from './TextOverlay'
@@ -66,6 +66,11 @@ type Segment = {
   // startMs). Only exposure/contrast/saturation/vignette are keyframe-able
   // (decision ①(a), 2026-08-10 -- position/scale explicitly out of scope).
   keyframes?: Partial<Record<keyof EffectParams, KeyframeTrack>>
+  // ★H speed ramp (2026-08-12, design: reports/lane_c_item_h_ui_design_
+  // 2026-08-12.md). WINS over the scalar `speed` when present -- mutually
+  // exclusive by construction here (the toggle switches which one is live),
+  // matching the signed EDL's own rule (lib/cryptobind.ts SegmentEffect).
+  speedRamp?: KeyframeTrack
 }
 // Effect keys the keyframe toggle applies to -- must match render.ts's
 // effectVideoFilters() kfOf() gate (only eq's 3 + vignette support ffmpeg's
@@ -529,17 +534,26 @@ function KeyframeMiniTrack({
   max,
   spanMs,
   onChange,
+  step = 1,
 }: {
   track: KeyframeTrack
   min: number
   max: number
   spanMs: number
   onChange: (next: KeyframeTrack) => void
+  // ★H (2026-08-12): D's 4 effect params + opacity are all integer-scaled
+  // (step=1, the component's original default), but speed's 0.25..4 range
+  // needs a fractional grid -- rounding to the nearest INTEGER would collapse
+  // every speed value to {0,1,2,3,4}, far coarser than the static speed
+  // slider's own step={0.05}. Optional so every existing D call site
+  // (integer params) is byte-identical without passing it.
+  step?: number
 }) {
   const [selected, setSelected] = useState(0)
   const trackRef = useRef<HTMLDivElement>(null)
   const dragIdx = useRef<number | null>(null)
   const pts = track.points
+  const roundToStep = (v: number) => Number((Math.round(v / step) * step).toFixed(4))
 
   const xPct = (atMs: number) => (spanMs > 0 ? Math.max(0, Math.min(1, atMs / spanMs)) : 0) * 100
   const yPct = (val: number) => (1 - (max > min ? (val - min) / (max - min) : 0)) * 100
@@ -555,7 +569,7 @@ function KeyframeMiniTrack({
     if (!el) return min
     const r = el.getBoundingClientRect()
     const p = Math.max(0, Math.min(1, (clientY - r.top) / r.height))
-    return Math.round(max - p * (max - min))
+    return roundToStep(max - p * (max - min))
   }
   const commit = (next: { atMs: number; value: number }[]) => onChange({ points: [...next].sort((a, b) => a.atMs - b.atMs) })
 
@@ -581,7 +595,7 @@ function KeyframeMiniTrack({
   const onTrackClick = (e: React.MouseEvent) => {
     if (e.target !== trackRef.current) return // a point's own mousedown already handled it
     const atMs = msFromClientX(e.clientX)
-    const value = Math.round(Math.max(min, Math.min(max, valueAt(track, atMs))))
+    const value = roundToStep(Math.max(min, Math.min(max, valueAt(track, atMs))))
     const next = [...pts, { atMs, value }]
     commit(next)
     setSelected(next.length - 1)
@@ -619,9 +633,10 @@ function KeyframeMiniTrack({
           type="number"
           min={min}
           max={max}
-          value={Math.round(sel.value)}
+          step={step}
+          value={step < 1 ? sel.value.toFixed(2) : Math.round(sel.value)}
           onChange={(e) => {
-            const value = Math.max(min, Math.min(max, Number(e.target.value) || 0))
+            const value = roundToStep(Math.max(min, Math.min(max, Number(e.target.value) || 0)))
             commit(pts.map((p, j) => (j === selected ? { ...p, value } : p)))
           }}
           className="mt-1 w-16 rounded border border-white/10 bg-[#070610] px-1.5 py-0.5 text-[10px] text-white"
@@ -965,7 +980,12 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   // hasAnyEffect() alone would miss it, silently dropping to the v1 EDL path
   // (no GL preview, no keyframes in the signed submission).
   const hasAnyKeyframes = (s: Segment) => !!s.keyframes && Object.values(s.keyframes).some((tr) => tr && tr.points.length > 0)
-  const compositionHasEffects = hasAnyEffect(globalFx) || transitions.length > 0 || segments.some((s) => hasAnyEffect(s.effects) || hasAnyKeyframes(s) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
+  // ★H (2026-08-12): same lesson as hasAnyKeyframes above, same bug shape --
+  // a speedRamp-only segment (no static speed, no effects) would otherwise
+  // miss compositionHasEffects and silently fall to the v1 EDL path (ramp
+  // dropped from the signed submission, no GL preview either).
+  const hasSpeedRamp = (s: Segment) => !!s.speedRamp && s.speedRamp.points.length > 0
+  const compositionHasEffects = hasAnyEffect(globalFx) || transitions.length > 0 || segments.some((s) => hasAnyEffect(s.effects) || hasAnyKeyframes(s) || hasSpeedRamp(s) || (s.speed !== undefined && Math.round(s.speed * 1000) !== 1000))
   // ★ NEVER SHOW A BLACK PREVIEW. If the GL engine cannot draw (cross-origin
   // texture upload refused, shader/context failure), it reports up here and we
   // stay on the raw engine for the rest of the session: the user sees the
@@ -1296,6 +1316,53 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     commit(`spd:${uid}`, true)
     setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, speed } : x)))
   }
+  // ★H speed ramp (2026-08-12, design: reports/lane_c_item_h_ui_design_
+  // 2026-08-12.md §2). "가속이 소스를 넘으면 편집기가 막는다" -- NOT a clamp,
+  // NOT a freeze-frame: a candidate track that would need more source than
+  // the clip actually has is simply REJECTED (setSegSpeedRamp no-ops, the
+  // drag/click that produced it has no effect), and rampBlocked flashes true
+  // for a moment so the UI can show it was refused, not silently ignored.
+  // Uses the exact same speedRampSourceConsumedMs the server (lib/studio.ts)
+  // and worker (render.ts) already call -- one shared function is the actual
+  // guarantee all three agree, not three independently-tuned checks.
+  const [rampBlocked, setRampBlocked] = useState(false)
+  const rampBlockedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flashRampBlocked = () => {
+    setRampBlocked(true)
+    if (rampBlockedTimer.current) clearTimeout(rampBlockedTimer.current)
+    rampBlockedTimer.current = setTimeout(() => setRampBlocked(false), 400)
+  }
+  const setSegSpeedRamp = (uid: string, track: KeyframeTrack | undefined) => {
+    const seg = segments.find((x) => x.uid === uid)
+    if (!seg) return
+    if (track) {
+      const span = Math.max(1, seg.endMs - seg.startMs)
+      const clip = clipById.get(seg.jobId)
+      const clipDurMs = clip ? clip.durationSeconds * 1000 : Infinity
+      const consumedMs = speedRampSourceConsumedMs(track, span)
+      if (seg.startMs + consumedMs > clipDurMs + 1) { flashRampBlocked(); return }
+    }
+    commit(`sr:${uid}`)
+    setSegments((s) => s.map((x) => (x.uid === uid ? { ...x, speedRamp: track } : x)))
+  }
+  // ON seeds 2 points at the current static speed (no jump on entry, same
+  // pattern as toggleKeyframe). OFF removes the ramp and restores a static
+  // `speed` -- NOT the ramp's last value, its time-weighted AVERAGE
+  // (speedRampSourceConsumedMs(track, span) / span): "전체적으로 몇 배속
+  //이었나" survives the lossy conversion better than an arbitrary endpoint.
+  const toggleSpeedRamp = () => {
+    if (!selSeg) return
+    if (selSeg.speedRamp) {
+      const span = Math.max(1, selSeg.endMs - selSeg.startMs)
+      const avgSpeed = speedRampSourceConsumedMs(selSeg.speedRamp, span) / span
+      commit(`sr:${selSeg.uid}`)
+      setSegments((s) => s.map((x) => (x.uid === selSeg.uid ? { ...x, speedRamp: undefined, speed: Math.round(avgSpeed * 100) / 100 } : x)))
+      return
+    }
+    const val = Math.max(0.25, Math.min(4, selSeg.speed ?? 1))
+    const span = Math.max(1, selSeg.endMs - selSeg.startMs)
+    setSegSpeedRamp(selSeg.uid, { points: [{ atMs: 0, value: val }, { atMs: span, value: val }] })
+  }
   // Per-clip fill mode for the output aspect: cover = crop-fill, contain = letterbox.
   const setSegFit = (uid: string, fit: 'contain' | 'cover') => {
     commit(`fit:${uid}`)
@@ -1396,6 +1463,7 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
             ...(hasAnyEffect(s.effects) ? { effects: s.effects } : {}),
             ...(s.fit === 'cover' ? { fit: 'cover' as const } : {}),
             ...(hasAnyKeyframes(s) ? { keyframes: s.keyframes } : {}),
+            ...(hasSpeedRamp(s) ? { speedRamp: s.speedRamp } : {}),
           })),
           ...(transitions.length ? { transitions: transitions.map((tr) => ({ afterIndex: tr.afterIndex, type: tr.type, durationMs: tr.durationMs })) } : {}),
           ...(hasAnyEffect(globalFx) ? { global: globalFx } : {}),
@@ -1847,15 +1915,35 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                             </label>
                           )
                         })}
-                        {/* per-clip speed */}
+                        {/* per-clip speed. ★H ramp toggle (2026-08-12): same
+                            diamond pattern as the effect sliders above, but
+                            speed/speedRamp are mutually exclusive fields (not
+                            a scalar overridden by a track), so the toggle
+                            switches which one is live rather than adding an
+                            override on top of the same field. */}
                         {fxTab === 'clip' && (
-                          <label className="block">
+                          <label className={`block transition ${rampBlocked ? 'animate-pulse' : ''}`}>
                             <span className="flex items-center justify-between text-[11px] text-white/55">
-                              <span>{t.fx_speed}</span><span className="tabular-nums text-white/35">{(selSeg!.speed ?? 1).toFixed(2)}x</span>
+                              <span className="flex items-center gap-1">
+                                {t.fx_speed}
+                                <button type="button" onClick={toggleSpeedRamp}
+                                  title="Speed ramp" aria-pressed={!!selSeg!.speedRamp}
+                                  className={`ml-0.5 text-[10px] leading-none transition ${selSeg!.speedRamp ? 'text-[#8b22ff]' : 'text-white/25 hover:text-white/55'}`}>
+                                  ◆
+                                </button>
+                              </span>
+                              {!selSeg!.speedRamp && <span className="tabular-nums text-white/35">{(selSeg!.speed ?? 1).toFixed(2)}x</span>}
                             </span>
-                            <input type="range" min={0.25} max={4} step={0.05} value={selSeg!.speed ?? 1} onChange={(e) => setSegSpeed(selSeg!.uid, Number(e.target.value))}
-                              onDoubleClick={() => { lastCommit.current = { key: '', t: 0 }; setSegSpeed(selSeg!.uid, 1) }} title={t.dbl_default}
-                              className="w-full accent-[#8b22ff]" />
+                            {selSeg!.speedRamp ? (
+                              <div className={rampBlocked ? 'rounded ring-1 ring-red-500/70' : ''}>
+                                <KeyframeMiniTrack track={selSeg!.speedRamp} min={0.25} max={4} step={0.05} spanMs={selSeg!.endMs - selSeg!.startMs}
+                                  onChange={(next) => setSegSpeedRamp(selSeg!.uid, next)} />
+                              </div>
+                            ) : (
+                              <input type="range" min={0.25} max={4} step={0.05} value={selSeg!.speed ?? 1} onChange={(e) => setSegSpeed(selSeg!.uid, Number(e.target.value))}
+                                onDoubleClick={() => { lastCommit.current = { key: '', t: 0 }; setSegSpeed(selSeg!.uid, 1) }} title={t.dbl_default}
+                                className="w-full accent-[#8b22ff]" />
+                            )}
                           </label>
                         )}
                       </div>

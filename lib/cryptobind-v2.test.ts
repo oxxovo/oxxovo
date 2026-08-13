@@ -230,6 +230,80 @@ test('opacityKeyframes OVERRIDES fadeInMs/fadeOutMs presence in the canonical --
   assert.notEqual(computeEdlHash(kfOnly), computeEdlHash(withFadeAndKf), 'kfop presence alone must move the hash')
 })
 
+// ---- H speed ramp KAT (append-only ;sr= on a segment) ---------------------
+const GOLDEN_SR_CANON = 'edl2||clipA:0:5000;sr=0:1000,5000:2000||T:||G:'
+const GOLDEN_SR_HASH = 'ef29df364fc62c1823052c9ed4253453c9cb40a4c6eb57be823a47e36f80aaa8'
+
+const srSample: ComposeEdl = {
+  version: 2,
+  segments: [
+    {
+      jobId: 'clipA', startMs: 0, endMs: 5000,
+      speedRamp: { points: [{ atMs: 0, value: 1 }, { atMs: 5000, value: 2 }] },
+    },
+  ],
+}
+
+test('KAT: speed-ramp canonical string is stable (cross-repo byte-mirror)', () => {
+  assert.equal(edlCanonicalString(srSample), GOLDEN_SR_CANON)
+})
+
+test('KAT: speed-ramp hash is stable (cross-repo byte-mirror)', () => {
+  assert.equal(computeEdlHash(srSample), GOLDEN_SR_HASH)
+})
+
+test('append-only: an unramped EDL keeps its EXACT canonical string (byte-identical to before H)', () => {
+  assert.equal(edlCanonicalString(sample), GOLDEN_CANON)
+  assert.equal(computeEdlHash(sample), GOLDEN_HASH)
+})
+
+test('append-only: a segment with an EMPTY speedRamp track is canonically identical to no speedRamp at all', () => {
+  const withEmpty: ComposeEdl = JSON.parse(JSON.stringify(srSample))
+  withEmpty.segments[0].speedRamp = { points: [] }
+  const withUndefined: ComposeEdl = JSON.parse(JSON.stringify(srSample))
+  delete withUndefined.segments[0].speedRamp
+  assert.equal(computeEdlHash(withEmpty), computeEdlHash(withUndefined))
+})
+
+test('speed-ramp points are sorted regardless of insertion order', () => {
+  const reordered: ComposeEdl = JSON.parse(JSON.stringify(srSample))
+  reordered.segments[0].speedRamp!.points.reverse()
+  assert.equal(computeEdlHash(reordered), computeEdlHash(srSample))
+})
+
+test('speedRamp and static speed coexist in the canonical (both are signature-visible independently)', () => {
+  const both: ComposeEdl = JSON.parse(JSON.stringify(srSample))
+  both.segments[0].speed = 1.5
+  assert.notEqual(computeEdlHash(both), GOLDEN_SR_HASH, 'adding a static speed value alongside speedRamp must move the hash')
+})
+
+test('TAMPER: changing a speed-ramp point value changes the hash', () => {
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(srSample))
+  tampered.segments[0].speedRamp!.points[1].value = 2.1 // 2 -> 2.1
+  assert.notEqual(computeEdlHash(tampered), GOLDEN_SR_HASH)
+})
+
+// ★TAMPER: the exact rounding-gap class of bug D's TAMPER test caught for
+// opacityKeyframes (scale=1 collapsing 0.5->1 back to the untampered value).
+// speedRamp uses scale=1000, same as opacityKeyframes -- this proves a small
+// (0.05x) but real speed change survives that grid and still moves the hash.
+test('TAMPER: a small sub-0.1 speed-ramp value change still changes the hash (scale=1000 grid holds)', () => {
+  const base: ComposeEdl = {
+    version: 2,
+    segments: [{ jobId: 'clipA', startMs: 0, endMs: 5000, speedRamp: { points: [{ atMs: 0, value: 1 }, { atMs: 5000, value: 1.5 }] } }],
+  }
+  const baseHash = computeEdlHash(base)
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(base))
+  tampered.segments[0].speedRamp!.points[1].value = 1.55 // 1.5 -> 1.55, a 0.05x nudge
+  assert.notEqual(computeEdlHash(tampered), baseHash)
+})
+
+test('TAMPER: adding a speed-ramp point changes the hash', () => {
+  const tampered: ComposeEdl = JSON.parse(JSON.stringify(srSample))
+  tampered.segments[0].speedRamp!.points.push({ atMs: 2500, value: 3 })
+  assert.notEqual(computeEdlHash(tampered), GOLDEN_SR_HASH)
+})
+
 // ---- music bed KAT (append-only MU section) -------------------------------
 const GOLDEN_MUSIC_CANON =
   'edl2||clipA:0:5000||T:||G:||MU:lib_elegant_01:library:70:40:0:5000:500:800'

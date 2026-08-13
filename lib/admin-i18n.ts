@@ -759,7 +759,7 @@ export type Messages = {
     step2_title: (panelLabel: string) => string
     step2_body: (modelCount: number) => string
     step3_title: string
-    step3_body: (intentPct: string, execPct: string, origPct: string) => string
+    step3_body: string
     step4_title: string
     step4_body: (advanceLabel: string, seasonName: string, total: string, first: string, second: string, third: string) => string
     about_eyebrow: string
@@ -773,6 +773,7 @@ export type Messages = {
     stat3_label: string
     faq_eyebrow: string
     faq_h2: string
+    faq_subtitle: string
     faq_q1: (seasonName: string) => string
     faq_a1: (min: number, max: number) => string
     faq_q2: string
@@ -1646,16 +1647,16 @@ const MESSAGES_EN: Messages = {
     hero_submit_prefix: 'Submit your AI video.',
     hero_submit_scoring: (panelLabel) => `${panelLabel} scoring by multiple independent AI models.`,
     hero_submit_fallback: 'AI verified scoring.',
-    countdown_label: 'Application Closes In',
+    countdown_label: 'Submission Closes In',
     countdown_days: 'Days',
     countdown_hrs: 'Hrs',
     countdown_min: 'Min',
     countdown_sec: 'Sec',
     watch_link: 'Watch the competition →',
-    feat1_title: 'Real-time',
-    feat1_desc: 'Live tournaments. Feel the pressure.',
+    feat1_title: 'Official Competition',
+    feat1_desc: 'Made in a set window. Judged on a set standard.',
     feat2_title: 'Verified',
-    feat2_desc: 'Same prompt. Same conditions.',
+    feat2_desc: 'Same tools. Same conditions. Fair judging.',
     feat3_title: 'Ranked',
     feat3_desc: 'Global leaderboard. Earn your reputation.',
     feat4_title: 'Global',
@@ -1666,13 +1667,13 @@ const MESSAGES_EN: Messages = {
     how_h2: 'Submit. Get Verified. Win.',
     step1_title: 'Share Your Video',
     step1_body: (min, max) =>
-      `Make your video in OXXOVO Studio (${min}–${max} seconds) and submit it there. Everyone works with the same toolset — what separates entries is your direction, not your budget.`,
+      `Make your video in OXXOVO Studio (${min}–${max} seconds) and submit it there.`,
     step2_title: (panelLabel) => `${panelLabel} Judges`,
     step2_body: (modelCount) =>
       `${modelCount === 3 ? 'Three' : modelCount} independent AI models from ${modelCount === 3 ? 'three' : modelCount} different companies score your work in parallel. Eliminates single-AI bias.`,
     step3_title: 'Get Your Score',
-    step3_body: (intentPct, execPct, origPct) =>
-      `You get an OXXOVO score across three published components — Intent Clarity (${intentPct}), Execution (${execPct}), Originality (${origPct}). Every entry also passes an automated integrity check.`,
+    step3_body:
+      'Three published criteria — Intent Clarity, Execution, and Originality — determine your OXXOVO score. Every entry also goes through a separate integrity check.',
     step4_title: 'Earn Your Title',
     step4_body: (advanceLabel, seasonName, total, first, second, third) =>
       `The ${advanceLabel} advance as Finalists, competing for the ${seasonName} prize pool of $${total} ($${first} / $${second} / $${third}).`,
@@ -1688,6 +1689,7 @@ const MESSAGES_EN: Messages = {
     stat3_label: 'Same Rules. Skill Decides.',
     faq_eyebrow: 'FAQ',
     faq_h2: 'Common Questions',
+    faq_subtitle: 'New to OXXOVO?',
     faq_q1: (seasonName) => `Who can participate in ${seasonName}?`,
     faq_a1: (min, max) =>
       `Anyone, anywhere. There are no nationality, age, or experience requirements. You just need an AI-generated video (${min}–${max} seconds) and a free OXXOVO account.`,
@@ -2548,16 +2550,16 @@ const MESSAGES_KO: Messages = {
     hero_submit_prefix: 'AI 영상을 제출하세요.',
     hero_submit_scoring: (panelLabel) => `${panelLabel} 채점 — 복수의 이종 AI 모델이 참여합니다.`,
     hero_submit_fallback: 'AI 검증 채점.',
-    countdown_label: '신청 마감까지',
+    countdown_label: '제출 마감까지',
     countdown_days: '일',
     countdown_hrs: '시',
     countdown_min: '분',
     countdown_sec: '초',
     watch_link: '대회 감상하기 →',
-    feat1_title: '실시간',
-    feat1_desc: '라이브 대회. 긴장을 느껴보세요.',
+    feat1_title: '공식 경쟁',
+    feat1_desc: '정해진 기간에 만들고, 정해진 기준으로 겨룹니다.',
     feat2_title: '검증',
-    feat2_desc: '같은 주제. 같은 조건.',
+    feat2_desc: '같은 도구. 같은 조건. 공정한 평가.',
     feat3_title: '랭킹',
     feat3_desc: '글로벌 리더보드. 실력으로 증명하세요.',
     feat4_title: '글로벌',
@@ -2568,13 +2570,13 @@ const MESSAGES_KO: Messages = {
     how_h2: '제출하고. 검증받고. 우승하세요.',
     step1_title: '영상 공유',
     step1_body: (min, max) =>
-      `OXXOVO 스튜디오에서 영상(${min}~${max}초)을 만들고 그대로 제출하세요. 모두가 같은 도구로 작업합니다 — 작품을 가르는 건 예산이 아니라 당신의 연출입니다.`,
+      `OXXOVO Studio에서 영상(${min}~${max}초)을 만들고 바로 제출하세요.`,
     step2_title: (panelLabel) => `${panelLabel} 심사`,
     step2_body: (modelCount) =>
       `서로 다른 ${modelCount}개 회사의 독립 AI 모델 ${modelCount}개가 동시에 작품을 채점합니다. 단일 AI 편향을 제거합니다.`,
     step3_title: '점수 확인',
-    step3_body: (intentPct, execPct, origPct) =>
-      `공개 항목 세 가지 — 기획 명확성(${intentPct}), 완성도(${execPct}), 독창성(${origPct}) — 로 OXXOVO 점수를 받습니다. 모든 작품은 무결성 자동 검증을 함께 거칩니다.`,
+    step3_body:
+      '기획력, 완성도, 독창성 세 가지 공개 평가 기준에 따라 작품의 OXXOVO 점수가 산정됩니다. 모든 출품작은 별도의 무결성 검증 절차를 함께 거칩니다.',
     step4_title: '타이틀 획득',
     step4_body: (advanceLabel, seasonName, total, first, second, third) =>
       `${advanceLabel}가 본선에 진출해 ${seasonName} 총상금 $${total}($${first} / $${second} / $${third})를 두고 겨룹니다.`,
@@ -2590,6 +2592,7 @@ const MESSAGES_KO: Messages = {
     stat3_label: '같은 규칙. 오직 실력으로.',
     faq_eyebrow: '자주 묻는 질문',
     faq_h2: '이런 점이 궁금하실 겁니다',
+    faq_subtitle: 'OXXOVO가 처음이신가요?',
     faq_q1: (seasonName) => `${seasonName}에는 누가 참가할 수 있나요?`,
     faq_a1: (min, max) =>
       `누구나, 어디서든 참가할 수 있습니다. 국적·나이·경력 제한이 없습니다. AI로 만든 영상(${min}~${max}초)과 무료 OXXOVO 계정만 있으면 됩니다.`,

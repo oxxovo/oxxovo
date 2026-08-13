@@ -8,7 +8,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-pretendard);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -26,13 +26,10 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  /* ★2026-08-11: Arial/Helvetica stay FIRST -- measured (getComputedStyle +
-     screenshot diff), this is byte-identical English rendering to before
-     (Geist was never actually wired into this rule either, despite being
-     loaded -- a separate, pre-existing gap, not touched here). Korean-only
-     glyphs Arial/Helvetica can't render fall through to Noto Sans KR
-     instead of whatever the OS substitutes. */
-  font-family: Arial, Helvetica, var(--font-noto-kr), sans-serif;
+  /* ★2026-08-12: one stack for Korean and English both (Pretendard covers
+     Hangul + Latin) -- replaces the old Arial/Helvetica-first chain that
+     only fell through to a Korean font for glyphs Arial couldn't render. */
+  font-family: var(--font-pretendard), sans-serif;
 }
 
 details > summary::-webkit-details-marker {

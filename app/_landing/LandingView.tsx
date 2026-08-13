@@ -69,7 +69,7 @@ export function LandingView() {
   }, [season])
 
   // The countdown is about ONE deadline: applications closing. Past that instant
-  // it was still rendering "Application Closes In / 00 00 00 00" -- through the
+  // it was still rendering "Submission Closes In / 00 00 00 00" -- through the
   // main round, the vote and the results -- under a CTA that already read "Join
   // the waitlist". Recomputed every render, and the timer below re-renders every
   // second, so it goes away on the tick the deadline passes.
@@ -263,7 +263,11 @@ export function LandingView() {
               {t.landing.eyebrow}
             </div>
 
-            <h1 className="text-[clamp(32px,3.2vw,54px)] font-black uppercase leading-[.96] tracking-[-.04em]">
+            <h1
+              className={`text-[clamp(32px,3.2vw,54px)] font-black uppercase leading-[.96] ${
+                lang === 'ko' ? 'tracking-[-.02em]' : 'tracking-[-.04em]'
+              }`}
+            >
               {t.landing.h1_line1}<br />
               <span className="text-[#8b22ff] drop-shadow-[0_0_30px_rgba(139,34,255,.5)]">{t.landing.h1_line2}</span>
             </h1>
@@ -300,9 +304,9 @@ export function LandingView() {
                 <div className="mb-1 text-[12px] font-bold uppercase tracking-widest text-[#b66cff]">
                   {t.landing.countdown_label}
                 </div>
-                {formatDeadlinePT(season?.application_close_at, lang) && (
+                {formatDeadlinePT(season?.application_close_at, lang, { withKst: true }) && (
                   <div className="mb-3.5 text-[12px] text-white/50">
-                    {formatDeadlinePT(season?.application_close_at, lang)}
+                    {formatDeadlinePT(season?.application_close_at, lang, { withKst: true })}
                   </div>
                 )}
                 <div className="grid max-w-[400px] grid-cols-4">
@@ -386,11 +390,7 @@ export function LandingView() {
             <Step
               num="03"
               title={t.landing.step3_title}
-              body={t.landing.step3_body(
-                formatWeightPercent(season.scoring_intent_clarity_weight),
-                formatWeightPercent(season.scoring_execution_weight),
-                formatWeightPercent(season.scoring_originality_weight),
-              )}
+              body={t.landing.step3_body}
             />
             <Step
               num="04"
@@ -441,6 +441,7 @@ export function LandingView() {
         <div className="text-center mb-14">
           <span className="text-[#b66cff] uppercase tracking-widest text-sm font-bold">{t.landing.faq_eyebrow}</span>
           <h2 className="text-4xl md:text-5xl font-black mt-3">{t.landing.faq_h2}</h2>
+          <p className="text-white/50 mt-3">{t.landing.faq_subtitle}</p>
         </div>
 
         {season ? (

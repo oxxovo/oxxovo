@@ -15,7 +15,7 @@
 // follows). The editor picks the best available engine; the seam is this file.
 
 import type { EffectParams } from '@/lib/effects'
-import type { KeyframeTrack } from '@/lib/edl-keyframes'
+import { integralAt, type KeyframeTrack } from '@/lib/edl-keyframes'
 
 // ★Cache key for the raw (no-CORS) path. The GL engine and the media-pool
 // thumbnails load a clip at its BARE url in CORS mode; a no-cors load of the same
@@ -38,6 +38,11 @@ export type PreviewSegment = {
   // the client-side mirror the editor/GL preview work with before an EDL is
   // ever built for signing.
   keyframes?: Partial<Record<keyof EffectParams, KeyframeTrack>>
+  // ★H speed ramp (2026-08-12). Segment-relative DISPLAY ms -> speed
+  // multiplier, same convention as the signed EDL's SegmentEffect.speedRamp
+  // (lib/cryptobind.ts). Wins over `speed` when present -- see
+  // locateComposition below for how this changes the source-time seek.
+  speedRamp?: KeyframeTrack
   // How this clip fills the output aspect box: 'cover' = crop-fill, else letterbox.
   fit?: 'contain' | 'cover'
 }
@@ -73,16 +78,44 @@ export interface PreviewEngine {
 // (ms) to seek that clip to. Spans use endMs-startMs (matches the editor's totalMs
 // and timeline widths; speed/transition overlap are not subtracted here). Clamps
 // past the end to the last segment's out point.
+//
+// ★H speed ramp (2026-08-12). Plain segments (no speedRamp): source time
+// still advances 1:1 with display time (startMs + display-elapsed), exactly
+// as before H -- byte-identical. A ramped segment's SOURCE position is not
+// linear in display time (that is the entire point of a ramp), so it uses
+// integralAt() -- the same closed-form forward integral the worker's math
+// core (lib/edl-keyframes.ts) is built on, so the preview's scrub position
+// and the worker's actual render consume source at the same rate by
+// construction, not by a second, independently-tuned mapping that could
+// drift from it.
 export function locateComposition(segs: PreviewSegment[], compMs: number): { idx: number; videoTimeMs: number } {
   if (!segs.length) return { idx: 0, videoTimeMs: 0 }
   let acc = 0
   for (let i = 0; i < segs.length; i++) {
     const span = Math.max(0, segs[i].endMs - segs[i].startMs)
-    if (compMs < acc + span) return { idx: i, videoTimeMs: segs[i].startMs + Math.max(0, compMs - acc) }
+    if (compMs < acc + span) {
+      const dispElapsedMs = Math.max(0, compMs - acc)
+      const ramp = segs[i].speedRamp
+      const sourceElapsedMs = ramp?.points.length ? integralAt(ramp, dispElapsedMs) : dispElapsedMs
+      return { idx: i, videoTimeMs: segs[i].startMs + sourceElapsedMs }
+    }
     acc += span
   }
   const last = segs[segs.length - 1]
-  return { idx: segs.length - 1, videoTimeMs: last.endMs }
+  return { idx: segs.length - 1, videoTimeMs: segmentSourceEndMs(last) }
+}
+
+// ★H speed ramp (2026-08-12). The SOURCE position where a segment's DISPLAY
+// window (startMs..endMs) actually ends. Plain segments: that is endMs
+// itself, unchanged. A ramped segment consumes a different amount of source
+// -- every `video.currentTime >= seg.endMs` end-of-segment check in this
+// file and preview-gl.ts must compare against THIS, not the raw endMs, or a
+// ramped segment's live playback either cuts short or overruns into the
+// next segment's own source range.
+export function segmentSourceEndMs(seg: PreviewSegment): number {
+  const ramp = seg.speedRamp
+  if (!ramp?.points.length) return seg.endMs
+  return seg.startMs + integralAt(ramp, Math.max(0, seg.endMs - seg.startMs))
 }
 
 export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) => void; onProgress?: (compMs: number) => void } = {}): PreviewEngine {
@@ -95,6 +128,19 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
 
   const setPlaying = (p: boolean) => { playing = p; opts.onPlayingChange?.(p) }
   const compStart = (i: number) => { let a = 0; for (let k = 0; k < i; k++) a += Math.max(0, segs[k].endMs - segs[k].startMs); return a }
+  // ★H speed ramp, known scope limit (2026-08-12): this treats source-elapsed
+  // (video.currentTime - startMs) as display-elapsed 1:1, which is exact for
+  // plain segments but approximate for a ramped one -- the true inverse
+  // (source-elapsed -> display-elapsed) is the same non-linear inverse the
+  // worker approximates for setpts (lib/edl-keyframes.ts's
+  // deriveSourceToDisplayTrack), and doing it exactly here, per progress
+  // tick, is a bigger undertaking than H's scope covers. This only affects
+  // the LIVE playhead position DURING a ramped segment's playback (which
+  // already does not visually speed up/slow down either -- native <video>
+  // playback ignores speed entirely today, a pre-existing gap this does not
+  // widen). What IS exact: locateComposition's scrub/seek and
+  // segmentSourceEndMs's segment-boundary cutover below, both real
+  // integralAt() math, not this approximation.
   const report = () => {
     if (!video || !opts.onProgress) return
     const seg = segs[idx]; if (!seg) return
@@ -125,7 +171,7 @@ export function createRawPreview(opts: { onPlayingChange?: (playing: boolean) =>
     if (!video || !playing) return
     report()
     const seg = segs[idx]
-    if (seg && video.currentTime >= seg.endMs / 1000) void playAt(idx + 1)
+    if (seg && video.currentTime >= segmentSourceEndMs(seg) / 1000) void playAt(idx + 1)
   }
   const onEnded = () => setPlaying(false)
 

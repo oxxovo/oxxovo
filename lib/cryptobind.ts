@@ -208,10 +208,27 @@ const EFFECT_KEYS: readonly (keyof EffectParams)[] = [
 // is SEGMENT-RELATIVE (see lib/edl-keyframes.ts). Scope is (a) effect
 // parameters only -- position/scale (transform) is explicitly out (제니2:
 // "D는 키프레임이지 변형이 아니다"). Linear only, no easing vocabulary.
+// ★H -- speed ramp (제니2/TK, 2026-08-12). `speedRamp`, when present, WINS
+// over the scalar `speed` for this segment -- the editor never sets both.
+// Deliberately a SEPARATE field, not a KeyframeTrack union on `speed` itself
+// (the way D put keyframes in a sibling `keyframes` map rather than changing
+// EffectParams' own types): `speed` fixes SOURCE duration and lets DISPLAY
+// duration vary (today's setpts=(1/speed)*PTS over a fixed-length source
+// trim); `speedRamp` inverts that -- DISPLAY duration stays endMs-startMs
+// (H decision ①B) and the ramp only changes how much SOURCE that fixed
+// window consumes. Same field, two meanings, would be one signature
+// encoding two different renders for the same bytes -- worse than two
+// fields. atMs on each point is segment-relative DISPLAY ms (0..endMs-
+// startMs); value is the speed multiplier at that instant (1.0 = normal,
+// same convention speedVideoFilter already uses). Linear only (H decision
+// ②), reusing lib/edl-keyframes.ts's KeyframeTrack/valueAt/toFfmpegExpr
+// exactly like D did -- see integralAt/deriveSourceToDisplayTrack there for
+// how a ramp's fixed display window maps to a variable source range.
 export type SegmentEffect = EdlSegment & {
   speed?: number
   effects?: EffectParams
   keyframes?: Partial<Record<keyof EffectParams, KeyframeTrack>>
+  speedRamp?: KeyframeTrack
   fit?: 'contain' | 'cover'
 }
 export type Transition = { afterIndex: number; type: string; durationMs: number }
@@ -328,6 +345,15 @@ function segCanonical(s: SegmentEffect): string {
   // hash (an empty `keyframes: {}` object is indistinguishable from absent).
   const kf = keyframesCanonical(s.keyframes)
   if (kf) out += `;kf=${kf}`
+  // APPEND-ONLY (H): only when the track actually has points, so every
+  // segment written before H -- including every plain `speed` segment --
+  // keeps its exact canonical + hash. scale=1000 (not the plain-integer
+  // scale=1 used for effect-param tracks): speed values are fractional
+  // multipliers (0.25..4, same clamp speedVideoFilter already enforces),
+  // and D's own TAMPER test proved scale=1 silently collapses distinct
+  // sub-1.0 values (0.5 rounds to the same canonical int as 1) -- same
+  // rounding-gap class of bug, same fix as opacityKeyframes.
+  if (s.speedRamp?.points.length) out += `;sr=${keyframeTrackCanonical(s.speedRamp, 1000)}`
   return out
 }
 

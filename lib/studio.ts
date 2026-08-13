@@ -26,6 +26,7 @@ import {
   type ComposeEdl,
   type MusicBed,
 } from '@/lib/cryptobind'
+import { speedRampSourceConsumedMs, type KeyframeTrack } from '@/lib/edl-keyframes'
 import { verifySourceClipCrypto } from '@/lib/studio-verify'
 import { validateTexts, parseTrademarkBlocklist, findBlockedTrademark, type TextReason } from '@/lib/text-limits'
 import { validateMusicBed, type MusicReason } from '@/lib/music-limits'
@@ -1798,6 +1799,20 @@ export async function createRender(args: {
     const durMs = Number(row.duration_seconds) * 1000
     if (seg.endMs > durMs + 1) {
       return { ok: false, reason: 'bad_segment', detail: `${seg.jobId} trim exceeds clip length` }
+    }
+    // ★H speed ramp (2026-08-12): the SAME rule the editor enforces at edit
+    // time ("가속이 소스를 넘으면 편집기가 막는다") repeated here, so it
+    // cannot be bypassed by a hand-built request. H decision ①B fixes
+    // DISPLAY duration (endMs-startMs) and lets the ramp vary how much
+    // SOURCE that fixed window actually consumes -- speedRampSourceConsumedMs
+    // is the exact trapezoid-rule integral (lib/edl-keyframes.ts), the same
+    // function the worker uses to size its own source trim before render.
+    const speedRamp = (seg as { speedRamp?: KeyframeTrack }).speedRamp
+    if (speedRamp?.points.length) {
+      const consumedMs = speedRampSourceConsumedMs(speedRamp, seg.endMs - seg.startMs)
+      if (seg.startMs + consumedMs > durMs + 1) {
+        return { ok: false, reason: 'bad_segment', detail: `${seg.jobId} speed ramp needs ${(consumedMs / 1000).toFixed(3)}s of source, clip is ${(durMs / 1000).toFixed(3)}s` }
+      }
     }
   }
 

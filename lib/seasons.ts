@@ -655,10 +655,35 @@ export function advanceCountLabel(
 // caller (apply/profile/email templates/etc.) is byte-identical unless it
 // explicitly opts in. Type-only import -- erased at compile, no client-
 // boundary issue pulling from a 'use client' module into this shared lib.
-export function formatDeadlinePT(iso: string | null | undefined, lang: Lang = 'en'): string | null {
+// ★withKst (2026-08-12, TK): the landing hero countdown reads "한국 시간
+// {date} {time} ({M/D h:mm AM/PM} PT)" -- KST leads because it's the
+// Korean-language screen and KST is the visitor's actionable reference,
+// PT stays as the parenthetical for cross-checking against the official
+// (Pacific) deadline. Opt-in and 'ko'-only so every other caller (the
+// /watch champions dropdown, email receipts, /apply, /tournament) keeps
+// its existing compact PT-only line -- this format is verbose by design
+// for one spot, not a replacement for the rest.
+// dayPeriod: 'short' is deliberate, not decorative: Node's ICU renders
+// ko-KR hour-only time as "PM 5시" (Latin AM/PM) unless dayPeriod is
+// explicit, while Chromium's ICU already defaults to "오후 5시" -- without
+// this, the string would differ between SSR and the browser.
+export function formatDeadlinePT(
+  iso: string | null | undefined,
+  lang: Lang = 'en',
+  opts?: { withKst?: boolean },
+): string | null {
   if (!iso) return null
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return null
+
+  if (lang === 'ko' && opts?.withKst) {
+    const kstDate = d.toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' })
+    const kstTime = d.toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: 'numeric', dayPeriod: 'short' })
+    const ptDate = d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'numeric', day: 'numeric' })
+    const ptTime = d.toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })
+    return `한국 시간 ${kstDate} ${kstTime} (${ptDate} ${ptTime} PT)`
+  }
+
   const locale = lang === 'ko' ? 'ko-KR' : 'en-US'
   const date = d.toLocaleDateString(locale, {
     timeZone: 'America/Los_Angeles',
