@@ -28,7 +28,7 @@
 // enough to expose (EFFECT_SPECS already declares motionBlur 'approximate').
 
 import type { PreviewEngine, PreviewClip, PreviewSegment, PreviewTransition } from './preview'
-import { locateComposition, fitObjectFit } from './preview'
+import { locateComposition, fitObjectFit, segmentSourceEndMs } from './preview'
 import type { EffectParams } from '@/lib/effects'
 import { VERT, FRAG_COLOR_LUT, FRAG_UNSHARP, FRAG_CHROMATIC, FRAG_GRAIN, FRAG_VIGNETTE, FRAG_BLUR, FRAG_SCREEN, FRAG_COPY, FRAG_TRANSITION, FRAG_MOTIONBLUR, TRANSITION_TYPE, transitionSample, colorUniforms, activeLut, activeLutIntensity, glowStages, grainAmount, unsharpAmount, chromaticShift, motionBlurN, LUT_FILE, parseCube, tileCube } from '@/lib/gl-effects'
 import { valueAt, type KeyframeTrack } from '@/lib/edl-keyframes'
@@ -512,7 +512,11 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     const tr = trans.get(idx)
     // --- transition window: blend outgoing (video) + incoming (videoB) ---
     if (tr && idx + 1 < segs.length) {
-      const t = tr.durationMs / 1000, endA = seg.endMs / 1000, tStart = endA - t
+      // ★H: endA is the SOURCE position where seg's display window ends, not
+      // always the raw endMs (see segmentSourceEndMs) -- a transition on a
+      // ramped segment is untested/unverified beyond this substitution
+      // compiling and following the same rule as the other boundary checks.
+      const t = tr.durationMs / 1000, endA = segmentSourceEndMs(seg) / 1000, tStart = endA - t
       if (video.currentTime >= tStart - 1e-3) {
         const p = Math.max(0, Math.min(1, (video.currentTime - tStart) / t))
         const segB = segs[idx + 1], clipB = clipMap.get(segB.jobId)
@@ -587,7 +591,7 @@ export function createGLPreview(opts: { onPlayingChange?: (playing: boolean) => 
     const seg = segs[idx]
     // When a transition just completed, the main video takes over the incoming
     // clip from +t (the transition already showed its first t seconds via videoB).
-    if (seg && video.currentTime >= seg.endMs / 1000) {
+    if (seg && video.currentTime >= segmentSourceEndMs(seg) / 1000) {
       const tr = trans.get(idx)
       void playAt(idx + 1, tr ? tr.durationMs : 0)
     }
