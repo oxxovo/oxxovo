@@ -274,7 +274,13 @@ export function LandingView() {
 
             <div className="mt-8 max-w-[460px]">
               <p className="text-[18px] font-black text-white uppercase tracking-[0.055em]">{t.landing.sub1}</p>
-              <p className="mt-2 text-[16px] italic font-semibold text-gray-400">{t.landing.sub2}</p>
+              {/* ★2026-08-13 (TK, 옵션 2 확정): Pretendard has no italic face, so
+                  `italic` on Korean text was browser-synthesized (sheared) --
+                  fine on Latin, mangles Hangul strokes. KO drops italic and
+                  goes semibold->normal instead (weight reads more clearly than
+                  color on Hangul, per TK's side-by-side); EN keeps the
+                  original italic+semibold treatment unchanged. */}
+              <p className={`mt-2 text-[16px] text-gray-400 ${lang === 'ko' ? 'font-normal' : 'italic font-semibold'}`}>{t.landing.sub2}</p>
             </div>
 
             <div className="mt-7 w-[min(100%,500px)]">
