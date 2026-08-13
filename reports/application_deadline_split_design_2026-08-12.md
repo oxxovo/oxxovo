@@ -188,6 +188,69 @@ seasons에 두고, `registration_close_at - N일`에 도달하면 그 시점의
 같이 들어가야 한다 -- 안 그러면 연기 후 등록마감이 제출마감보다 뒤에 남는
 역전이 새로 생긴다.
 
+## §UI. 등록 전용 화면 -- 설계 (HQ 2026-08-12, 코드 0줄)
+
+★정정(§2 커밋 `3404fdc` 당시 서술 과장): "Founding/멤버십 게이트가 Studio
+경로 어디에도 없다"는 절반만 맞다. `app/apply/page.tsx`를 다시 읽으니
+`MembershipGateScreen`이 **studioApplication 여부와 무관하게 먼저
+렌더된다**(279행 `if (membership?.gateActive...)`가 290행
+`if (studioApplication)`보다 먼저) -- 즉 **화면(UI 퍼널)은 이미
+Studio 참가자도 통과시킨다.** 없는 건 그 화면 뒤(직접 `/studio` URL
+접근, 또는 `registerForSeason`/`submitGeneration`/`submitRender` 자체)의
+**서버측 재확인**뿐이었다. backlog #21 정정판: "UI 퍼널은 gate함,
+서버는 안 함" -- 판정은 여전히 대표님 몫, 손 안 댐.
+
+이 정정이 ①번 답의 근거이기도 하다: `/apply`가 이미 "로그인 -> 멤버십
+게이트 -> 스튜디오 안내"까지 다 하는 자리다. 새 페이지가 아니라 그
+자리에 등록 버튼 하나를 얹는 게 제일 작은 변경이다.
+
+**① 어디 -- `/apply`, 기존 `FunnelScreen`.** 랜딩 CTA나 Studio 내부가
+아니라 지금 스튜디오 참가자가 이미 도달하는 그 화면
+(`app/apply/page.tsx:917` `FunnelScreen`). 지금 이 화면 카피 자체가
+"your first submission registers your application"(953행)이라고
+말하고 있다 -- **이제 거짓말이 됐다**(신청과 제출이 갈렸으니), 어차피
+카피 수정이 필요했던 참에 등록 버튼을 여기 놓는 게 자연스럽다. 문구는
+제니3.
+
+**② 최소로 무엇을 받나 -- 로그인만으론 부족.** `registerForSeason()`은
+`ApplicantInfo`(이름·진술문 150~250자·동의 3종)를 요구한다 --
+진술문은 Intent 채점에 쓰이는 필수값이라 생략 불가. 다행히 이 정확한
+3필드+검증 로직이 **이미 이 파일 안에 있다**(외부URL 폼의 "②
+Applicant Info"/"③ Agreements" 섹션, 552~646행) -- Studio의
+진술문 입력 UI는 `ProComposeEditor.tsx`(2000줄 넘는 편집기 내부,
+제출 시점 모달)에 박혀 있어 재사용이 오히려 더 큰 변경이 된다. 그러니
+새 폼을 만들지 않고 **이 파일에 이미 있는 필드 마크업을 등록 버튼
+아래 펼치는 안**을 추천 -- 신규 UI 컴포넌트 최소화.
+
+**③ 이미 등록한 사람이 다시 오면 -- 신규 상태 조회 필요.**
+지금 `/apply`는 "이 유저가 이미 행을 가졌는가"를 확인하는 코드가
+없다(외부URL 경로의 `submitted` 상태는 방금 막 제출했을 때만 참). 신규
+서버 액션 하나(`getMyRegistrationStatus(seasonId)` 등, `email`로
+`genesis_applications` 존재 확인)가 필요 -- 있으면 등록 폼 대신
+"등록됨, Studio에서 이어가기" 카드를 보여준다(이미 `waitlist`/`pending`
+분기 UI가 있으니 그 옆에 세 번째 상태만 추가).
+
+**④ 정원 찼을 때 -- 이미 있는 대기자 분기 재사용.**
+`registerForSeason()`이 이미 `status: 'pending' | 'waitlist'`를
+반환한다(§2에서 캐파 판정을 이 함수로 옮겼으므로). `/apply`는 이미
+`mode==='waitlist'`일 때 다른 카피("reached its capacity... waitlist")를
+보여주는 분기가 있다 -- 등록 액션의 반환값으로 같은 분기를 타면 된다.
+거부(entirely rejected)는 없다, 대기만(기존 정책 그대로).
+
+**⑤ "11/1에 시작한다" 안내 -- ★무엇을 가리키는지 불확실, 추측 안 함.**
+season_0 실측 일정에 "11/1"에 걸리는 이벤트가 없다(등록마감
+10/31 23:59 PT, 제출마감 11/4). 등록 완료 화면에 표시할 값은
+`formatDeadlinePT(season.application_close_at)`(기존 헬퍼, 이미
+같은 파일에서 씀, 384행)로 "제출은 O월 O일까지" 안내하는 안을
+제안하지만, "11/1에 시작"이 정확히 무엇을 뜻하는지(신규등록 차단
+시작? 제출 준비 기간 시작?) 확인 부탁 -- 틀리게 짚느니 여기서 멈춘다.
+
+**⑥ 기존 제출 경로와의 접합 -- ★이미 맞다, §2에서 확인.**
+`submitGeneration`/`submitRender`의 appRow 조회(email+season, 상태
+무관)가 `registerForSeason`이 만든 행을 그대로 찾아 5c/7c(채우기만)
+분기로 보낸다 -- 새로 맞출 게 없다, §2 커밋(`3404fdc`)이 정확히 이
+경우를 위해 그 분기에 마감 체크를 넣어둔 것이었다.
+
 ## 다음 확인 필요 (TK/제니2)
 
 1. ~~§5 -- "100명"이 정말 100인가~~ **해소(HQ 2026-08-12)**: 둘 다 100,
