@@ -42,6 +42,7 @@ import {
   getSeasonById,
   getActiveApplicationCount,
   isApplicationClosed,
+  isRegistrationClosed,
   isCapacityFull,
   canSubmitMainRound,
 } from '@/lib/seasons'
@@ -1104,12 +1105,144 @@ export type SubmitResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'registration_closed'
         | 'application_closed'
         | 'round_closed'
         | 'not_selected'
         | 'failed'
       detail?: string
     }
+
+export type RegisterForSeasonResult =
+  | { ok: true; status: 'pending' | 'waitlist' }
+  | {
+      ok: false
+      reason:
+        | 'no_application'
+        | 'registration_closed'
+        | 'already_registered'
+        | 'application_info_required'
+        | 'bad_statement'
+        | 'agreements_required'
+        | 'name_required'
+        | 'failed'
+      detail?: string
+    }
+
+// Register-only path (HQ 2026-08-12): mint a genesis_applications row with NO
+// video (free_entry_url stays null), so a participant can claim a
+// capacity/waitlist slot before registration_close_at without having a
+// finished entry yet. Gated the same way submitGeneration/submitRender's
+// no-existing-row branches are (registration window, capacity), because
+// minting the row IS the same event there -- this function is just that same
+// mint, pulled out to run WITHOUT a render. Deliberately does not touch
+// checkApplyGate/Founding-creator claiming: that gate is wired into
+// POST /api/apply only today, not the Studio path at all (measured while
+// designing this, 2026-08-12) -- there is no membership decision currently
+// made anywhere in the Studio flow to relocate.
+//
+// The row this creates is filled in later by submitGeneration's 5c branch or
+// submitRender's 7c branch (both already existed for a DIFFERENT reason --
+// an in-flight async render -- and both are now also gated by
+// application_close_at, the submission cutoff).
+export async function registerForSeason(args: {
+  seasonId: string
+  userId: string
+  email: string
+  applicant: ApplicantInfo
+}): Promise<RegisterForSeasonResult> {
+  const admin = createSupabaseAdmin()
+  const email = args.email.toLowerCase()
+
+  const cfg = await getSeasonStudioConfig(args.seasonId)
+  const effectiveRound = resolveEffectiveRound(cfg)
+  if (effectiveRound !== 'application') return { ok: false, reason: 'no_application' }
+
+  const season = await getSeasonById(args.seasonId)
+  if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
+  if (isRegistrationClosed(season)) return { ok: false, reason: 'registration_closed' }
+
+  const { data: existing, error: eErr } = await admin
+    .from('genesis_applications')
+    .select('id')
+    .eq('season_id', args.seasonId)
+    .ilike('email', email)
+    .limit(1)
+    .maybeSingle()
+  if (eErr) return { ok: false, reason: 'failed', detail: eErr.message }
+  if (existing) return { ok: false, reason: 'already_registered' }
+
+  const info = args.applicant
+  if (!info) return { ok: false, reason: 'application_info_required' }
+  const statement = (info.creatorStatement ?? '').trim()
+  if (statement.length < STATEMENT_MIN || statement.length > STATEMENT_MAX) {
+    return { ok: false, reason: 'bad_statement' }
+  }
+  if (!info.agreedRules || !info.agreedPrivacy || !info.agreedIntegrity) {
+    return { ok: false, reason: 'agreements_required' }
+  }
+
+  const profile = await getCreatorProfile(args.userId)
+  const providedName = (info.creatorName ?? '').trim() || profile.creatorName
+  const name = providedName || (await getDisplayName(args.userId, args.email))
+  const country = info.country?.trim() || profile.country || null
+
+  // Capacity/waitlist decided HERE -- the whole point of the split (HQ ⑤:
+  // "first come" has to mean first REGISTERED).
+  const activeCount = await getActiveApplicationCount(args.seasonId)
+  const resolvedStatus: 'pending' | 'waitlist' = isCapacityFull(season, activeCount)
+    ? 'waitlist'
+    : 'pending'
+
+  const mod = await moderateSubmission({ text: statement })
+
+  const { error: insErr } = await admin.from('genesis_applications').insert({
+    season_id: args.seasonId,
+    user_id: args.userId,
+    email,
+    creator_name: name,
+    creator_statement: statement,
+    country,
+    channel_url: info.channelUrl?.trim() || null,
+    ai_service: 'OXXOVO Studio',
+    agreed_to_rules: true,
+    agreed_to_privacy: true,
+    agreed_to_integrity_notice: true,
+    status: resolvedStatus,
+    moderation_status: mod.status,
+    moderation_flags: mod.categories.length ? mod.categories : null,
+    moderation_checked_at: new Date().toISOString(),
+    // Set now, same as the mint branches this mirrors: the fairness hold is a
+    // property of the ROW (does this entry stay off /watch until the cohort
+    // releases together), decided once at creation and never revisited by
+    // the later fill-in branches.
+    watch_hold: await shouldHoldPrelim(args.seasonId),
+    // free_entry_url / video_duration_seconds / studio_application_submitted_at /
+    // studio_application_intent_at / studio_submission_state all stay unset.
+    // No video exists yet -- the scoring contract (free_entry_url IS NOT NULL)
+    // already treats that as "not scorable", so this row is inert until it is
+    // filled in.
+  })
+  if (insErr) {
+    // 23505 = unique_violation (season_id, user_id) or (season_id, lower(email)).
+    if (insErr.code === '23505') return { ok: false, reason: 'already_registered' }
+    return { ok: false, reason: 'failed', detail: insErr.message }
+  }
+
+  const mirror = await upsertCreatorProfile(args.userId, args.email, {
+    creatorName: providedName || undefined,
+    country: country || undefined,
+  }).catch((e) => ({ ok: false as const, error: String(e) }))
+  if (!mirror.ok) {
+    console.error('[studio] creator profile mirror failed (non-fatal)', {
+      userId: args.userId,
+      path: 'registerForSeason',
+      error: mirror.error,
+    })
+  }
+
+  return { ok: true, status: resolvedStatus }
+}
 
 // Submit a ready generation into the participant's application for the season.
 // CryptoBind is verified here (signature + TID match). The application row is
@@ -1193,12 +1326,19 @@ export async function submitGeneration(args: {
     }
 
     // S-1/S-2: this auto-created row IS an application, so it must obey the same
-    // gates as POST /api/apply -- the application window and the capacity/
-    // waitlist split. A studio submission cannot mint a 'pending' row past the
-    // close time or beyond max_applicants.
+    // gates as POST /api/apply -- the registration window and the capacity/
+    // waitlist split (decided HERE, at row-mint time -- HQ 2026-08-12 ⑤: "first
+    // come" has to mean first REGISTERED, not first finished). A studio
+    // submission cannot mint a 'pending' row past registration_close_at or
+    // beyond max_applicants. isRegistrationClosed, not isApplicationClosed --
+    // minting a brand-new row IS registering, even though this branch also
+    // attaches the video in the same call (the walk-in case: register and
+    // submit in one sitting, still allowed right up to the registration
+    // cutoff). See registerForSeason() above for the register-only path, and
+    // the 5c branch below for filling in a row that already exists.
     const season = await getSeasonById(args.seasonId)
     if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
-    if (isApplicationClosed(season)) return { ok: false, reason: 'application_closed' }
+    if (isRegistrationClosed(season)) return { ok: false, reason: 'registration_closed' }
     const activeCount = await getActiveApplicationCount(args.seasonId)
     const resolvedStatus: 'pending' | 'waitlist' = isCapacityFull(season, activeCount)
       ? 'waitlist'
@@ -1281,8 +1421,18 @@ export async function submitGeneration(args: {
       return { ok: false, reason: 'failed', detail: upErr?.message }
     }
   } else {
-    // 5c-application. Row exists -- single application submission (status unchanged).
+    // 5c-application. Row exists (registered earlier, no video attached yet) --
+    // fill it in. This is the SUBMISSION half of the split, so it is gated by
+    // application_close_at, not registration_close_at -- HQ 2026-08-12 found
+    // this branch had NO date gate at all, which made the registration cutoff
+    // meaningless (anyone could still register before it closed, but nothing
+    // stopped filling in the video arbitrarily late). Fetched fresh rather than
+    // threaded down from the 5a branch above, since only one of the two
+    // branches runs per call.
     if (appRow.studio_application_submitted_at) return { ok: false, reason: 'already_submitted' }
+    const season = await getSeasonById(args.seasonId)
+    if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
+    if (isApplicationClosed(season)) return { ok: false, reason: 'application_closed' }
     const { error: upErr } = await admin
       .from('genesis_applications')
       .update({
@@ -1294,6 +1444,7 @@ export async function submitGeneration(args: {
         studio_application_submitted_at: now,
       })
       .eq('id', appRow.id)
+      .is('studio_application_submitted_at', null)
     if (upErr) return { ok: false, reason: 'failed', detail: upErr.message }
   }
 
@@ -1899,6 +2050,7 @@ export type SubmitRenderResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'registration_closed'
         | 'application_closed'
         | 'round_closed'
         | 'not_selected'
@@ -2012,10 +2164,16 @@ export async function submitRender(args: {
     const name = providedName || (await getDisplayName(args.userId, args.email))
     const country = info.country?.trim() || profile.country || null
 
-    // S-1/S-2: same gates as POST /api/apply -- window + capacity/waitlist split.
+    // S-1/S-2: same gates as POST /api/apply -- registration window +
+    // capacity/waitlist split, decided at mint time (HQ 2026-08-12 ⑤).
+    // isRegistrationClosed, not isApplicationClosed: minting a brand-new row
+    // IS registering, whether or not a finished render is attached in this
+    // same call (walk-in register-and-submit stays allowed through the
+    // registration cutoff). See registerForSeason() for the register-only
+    // path and the 7c branch below for filling in an already-registered row.
     const season = await getSeasonById(args.seasonId)
     if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
-    if (isApplicationClosed(season)) return { ok: false, reason: 'application_closed' }
+    if (isRegistrationClosed(season)) return { ok: false, reason: 'registration_closed' }
     const activeCount = await getActiveApplicationCount(args.seasonId)
     const resolvedStatus: 'pending' | 'waitlist' = isCapacityFull(season, activeCount)
       ? 'waitlist'
@@ -2108,10 +2266,18 @@ export async function submitRender(args: {
       return { ok: false, reason: 'failed', detail: upErr?.message }
     }
   } else {
-    // 7c-application. Row exists -- single application submission (status unchanged).
+    // 7c-application. Row exists (registered earlier, no video attached yet) --
+    // fill it in. This is the SUBMISSION half of the split, so it is gated by
+    // application_close_at, not registration_close_at -- HQ 2026-08-12 found
+    // this branch had NO date gate at all, which made the registration cutoff
+    // meaningless on its own (anyone could still register before it closed,
+    // but nothing stopped filling in the video arbitrarily late).
     if (appRow.studio_application_submitted_at || appRow.studio_application_intent_at) {
       return { ok: false, reason: 'already_submitted' }
     }
+    const fillSeason = await getSeasonById(args.seasonId)
+    if (!fillSeason) return { ok: false, reason: 'failed', detail: 'season not found' }
+    if (isApplicationClosed(fillSeason)) return { ok: false, reason: 'application_closed' }
     // ★The read above is not the guard -- this UPDATE is. `.is(intent_at, null)` makes
     // single submission a DB-level CAS instead of a read-then-write with a race
     // window (two tabs pressing submit within the same round trip).

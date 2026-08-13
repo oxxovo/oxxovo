@@ -103,6 +103,11 @@ export const seasonSchema = z
       .transform((v) => v === true || v === 'true'),
 
     application_open_at: nullableTimestamp,
+    // HQ 2026-08-12: registration cutoff, separate from application_close_at
+    // (the submission cutoff, unchanged). Nullable like its siblings -- an
+    // unset value means "no registration cutoff", the same open convention
+    // isApplicationClosed already uses for a null application_close_at.
+    registration_close_at: nullableTimestamp,
     application_close_at: nullableTimestamp,
     scoring_complete_at: nullableTimestamp,
     main_round_start_at: nullableTimestamp,
@@ -165,6 +170,19 @@ export const seasonSchema = z
     message: 'absolute_min_participants must be <= min_participants',
     path: ['absolute_min_participants'],
   })
+  // Registering has to close at or before submitting does -- HQ 2026-08-12's
+  // whole point was two DIFFERENT dates in a specific order, not two names
+  // for the same instant.
+  .refine(
+    (s) =>
+      !s.registration_close_at ||
+      !s.application_close_at ||
+      new Date(s.registration_close_at).getTime() <= new Date(s.application_close_at).getTime(),
+    {
+      message: 'registration_close_at must be at or before application_close_at',
+      path: ['registration_close_at'],
+    },
+  )
   .refine(
     (s) =>
       Math.abs(s.prize_first_pct + s.prize_second_pct + s.prize_third_pct - 100) < 0.01,
@@ -235,6 +253,7 @@ export const DEFAULT_SEASON: SeasonFormInitial = {
   poster_url: null,
   lobby_featured: false,
   application_open_at: null,
+  registration_close_at: null,
   application_close_at: null,
   scoring_complete_at: null,
   main_round_start_at: null,

@@ -79,6 +79,7 @@ export default async function SeasonEditPage({
     poster_url: season.poster_url ?? null,
     lobby_featured: season.lobby_featured ?? false,
     application_open_at: season.application_open_at,
+    registration_close_at: season.registration_close_at,
     application_close_at: season.application_close_at,
     scoring_complete_at: season.scoring_complete_at,
     main_round_start_at: season.main_round_start_at,

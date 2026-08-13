@@ -118,6 +118,14 @@ export type Season = {
 
   application_open_at: string | null
   application_close_at: string | null
+  // ★New column, HQ 2026-08-12: the cutoff to START a new application (mint a
+  // genesis_applications row with no video yet). application_close_at stays
+  // the SUBMISSION hard-cut (fill in the video on an already-registered row)
+  // -- the two are deliberately different columns with different names so
+  // "which deadline is which" cannot drift the way it did before this split
+  // existed. On seasons_public since the same migration that adds the column
+  // (base + view together, see reports/season_registration_close_2026-08-12.sql).
+  registration_close_at: string | null
   // ★Declared 2026-08-08. The COLUMN has existed since season0_3stage (it is in
   // the seasons_public select list too) -- what was missing was this line, so
   // nothing downstream could read it and the submission receipt was reported as
@@ -416,6 +424,21 @@ export function isApplicationClosed(
 ): boolean {
   if (!season.application_close_at) return false
   return now.getTime() >= Date.parse(season.application_close_at)
+}
+
+// The registration cutoff (HQ 2026-08-12) -- gates MINTING a new
+// genesis_applications row (no video yet). Deliberately a separate function
+// from isApplicationClosed, which gates the SUBMISSION cutoff (filling in the
+// video on a row that already exists, whether it was minted by this same
+// gate or by isApplicationClosed's own no-existing-row branch on the same
+// day). NULL means "no registration cutoff configured" -- same absent/open
+// convention as isApplicationClosed, not "always closed".
+export function isRegistrationClosed(
+  season: Pick<Season, 'registration_close_at'>,
+  now: Date = new Date(),
+): boolean {
+  if (!season.registration_close_at) return false
+  return now.getTime() >= Date.parse(season.registration_close_at)
 }
 
 // Public CTA for a season by where we are in its application window -- shared by

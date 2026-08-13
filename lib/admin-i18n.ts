@@ -211,7 +211,10 @@ export type Messages = {
     field_flag_integrity: string
     field_flag_spread: string
     field_app_open: string
+    field_registration_close: string
+    hint_registration_close: string
     field_app_close: string
+    hint_app_close: string
     field_scoring_complete: string
     field_main_start: string
     field_main_end: string
@@ -1103,7 +1106,11 @@ const MESSAGES_EN: Messages = {
     field_flag_integrity: 'Integrity flag threshold',
     field_flag_spread: 'Spread flag threshold',
     field_app_open: 'Application open',
-    field_app_close: 'Application close',
+    field_registration_close: 'Registration close',
+    hint_registration_close:
+      'New applicants must register by this date. Already-registered participants can still submit up to Submission close.',
+    field_app_close: 'Submission close (video)',
+    hint_app_close: 'Hard cutoff to finish and submit the video, for anyone already registered.',
     field_scoring_complete: 'Scoring complete',
     field_main_start: 'Main round start',
     field_main_end: 'Main round end',
@@ -2003,7 +2010,11 @@ const MESSAGES_KO: Messages = {
     field_flag_integrity: '진정성 플래그 임계값',
     field_flag_spread: '편차 플래그 임계값',
     field_app_open: '신청 시작',
-    field_app_close: '신청 마감',
+    field_registration_close: '신청 마감',
+    hint_registration_close:
+      '신규 참가자는 이 날짜까지 등록해야 합니다. 이미 등록한 참가자는 제출 마감까지 영상을 제출할 수 있습니다.',
+    field_app_close: '제출 마감 (영상)',
+    hint_app_close: '이미 등록한 참가자가 영상을 완성해 제출해야 하는 하드컷입니다.',
     field_scoring_complete: '채점 완료',
     field_main_start: '본선 시작',
     field_main_end: '본선 종료',

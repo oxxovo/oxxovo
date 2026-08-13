@@ -264,7 +264,8 @@ export function SeasonForm({
 
       <Group title={t.season_form.group_schedule}>
         <DatetimeField label={t.season_form.field_app_open} name="application_open_at" defaultValue={toDatetimeLocal(initial.application_open_at)} error={fieldError('application_open_at')} />
-        <DatetimeField label={t.season_form.field_app_close} name="application_close_at" defaultValue={toDatetimeLocal(initial.application_close_at)} error={fieldError('application_close_at')} />
+        <DatetimeField label={t.season_form.field_registration_close} name="registration_close_at" defaultValue={toDatetimeLocal(initial.registration_close_at)} error={fieldError('registration_close_at')} hint={t.season_form.hint_registration_close} />
+        <DatetimeField label={t.season_form.field_app_close} name="application_close_at" defaultValue={toDatetimeLocal(initial.application_close_at)} error={fieldError('application_close_at')} hint={t.season_form.hint_app_close} />
         <DatetimeField label={t.season_form.field_scoring_complete} name="scoring_complete_at" defaultValue={toDatetimeLocal(initial.scoring_complete_at)} error={fieldError('scoring_complete_at')} />
         <DatetimeField label={t.season_form.field_main_start} name="main_round_start_at" defaultValue={toDatetimeLocal(initial.main_round_start_at)} error={fieldError('main_round_start_at')} />
         <DatetimeField label={t.season_form.field_main_end} name="main_round_end_at" defaultValue={toDatetimeLocal(initial.main_round_end_at)} error={fieldError('main_round_end_at')} />
@@ -415,12 +416,13 @@ function Select({
 }
 
 function DatetimeField({
-  label, name, defaultValue, error,
+  label, name, defaultValue, error, hint,
 }: {
   label: string
   name: string
   defaultValue: string
   error?: string
+  hint?: string
 }) {
   // datetime-local input value is "YYYY-MM-DDTHH:mm" in the user's local tz —
   // unsuitable for the zod `datetime({ offset: true })` validator. We render
@@ -441,6 +443,7 @@ function DatetimeField({
         }`}
       />
       <input type="hidden" name={name} value={isoValue} />
+      {hint && !error && <p className="mt-1 text-[10px] text-white/35">{hint}</p>}
       {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
     </label>
   )
