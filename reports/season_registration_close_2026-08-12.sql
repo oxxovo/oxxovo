@@ -1,12 +1,11 @@
 -- =========================================================================
 -- registration_close_at (HQ 2026-08-12, item 2 of the deploy-blocking split).
--- DRAFT ONLY -- TK runs this. Run AFTER
--- reports/season_defer_floor_and_vote_shift_2026-08-12.sql (item 1) has
--- landed; this file's function body includes everything that one already
--- did (community_vote + prelim_results_announcement_at shifts, the
--- below_floor branch) PLUS registration_close_at, so it is safe to run even
--- if item 1 has not landed yet -- it just redefines the function completely
--- either way. Five blocks. Run in order, read each result before the next.
+-- ★RUN IN PRODUCTION 2026-08-12 (TK), after item 1 above. Re-verified same
+-- day: base table registration_close_at=2026-11-01T06:59:00+00:00 (10/31
+-- 23:59 PT), application_close_at unchanged at 2026-11-04T08:00:00+00:00,
+-- seasons_public is 69 columns and exposes registration_close_at with the
+-- same value through the anon key, defer_season_schedule still returns
+-- reason='not_at_close'. Kept as the historical record of what was run.
 --
 -- WHAT THIS DOES
 --   1. New column seasons.registration_close_at (nullable timestamptz) + a

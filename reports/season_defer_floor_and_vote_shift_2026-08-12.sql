@@ -1,7 +1,9 @@
 -- =========================================================================
 -- Defer RPC fix + 100/80 threshold update (HQ 2026-08-12).
--- DRAFT ONLY. Do not run without a fresh review -- this file is written by
--- the assistant for TK to run, per this session's standing rule.
+-- ★RUN IN PRODUCTION 2026-08-12 (TK). Re-verified same day: min_participants=100,
+-- absolute_min_participants=80, max_defer_count=3, application_defer_count=0,
+-- defer_season_schedule('season_0') returns reason='not_at_close' with the new
+-- 5-column shape. Kept as the historical record of what was run.
 --
 -- Three independent changes bundled because they all touch the same
 -- function/row:
