@@ -30,6 +30,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { isFixtureSeason, isRehearsalFixture, seasonToLobbyCard, tallyWinnerCounts } from './lobby'
 import { getSeasonPhase, toLobbyMode } from './season-phase'
 
@@ -432,10 +433,13 @@ test('★isFixtureSeason: the column decides; undefined is not false', () => {
     'a row marked test data is test data even though the heuristic would clear it',
   )
 
-  // 2. ★undefined means "this read could not see the column" -- migration not
-  //    run, or the row came through seasons_public, which is a fixed 66-column
-  //    list that does not carry it (measured 2026-08-08). It must NOT collapse
-  //    to false; that would publish all nine rehearsal seasons at once.
+  // 2. ★undefined means "this read could not see the column" -- a select list
+  //    that does not name it. (It USED to also mean "the row came through
+  //    seasons_public": the view was a fixed 66-column list that did not carry
+  //    it. That reason is gone -- the view was redefined to 68 columns on
+  //    2026-08-09 -- and the rule below is unchanged, which is the point.) It
+  //    must NOT collapse to false; that would publish all nine rehearsal
+  //    seasons at once.
   for (const s of [
     { id: 'season_test', season_number: 999 },
     { id: 'season_1006', season_number: 1006 },
@@ -444,8 +448,9 @@ test('★isFixtureSeason: the column decides; undefined is not false', () => {
     assert.equal(isFixtureSeason({ ...s, is_fixture: null }), true, `${s.id}: NULL behaves like unseen`)
   }
 
-  // 3. And with the column unseen the answer is today's answer, exactly -- the
-  //    helper changes no surface until its caller's read carries the column.
+  // 3. And with the column unseen the answer is the heuristic's answer, exactly
+  //    -- so a read that loses the column degrades to the old behaviour rather
+  //    than to a new one.
   for (const s of [
     { id: 'season_0', season_number: 0 },
     { id: 'season_4', season_number: 4 },
@@ -455,6 +460,80 @@ test('★isFixtureSeason: the column decides; undefined is not false', () => {
   ]) {
     assert.equal(isFixtureSeason(s), isRehearsalFixture(s), s.id)
   }
+})
+
+// ★STRUCTURAL, and it exists because this particular regression is SILENT.
+//
+// The behaviour C-2 bought is "a boolean a human wrote decides which seasons the
+// home page shows". Two edits take it away and neither throws, neither logs, and
+// neither changes a rendered pixel today:
+//
+//   1. dropping is_fixture from getLobbyTournaments' select list -- the view
+//      still answers 200, the row just arrives without the column, and
+//      isFixtureSeason quietly falls back to the name/number heuristic;
+//   2. calling isRehearsalFixture from isOfficialPublic again -- the column is
+//      fetched and then ignored.
+//
+// Both land back on today's output, because the heuristic and the column agree on
+// all fourteen current rows. They would only diverge on the row this was built
+// for: a rehearsal numbered below 900. So the assertion cannot be behavioural
+// with the data that exists, and is made against the source instead.
+test('★the lobby fetches is_fixture and asks the column, not the heuristic', () => {
+  const src = readFileSync(new URL('./lobby.ts', import.meta.url), 'utf8')
+
+  // Anchored on the view, not on "the first select in the file" -- lobby.ts also
+  // selects from genesis_applications and that one is not the subject.
+  const select = src.match(/\.from\('seasons_public'\)\s*\.select\(\s*'([^']*)'/)
+  assert.ok(select, "getLobbyTournaments no longer reads seasons_public with a single-quoted select list")
+  const columns = select[1].split(',').map((c: string) => c.trim())
+  assert.ok(
+    columns.includes('is_fixture'),
+    'the lobby select dropped is_fixture -- the column can no longer decide, and nothing would say so',
+  )
+
+  // The gate asks the column-aware helper. Matched on the call, not on absence of
+  // the other name: isRehearsalFixture legitimately stays in this file as the
+  // fallback inside isFixtureSeason.
+  const gate = src.match(/function isOfficialPublic[\s\S]*?\n}/)
+  assert.ok(gate, 'isOfficialPublic was renamed or removed')
+  assert.match(gate[0], /isFixtureSeason\(s\)/, 'isOfficialPublic must ask isFixtureSeason')
+  assert.doesNotMatch(
+    gate[0],
+    /isRehearsalFixture\(/,
+    'isOfficialPublic went back to the heuristic directly -- the column is fetched and ignored',
+  )
+})
+
+// ★ONE DEFINITION OF "IS THIS A REAL COMPETITION", pinned across the two
+// surfaces that act on the answer.
+//
+// email-tick's own comment has always said why: "a second definition of 'is this
+// a real competition' is how one of them would eventually receive production
+// mail". On 2026-08-09 that is precisely what happened -- the lobby moved to the
+// column and the mailer was left on the heuristic, so for a few hours the warning
+// described the code it was written in. This test is the thing that would have
+// caught it.
+//
+// ★And the two surfaces are not symmetric, which is why the mailer matters more.
+// The lobby being wrong shows a card or hides one. The mailer being wrong sends
+// mail from a rehearsal to real addresses, and mail does not come back.
+test('★the mailer and the lobby ask the same question', () => {
+  const tick = readFileSync(
+    new URL('../app/api/cron/email-tick/route.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    tick,
+    /if \(!isFixtureSeason\(season\)\)/,
+    'email-tick no longer gates ⑥F/⑤ on isFixtureSeason -- the two definitions have split again',
+  )
+  assert.doesNotMatch(
+    tick,
+    /isRehearsalFixture\(/,
+    'email-tick calls the heuristic directly. The row it holds came from the base table with ' +
+      "select('*'), so the column is fetched and then ignored -- and the direction it can be " +
+      'wrong in is real mail from a rehearsal.',
+  )
 })
 
 test('★nextNumber over the real band: 4 -> 5, not 1006 -> 1007', () => {

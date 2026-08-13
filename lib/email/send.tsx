@@ -11,7 +11,7 @@
 import 'server-only'
 import { render } from '@react-email/components'
 import type { ReactElement } from 'react'
-import { getResend, EMAIL_FROM } from './client'
+import { getResend, EMAIL_FROM, APP_URL } from './client'
 import type { RankAward } from '@/lib/seasons'
 import { detectEmailLang, type EmailLang } from './lang'
 import { logEmail, alreadySent, type TemplateKey } from './log'
@@ -21,6 +21,7 @@ import {
   subjectFor as preRegisteredSubject,
   type PreRegisteredProps,
 } from './templates/PreRegistered'
+import { AdminBroadcast, type AdminBroadcastProps } from './templates/AdminBroadcast'
 import {
   ApplicationReceived,
   subjectFor as applicationReceivedSubject,
@@ -51,6 +52,16 @@ import {
   subjectFor as submissionDeadlineSubject,
   type SubmissionDeadlineProps,
 } from './templates/SubmissionDeadline'
+import {
+  RegistrationCount,
+  subjectFor as registrationCountSubject,
+  type RegistrationCountProps,
+} from './templates/RegistrationCount'
+import {
+  DeferralNotice,
+  subjectFor as deferralNoticeSubject,
+  type DeferralNoticeProps,
+} from './templates/DeferralNotice'
 import {
   ResultsAnnounced,
   subjectFor as resultsAnnouncedSubject,
@@ -128,13 +139,48 @@ type ExecuteSendInput = {
   // Cron-only: extra dedup key for multi-fire templates (submission_deadline
   // fires once per reminder_hour). Also persisted in metadata.
   reminderHour?: number
+  // Extra fields merged into the logged metadata (e.g. admin_broadcast's
+  // campaign_id/segment). Merged UNDER reminderHour's key so a future caller
+  // combining both cannot silently clobber the dedup key.
+  metadata?: Record<string, unknown> | null
+}
+
+// RFC 8058 one-click unsubscribe. Every outbound email carries these headers,
+// transactional included -- deliverability (Gmail/Yahoo bulk-sender rules)
+// and the List-Unsubscribe-Post one-click action both depend on it being
+// present everywhere, not just on templates this session considers
+// "marketing". The link itself unsubscribes from tournament ANNOUNCEMENT
+// emails only (lib/email/consent.ts canSendMarketingEmail) -- it cannot stop
+// notices about the recipient's own application/account (see app/privacy
+// Section 11), because there is nothing on this row for those to check.
+// Keyed by email (not a signed token): matches the SMS STOP pattern in scope
+// and cost -- worst case of a guessed/leaked link is an unwanted unsubscribe,
+// reversible by logging back in.
+function unsubscribeHeaders(toEmail: string): Record<string, string> {
+  const url = `${APP_URL}/api/email/unsubscribe?email=${encodeURIComponent(toEmail)}`
+  return {
+    'List-Unsubscribe': `<mailto:info@oxxovo.ai?subject=unsubscribe>, <${url}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  }
 }
 
 // Shared engine: dedup + render + resend + log. Every send* helper funnels
 // through this so retry/dedup/logging behavior is identical across templates.
 async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
+  // registration_count's numeric variant is a DAY count and deferral_notice's
+  // is a DEFER COUNT, neither an hour count -- each stored under its own
+  // metadata key so none can collide with another (lib/email/log.ts
+  // canSend/alreadySent match on whichever key applies to the templateKey).
+  const reminderKey =
+    input.templateKey === 'registration_count'
+      ? 'reminder_day'
+      : input.templateKey === 'deferral_notice'
+        ? 'defer_count'
+        : 'reminder_hour'
   const baseMetadata: Record<string, unknown> | null =
-    input.reminderHour != null ? { reminder_hour: input.reminderHour } : null
+    input.reminderHour != null || input.metadata
+      ? { ...(input.metadata ?? {}), ...(input.reminderHour != null ? { [reminderKey]: input.reminderHour } : {}) }
+      : null
 
   if (input.applicationId) {
     if (
@@ -163,6 +209,7 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
       to: input.toEmail,
       subject: input.subject,
       html,
+      headers: unsubscribeHeaders(input.toEmail),
     })
 
     if (error) {
@@ -250,6 +297,44 @@ export async function sendPreRegistered(
     subject: preRegisteredSubject(props),
     element: <PreRegistered {...props} />,
     seasonId: input.seasonId,
+  })
+}
+
+type SendAdminBroadcastInput = {
+  toEmail: string
+  subject: string
+  bodyText: string
+  posterImageUrl: string | null
+  promoVideoUrl: string | null
+  seasonId?: string | null
+  campaignId: string
+  segment: string
+  lang?: EmailLang
+}
+
+// admin_broadcasts recipient-console send. NOT application-scoped
+// (applicationId omitted -- executeSend's per-application dedup does not
+// apply); dedup for a campaign is (campaign_id, to_email), checked by
+// lib/email/broadcast-tick.ts BEFORE this is ever called, not here.
+export async function sendAdminBroadcast(
+  input: SendAdminBroadcastInput,
+): Promise<SendResult> {
+  const lang = input.lang ?? 'en'
+  const props: AdminBroadcastProps = {
+    lang,
+    subject: input.subject,
+    bodyText: input.bodyText,
+    posterImageUrl: input.posterImageUrl,
+    promoVideoUrl: input.promoVideoUrl,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'admin_broadcast',
+    language: lang,
+    subject: input.subject,
+    element: <AdminBroadcast {...props} />,
+    seasonId: input.seasonId,
+    metadata: { campaign_id: input.campaignId, segment: input.segment },
   })
 }
 
@@ -483,6 +568,87 @@ export async function sendSubmissionDeadline(
     applicationId: input.applicationId,
     seasonId: input.seasonId,
     reminderHour: input.reminderHour,
+  })
+}
+
+type SendRegistrationCountInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  currentCount: number
+  minParticipants: number
+  registrationCloseAt: string | null
+  // The reminder slot from seasons.registration_reminder_days that triggered
+  // this send (e.g. 14, 7, 3, 1). Multi-fire dedup key, stored under its own
+  // metadata key (reminder_day) -- see executeSend.
+  reminderDay: number
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendRegistrationCount(
+  input: SendRegistrationCountInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: RegistrationCountProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    currentCount: input.currentCount,
+    minParticipants: input.minParticipants,
+    registrationCloseAt: input.registrationCloseAt,
+    reminderDay: input.reminderDay,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'registration_count',
+    language: lang,
+    subject: registrationCountSubject(props),
+    element: <RegistrationCount {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+    reminderHour: input.reminderDay,
+  })
+}
+
+type SendDeferralNoticeInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  deferCount: number
+  maxDeferCount: number
+  newRegistrationCloseAt: string | null
+  newApplicationCloseAt: string | null
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendDeferralNotice(
+  input: SendDeferralNoticeInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: DeferralNoticeProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    deferCount: input.deferCount,
+    maxDeferCount: input.maxDeferCount,
+    newRegistrationCloseAt: input.newRegistrationCloseAt,
+    newApplicationCloseAt: input.newApplicationCloseAt,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'deferral_notice',
+    language: lang,
+    subject: deferralNoticeSubject(props),
+    element: <DeferralNotice {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+    reminderHour: input.deferCount,
   })
 }
 

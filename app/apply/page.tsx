@@ -8,6 +8,7 @@ import {
   getActiveApplicationCount,
   isApplicationClosed,
   isBeforeApplicationOpen,
+  isRegistrationClosed,
   isCapacityFull,
   formatAiModelList,
   formatPanelLabel,
@@ -29,8 +30,11 @@ import {
   getApplyMembershipState,
   claimFoundingForCurrentUser,
   startMembershipCheckout,
+  getMyRegistrationStatus,
+  registerForSeasonAction,
 } from './actions'
-import type { ApplyMembershipState } from './types'
+import type { ApplyMembershipState, MyRegistrationStatus } from './types'
+import type { ApplicantInfo } from '@/lib/studio'
 
 const AI_SERVICES = ['Sora', 'Veo', 'Runway', 'Kling', 'Pika', 'Other']
 const ABSTRACT_WORDS = [
@@ -56,6 +60,12 @@ export default function ApplyPage() {
   const [studioApplication, setStudioApplication] = useState(false)
   const [membership, setMembership] = useState<ApplyMembershipState | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  // Registration state (HQ 2026-08-12) -- distinct from `submitted` below,
+  // which is the EXTERNAL-URL form's own one-shot flag. null while loading,
+  // so the funnel does not flash the registration form before this resolves.
+  const [registrationStatus, setRegistrationStatus] = useState<MyRegistrationStatus | null>(null)
+  const [registering, setRegistering] = useState(false)
+  const [registerError, setRegisterError] = useState('')
 
   const [videoUrl, setVideoUrl] = useState('')
   const [videoTitle, setVideoTitle] = useState('')
@@ -104,6 +114,11 @@ export default function ApplyPage() {
       // P3 membership gate state. When the switch is off (season-0 dark launch)
       // gateActive is false and the flow is unchanged.
       getApplyMembershipState().then(setMembership)
+
+      // Has this user already registered/submitted? (HQ 2026-08-12 -- drives
+      // whether FunnelScreen shows the registration form, a "you're
+      // registered" card, or an "already submitted" card.)
+      getMyRegistrationStatus(s.id).then(setRegistrationStatus)
 
       const c = await getActiveApplicationCount(s.id)
       setCount(c)
@@ -241,6 +256,60 @@ export default function ApplyPage() {
     setLoading(false)
   }
 
+  // Registration-only submit (HQ 2026-08-12) -- mints the row with no video.
+  // Reuses the same name/statement/agreement fields as the external-URL form
+  // above (a season is either studio-based or external, never both, so the
+  // shared state never actually collides between the two forms).
+  const canRegister =
+    !!user &&
+    !!season &&
+    registrationStatus?.status === 'none' &&
+    !isRegistrationClosed(season) &&
+    name.trim().length > 0 &&
+    statementValid &&
+    allAgreed &&
+    !registering
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canRegister || !season) return
+    setRegistering(true)
+    setRegisterError('')
+    try {
+      const applicant: ApplicantInfo = {
+        creatorName: name.trim(),
+        creatorStatement: statement.trim(),
+        country: country.trim() || undefined,
+        channelUrl: channelUrl.trim() || undefined,
+        agreedRules: agreeRules,
+        agreedPrivacy: agreePrivacy,
+        agreedIntegrity: agreeIntegrity,
+      }
+      const res = await registerForSeasonAction(season.id, applicant)
+      if (res.ok) {
+        setRegistrationStatus({ status: 'registered', entryStatus: res.status })
+      } else if (res.reason === 'membership_required') {
+        // The membership state the page loaded with is stale (lapsed since).
+        // Re-fetching membership re-renders MembershipGateScreen, which
+        // already explains why and shows the Founding/paid path -- no
+        // separate error message needed here.
+        setReloadKey((k) => k + 1)
+      } else {
+        const registerErrorMap: Partial<Record<typeof res.reason, string>> = {
+          registration_closed: 'Registration has closed for this season.',
+          already_registered: 'You have already registered for this season.',
+          bad_statement: t.profile.apply_err_statement_length,
+          agreements_required: t.profile.apply_err_agreements_required,
+        }
+        setRegisterError(registerErrorMap[res.reason] ?? t.profile.apply_err_server_error)
+      }
+    } catch (err) {
+      console.error('[apply] register failed:', err)
+      setRegisterError(t.profile.apply_err_server_error)
+    }
+    setRegistering(false)
+  }
+
   if (mode === 'loading') {
     return (
       <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center">
@@ -288,7 +357,45 @@ export default function ApplyPage() {
 
   // Studio-based application round (session6 ON) -> funnel into /studio.
   if (studioApplication) {
-    return <FunnelScreen email={user.email} season={season} mode={mode} count={count} />
+    if (!registrationStatus) {
+      // Still resolving getMyRegistrationStatus -- avoid flashing the
+      // registration form before the page knows whether one is needed.
+      return (
+        <main className="min-h-screen bg-[#030305] text-white flex items-center justify-center">
+          <p className="text-white/60">Checking registration status…</p>
+        </main>
+      )
+    }
+    return (
+      <FunnelScreen
+        email={user.email}
+        season={season}
+        mode={mode}
+        count={count}
+        registrationStatus={registrationStatus}
+        name={name}
+        setName={setName}
+        country={country}
+        setCountry={setCountry}
+        channelUrl={channelUrl}
+        setChannelUrl={setChannelUrl}
+        statement={statement}
+        setStatement={setStatement}
+        statementLen={statementLen}
+        statementValid={statementValid}
+        abstractHit={abstractHit}
+        agreeRules={agreeRules}
+        setAgreeRules={setAgreeRules}
+        agreePrivacy={agreePrivacy}
+        setAgreePrivacy={setAgreePrivacy}
+        agreeIntegrity={agreeIntegrity}
+        setAgreeIntegrity={setAgreeIntegrity}
+        canRegister={canRegister}
+        registering={registering}
+        registerError={registerError}
+        handleRegister={handleRegister}
+      />
+    )
   }
 
   // ★The season accepts no external video URL (allowed_video_platforms carries
@@ -919,14 +1026,130 @@ function FunnelScreen({
   season,
   mode,
   count,
+  registrationStatus,
+  name,
+  setName,
+  country,
+  setCountry,
+  channelUrl,
+  setChannelUrl,
+  statement,
+  setStatement,
+  statementLen,
+  statementValid,
+  abstractHit,
+  agreeRules,
+  setAgreeRules,
+  agreePrivacy,
+  setAgreePrivacy,
+  agreeIntegrity,
+  setAgreeIntegrity,
+  canRegister,
+  registering,
+  registerError,
+  handleRegister,
 }: {
   email: string
   season: Season | null
   mode: Mode
   count: number
+  registrationStatus: MyRegistrationStatus
+  name: string
+  setName: (v: string) => void
+  country: string
+  setCountry: (v: string) => void
+  channelUrl: string
+  setChannelUrl: (v: string) => void
+  statement: string
+  setStatement: (v: string) => void
+  statementLen: number
+  statementValid: boolean
+  abstractHit: string | undefined
+  agreeRules: boolean
+  setAgreeRules: (v: boolean) => void
+  agreePrivacy: boolean
+  setAgreePrivacy: (v: boolean) => void
+  agreeIntegrity: boolean
+  setAgreeIntegrity: (v: boolean) => void
+  canRegister: boolean
+  registering: boolean
+  registerError: string
+  handleRegister: (e: React.FormEvent) => void
 }) {
   const isWait = mode === 'waitlist'
-  const name = season?.name ?? 'OXXOVO'
+  const seasonName = season?.name ?? 'OXXOVO'
+  const submissionDeadline = formatDeadlinePT(season?.application_close_at)
+  const registrationDeadline = formatDeadlinePT(season?.registration_close_at)
+  const registrationClosedNow = !!season && isRegistrationClosed(season)
+
+  // Already submitted -- nothing left to do on this page.
+  if (registrationStatus.status === 'submitted') {
+    return (
+      <main className="min-h-screen bg-[#030305] text-white">
+        <ApplyHeader email={email} />
+        <section className="max-w-md mx-auto px-6 py-20 text-center">
+          <p className="inline-flex items-center gap-2.5 mb-4 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
+            <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
+            {seasonName}
+          </p>
+          <h1 className="text-3xl md:text-4xl font-black mb-4">Already Submitted</h1>
+          <p className="text-white/55 leading-relaxed mb-8">
+            You have already submitted your entry for {seasonName}. We will notify you by email.
+          </p>
+          <a href="/profile" className="inline-block text-[#8b22ff] text-sm hover:underline">
+            Go to Profile
+          </a>
+        </section>
+      </main>
+    )
+  }
+
+  // Already registered -- no register button (HQ 2026-08-12 ①: showing it
+  // again invites a duplicate). Points at Studio and says what's next.
+  if (registrationStatus.status === 'registered') {
+    const waitlisted = registrationStatus.entryStatus === 'waitlist'
+    return (
+      <main className="min-h-screen bg-[#030305] text-white">
+        <ApplyHeader email={email} />
+        <section className="max-w-xl mx-auto px-6 py-16">
+          <div className="text-center mb-10">
+            <p className="inline-flex items-center gap-2.5 mb-4 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
+              <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
+              {seasonName}
+            </p>
+            <h1 className="text-4xl font-black mb-3">
+              {waitlisted ? "You're on the Waitlist" : "You're Registered"}
+            </h1>
+            <p className="text-white/55 leading-relaxed">
+              {waitlisted
+                ? `${seasonName} was at capacity when you registered. You'll be promoted if a spot opens.`
+                : 'Your spot is reserved. Create and submit your video in Studio before the submission deadline.'}
+            </p>
+          </div>
+
+          {submissionDeadline && (
+            <p className="text-center mb-2 text-[11px] uppercase tracking-[0.16em] text-white/40">
+              Submission deadline: {submissionDeadline}
+            </p>
+          )}
+          {registrationDeadline && (
+            <p className="text-center mb-8 text-[11px] text-white/30">
+              (New registration for this season closed {registrationDeadline})
+            </p>
+          )}
+
+          <a
+            href="/studio"
+            className="block text-center w-full bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] py-4 rounded-lg font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] hover:brightness-110 transition"
+          >
+            Open Studio →
+          </a>
+        </section>
+      </main>
+    )
+  }
+
+  // registrationStatus.status === 'none' from here down.
   return (
     <main className="min-h-screen bg-[#030305] text-white">
       <ApplyHeader email={email} />
@@ -934,46 +1157,191 @@ function FunnelScreen({
         <div className="text-center mb-10">
           <p className="inline-flex items-center gap-2.5 mb-4 text-[12px] font-bold uppercase tracking-[0.16em] text-[#b66cff]">
             <span className="h-2 w-2 rounded-full bg-[#8b22ff] shadow-[0_0_12px_rgba(139,34,255,.7)]" />
-            {name}
+            {seasonName}
           </p>
           <h1 className="text-4xl font-black mb-3">
-            {isWait ? 'Join the Waitlist' : `Apply via Studio`}
+            {registrationClosedNow ? 'Registration Closed' : isWait ? 'Join the Waitlist' : `Apply via Studio`}
           </h1>
           <p className="text-white/55 leading-relaxed">
-            {isWait
-              ? `${name} reached its capacity${season ? ` of ${season.max_applicants}` : ''}. You can still generate in Studio; submitting joins the waitlist.`
-              : 'This season runs entirely inside OXXOVO Studio. Generate your video here and submit it directly — no external links.'}
+            {registrationClosedNow
+              ? `Registration for ${seasonName} has closed.`
+              : isWait
+              ? `${seasonName} reached its capacity${season ? ` of ${season.max_applicants}` : ''}. Registering joins the waitlist.`
+              : 'This season runs entirely inside OXXOVO Studio. Register to reserve your spot, then generate and submit your video.'}
           </p>
         </div>
 
-        <ol className="space-y-3 mb-10">
-          {[
-            'Pick a model tier and describe your video.',
-            'Generate, preview, and re-generate until you are happy.',
-            'Submit — your first submission registers your application.',
-          ].map((step, i) => (
-            <li key={i} className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/[.02] px-4 py-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#8b22ff]/20 text-[#b66cff] text-xs font-bold">
-                {i + 1}
-              </span>
-              <span className="text-sm text-white/75">{step}</span>
-            </li>
-          ))}
-        </ol>
-
-        {!isWait && season && (
-          <p className="text-center mb-5 inline-flex w-full items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#b66cff]/80">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#b66cff]" />
-            Application #{count + 1} of {season.max_applicants}
+        {registrationClosedNow ? (
+          <p className="text-center text-white/40 text-sm">
+            <Link href="/" className="text-[#8b22ff] hover:underline">← Back to Home</Link>
           </p>
-        )}
+        ) : (
+          <>
+            <ol className="space-y-3 mb-10">
+              {[
+                'Register below to reserve your spot.',
+                'Pick a model tier, generate, preview, and re-generate until you are happy.',
+                `Submit in Studio${submissionDeadline ? ` by ${submissionDeadline}` : ''}.`,
+              ].map((step, i) => (
+                <li key={i} className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/[.02] px-4 py-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#8b22ff]/20 text-[#b66cff] text-xs font-bold">
+                    {i + 1}
+                  </span>
+                  <span className="text-sm text-white/75">{step}</span>
+                </li>
+              ))}
+            </ol>
 
-        <a
-          href="/studio"
-          className="block text-center w-full bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] py-4 rounded-lg font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] hover:brightness-110 transition"
-        >
-          Open Studio →
-        </a>
+            {!isWait && season && (
+              <p className="text-center mb-5 inline-flex w-full items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#b66cff]/80">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#b66cff]" />
+                Application #{count + 1} of {season.max_applicants}
+              </p>
+            )}
+
+            <form onSubmit={handleRegister} className="space-y-5 mb-8 rounded-lg border border-white/10 bg-white/[.02] p-5">
+              <div>
+                <label className="block text-sm text-white/60 mb-1.5">
+                  Name <span className="text-white/30">(Korean or English)</span>
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  placeholder="Your name"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-white/60 mb-1.5">
+                  Country <span className="text-white/30">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="e.g. South Korea, USA, Japan"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-white/60 mb-1.5">
+                  Channel URL <span className="text-white/30">(optional)</span>
+                </label>
+                <input
+                  type="url"
+                  value={channelUrl}
+                  onChange={(e) => setChannelUrl(e.target.value)}
+                  placeholder="YouTube / Instagram / TikTok channel link"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition"
+                />
+              </div>
+              <div>
+                <label className="flex justify-between items-baseline text-sm text-white/60 mb-1.5">
+                  <span>Creator Statement</span>
+                  <span
+                    className={
+                      statementValid
+                        ? 'text-[#b66cff] text-xs'
+                        : statementLen > 250
+                        ? 'text-red-400 text-xs'
+                        : 'text-white/40 text-xs'
+                    }
+                  >
+                    {statementLen} / 150–250
+                  </span>
+                </label>
+                <textarea
+                  value={statement}
+                  onChange={(e) => setStatement(e.target.value)}
+                  required
+                  rows={4}
+                  placeholder="A timelapse video of mansion restoration in cinematic style."
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition resize-none"
+                />
+                {abstractHit && (
+                  <p className="text-amber-400 text-xs mt-3 bg-amber-400/5 border border-amber-400/20 rounded-md px-3 py-2">
+                    Heads up — &ldquo;{abstractHit}&rdquo; tends to score low on <span className="font-bold">Intent</span>.
+                    Describe what is actually on screen (subject, action, style).
+                  </p>
+                )}
+              </div>
+              <div className="space-y-3 text-sm text-white/70">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={agreeRules}
+                    onChange={(e) => setAgreeRules(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[#8b22ff] flex-shrink-0"
+                    required
+                  />
+                  <span>
+                    I have read and agree to the{' '}
+                    <a href="/rules" target="_blank" rel="noopener" className="text-[#8b22ff] hover:underline">
+                      Tournament Rules
+                    </a>
+                    .
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={agreePrivacy}
+                    onChange={(e) => setAgreePrivacy(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[#8b22ff] flex-shrink-0"
+                    required
+                  />
+                  <span>
+                    I have read and agree to the{' '}
+                    <a href="/privacy" target="_blank" rel="noopener" className="text-[#8b22ff] hover:underline">
+                      Privacy Policy
+                    </a>
+                    .
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={agreeIntegrity}
+                    onChange={(e) => setAgreeIntegrity(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[#8b22ff] flex-shrink-0"
+                    required
+                  />
+                  <span>
+                    I understand that my entry undergoes <span className="text-white/90">AI integrity verification</span>.
+                  </span>
+                </label>
+              </div>
+
+              {registerError && (
+                <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
+                  {registerError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={!canRegister}
+                className="w-full bg-gradient-to-br from-[#7d23ff] via-[#8d23ff] to-[#6220dc] py-4 rounded-lg font-extrabold text-white shadow-[0_0_20px_rgba(139,34,255,.4)] hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none transition"
+              >
+                {registering ? 'Registering…' : isWait ? 'Join Waitlist' : 'Register'}
+              </button>
+            </form>
+
+            <p className="text-center text-white/30 text-xs mb-3">or</p>
+
+            <a
+              href="/studio"
+              className="block text-center w-full border border-white/15 py-4 rounded-lg font-bold text-white/80 hover:border-[#8b22ff]/50 hover:text-white transition"
+            >
+              Skip ahead — Open Studio →
+            </a>
+            <p className="text-center text-white/30 text-xs mt-3">
+              Your first submission in Studio registers you automatically, as long as it&apos;s before registration closes.
+            </p>
+          </>
+        )}
       </section>
     </main>
   )

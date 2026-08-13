@@ -5,6 +5,7 @@ import { useState, useTransition } from 'react'
 import { useAdminLang } from '@/lib/admin-i18n'
 import type { PartnerProfile, TierConfig, PartnerTournamentRow } from '@/lib/partners'
 import { suspendPartner, restorePartner, invitePartner, markEscrowPaid } from './actions'
+import { AdminPageHeader } from '../AdminPageHeader'
 
 type TabKey = 'active' | 'eligible' | 'invite' | 'tournaments'
 
@@ -168,10 +169,7 @@ export function PartnersView({
 
   return (
     <div className="p-8 max-w-7xl">
-      <header className="mb-6">
-        <h1 className="text-3xl font-black mb-1">{tx.title}</h1>
-        <p className="text-sm text-white/40">{tx.subtitle}</p>
-      </header>
+      <AdminPageHeader title={tx.title} subtitle={tx.subtitle} />
 
       <div className="flex gap-1 mb-6 border-b border-white/10">
         {(['active', 'eligible', 'invite', 'tournaments'] as TabKey[]).map((k) => (

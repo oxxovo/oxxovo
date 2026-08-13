@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { type Season } from '@/lib/seasons'
-import { type SeasonInput } from '@/lib/season-schema'
+import { type SeasonFormInitial, type SeasonInput } from '@/lib/season-schema'
 import { SeasonForm } from '../SeasonForm'
 import { DeleteSeasonButton } from '../DeleteSeasonButton'
 import { EditSeasonHeader, DangerZoneHeading } from '../SeasonPageHeader'
@@ -30,15 +30,26 @@ export default async function SeasonEditPage({
   }
 
   const season = data as Season
-  const initial: SeasonInput = {
+  const initial: SeasonFormInitial = {
     name: season.name,
     season_number: season.season_number,
     status: season.status as SeasonInput['status'],
+    // ★The row's own answer, so editing shows what this season IS rather than
+    // asking again from scratch. NOT `?? false`: the column is NOT NULL so a
+    // non-boolean here means this read did not carry it, and in that case the
+    // admin must choose rather than have a value invented for them -- the same
+    // rule lib/lobby.ts isFixtureSeason applies to the same absence.
+    is_fixture: typeof season.is_fixture === 'boolean' ? season.is_fixture : undefined,
     max_applicants: season.max_applicants,
     top_n_advance: season.top_n_advance,
     // 3-stage advancement policy. Fallbacks cover rows read before the
     // season0_3stage migration adds the columns (?? null/undefined -> default).
     min_participants: season.min_participants ?? 50,
+    // ★Nullable in the DB (existing rows predate this column) but the form
+    // wants a number to edit -- 80 is the fallback default, not a claim that
+    // this row was actually set to 80 (see lib/seasons.ts comment: NULL means
+    // the RPC holds for manual review, it does not mean "no floor").
+    absolute_min_participants: season.absolute_min_participants ?? 80,
     defer_extension_days: season.defer_extension_days ?? 7,
     max_defer_count: season.max_defer_count ?? 2,
     advance_pct: season.advance_pct ?? 0.1,
@@ -68,6 +79,7 @@ export default async function SeasonEditPage({
     poster_url: season.poster_url ?? null,
     lobby_featured: season.lobby_featured ?? false,
     application_open_at: season.application_open_at,
+    registration_close_at: season.registration_close_at,
     application_close_at: season.application_close_at,
     scoring_complete_at: season.scoring_complete_at,
     main_round_start_at: season.main_round_start_at,

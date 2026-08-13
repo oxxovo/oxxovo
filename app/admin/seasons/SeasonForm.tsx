@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { saveSeason, type SeasonFormState } from './actions'
-import { type SeasonInput } from '@/lib/season-schema'
+import { type SeasonFormInitial } from '@/lib/season-schema'
 import { useT } from '@/lib/admin-i18n'
 
 const initialState: SeasonFormState = { ok: false }
@@ -29,7 +29,7 @@ export function SeasonForm({
   initial,
 }: {
   id: string | null
-  initial: SeasonInput
+  initial: SeasonFormInitial
 }) {
   const t = useT()
   const [state, formAction, pending] = useActionState(
@@ -95,6 +95,19 @@ export function SeasonForm({
           ]}
           error={fieldError('status')}
         />
+        <RequiredChoice
+          label={t.season_form.field_is_fixture}
+          name="is_fixture"
+          // ★No fallback. `undefined` renders as neither option checked, which is
+          // the whole point -- see SeasonFormInitial in lib/season-schema.ts.
+          value={initial.is_fixture}
+          options={[
+            { value: 'false', label: t.season_form.option_is_fixture_real },
+            { value: 'true', label: t.season_form.option_is_fixture_rehearsal },
+          ]}
+          error={fieldError('is_fixture')}
+          hint={t.season_form.hint_is_fixture}
+        />
       </Group>
 
       <Group title={t.season_form.group_capacity}>
@@ -109,6 +122,7 @@ export function SeasonForm({
         <Field label={t.season_form.field_advance_max} name="advance_max" type="number" defaultValue={initial.advance_max} error={fieldError('advance_max')} />
         <Field label={t.season_form.field_defer_days} name="defer_extension_days" type="number" defaultValue={initial.defer_extension_days} error={fieldError('defer_extension_days')} hint={t.season_form.hint_defer} />
         <Field label={t.season_form.field_max_defer} name="max_defer_count" type="number" defaultValue={initial.max_defer_count} error={fieldError('max_defer_count')} />
+        <Field label={t.season_form.field_absolute_min_participants} name="absolute_min_participants" type="number" defaultValue={initial.absolute_min_participants} error={fieldError('absolute_min_participants')} hint={t.season_form.hint_absolute_min_participants} />
       </Group>
 
       <Group title={t.season_form.group_video}>
@@ -250,7 +264,8 @@ export function SeasonForm({
 
       <Group title={t.season_form.group_schedule}>
         <DatetimeField label={t.season_form.field_app_open} name="application_open_at" defaultValue={toDatetimeLocal(initial.application_open_at)} error={fieldError('application_open_at')} />
-        <DatetimeField label={t.season_form.field_app_close} name="application_close_at" defaultValue={toDatetimeLocal(initial.application_close_at)} error={fieldError('application_close_at')} />
+        <DatetimeField label={t.season_form.field_registration_close} name="registration_close_at" defaultValue={toDatetimeLocal(initial.registration_close_at)} error={fieldError('registration_close_at')} hint={t.season_form.hint_registration_close} />
+        <DatetimeField label={t.season_form.field_app_close} name="application_close_at" defaultValue={toDatetimeLocal(initial.application_close_at)} error={fieldError('application_close_at')} hint={t.season_form.hint_app_close} />
         <DatetimeField label={t.season_form.field_scoring_complete} name="scoring_complete_at" defaultValue={toDatetimeLocal(initial.scoring_complete_at)} error={fieldError('scoring_complete_at')} />
         <DatetimeField label={t.season_form.field_main_start} name="main_round_start_at" defaultValue={toDatetimeLocal(initial.main_round_start_at)} error={fieldError('main_round_start_at')} />
         <DatetimeField label={t.season_form.field_main_end} name="main_round_end_at" defaultValue={toDatetimeLocal(initial.main_round_end_at)} error={fieldError('main_round_end_at')} />
@@ -315,6 +330,61 @@ function Field({
   )
 }
 
+/**
+ * A choice with NO default -- radios, none pre-selected when `value` is
+ * undefined.
+ *
+ * ★WHY NOT A <Select>. Every other enum on this form is a dropdown, and a
+ * dropdown always shows something: whatever sits at the top becomes the answer
+ * for anyone who does not open it. There is no "nothing selected" state to
+ * render, so a required choice cannot be expressed with one. Radios can show
+ * none-chosen, and the browser will not submit the form until one is.
+ *
+ * ★`required` on both inputs, so the block happens in the browser AND in the zod
+ * schema. Not redundancy for its own sake: the HTML attribute is what makes the
+ * admin see the problem next to the field instead of after a round trip, and the
+ * schema is what holds if the form is ever posted by something other than this
+ * component. Neither one alone covers both.
+ */
+function RequiredChoice({
+  label, name, value, options, error, hint,
+}: {
+  label: string
+  name: string
+  value: boolean | null | undefined
+  options: Array<{ value: string; label: string }>
+  error?: string
+  hint?: string
+}) {
+  const current = typeof value === 'boolean' ? String(value) : null
+  return (
+    <div className="block">
+      <div className="text-[11px] uppercase tracking-wider text-white/50 mb-1.5">{label}</div>
+      <div
+        className={`flex flex-col gap-2 px-3 py-2 bg-[#100608] border rounded ${
+          error ? 'border-[#ff4444]' : 'border-white/10'
+        }`}
+      >
+        {options.map((o) => (
+          <label key={o.value} className="flex items-center gap-2.5 cursor-pointer">
+            <input
+              type="radio"
+              name={name}
+              value={o.value}
+              defaultChecked={current === o.value}
+              required
+              className="h-4 w-4 accent-[#ff8844]"
+            />
+            <span className="text-sm text-white/80">{o.label}</span>
+          </label>
+        ))}
+      </div>
+      {hint && !error && <p className="mt-1 text-[10px] text-white/35">{hint}</p>}
+      {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
+    </div>
+  )
+}
+
 function Select({
   label, name, defaultValue, options, error,
 }: {
@@ -346,12 +416,13 @@ function Select({
 }
 
 function DatetimeField({
-  label, name, defaultValue, error,
+  label, name, defaultValue, error, hint,
 }: {
   label: string
   name: string
   defaultValue: string
   error?: string
+  hint?: string
 }) {
   // datetime-local input value is "YYYY-MM-DDTHH:mm" in the user's local tz —
   // unsuitable for the zod `datetime({ offset: true })` validator. We render
@@ -372,6 +443,7 @@ function DatetimeField({
         }`}
       />
       <input type="hidden" name={name} value={isoValue} />
+      {hint && !error && <p className="mt-1 text-[10px] text-white/35">{hint}</p>}
       {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
     </label>
   )

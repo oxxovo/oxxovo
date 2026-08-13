@@ -4,6 +4,32 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
+import { useAdminLang } from '@/lib/admin-i18n'
+
+// Signup consent notice shown above "Send login link" (see app/privacy Section
+// 11, app/terms Section 12). TK-confirmed copy, 2026-08-11 -- must stay
+// consistent with EMAIL_CONSENT_DISCLOSURE in app/login/actions.ts (the
+// snapshot stored as consent proof). Only shown here -- the actual write
+// happens at app/auth/callback/route.ts once the recipient has proven they
+// control the mailbox by opening the link, not when this form is submitted.
+const CONSENT_DICT = {
+  ko: {
+    text: 'OXXOVO 회원으로 가입하시면, 대회 진행 안내와 다음 시즌 대회 안내를 이메일 또는 휴대폰(문자)으로 받으시게 됩니다. 수신을 원하지 않으시면 언제든지 설정에서 해제하실 수 있습니다.',
+    by: '계속 진행하면 ',
+    terms: '이용약관',
+    and: ' 및 ',
+    privacy: '개인정보처리방침',
+    end: '에 동의하는 것입니다.',
+  },
+  en: {
+    text: 'By creating an OXXOVO account, you agree to receive competition updates and announcements about future seasons by email or text message. You can opt out at any time in your settings.',
+    by: 'By continuing, you agree to our ',
+    terms: 'Terms of Service',
+    and: ' and ',
+    privacy: 'Privacy Policy',
+    end: '.',
+  },
+}
 
 // Magic-link login for public-site users (no password). Sending an OTP link
 // both signs in existing users and creates an account for new ones
@@ -26,6 +52,8 @@ function LoginInner() {
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+  const lang = useAdminLang()
+  const ct = CONSENT_DICT[lang]
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -67,6 +95,8 @@ function LoginInner() {
       setError(otpError.message)
       return
     }
+    // Consent is recorded when the emailed link is actually opened
+    // (app/auth/callback/route.ts), not here -- this only sent the link.
     setSent(true)
   }
 
@@ -162,6 +192,9 @@ function LoginInner() {
               />
             </div>
             {error && <p className="text-red-400 text-sm">{error}</p>}
+            <p className="text-white/40 text-[11px] leading-relaxed">
+              {ct.text}
+            </p>
             <button
               type="submit"
               disabled={loading}
@@ -171,6 +204,16 @@ function LoginInner() {
             </button>
             <p className="text-center text-white/40 text-xs mt-2">
               No password needed — we&apos;ll email you a secure link.
+              <br />
+              {ct.by}
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#8b22ff] hover:underline">
+                {ct.terms}
+              </a>
+              {ct.and}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#8b22ff] hover:underline">
+                {ct.privacy}
+              </a>
+              {ct.end}
             </p>
           </form>
         )}

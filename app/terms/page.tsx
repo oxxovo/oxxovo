@@ -5,7 +5,7 @@ export default function TermsPage() {
   return (
     <main className="min-h-screen bg-[#030305] text-white px-8 py-16 max-w-4xl mx-auto">
       <h1 className="text-4xl font-black mb-2">Terms of Service</h1>
-      <p className="text-white/40 text-sm mb-12">Last updated: June 2026</p>
+      <p className="text-white/40 text-sm mb-12">Last updated: August 2026</p>
 
       <section className="space-y-8 text-white/70 leading-relaxed">
 
@@ -86,7 +86,20 @@ export default function TermsPage() {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-white mb-3">12. Contact</h2>
+          <h2 className="text-xl font-bold text-white mb-3">12. Email Notifications</h2>
+          <p>OXXOVO sends account holders email notifications about tournaments. The following terms govern that program:</p>
+          <ul className="list-disc pl-5 space-y-2 mt-3">
+            <li><span className="text-white/90 font-semibold">Program & message types.</span> By creating an OXXOVO account, you agree to receive competition updates and announcements about future seasons by email — such as round openings, submission deadlines, results, and season announcements.</li>
+            <li><span className="text-white/90 font-semibold">Message frequency.</span> Message frequency varies depending on tournament and season activity.</li>
+            <li>
+              <span className="text-white/90 font-semibold">Opt-out.</span> You can opt out of these announcement emails at any time in your <a href="/profile" className="text-[#8b22ff] hover:underline">profile settings</a>, or by using the unsubscribe link included in the email. Opting out does not affect your ability to use OXXOVO or participate in tournaments — only emails required for your own account or an active application/submission will continue.
+            </li>
+            <li><span className="text-white/90 font-semibold">Privacy.</span> Your email address and consent are handled per our <a href="/privacy" className="text-[#8b22ff] hover:underline">Privacy Policy</a>. We do not sell or share it with third parties for their marketing.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-bold text-white mb-3">13. Contact</h2>
           <p>For questions regarding these Terms, contact us at <a href="mailto:info@oxxovo.ai" className="text-[#8b22ff] hover:underline">info@oxxovo.ai</a></p>
         </div>
 

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useT } from '@/lib/admin-i18n'
 import { type Season } from '@/lib/seasons'
+import { AdminPageHeader } from './AdminPageHeader'
 
 export type ScoringStats = {
   none: number
@@ -36,10 +37,7 @@ export function DashboardView({
 
   return (
     <div className="p-8 max-w-5xl">
-      <header className="mb-10">
-        <h1 className="text-3xl font-black mb-1">{t.dashboard.title}</h1>
-        <p className="text-sm text-white/40">{t.dashboard.welcome(adminName)}</p>
-      </header>
+      <AdminPageHeader title={t.dashboard.title} subtitle={t.dashboard.welcome(adminName)} />
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Stat label={t.dashboard.stat_total_seasons} value={seasons.length} />

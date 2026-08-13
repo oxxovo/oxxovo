@@ -3,6 +3,7 @@
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { setWatchHidden, approveModeration } from '@/app/watch/actions'
+import { AdminExternalLink } from '../AdminExternalLink'
 
 export type ModVideo = {
   id: string
@@ -61,24 +62,14 @@ export function WatchVideoModRow({ v }: { v: ModVideo }) {
       </td>
       <td className="py-3 pr-3 text-[11px] whitespace-nowrap">
         {v.prelimUrl && (
-          <a
-            href={`/watch/${v.id}?round=application`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-[#b66cff] hover:underline"
-          >
+          <AdminExternalLink href={`/watch/${v.id}?round=application`} className="block text-[#b66cff] hover:underline">
             prelim →
-          </a>
+          </AdminExternalLink>
         )}
         {v.mainUrl && (
-          <a
-            href={`/watch/${v.id}?round=main`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-[#b66cff] hover:underline"
-          >
+          <AdminExternalLink href={`/watch/${v.id}?round=main`} className="block text-[#b66cff] hover:underline">
             main →
-          </a>
+          </AdminExternalLink>
         )}
       </td>
       <td className="py-3 whitespace-nowrap">

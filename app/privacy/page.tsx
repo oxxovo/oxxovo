@@ -5,7 +5,7 @@ export default function PrivacyPage() {
   return (
     <main className="min-h-screen bg-[#030305] text-white px-8 py-16 max-w-4xl mx-auto">
       <h1 className="text-4xl font-black mb-2">Privacy Policy</h1>
-      <p className="text-white/40 text-sm mb-12">Last updated: May 2026</p>
+      <p className="text-white/40 text-sm mb-12">Last updated: August 2026</p>
 
       <section className="space-y-8 text-white/70 leading-relaxed">
 
@@ -62,7 +62,14 @@ export default function PrivacyPage() {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-white mb-3">11. Contact</h2>
+          <h2 className="text-xl font-bold text-white mb-3">11. Email Communications</h2>
+          <p>When you create an OXXOVO account, we send you competition-related emails about the tournaments you can participate in — including round openings, submission deadlines, results, and announcements about future seasons. When you create your account, we record the date and time, your IP address, and the consent text shown to you as proof of your agreement.</p>
+          <p className="mt-3"><span className="text-white/90 font-semibold">We do not sell, rent, or share your email address with third parties or affiliates for their own marketing purposes.</span> Your email is used only to send you the tournament updates described above and other service-related notices.</p>
+          <p className="mt-3">You can opt out of season and tournament announcement emails at any time in your <a href="/profile" className="text-[#8b22ff] hover:underline">profile settings</a>, or by using the unsubscribe link included in those emails. Emails about your own application, account, or payment are sent regardless of this setting, since they are required to operate the service you asked for.</p>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-bold text-white mb-3">12. Contact</h2>
           <p>For privacy-related questions, contact us at <a href="mailto:info@oxxovo.ai" className="text-[#8b22ff] hover:underline">info@oxxovo.ai</a></p>
         </div>
 

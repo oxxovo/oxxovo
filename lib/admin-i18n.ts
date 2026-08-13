@@ -91,6 +91,10 @@ export type Messages = {
       actors: string
       music: string
       messages: string
+      comments: string
+      watch_home: string
+      watch_videos: string
+      broadcasts: string
     }
   }
   dashboard: {
@@ -170,10 +174,16 @@ export type Messages = {
     field_name: string
     field_season_number: string
     field_status: string
+    field_is_fixture: string
+    option_is_fixture_real: string
+    option_is_fixture_rehearsal: string
+    hint_is_fixture: string
     field_max_applicants: string
     field_top_n: string
     group_advancement: string
     field_min_participants: string
+    field_absolute_min_participants: string
+    hint_absolute_min_participants: string
     field_defer_days: string
     field_max_defer: string
     field_advance_pct: string
@@ -201,7 +211,10 @@ export type Messages = {
     field_flag_integrity: string
     field_flag_spread: string
     field_app_open: string
+    field_registration_close: string
+    hint_registration_close: string
     field_app_close: string
+    hint_app_close: string
     field_scoring_complete: string
     field_main_start: string
     field_main_end: string
@@ -323,6 +336,9 @@ export type Messages = {
     recommendations_flagged_section_title: string
     recommendations_flagged_section_note: string
     recommendations_total_label: (n: number) => string
+    // ⑥G gap 3 -- retry-exhausted entries blocking Top N finalization
+    recommendations_blocked_title: string
+    recommendations_blocked_note: (n: number) => string
     // applyRecommendation server action errors (작업 6)
     apply_rec_err_unauthorized: string
     apply_rec_err_season_not_found: string
@@ -980,6 +996,10 @@ const MESSAGES_EN: Messages = {
       actors: 'Actors',
       music: 'Music library',
       messages: 'Messages',
+      comments: 'Comment moderation',
+      watch_home: 'Watch as Home',
+      watch_videos: 'Video moderation',
+      broadcasts: 'Broadcasts',
     },
   },
   dashboard: {
@@ -1060,10 +1080,18 @@ const MESSAGES_EN: Messages = {
     field_name: 'Name',
     field_season_number: 'Season #',
     field_status: 'Status',
+    field_is_fixture: 'Is this a real competition? (required)',
+    option_is_fixture_real: 'Real competition — show it publicly and mail its entrants',
+    option_is_fixture_rehearsal: 'Rehearsal / test — keep it off the lobby and send no mail',
+    hint_is_fixture:
+      'No default, on purpose: pick one. This single answer controls the public lobby and the mailer, so a wrong "real" sends mail that cannot be recalled.',
     field_max_applicants: 'Max applicants',
     field_top_n: 'Top N advance (computed result)',
     group_advancement: 'Advancement & deferral (2-stage)',
     field_min_participants: 'Min participants (preliminary)',
+    field_absolute_min_participants: 'Absolute floor (after max defers)',
+    hint_absolute_min_participants:
+      'Once max defer count is used up: at or above this, the season proceeds; below it, holds for manual review instead of auto-closing',
     field_defer_days: 'Defer extension (days)',
     field_max_defer: 'Max defer count',
     field_advance_pct: 'Advance % (prelim → main round)',
@@ -1091,7 +1119,11 @@ const MESSAGES_EN: Messages = {
     field_flag_integrity: 'Integrity flag threshold',
     field_flag_spread: 'Spread flag threshold',
     field_app_open: 'Application open',
-    field_app_close: 'Application close',
+    field_registration_close: 'Registration close',
+    hint_registration_close:
+      'New applicants must register by this date. Already-registered participants can still submit up to Submission close.',
+    field_app_close: 'Submission close (video)',
+    hint_app_close: 'Hard cutoff to finish and submit the video, for anyone already registered.',
     field_scoring_complete: 'Scoring complete',
     field_main_start: 'Main round start',
     field_main_end: 'Main round end',
@@ -1216,6 +1248,9 @@ const MESSAGES_EN: Messages = {
     recommendations_flagged_section_note:
       'These applications were excluded due to integrity concerns. Admin review and status update required.',
     recommendations_total_label: (n) => `${n} recommended in total`,
+    recommendations_blocked_title: 'Top N finalization is on hold',
+    recommendations_blocked_note: (n) =>
+      `${n} ${n === 1 ? 'entry has' : 'entries have'} exhausted scoring retries and ${n === 1 ? 'is' : 'are'} blocking the recommendation. This is a system error, not a rejection — resolve by marking the entry rejected/withdrawn, or by resetting its retry count for another scoring attempt.`,
     apply_rec_err_unauthorized: 'Admin authentication required.',
     apply_rec_err_season_not_found: 'Season not found.',
     apply_rec_err_no_recommendations: 'No recommendations to apply.',
@@ -1869,6 +1904,10 @@ const MESSAGES_KO: Messages = {
       actors: '배우',
       music: '음악 라이브러리',
       messages: '메시지',
+      comments: '댓글 관리',
+      watch_home: 'Watch 홈 전환',
+      watch_videos: '영상 관리',
+      broadcasts: '연락처 발송',
     },
   },
   dashboard: {
@@ -1949,10 +1988,18 @@ const MESSAGES_KO: Messages = {
     field_name: '이름',
     field_season_number: '시즌 번호',
     field_status: '상태',
+    field_is_fixture: '이건 진짜 시합입니까? (필수)',
+    option_is_fixture_real: '진짜 시합 — 공개면에 노출하고 참가자에게 메일을 보낸다',
+    option_is_fixture_rehearsal: '리허설 / 테스트 — 로비에 안 띄우고 메일도 안 보낸다',
+    hint_is_fixture:
+      '기본값을 일부러 두지 않았습니다. 하나를 고르십시오. 이 한 번의 답이 공개 로비와 메일 발송 양쪽을 결정하고, "진짜"로 잘못 고르면 되돌릴 수 없는 메일이 나갑니다.',
     field_max_applicants: '최대 지원자',
     field_top_n: '본선 진출자 수 (자동 산출 결과)',
     group_advancement: '진출 및 연기 정책 (2단계)',
     field_min_participants: '최소 참가자 (예선)',
+    field_absolute_min_participants: '절대 하한 (연기 소진 후)',
+    hint_absolute_min_participants:
+      '최대 연기 횟수를 다 쓴 뒤: 이 값 이상이면 개최, 미만이면 자동 마감 대신 수동 검토 대기',
     field_defer_days: '연기 연장 (일)',
     field_max_defer: '최대 연기 횟수',
     field_advance_pct: '진출 비율 (예선 → 본선)',
@@ -1980,7 +2027,11 @@ const MESSAGES_KO: Messages = {
     field_flag_integrity: '진정성 플래그 임계값',
     field_flag_spread: '편차 플래그 임계값',
     field_app_open: '신청 시작',
-    field_app_close: '신청 마감',
+    field_registration_close: '신청 마감',
+    hint_registration_close:
+      '신규 참가자는 이 날짜까지 등록해야 합니다. 이미 등록한 참가자는 제출 마감까지 영상을 제출할 수 있습니다.',
+    field_app_close: '제출 마감 (영상)',
+    hint_app_close: '이미 등록한 참가자가 영상을 완성해 제출해야 하는 하드컷입니다.',
     field_scoring_complete: '채점 완료',
     field_main_start: '본선 시작',
     field_main_end: '본선 종료',
@@ -2105,6 +2156,9 @@ const MESSAGES_KO: Messages = {
     recommendations_flagged_section_note:
       '다음 신청은 무결성 우려로 자동 추천에서 제외되었습니다. 운영진 검토 후 상태 변경이 필요합니다.',
     recommendations_total_label: (n) => `총 ${n}건 추천됨`,
+    recommendations_blocked_title: 'Top N 확정이 보류 중입니다',
+    recommendations_blocked_note: (n) =>
+      `${n}건이 채점 재시도를 모두 소진해 추천 확정을 막고 있습니다. 시스템 오류이며 참가자 탈락이 아닙니다 — 해당 건을 반려/철회로 처리하거나, 재시도 횟수를 리셋해 다시 채점하면 확정이 진행됩니다.`,
     apply_rec_err_unauthorized: '관리자 인증이 필요합니다.',
     apply_rec_err_season_not_found: '시즌을 찾을 수 없습니다.',
     apply_rec_err_no_recommendations: '적용할 추천 결과가 없습니다.',

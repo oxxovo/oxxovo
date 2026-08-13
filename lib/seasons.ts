@@ -51,6 +51,12 @@ export type Season = {
   application_defer_count: number
   defer_extension_days: number
   max_defer_count: number
+  // The floor that governs what happens once max_defer_count is exhausted.
+  // Nullable on purpose (HQ 2026-08-12): a season with no floor set is not
+  // "no floor enforced" -- defer_season_schedule treats NULL as "always hold
+  // for manual review" (fail-closed), same posture as the pre-existing
+  // "cap reached -> admin decides" policy this floor formalizes with a number.
+  absolute_min_participants: number | null
   // Preliminary -> main round advancement policy. top_n_advance stores the
   // computed RESULT; computeAdvanceCount() is the single source of the math
   // (clamp(round(N * advance_pct), advance_min, advance_max)).
@@ -85,6 +91,12 @@ export type Season = {
   // Cron fires the deadline-reminder email once per entry in this array,
   // e.g. [24, 6] → reminder at 24h-remaining and again at 6h-remaining.
   deadline_reminder_hours: number[]
+  // Same pattern, different clock: fires the registration-count notice once
+  // per entry, counted back from registration_close_at (not
+  // application_close_at). HQ 2026-08-12: [14, 7, 3, 1] for season_0.
+  // Nullable -- a season with no rows configured sends nothing (no default
+  // invented client-side).
+  registration_reminder_days: number[] | null
   community_vote_weight: number
   ai_score_weight: number
 
@@ -113,6 +125,14 @@ export type Season = {
 
   application_open_at: string | null
   application_close_at: string | null
+  // ★New column, HQ 2026-08-12: the cutoff to START a new application (mint a
+  // genesis_applications row with no video yet). application_close_at stays
+  // the SUBMISSION hard-cut (fill in the video on an already-registered row)
+  // -- the two are deliberately different columns with different names so
+  // "which deadline is which" cannot drift the way it did before this split
+  // existed. On seasons_public since the same migration that adds the column
+  // (base + view together, see reports/season_registration_close_2026-08-12.sql).
+  registration_close_at: string | null
   // ★Declared 2026-08-08. The COLUMN has existed since season0_3stage (it is in
   // the seasons_public select list too) -- what was missing was this line, so
   // nothing downstream could read it and the submission receipt was reported as
@@ -128,8 +148,15 @@ export type Season = {
   // hold was actually lifted. Keeping the two apart is the scoring_complete_at
   // lesson: one column that meant both "planned" and "done" let the planned
   // value silently disable the done check, and season_0 would never have
-  // produced a Top N. Base table only -- NOT on seasons_public (measured
-  // 2026-08-08: the view is a fixed 66-column list, not SELECT *).
+  // produced a Top N.
+  // ★ON seasons_public since 2026-08-09 (the view went 66 -> 68 columns). It was
+  // base-table-only for one day, and that mattered: getCurrentSeason and
+  // getSeasonById read the view with select('*'), which does NOT fail on a
+  // missing column -- it returns a row that silently lacks it. The immediate
+  // submission receipt renders its bullets from this row, so the one date head
+  // office had just engraved would have been omitted rather than shown, and the
+  // email-tick sweep (which reads the base table) could not have repaired it:
+  // executeSend's dedup treats the receipt as already sent.
   prelim_results_announcement_at: string | null
   // Community vote window. On the seasons_public view since
   // main_round_theme_public_2026-07 (a schedule, not a secret). Drives the
@@ -176,9 +203,11 @@ export type Season = {
   // Visibility is derived from it (see lib/lobby.ts isFixtureSeason). DEFAULT
   // true in the DB, so a season is a fixture until a human writes false --
   // forgetting hides a season instead of leaking a rehearsal onto the lobby.
-  // Optional here because the base row predates the column and because the
-  // seasons_public view does not carry it; `undefined` therefore means "this
-  // read could not see the column", which is a different thing from `false`.
+  // ★Optional, and the reason narrowed on 2026-08-09: seasons_public carries it
+  // now (66 -> 68 columns), so the view is no longer why it can be missing. What
+  // is left is a select list that does not name it. `undefined` therefore still
+  // means "this read could not see the column", which is a different thing from
+  // `false` -- so it stays optional rather than becoming a required boolean.
   is_fixture?: boolean | null
 
   created_at: string
@@ -315,6 +344,19 @@ export async function getSeasonById(id: string): Promise<Season | null> {
 // right now. Because a season's main round / scoring run in later weeks while
 // the next season's application window is already open, several seasons are
 // in-flight at once; the newest-opened one is the correct application target.
+//
+// ★STANDING RISK, measured 2026-08-10, not fixed here — a scheduling fact, not
+// a code bug: season_0.application_open_at is 2026-09-09 (still future), so
+// today this function resolves season_0 only through the "soonest upcoming"
+// fallback below, not the "opened" branch. That fallback has no is_fixture
+// filter. Until 2026-09-09 00:00 PT, ANY row (including a rehearsal fixture
+// like season_test) that gets a past application_open_at instantly wins the
+// "opened" branch and hijacks the pick — exactly what happened on 2026-08-08
+// when season_test's leftover open date (2026-07-06) took over after
+// season_0's own open moved to 9/9. EXIT CONDITION: this risk disappears on
+// its own once season_0's application_open_at passes (2026-09-09 00:00 PT) --
+// its own row then wins the "opened" branch and nothing else can outrank it
+// on recency without also being in the future.
 export async function getCurrentSeason(): Promise<Season | null> {
   const nowIso = new Date().toISOString()
 
@@ -358,10 +400,20 @@ export async function getCurrentSeason(): Promise<Season | null> {
   return (upcoming as Season) ?? null
 }
 
+// ★Single source of the "active registration" count (HQ 2026-08-12): the SQL
+// function this calls, count_active_registrations, is also what
+// defer_season_schedule calls for its own decision (reports/season_
+// registration_reminder_2026-08-12.sql) -- one definition, not a capacity
+// count here and a differently-worded defer count there that quietly drift.
+// Previously called get_active_application_count directly; that function's
+// own body was never in this repo (reports/db_schema_outside_repo_2026-07-
+// 28.md) and could not be verified to match defer_season_schedule's
+// status list, so it was retired in favor of a function whose definition
+// this repo actually owns. Not dropped -- see backlog.
 export async function getActiveApplicationCount(
   seasonId: string
 ): Promise<number> {
-  const { data, error } = await supabase.rpc('get_active_application_count', {
+  const { data, error } = await supabase.rpc('count_active_registrations', {
     p_season_id: seasonId,
   })
 
@@ -389,6 +441,21 @@ export function isApplicationClosed(
 ): boolean {
   if (!season.application_close_at) return false
   return now.getTime() >= Date.parse(season.application_close_at)
+}
+
+// The registration cutoff (HQ 2026-08-12) -- gates MINTING a new
+// genesis_applications row (no video yet). Deliberately a separate function
+// from isApplicationClosed, which gates the SUBMISSION cutoff (filling in the
+// video on a row that already exists, whether it was minted by this same
+// gate or by isApplicationClosed's own no-existing-row branch on the same
+// day). NULL means "no registration cutoff configured" -- same absent/open
+// convention as isApplicationClosed, not "always closed".
+export function isRegistrationClosed(
+  season: Pick<Season, 'registration_close_at'>,
+  now: Date = new Date(),
+): boolean {
+  if (!season.registration_close_at) return false
+  return now.getTime() >= Date.parse(season.registration_close_at)
 }
 
 // Public CTA for a season by where we are in its application window -- shared by
