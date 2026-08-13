@@ -77,7 +77,67 @@ Playwright로 이미 확인한 것:
   `coming-soon` 문자열 여전히 존재(게이트 안 건드림 재확인).
 - 스크래치 워크트리 정리 완료.
 
+## 5. 3차 배포 — 2026-08-12/13, H(속도 램프) + 폰트/i18n 머지 후
+
+**지수2C · 제니2 지시 · 대표님 승인.** ③단계(워커 먼저·앱 나중) 병합
+직후 진행. 병합 내역은 이 창의 앞선 보고 참조 — H 전 스테이지(①~⑥) +
+Pretendard 폰트 전역 교체 + `<html lang>` 동기화 + 랜딩 카운트다운/FAQ/
+feat1·2·step3 확정 카피.
+
+### 워커 (`oxxovo-studio`) — 참고, 이번 배포 대상 아님
+
+머지(`feat/studio-lane-c` → `main`, fast-forward, `71dabc7`) 자체가
+Railway 자동배포를 **즉시** 발동시킴(이 레포만 그렇다 — 아래 5-3 참조).
+빌드 성공 확인(대표님 화면). ffmpeg 핀/렌더 레인 확인 2건은 **미확인**
+(워커가 꺼져 있고, 확인을 위해 억지로 켜지 말라는 지시).
+
+### ★★사고 1건 — 잘못된 Vercel 프로젝트로 첫 배포 시도
+
+`vercel deploy --prod` 첫 실행이 **실패**(빌드 에러:
+`createSupabaseAdmin: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY
+is missing`). 원인 조사 중 `.vercel/project.json`이 프로덕션
+프로젝트(`oxxovo`, `prj_niVffyZdA1sLUIjTaA8EdgFT8iRG`)가 아니라 **별도로
+자동 생성된 `oxxovo-lane-c`라는 스트레이 프로젝트**(`prj_Pfb7YwUlr...`)를
+가리키고 있던 것을 발견 — 2026-08-11 기록(§2) 자체에 이미 "다른
+워크트리에서 복사해야 한다"고 적혀 있었는데 이번엔 그 단계를 빼먹고
+바로 `vercel deploy`부터 실행한 게 원인. `www.oxxovo.ai`(진짜 프로덕션)
+는 이 실패한 시도로 **전혀 건드려지지 않음**(`/api/version`의 `builtAt`
+불변으로 확인 후 재시도). `C:\Users\Tom\oxxovo`(본체 워크트리)의
+`.vercel/project.json`을 이쪽으로 복사해 재실행 → 성공.
+
+★스트레이 프로젝트(`oxxovo-lane-c`, Vercel 대시보드에 실패한 배포 1건과
+함께 존재)는 삭제하지 않았음(파괴적 작업이라 지시 없이 안 함) — 필요시
+대표님 판단으로 정리.
+
+### 앱 (`oxxovo`) — 실제 배포
+
+- 프로젝트 링크 교정 후 `vercel deploy --prod --yes` 재실행 → 성공.
+  `dpl_HBQnLEJhc69BSsA83s6Fgha8mH21`, `readyState: READY`,
+  `target: production`, `www.oxxovo.ai` alias 완료.
+- SITE_PUBLIC_ENABLED 게이트: **건드리지 않음**(지시대로).
+
+### 배포 후 실측 4항목
+
+① `/api/version` `builtAt`: `2026-08-12T04:11:36.266Z`(배포 전) →
+   `2026-08-13T04:14:11.309Z`(배포 후) — 갱신 확인.
+② `data-dpl-id="dpl_HBQnLEJhc69BSsA83s6Fgha8mH21"` — 신규 배포 ID와
+   정확히 일치(실제로 이 배포가 떠 있음, "올렸다"가 아니라 "떠 있다"
+   확인).
+③ 게이트 무접촉: `/`·`/welcome`·`/watch`·`/apply`·`/rules` 5개 경로
+   전부 서로 바이트 동일(배포 전후 각각 내부 일관성 유지). 배포 전후
+   해시 자체는 **다름**(`c063b9a4…` → `54e7a51c…`) — 예상된 차이:
+   오늘 배포분에 Pretendard 전역 폰트 교체가 포함돼 있어 게이트 페이지도
+   루트 레이아웃의 새 폰트 클래스를 상속한다. "Coming Soon"/`coming-soon`
+   마커 여전히 존재, 실제 랜딩 마커(MEDIA POOL/Tournament Info/Global
+   Arena)는 전무, `<title>OXXOVO</title>`(게이트용 최소 메타데이터)
+   그대로 — 게이트 자체는 안 건드렸음을 확인. `/admin`=307→`/admin/login`,
+   `/admin/login`=200, 이전 배포와 동일 패턴.
+④ 관리자 로그인 상태로 랜딩 열람: **미확인** — 이전 배포 기록(§3)과
+   같은 이유(게이트 우회는 실 관리자 계정만 가능, 데모 로그인은
+   프로덕션에서 막혀 있고 admin 계정도 아님). 대표님 육안 확인 필요.
+
 ## 관련
 `deploy_trains_2026-08-06.md`(배포됨 기준 갱신) ·
 `worker_deploy_procedure_2026-08-06.md`(이번에 따른 선례) ·
-`lane_c_watch_selfauthored_en_2026-08-11.md`(제니3 검수 대상)
+`lane_c_watch_selfauthored_en_2026-08-11.md`(제니3 검수 대상) ·
+`railway_deploy_guide_oxxovo_studio.md`(배포 자동화 레포별 차이, 2026-08-12 추가)
