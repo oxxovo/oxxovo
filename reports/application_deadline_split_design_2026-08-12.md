@@ -196,9 +196,17 @@ seasons에 두고, `registration_close_at - N일`에 도달하면 그 시점의
    (관련 결정: 본선 주제 공개 시각도 손으로 준 값이 틀렸던 사례가
    `reports/admin_faq_editor_design_2026-08-12.md`에서 나왔다 -- 손 계산
    날짜와 집행 코드가 어긋나면 코드가 이긴다는 원칙이 이번에도 확인됨.)
-2. §2 -- 신규 "등록" 액션의 UI 모양(폼 필드가 지금 apply 폼과 얼마나
-   겹치는지, "일단 등록만" 버튼을 어디에 놓을지)은 화면 설계가 필요하다 --
-   이 문서는 서버 게이트 설계까지만. **다음 착수 항목(②), 아직 시작 안 함.**
+2. §2 -- **서버 측 완료(HQ 2026-08-12, 커밋 `3404fdc`)**: `registerForSeason()`
+   신설(`lib/studio.ts`) + `isRegistrationClosed()`(`lib/seasons.ts`) +
+   두 제출 함수의 mint 분기(5a/7a)가 `isRegistrationClosed`로,
+   fill-in 분기(5c/7c)가 신규 `isApplicationClosed` 체크로 전환 + 어드민
+   폼 필드 + SQL 초안(`reports/season_registration_close_2026-08-12.sql`,
+   TK Run 대기). **UI(등록 전용 화면/버튼)는 아직 없음** -- HQ 요청에
+   화면 설계 언급이 없었고, 서버 게이트 정합성이 먼저라 이번 범위는
+   거기까지. 필요 시 별도 요청.
+   ★부수 발견(backlog #21): `checkApplyGate`/Founding 클레임이 Studio
+   제출 경로 어디에도 안 걸려 있다(`/api/apply` 1곳뿐) -- ⑤ 답변에
+   반영, 손 안 댐(오늘 범위 밖).
 3. ~~§7 결함~~ **해소** -- 아래 참조.
 
 ## ★착수 순서 갱신 (HQ 2026-08-12) -- ① 완료, ②③ 대기
