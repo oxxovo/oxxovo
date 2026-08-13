@@ -53,6 +53,11 @@ import {
   type SubmissionDeadlineProps,
 } from './templates/SubmissionDeadline'
 import {
+  RegistrationCount,
+  subjectFor as registrationCountSubject,
+  type RegistrationCountProps,
+} from './templates/RegistrationCount'
+import {
   ResultsAnnounced,
   subjectFor as resultsAnnouncedSubject,
   type ResultsAnnouncedProps,
@@ -157,9 +162,14 @@ function unsubscribeHeaders(toEmail: string): Record<string, string> {
 // Shared engine: dedup + render + resend + log. Every send* helper funnels
 // through this so retry/dedup/logging behavior is identical across templates.
 async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
+  // registration_count's numeric variant is a DAY count, not an hour count --
+  // stored under its own metadata key so it can never collide with
+  // submission_deadline's reminder_hour (lib/email/log.ts canSend/
+  // alreadySent match on whichever key applies to the templateKey).
+  const reminderKey = input.templateKey === 'registration_count' ? 'reminder_day' : 'reminder_hour'
   const baseMetadata: Record<string, unknown> | null =
     input.reminderHour != null || input.metadata
-      ? { ...(input.metadata ?? {}), ...(input.reminderHour != null ? { reminder_hour: input.reminderHour } : {}) }
+      ? { ...(input.metadata ?? {}), ...(input.reminderHour != null ? { [reminderKey]: input.reminderHour } : {}) }
       : null
 
   if (input.applicationId) {
@@ -548,6 +558,48 @@ export async function sendSubmissionDeadline(
     applicationId: input.applicationId,
     seasonId: input.seasonId,
     reminderHour: input.reminderHour,
+  })
+}
+
+type SendRegistrationCountInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  currentCount: number
+  minParticipants: number
+  registrationCloseAt: string | null
+  // The reminder slot from seasons.registration_reminder_days that triggered
+  // this send (e.g. 14, 7, 3, 1). Multi-fire dedup key, stored under its own
+  // metadata key (reminder_day) -- see executeSend.
+  reminderDay: number
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendRegistrationCount(
+  input: SendRegistrationCountInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: RegistrationCountProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    currentCount: input.currentCount,
+    minParticipants: input.minParticipants,
+    registrationCloseAt: input.registrationCloseAt,
+    reminderDay: input.reminderDay,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'registration_count',
+    language: lang,
+    subject: registrationCountSubject(props),
+    element: <RegistrationCount {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+    reminderHour: input.reminderDay,
   })
 }
 

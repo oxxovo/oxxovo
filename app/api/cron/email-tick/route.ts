@@ -28,6 +28,7 @@ import {
   sendNotSelected,
   sendMainRoundStart,
   sendSubmissionDeadline,
+  sendRegistrationCount,
   sendResultsAnnounced,
   sendMembershipRenewal,
   sendMembershipFoundingExpiry,
@@ -49,7 +50,7 @@ import { sendSubmissionReceipts, type ReceiptTally } from '@/lib/email/submissio
 import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { isMembershipEnabled } from '@/lib/membership'
 import { getPlatformConfigMap } from '@/lib/partners'
-import type { Season } from '@/lib/seasons'
+import { getActiveApplicationCount, type Season } from '@/lib/seasons'
 
 const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'
 const VALID_INTERVALS = ['day', 'week', 'month', 'year']
@@ -86,6 +87,9 @@ type TickReport = {
   // a failure wants investigating, a deferral wants the next tick.
   mainRoundStart: ({ season: string } & BatchTally)[]
   submissionDeadline: ({ season: string; reminderHour: number } & BatchTally)[]
+  // HQ 2026-08-12: D-14/7/3/1 before registration_close_at, to everyone
+  // currently registered (not pre-registered) for the season.
+  registrationCount: ({ season: string; reminderDay: number } & BatchTally)[]
   resultsAnnounced: ({ season: string } & BatchTally)[]
   // Finalist advancement notices (SelectedTop50 + NotSelected), fired once a
   // season's scoring window has completed and season-tick has set the
@@ -163,6 +167,7 @@ async function handle(request: NextRequest) {
     ranAt: now.toISOString(),
     mainRoundStart: [],
     submissionDeadline: [],
+    registrationCount: [],
     resultsAnnounced: [],
     finalistResults: [],
     videoLive: [],
@@ -204,6 +209,39 @@ async function handle(request: NextRequest) {
           report.submissionDeadline.push({
             season: season.id,
             reminderHour,
+            ...result,
+          })
+        }
+      }
+    }
+
+    // Registration-count notice (HQ 2026-08-12): D-14/7/3/1 before
+    // registration_close_at (NOT application_close_at -- a different clock
+    // from submissionDeadline above, on purpose). Recomputed from
+    // registration_close_at fresh every tick, the same way submissionDeadline
+    // is recomputed from main_round_end_at above -- if defer_season_schedule
+    // pushes registration_close_at out, the D-14/7/3/1 fire times move with
+    // it automatically (they are back-calculated, not stored absolute
+    // instants). What does NOT automatically move: the per-(application,
+    // reminder_day) dedup. If D-14 already fired against the ORIGINAL close
+    // date and a defer later pushes the date out, D-14 will not re-fire for
+    // the new date -- canSend only knows "reminder_day=14 already sent for
+    // this applicant", not which close-date version it was sent against.
+    // Flagged as a known gap (backlog), not solved here.
+    if (season.registration_close_at && !isFixtureSeason(season)) {
+      const registrationCloseAt = new Date(season.registration_close_at)
+      const reminderDays = Array.isArray(season.registration_reminder_days)
+        ? (season.registration_reminder_days as number[])
+        : []
+      for (const reminderDay of reminderDays) {
+        const fireAt = new Date(
+          registrationCloseAt.getTime() - reminderDay * 86_400_000,
+        )
+        if (fireAt <= now && now < registrationCloseAt) {
+          const result = await fireRegistrationCount(season, reminderDay, budget)
+          report.registrationCount.push({
+            season: season.id,
+            reminderDay,
             ...result,
           })
         }
@@ -672,6 +710,59 @@ async function fireSubmissionDeadline(
   )
 }
 
+// ── registration_count ────────────────────────────────────────────────────
+
+async function fireRegistrationCount(
+  season: Season,
+  reminderDay: number,
+  budget: TickBudget,
+): Promise<BatchTally> {
+  const supabase = createSupabaseAdmin()
+  // Recipients = everyone REGISTERED for this season (HQ 2026-08-12: "the
+  // people who registered, not pre-registrants"). Broader than the "active"
+  // status set the count itself uses below -- waitlisted registrants are
+  // still registrants and should hear the same number, even though they are
+  // not part of it. Excludes rows already past the application phase
+  // (mirrors defer_season_schedule's already_advanced check) -- a shortfall
+  // notice makes no sense once the season has moved on.
+  const { data: rows, error } = await supabase
+    .from('genesis_applications')
+    .select('id, email, creator_name, country, main_round_submitted_at')
+    .eq('season_id', season.id)
+    .in('status', ['pending', 'waitlist', 'verifying', 'flagged', 'eligible'])
+  if (error) {
+    console.error('[cron] registration_count applicant load failed:', error.message)
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
+  }
+
+  // ★The number in the email MUST be the same number defer_season_schedule
+  // decides on, or the participant sees one count and the automated decision
+  // uses another (HQ 2026-08-12, "가장 중요한 것"). getActiveApplicationCount
+  // calls count_active_registrations, the same SQL function defer_season_
+  // schedule now calls for its own v_active -- one definition, both callers.
+  const currentCount = await getActiveApplicationCount(season.id)
+
+  return await dispatchBatch(
+    (rows ?? []) as ApplicantRow[],
+    'registration_count',
+    async (row) =>
+      sendRegistrationCount({
+        toEmail: row.email,
+        country: row.country,
+        creatorName: row.creator_name,
+        seasonName: season.display_name,
+        currentCount,
+        minParticipants: season.min_participants,
+        registrationCloseAt: season.registration_close_at,
+        reminderDay,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
+    budget,
+    reminderDay,
+  )
+}
+
 // ── results_announced ─────────────────────────────────────────────────────
 
 async function fireResultsAnnounced(season: Season, budget: TickBudget): Promise<BatchTally> {
@@ -800,6 +891,7 @@ type TemplateName =
   | 'not_selected'
   | 'main_round_start'
   | 'submission_deadline'
+  | 'registration_count'
   | 'results_announced'
 
 async function dispatchBatch(

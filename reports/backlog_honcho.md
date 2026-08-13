@@ -8,6 +8,8 @@
 
 | # | 요약 | 비용 | 선행조건 | 기한 |
 |---|---|---|---|---|
+| 24 | `get_active_application_count`(옛 카운트 함수) — `count_active_registrations`로 교체(2026-08-12, `season_registration_reminder` SQL 초안) 후 호출처 0. DROP 안 함(원 정의를 이 레포에서 못 봤어서 "안전하게 지울 수 있다"를 증명 못 함) — 일정 기간 관찰 후 DROP 후보 | $0 | 없음 | 판단 시점 미정 |
+| 25 | 등록수 알림(D-14/7/3/1) 멱등키가 `reminder_day` 값만 본다 — 연기로 `registration_close_at`이 밀려도 이미 보낸 회차(예: D-14)는 새 날짜 기준으로 재발송 안 됨. "역산은 확인했지만 멱등은 마감버전을 안 본다"는 한계, HQ 2026-08-12에 보고했고 이번 범위에서 해결 안 함 | 설계 필요 시 | 실제 연기가 한 번이라도 발동할 때 체감됨(season_0 기준 발동 여지 없음) | 미정 |
 | 2 | r2-orphan-sweep에 promo_videos/cf 보호 배선 | 설계 필요, 실행 비용 $0 | **promo·cf 경로가 UUID 기반 파일명을 쓰기 시작할 때** (지금은 파일명에 UUID가 없어 정규식 불일치로 판정 대상 밖 — 조건부, 날짜 아님) | 조건 성립 시 |
 | 3 | `/about` 정적 프리렌더 스테일 — `getCurrentSeason()` 결과가 빌드 시점 HTML에 고정 | $0 (재배포만) | 컨트롤드 배포(`vercel --prod`, main 체크아웃+클린) | 다음 프로덕션 배포 시 자동 해소, 그 전엔 옛 시즌명 노출 가능 |
 | 4 | `getCurrentSeason()` "opened" 아닌 "soonest upcoming" 폴백 경로로만 season_0을 잡는 상태 — 이 기간 과거 open을 가진 어떤 행이든 즉시 가로챔 | $0 (코드 주석 완료, `lib/seasons.ts`) | 감시만, 조치 아님 | **2026-09-09 00:00 PT** 지나면 자연 해소 |

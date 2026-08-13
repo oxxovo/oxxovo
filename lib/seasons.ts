@@ -90,6 +90,12 @@ export type Season = {
   // Cron fires the deadline-reminder email once per entry in this array,
   // e.g. [24, 6] → reminder at 24h-remaining and again at 6h-remaining.
   deadline_reminder_hours: number[]
+  // Same pattern, different clock: fires the registration-count notice once
+  // per entry, counted back from registration_close_at (not
+  // application_close_at). HQ 2026-08-12: [14, 7, 3, 1] for season_0.
+  // Nullable -- a season with no rows configured sends nothing (no default
+  // invented client-side).
+  registration_reminder_days: number[] | null
   community_vote_weight: number
   ai_score_weight: number
 
@@ -393,10 +399,20 @@ export async function getCurrentSeason(): Promise<Season | null> {
   return (upcoming as Season) ?? null
 }
 
+// ★Single source of the "active registration" count (HQ 2026-08-12): the SQL
+// function this calls, count_active_registrations, is also what
+// defer_season_schedule calls for its own decision (reports/season_
+// registration_reminder_2026-08-12.sql) -- one definition, not a capacity
+// count here and a differently-worded defer count there that quietly drift.
+// Previously called get_active_application_count directly; that function's
+// own body was never in this repo (reports/db_schema_outside_repo_2026-07-
+// 28.md) and could not be verified to match defer_season_schedule's
+// status list, so it was retired in favor of a function whose definition
+// this repo actually owns. Not dropped -- see backlog.
 export async function getActiveApplicationCount(
   seasonId: string
 ): Promise<number> {
-  const { data, error } = await supabase.rpc('get_active_application_count', {
+  const { data, error } = await supabase.rpc('count_active_registrations', {
     p_season_id: seasonId,
   })
 

@@ -14,6 +14,13 @@ export type TemplateKey =
   | 'not_selected'
   | 'main_round_start'
   | 'submission_deadline'
+  // HQ 2026-08-12: D-14/7/3/1 before registration_close_at, telling
+  // registered participants the current count and whether the season might
+  // defer. Multi-fire like submission_deadline (once per
+  // seasons.registration_reminder_days entry) -- dedup on metadata->>
+  // 'reminder_day', a separate key from submission_deadline's 'reminder_hour'
+  // so the two multi-fire templates never share a match.
+  | 'registration_count'
   | 'results_announced'
   | 'awarded_contact_request'
   | 'partner_invitation'
@@ -77,9 +84,14 @@ export async function logEmail(input: LogEmailInput): Promise<void> {
 // a 'sent' row. The DB partial unique index also blocks duplicates, but
 // checking up front lets us return 'skipped' cleanly without hitting Resend.
 //
-// submission_deadline is intentionally a multi-fire template (one row per
-// reminder_hour in seasons.deadline_reminder_hours), so callers MUST pass
-// reminderHour for that template. Other templates ignore it.
+// submission_deadline and registration_count are both multi-fire templates
+// (one row per entry in seasons.deadline_reminder_hours /
+// registration_reminder_days respectively), so callers MUST pass the numeric
+// variant for those two. Other templates ignore it. The two templates use
+// DIFFERENT metadata keys (reminder_hour vs reminder_day) on purpose -- they
+// count back from different clocks (application_close_at vs
+// registration_close_at) and a shared key would let a "24" from one collide
+// with a "24" from the other if the two were ever compared.
 export async function alreadySent(
   applicationId: string,
   templateKey: TemplateKey,
@@ -96,6 +108,8 @@ export async function alreadySent(
   if (templateKey === 'submission_deadline' && reminderHour != null) {
     // Match on metadata->>'reminder_hour' — PostgREST JSONB filter.
     q = q.eq('metadata->>reminder_hour', String(reminderHour))
+  } else if (templateKey === 'registration_count' && reminderHour != null) {
+    q = q.eq('metadata->>reminder_day', String(reminderHour))
   }
 
   const { data, error } = await q.limit(1)
@@ -149,6 +163,8 @@ export async function canSend(
 
   if (templateKey === 'submission_deadline' && reminderHour != null) {
     q = q.eq('metadata->>reminder_hour', String(reminderHour))
+  } else if (templateKey === 'registration_count' && reminderHour != null) {
+    q = q.eq('metadata->>reminder_day', String(reminderHour))
   }
 
   const { data, error } = await q
