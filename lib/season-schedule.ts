@@ -138,6 +138,12 @@ const NON_CLONED_KEYS = [
   // "Cosmetic Commercial Film" label. (TK 2026-07-15)
   'main_round_theme_label',
   'application_open_at',
+  // Not computed by computeSeasonSchedule (HQ 2026-08-12 gave season_0 a
+  // specific date, not a general formula for every future season) -- left
+  // cloned, an auto-created season would inherit the previous season's
+  // literal registration cutoff, already in the past. Same rule as
+  // prelim_results_announcement_at below.
+  'registration_close_at',
   'application_close_at',
   'scoring_start_at',
   'scoring_complete_at',

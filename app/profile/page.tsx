@@ -8,6 +8,7 @@ import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { VideoEmbed } from '@/app/_components/VideoEmbed'
 import { WinnerCelebrationCard } from './WinnerCelebrationCard'
 import { SmsConsentCard } from './SmsConsentCard'
+import { EmailConsentCard } from './EmailConsentCard'
 import { NicknameCard } from './NicknameCard'
 import { ScoringCard } from './ScoringCard'
 import { MainRoundCard, type MockOverrides } from './MainRoundCard'
@@ -237,6 +238,8 @@ function ProfilePageInner() {
         <NicknameCard />
 
         <SmsConsentCard />
+
+        <EmailConsentCard />
 
         {!currentApp ? (
           <NoApplicationCard />

@@ -27,6 +27,12 @@ type Props = {
   recommendations: RecommendationRow[]
   applications: ApplicationRow[]
   topNAdvance: number
+  // ⑥G gap 3 -- entries that exhausted scoring retries and are holding Top N
+  // finalization (oxxovo-scoring's countBlockingFailed, same rule). The worker
+  // says this exactly once, in an admin email; this screen is where an operator
+  // would otherwise see nothing and no way to tell "not scored yet" from
+  // "blocked, needs a decision" apart.
+  blockingFailedCount: number
 }
 
 export function RecommendationsPanel({
@@ -34,6 +40,7 @@ export function RecommendationsPanel({
   recommendations,
   applications,
   topNAdvance,
+  blockingFailedCount,
 }: Props) {
   const t = useT()
   const lang = useAdminLang()
@@ -110,9 +117,20 @@ export function RecommendationsPanel({
 
       {/* 본문 분기 */}
       {!hasRecommendations ? (
-        <div className="rounded border border-white/10 bg-white/[.02] px-4 py-6 text-center text-sm text-white/60">
-          {t.applications.recommendations_empty}
-        </div>
+        blockingFailedCount > 0 ? (
+          <div className="rounded border border-red-500/30 bg-red-500/[.06] px-4 py-4 text-sm">
+            <p className="font-bold text-red-300 mb-1">
+              {t.applications.recommendations_blocked_title}
+            </p>
+            <p className="text-white/70 leading-relaxed">
+              {t.applications.recommendations_blocked_note(blockingFailedCount)}
+            </p>
+          </div>
+        ) : (
+          <div className="rounded border border-white/10 bg-white/[.02] px-4 py-6 text-center text-sm text-white/60">
+            {t.applications.recommendations_empty}
+          </div>
+        )
       ) : (
         <>
           {/* 상단 메타 + 적용 상태 */}

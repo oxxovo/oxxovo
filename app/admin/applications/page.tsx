@@ -2,6 +2,7 @@ import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { type Season } from '@/lib/seasons'
+import { isBlockingFailed, SCORING_MAX_RETRIES } from '@/lib/scoring-coverage'
 import {
   ApplicationsView,
   type ApplicationRow,
@@ -50,7 +51,7 @@ export default async function ApplicationsPage({
       supabase
         .from('scoring_results')
         .select(
-          'application_id, verified_score, grade, integrity_confidence, integrity_flag, integrity_recommendation, judged_status',
+          'application_id, verified_score, grade, integrity_confidence, integrity_flag, integrity_recommendation, judged_status, processing_attempts',
         )
         .eq('season_id', selectedSeasonId)
         .eq('round', 'application'),
@@ -66,7 +67,7 @@ export default async function ApplicationsPage({
     const scoringByApp = new Map<string, NonNullable<typeof scoringRes.data>[number]>()
     for (const s of scoringRes.data ?? []) scoringByApp.set(s.application_id, s)
 
-    applications = ((appsRes.data ?? []) as Omit<ApplicationRow, 'verified_score' | 'grade' | 'integrity_confidence' | 'integrity_flag' | 'integrity_recommendation' | 'judged_status'>[]).map((a) => {
+    applications = ((appsRes.data ?? []) as Omit<ApplicationRow, 'verified_score' | 'grade' | 'integrity_confidence' | 'integrity_flag' | 'integrity_recommendation' | 'judged_status' | 'processing_attempts'>[]).map((a) => {
       const s = scoringByApp.get(a.id)
       return {
         ...a,
@@ -76,11 +77,21 @@ export default async function ApplicationsPage({
         integrity_flag: s?.integrity_flag ?? false,
         integrity_recommendation: (s?.integrity_recommendation as ApplicationRow['integrity_recommendation']) ?? null,
         judged_status: (s?.judged_status as ApplicationRow['judged_status']) ?? null,
+        processing_attempts: s?.processing_attempts ?? null,
       }
     })
 
     recommendations = (recsRes.data ?? []) as RecommendationRow[]
   }
+
+  // ⑥G gap 3 -- oxxovo-scoring's countBlockingFailed gates Top N finalization
+  // on this same count but only ever says so once, in an admin email. Computed
+  // server-side (not in the client panel) because SCORING_MAX_RETRIES reads
+  // process.env, which a 'use client' component cannot see at runtime for a
+  // non-NEXT_PUBLIC_ var.
+  const blockingFailedCount = applications.filter((a) =>
+    isBlockingFailed(a, SCORING_MAX_RETRIES),
+  ).length
 
   return (
     <ApplicationsView
@@ -89,6 +100,7 @@ export default async function ApplicationsPage({
       applications={applications}
       recommendations={recommendations}
       topNAdvance={topNAdvance}
+      blockingFailedCount={blockingFailedCount}
     />
   )
 }

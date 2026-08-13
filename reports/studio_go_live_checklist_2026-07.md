@@ -227,6 +227,14 @@ switch was made, which is why unifying cost nothing.)
     reads the cap once at module load, so even a new deployment's warm instances
     turn over at the next cold start, not mid-tick. Budget ~2 minutes for the
     correction, not zero.
+- ★**And check `/api/cron/broadcast-tick` actually FIRED, not just that it is
+  registered.** `vercel.json` crons only trigger on Production, so this cannot be
+  observed before C3 either -- registering the schedule and Vercel actually
+  calling it are different claims (2026-08-12, HQ). After this deploy, open the
+  Vercel dashboard's **Cron Jobs tab** and confirm `broadcast-tick` shows a real
+  execution at `:07/:22/:37/:52` (its offset from email-tick's `:00/:15/:30/:45`,
+  so the two never fire in the same minute). Do this by eye -- a session cannot
+  see the Cron Jobs tab.
 - CAUTION: Vercel git auto-deploy stays OFF (`vercel.json` git.deploymentEnabled.main
   =false). Every production move goes through this command so every one is stamped.
 
@@ -431,6 +439,63 @@ is a standing rule for the music switch, not a launch-day step.**
   `uploadVideo` only from the render path). **The generation lane has no
   row-level defence and no row-level forensics.** This step proves the render
   lane only.
+
+**★C8 PLAN (design, not a schedule -- no date below is an instruction to run
+this on that date).** HQ asked for a plan because this step had never fired;
+the four things a plan needs, named explicitly rather than left implicit in
+the prose above:
+
+  1. **PRECONDITION.** A worker must already be running, and it must be the
+     Railway one -- never a local dev worker
+     ([[feedback-local-dev-worker-hijacks-prod-jobs]]: a local worker can
+     silently substitute a cheaper model and still bill the row as if the real
+     one ran). Confirm the Railway service is up FIRST. Skipping this check and
+     running anyway is how you spend the step and land on verdict 3 having
+     learned nothing.
+  2. **COST.** One render. The harness reuses the demo account's EXISTING ready
+     clips (`generation_jobs` already `status='ready'`) to build the EDL --
+     **no fal.ai / AI-generation call, no new vendor spend.** What actually runs
+     is one ffmpeg COMPOSE job on the claiming worker (stitch existing clips,
+     upload the result to R2) plus one `render_jobs` row, both deleted by the
+     harness's own `finally` block. Net cost is Railway compute-seconds for one
+     short compose and a transient R2 object -- not zero, but not the
+     per-generation vendor cost the earlier bullets warn about. (The one
+     residue: the composed output object in R2 outlives the deleted row --
+     already tracked as an orphan-object cleanup item, not new here.)
+  3. **READING THE THREE VERDICTS** -- already specified above (the DEPLOY /
+     ★DEPLOY WARNING / "row not claimed" lines); repeated here only as the
+     plan's own checklist item so this section is self-contained: read the
+     printed line, not the exit code -- the harness's assertions do not depend
+     on which of the three prints.
+  4. **WHAT SHIPS UNVERIFIED IF THIS NEVER RUNS.** Not "a defence might be
+     missing" in the abstract -- concretely: launch would open on a worker
+     image whose claim-token CAS has been reviewed and unit-tested but has
+     **never touched a real row**, so the first time it either fires or fails
+     to is during the live competition window, against a real participant's
+     finalized, CryptoBind-signed render. A silent failure there is a
+     participant's winning entry getting silently overwritten by a stale
+     worker, discovered only if someone happens to compare hashes -- the exact
+     failure this defence exists to prevent, now unverified at the one moment
+     it matters most.
+
+  ★**Already partially observed, 2026-08-10** (not a launch-readiness sign-off
+  -- see the scope note below): running the approved E2E 8+1 pass included item
+  9 (`e2e/reachability-queued-submit.mjs`), which is the same harness this
+  section names as "HOW". That run printed
+  `DEPLOY: the running worker stamps claim_token -> it carries the CAS build
+  (2069b8d)` -- verdict 1, the pass -- against a real Railway-claimed row
+  (`worker_started_at` set, `status: rendering`), and `render_jobs` returned to
+  the same 20-row baseline afterward with zero leftover, matching this
+  section's 2026-08-07 census. This was not run as a deliberate C8
+  observation; it was a side effect of running the already-approved E2E gate,
+  surfaced here after the fact. **What it proves**: the deployed image carries
+  the claim-token-writing code and a real worker exercised it on a real row.
+  **What it does NOT prove**: the actual zombie scenario -- a STALE worker
+  attempting to reclaim/overwrite a row a second, live worker already
+  finished. No two workers raced during this run; only one claimed. That
+  contention case stays unobserved and is not something a single run of this
+  harness can produce -- it needs a deliberately staged second claim attempt,
+  which is future work this plan does not schedule.
 
 **★C9. `MUSIC_CONCURRENCY` STAYS UNSET. Setting it "just in case" stops the
 renders. Standing rule, not a launch-day step.**

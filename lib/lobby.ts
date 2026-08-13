@@ -67,6 +67,18 @@ type SeasonRow = {
   community_vote_start_at: string | null
   community_vote_end_at: string | null
   awards_announcement_at: string | null
+  // ★C-2: the fixture flag, read through seasons_public since the view was
+  // redefined to 68 columns on 2026-08-09.
+  //
+  // ★OPTIONAL, matching lib/seasons.ts Season. Not laziness about the fixtures:
+  // getLobbyTournaments' own select names it, so on that path it is always
+  // there, but SeasonRow is also the parameter type of the exported
+  // seasonToLobbyCard, which /tournament calls with a row it fetched for its own
+  // reasons. Requiring it would force a caller that does not need it to invent a
+  // value -- and an invented `false` on this column publishes a rehearsal.
+  // `undefined` says "this read did not carry it" and isFixtureSeason then falls
+  // back rather than guessing.
+  is_fixture?: boolean | null
 }
 
 function ms(v: string | null): number | null {
@@ -280,12 +292,18 @@ const FIXTURE_SEASON_NUMBER_MIN = 900
  * catches the conventions that are actually written down and enforced, and the
  * number clause catches season_1000..1006, which follow no id convention at all.
  *
- * ★LIMITATION, stated plainly: a future rehearsal season numbered below 900 with
- * an id matching none of the prefixes WILL leak onto the lobby. Nothing at season
- * creation enforces either convention -- app/host/new/actions.ts even derives
- * season_number as max+1, which is 1007 today, so the band is already polluted by
- * the fixtures themselves and keeps drifting up. Until the column exists, the
- * recurrence guard is procedural and lives in reports/rehearsal_runbook_2026-07.md.
+ * ★NO LONGER THE LOBBY'S GATE (2026-08-09). It is the FALLBACK: the lobby asks
+ * isFixtureSeason, which prefers the is_fixture column and only lands here when
+ * the column did not travel on that particular read. Kept, and kept exported,
+ * because a read with a narrow select list is still a real case -- and because
+ * email-tick uses it directly on rows it fetches for other reasons.
+ *
+ * ★ITS LIMITATION IS THEREFORE STILL LIVE, just no longer load-bearing on the
+ * home page: a rehearsal season numbered below 900 with an id matching none of
+ * the prefixes is invisible to this function. Nothing at season creation enforces
+ * either convention -- app/host/new/actions.ts derives season_number as max+1
+ * (1007 today), so the band is polluted by the fixtures themselves and drifts up.
+ * That is exactly why the column exists and why this is now second in line.
  */
 export function isRehearsalFixture(s: { id: string; season_number: number }): boolean {
   if (FIXTURE_ID_PREFIXES.some((p) => s.id.startsWith(p))) return true
@@ -301,14 +319,15 @@ export function isRehearsalFixture(s: { id: string; season_number: number }): bo
  *   - `is_fixture` is a boolean a human wrote. It is the truth, and it is
  *     fail-closed (DB default true), so a season nobody vouched for is a
  *     fixture rather than a leak.
- *   - `undefined` does NOT mean false. It means this particular read could not
- *     see the column -- either the migration has not run yet, or the row came
- *     through seasons_public, which is a fixed 66-column list that does not
- *     carry it (measured 2026-08-08). Guessing `false` there would publish
- *     every rehearsal season the moment the lobby switched over.
- * So `undefined` falls back to the name/number heuristic, which is exactly the
- * behaviour that is live today -- no surface changes until its read is moved to
- * a source that has the column.
+ *   - `undefined` does NOT mean false. It means THIS READ could not see the
+ *     column, and guessing `false` there would publish every rehearsal season.
+ *     ★What that means changed on 2026-08-09: seasons_public was redefined from
+ *     66 columns to 68 and now carries is_fixture, so the view is no longer a
+ *     reason the column goes missing. What remains is narrower and permanent --
+ *     a select list that simply does not name it. That is why this stays
+ *     optional rather than becoming a required boolean.
+ * So `undefined` falls back to the name/number heuristic. The lobby's own read
+ * names the column, so on the home page the column decides.
  */
 export function isFixtureSeason(s: {
   id: string
@@ -324,15 +343,32 @@ export function isFixtureSeason(s: {
 function isOfficialPublic(s: SeasonRow): boolean {
   const official = s.host_type == null || s.host_type === 'official'
   if (!official || s.status === 'draft') return false
-  if (isRehearsalFixture(s)) {
-    // ★A LIVE season being hidden is worse than a fixture leaking, and the rule
-    // above is a heuristic on names and numbers -- so the one case that must
-    // never pass in silence gets a line. Not logged for the other statuses: the
-    // nine known fixtures would print on every home-page render.
+  // ★C-2 landed 2026-08-09: this asks isFixtureSeason, so a boolean a human
+  // wrote decides, and the id/number heuristic only answers when the column did
+  // not travel. The select above now carries it, so on this path the column
+  // always decides -- and it is the fail-closed direction (DB DEFAULT true).
+  if (isFixtureSeason(s)) {
+    // ★A LIVE season being hidden is worse than a fixture leaking, so the one
+    // case that must never pass in silence gets a line. Not logged for the other
+    // statuses: the nine known fixtures would print on every home-page render.
+    //
+    // ★The message names WHICH rule hid it, because the two have different
+    // fixes -- and the column case has TWO causes that read identically here.
+    // is_fixture is NOT NULL DEFAULT true, so `true` can mean a human wrote it
+    // OR that nobody ever wrote false: /admin/seasons' create payload does not
+    // name the column, while season-tick's clone and host/new both do. Both
+    // causes want the same repair (write false on the row) and neither is a
+    // reason to touch the filter, so the line says so instead of guessing which.
     if (s.status === 'active') {
+      const byColumn = typeof s.is_fixture === 'boolean'
       console.error(
-        `[lobby] ★an ACTIVE season was filtered out as a rehearsal fixture: ${s.id} (#${s.season_number}). ` +
-          'If this is a real competition, its id or season_number matches the fixture rule -- fix the row, not the filter.',
+        `[lobby] ★an ACTIVE season was filtered out as a fixture: ${s.id} (#${s.season_number}) ` +
+          (byColumn
+            ? '-- by the is_fixture COLUMN, which reads true. Either it was written, or it was ' +
+              'never overridden from the DEFAULT (true). If this is a real competition, set ' +
+              'is_fixture = false on the row -- do not change the filter.'
+            : '-- by the id/number HEURISTIC, because is_fixture did not arrive on this read. ' +
+              'Check the select list first: the row, not the rule, is probably fine.'),
       )
     }
     return false
@@ -379,7 +415,7 @@ export async function getLobbyTournaments(now: Date = new Date()): Promise<Lobby
   const { data, error } = await supabase
     .from('seasons_public')
     .select(
-      'id, name, display_name, season_number, status, season_theme, poster_url, lobby_featured, host_type, total_prize_pool, prize_first, application_open_at, application_close_at, main_round_start_at, main_round_end_at, community_vote_start_at, community_vote_end_at, awards_announcement_at',
+      'id, name, display_name, season_number, status, season_theme, poster_url, lobby_featured, host_type, total_prize_pool, prize_first, application_open_at, application_close_at, main_round_start_at, main_round_end_at, community_vote_start_at, community_vote_end_at, awards_announcement_at, is_fixture',
     )
   if (error) {
     console.error('[lobby] failed to load seasons:', error.message)

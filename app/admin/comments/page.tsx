@@ -5,6 +5,7 @@
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getDisplayNames } from '@/lib/nickname'
+import { AdminPageHeader } from '../AdminPageHeader'
 import { ModerationRow, type ModComment } from './ModerationRow'
 
 export const dynamic = 'force-dynamic'
@@ -48,11 +49,10 @@ export default async function AdminCommentsPage() {
   return (
     <main className="min-h-screen bg-[#030305] text-white px-6 py-10">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-black">Comment moderation</h1>
-        <p className="mt-2 text-sm text-white/50">
-          Reported comments, most-reported first. Hide removes a comment from public view
-          (it is kept, never deleted).
-        </p>
+        <AdminPageHeader
+          title="Comment moderation"
+          subtitle="Reported comments, most-reported first. Hide removes a comment from public view (it is kept, never deleted)."
+        />
 
         {comments.length === 0 ? (
           <p className="mt-10 text-sm text-white/40">No reported comments. 🎉</p>

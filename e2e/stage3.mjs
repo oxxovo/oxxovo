@@ -17,7 +17,7 @@
 // season_0 / real data are never touched.
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
-import { chromium } from 'playwright'
+import { chromium } from 'playwright-core'
 import { createHmac, createHash, randomUUID } from 'node:crypto'
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -52,13 +52,26 @@ const v1v = (i) => ['v1v', i.pid, i.tid, i.jobId, i.generatedAt.toISOString(), i
 const checks = []
 const check = (name, ok, detail = '') => { checks.push({ name, ok }); console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}`) }
 
-// ── current season (mirror getCurrentSeason: most recently opened) ───────────
+// ── current season (mirror getCurrentSeason: most recently opened, else the
+// soonest upcoming) ───────────────────────────────────────────────────────
+//
+// ★Was primary-branch only, so it threw "no current season" the moment
+// season_0's application_open_at moved into the future (the 2026-08 schedule
+// push) -- lib/seasons.ts's real getCurrentSeason() never had that gap; its
+// fallback is what every other caller (including the site itself) relies on
+// pre-launch. Mirrored here rather than switched to `.eq('status','active')`
+// (what reachability-queued-submit.mjs uses) because this harness's stated
+// intent is Studio's actual current-season resolution, not "any active row".
 async function currentSeason() {
   const nowIso = new Date().toISOString()
-  const { data } = await admin.from('seasons').select('id, display_name, main_round_start_at')
+  const cols = 'id, display_name, main_round_start_at, application_open_at'
+  const { data: opened } = await admin.from('seasons').select(cols)
     .lte('application_open_at', nowIso).order('application_open_at', { ascending: false }).limit(1).maybeSingle()
-  if (!data) throw new Error('no current season')
-  return data
+  if (opened) return opened
+  const { data: upcoming } = await admin.from('seasons').select(cols)
+    .order('application_open_at', { ascending: true }).limit(1).maybeSingle()
+  if (!upcoming) throw new Error('no current season')
+  return upcoming
 }
 
 // ── e2e user (auth) ─────────────────────────────────────────────────────────

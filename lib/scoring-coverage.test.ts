@@ -5,7 +5,13 @@
 // different answers here.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { scoringCoverage, isScorable, isUnjudged } from './scoring-coverage.ts'
+import {
+  scoringCoverage,
+  isScorable,
+  isUnjudged,
+  isExhaustedFailed,
+  isBlockingFailed,
+} from './scoring-coverage.ts'
 
 test('★full coverage and half coverage must not look the same', () => {
   const films = ['a', 'b', 'c', 'd']
@@ -74,4 +80,30 @@ test('a row of any status is not a coverage gap', () => {
   for (const st of ['pending', 'in_progress', 'completed', 'failed']) {
     assert.equal(isUnjudged({ free_entry_url: film, judged_status: st }), false, st)
   }
+})
+
+// ── ⑥G gap 3 -- the retry-exhausted state countBlockingFailed gates on ────
+
+test('exhausted means failed AND out of retries -- either alone is not enough', () => {
+  assert.equal(isExhaustedFailed({ judged_status: 'failed', processing_attempts: 3 }, 3), true)
+  assert.equal(isExhaustedFailed({ judged_status: 'failed', processing_attempts: 2 }, 3), false)
+  assert.equal(isExhaustedFailed({ judged_status: 'in_progress', processing_attempts: 5 }, 3), false)
+  assert.equal(isExhaustedFailed({ judged_status: 'failed', processing_attempts: null }, 3), false)
+})
+
+// ★The negative control: an entry already out of the running cannot block a
+// finalization it is not part of. This must actually flip false, or the "resolve
+// by rejecting/withdrawing" instruction in the banner would be a lie.
+test('rejected, withdrawn, and waitlisted rows do not block, even exhausted', () => {
+  for (const status of ['rejected', 'withdrawn', 'waitlist']) {
+    assert.equal(
+      isBlockingFailed({ judged_status: 'failed', processing_attempts: 3, status }, 3),
+      false,
+      status,
+    )
+  }
+  assert.equal(
+    isBlockingFailed({ judged_status: 'failed', processing_attempts: 3, status: 'selected' }, 3),
+    true,
+  )
 })

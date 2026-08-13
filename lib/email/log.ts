@@ -14,6 +14,20 @@ export type TemplateKey =
   | 'not_selected'
   | 'main_round_start'
   | 'submission_deadline'
+  // HQ 2026-08-12: D-14/7/3/1 before registration_close_at, telling
+  // registered participants the current count and whether the season might
+  // defer. Multi-fire like submission_deadline (once per
+  // seasons.registration_reminder_days entry) -- dedup on metadata->>
+  // 'reminder_day', a separate key from submission_deadline's 'reminder_hour'
+  // so the two multi-fire templates never share a match.
+  | 'registration_count'
+  // HQ 2026-08-12: fired when defer_season_schedule actually shifts a
+  // season's calendar -- "registration reopened, does anyone know?" Multi-
+  // fire like registration_count/submission_deadline (once per
+  // application_defer_count value, so a season that defers 2 or 3 times
+  // notifies each time, not just the first). Dedup on metadata->>
+  // 'defer_count', its own key separate from reminder_hour/reminder_day.
+  | 'deferral_notice'
   | 'results_announced'
   | 'awarded_contact_request'
   | 'partner_invitation'
@@ -31,6 +45,12 @@ export type TemplateKey =
   // membership_renewal_notified_at, not email_logs). Logged for transparency.
   | 'membership_renewal'
   | 'membership_founding_expiry'
+  // Admin recipient-console campaigns (admin_broadcasts). Not application-
+  // scoped -- dedup is (campaign_id, to_email) via metadata->>campaign_id,
+  // checked by lib/email/broadcast-tick.ts, not executeSend's applicationId
+  // path. A 'skipped' row here means "no marketing consent at send time",
+  // never "already sent" -- see lib/email/broadcast.ts.
+  | 'admin_broadcast'
 
 export type LogStatus = 'sent' | 'failed' | 'queued' | 'skipped'
 
@@ -71,9 +91,14 @@ export async function logEmail(input: LogEmailInput): Promise<void> {
 // a 'sent' row. The DB partial unique index also blocks duplicates, but
 // checking up front lets us return 'skipped' cleanly without hitting Resend.
 //
-// submission_deadline is intentionally a multi-fire template (one row per
-// reminder_hour in seasons.deadline_reminder_hours), so callers MUST pass
-// reminderHour for that template. Other templates ignore it.
+// submission_deadline, registration_count, and deferral_notice are all
+// multi-fire templates (one row per entry in seasons.deadline_reminder_hours
+// / registration_reminder_days / per application_defer_count value
+// respectively), so callers MUST pass the numeric variant for those three.
+// Other templates ignore it. The three templates use DIFFERENT metadata keys
+// (reminder_hour / reminder_day / defer_count) on purpose -- a shared key
+// would let a "1" from one collide with a "1" from another if the values
+// were ever compared or a query forgot to filter by templateKey.
 export async function alreadySent(
   applicationId: string,
   templateKey: TemplateKey,
@@ -90,6 +115,10 @@ export async function alreadySent(
   if (templateKey === 'submission_deadline' && reminderHour != null) {
     // Match on metadata->>'reminder_hour' — PostgREST JSONB filter.
     q = q.eq('metadata->>reminder_hour', String(reminderHour))
+  } else if (templateKey === 'registration_count' && reminderHour != null) {
+    q = q.eq('metadata->>reminder_day', String(reminderHour))
+  } else if (templateKey === 'deferral_notice' && reminderHour != null) {
+    q = q.eq('metadata->>defer_count', String(reminderHour))
   }
 
   const { data, error } = await q.limit(1)
@@ -143,6 +172,10 @@ export async function canSend(
 
   if (templateKey === 'submission_deadline' && reminderHour != null) {
     q = q.eq('metadata->>reminder_hour', String(reminderHour))
+  } else if (templateKey === 'registration_count' && reminderHour != null) {
+    q = q.eq('metadata->>reminder_day', String(reminderHour))
+  } else if (templateKey === 'deferral_notice' && reminderHour != null) {
+    q = q.eq('metadata->>defer_count', String(reminderHour))
   }
 
   const { data, error } = await q

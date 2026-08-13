@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAdminLang } from '@/lib/admin-i18n'
+import { AdminPageHeader } from '../AdminPageHeader'
 import { setMusicActiveAction } from './actions'
 import type { CurationFilter, CurationPage } from '@/lib/music-curation'
 
@@ -175,10 +176,7 @@ export function MusicCurationView({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">{t.title}</h1>
-        <p className="mt-1 max-w-3xl text-sm text-white/50">{t.subtitle}</p>
-      </div>
+      <AdminPageHeader title={t.title} subtitle={t.subtitle} />
 
       {/* Catalogue-wide counts. These do NOT move with the filter -- a target you
           cannot count against is not a target. */}

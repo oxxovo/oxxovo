@@ -5,9 +5,15 @@
 // (external-URL entry retired); when false it keeps the external-URL form.
 // studio_round lives on the base seasons table, read server-side.
 
-import { getSeasonStudioConfig } from '@/lib/studio'
+import {
+  getSeasonStudioConfig,
+  registerForSeason,
+  type ApplicantInfo,
+  type RegisterForSeasonResult,
+} from '@/lib/studio'
 import { isSession6Enabled } from '@/lib/session6'
 import { getUserOrNull } from '@/lib/user-auth'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   getApplyGateState,
   getFoundingStatus,
@@ -18,7 +24,7 @@ import {
   createMembershipCheckoutSession,
   type MembershipCheckoutResult,
 } from '@/lib/membership-billing'
-import type { ApplyMembershipState } from './types'
+import type { ApplyMembershipState, MyRegistrationStatus } from './types'
 
 export async function getStudioApplicationFlag(seasonId: string): Promise<boolean> {
   try {
@@ -76,4 +82,43 @@ export async function startMembershipCheckout(): Promise<MembershipCheckoutResul
   const user = await getUserOrNull()
   if (!user) return { ok: false, reason: 'disabled' }
   return createMembershipCheckoutSession(user.id, user.email)
+}
+
+// ─── registration ("신청" -- HQ 2026-08-12) ─────────────────────────────────
+// Distinct from submission: registerForSeason mints the genesis_applications
+// row with no video, so it can happen weeks before the participant has
+// anything to submit. lib/studio.ts's submitGeneration/submitRender fill the
+// SAME row in later (by email+season, unchanged pre-existing lookup).
+
+// What the /apply funnel shows before offering the registration form: has
+// THIS user already registered (or already submitted) for this season? A
+// fresh registerForSeason() call would otherwise either 23505-reject a
+// duplicate or, worse, read as "nothing happened" to someone who cannot tell
+// why the button did nothing.
+export async function getMyRegistrationStatus(seasonId: string): Promise<MyRegistrationStatus> {
+  const user = await getUserOrNull()
+  if (!user) return { status: 'none' }
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('genesis_applications')
+    .select('status, free_entry_url')
+    .eq('season_id', seasonId)
+    .ilike('email', user.email.toLowerCase())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data) return { status: 'none' }
+  // free_entry_url IS NOT NULL is the platform-wide "this entry is scorable"
+  // contract (lib/scoring-coverage.ts) -- reused here as "already submitted".
+  if (data.free_entry_url) return { status: 'submitted' }
+  return { status: 'registered', entryStatus: data.status === 'waitlist' ? 'waitlist' : 'pending' }
+}
+
+export async function registerForSeasonAction(
+  seasonId: string,
+  applicant: ApplicantInfo,
+): Promise<RegisterForSeasonResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, reason: 'failed', detail: 'not signed in' }
+  return registerForSeason({ seasonId, userId: user.id, email: user.email, applicant })
 }

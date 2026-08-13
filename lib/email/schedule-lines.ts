@@ -123,6 +123,7 @@ export type ReceiptSeason = {
   application_close_at?: string | null
   scoring_start_at?: string | null
   scoring_complete_at?: string | null
+  prelim_results_announcement_at?: string | null
   community_vote_start_at?: string | null
   community_vote_end_at?: string | null
   awards_announcement_at?: string | null
@@ -130,15 +131,10 @@ export type ReceiptSeason = {
 
 // ⑤ preliminary receipt.
 //
-// ★One of Jenny3's four bullets still cannot be sourced and is therefore absent:
-// "결과 안내 11/8 12:00" has no column -- scoring_complete_at is 11/8 00:00, a
-// different instant by twelve hours, and using it would put a wrong time in
-// front of every participant. Head office is adding the column; one entry comes
-// back here when it lands.
-//
-// The AI-judging bullet WAS reported as unsourceable on the morning of the same
-// day. That was wrong: scoring_start_at existed in the database and in the
-// seasons_public view all along, and only the TypeScript type was missing it.
+// The results bullet is sourced from prelim_results_announcement_at, its own
+// column (HQ, 2026-08-09) -- not from scoring_complete_at, which is a different
+// instant twelve hours earlier. The AI-judging bullet's column turned out to
+// have existed all along; only the TypeScript type was missing it.
 export function prelimReceiptLines(season: ReceiptSeason, lang: Lang): ScheduleLine[] {
   const lines: ScheduleLine[] = []
   const live = formatScheduleDay(season.application_close_at, lang)
@@ -166,6 +162,10 @@ export function prelimReceiptLines(season: ReceiptSeason, lang: Lang): ScheduleL
         : null)
   if (judging) {
     lines.push({ label: lang === 'ko' ? 'AI 심사' : 'AI judging', value: judging })
+  }
+  const results = formatScheduleMoment(season.prelim_results_announcement_at, lang)
+  if (results) {
+    lines.push({ label: lang === 'ko' ? '결과 안내' : 'Results', value: results })
   }
   return lines
 }

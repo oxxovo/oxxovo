@@ -17,6 +17,32 @@ export const seasonSchema = z
     season_number: z.coerce.number().int().nonnegative(),
     status: z.enum(['draft', 'upcoming', 'active', 'closed', 'completed']),
 
+    // ★IS THIS A REAL COMPETITION? A REQUIRED CHOICE WITH NO DEFAULT.
+    //
+    // Every other boolean on this form defaults (see lobby_featured: undefined
+    // becomes false). This one must not, and the reason is that BOTH wrong
+    // defaults are real:
+    //   default false -> a rehearsal created through this form is filed as a
+    //     real competition. It appears on the public lobby and, once email-tick
+    //     reads the same column, mails its test addresses as if they were
+    //     entrants. Not recoverable -- the mail has left.
+    //   default true  -> a real season is filed as test data. It is hidden from
+    //     the lobby and silently skipped by the mailer. Recoverable, but silent.
+    // The DB DEFAULT is true because for a row created by some OTHER path the
+    // fail-closed direction is the only sane one. Here there is a human in the
+    // loop, so the honest option is to make them say which it is. Absence is a
+    // validation error, not a value.
+    //
+    // ★So there is deliberately no z.undefined() branch and no .default().
+    // z.enum over the two literal strings a radio group posts, then to boolean.
+    is_fixture: z
+      .enum(['true', 'false'], {
+        error:
+          'choose real competition or rehearsal/test -- this field has no default, ' +
+          'because both possible defaults are wrong in a different direction',
+      })
+      .transform((v) => v === 'true'),
+
     max_applicants: z.coerce.number().int().positive(),
     top_n_advance: z.coerce.number().int().positive(),
 
@@ -24,6 +50,12 @@ export const seasonSchema = z
     // application_defer_count is NOT here: it's a system counter managed by the
     // cron, not an admin-set field, so the form never sends/clobbers it.
     min_participants: z.coerce.number().int().positive(),
+    // Floor once max_defer_count is exhausted (HQ 2026-08-12 "확정값 시트": 3
+    // defers max, 80 minimum after that). Required here (unlike the DB column,
+    // which stays nullable for rows created before this field existed) --
+    // going forward an admin must say what it is, the same posture as
+    // is_fixture having no default.
+    absolute_min_participants: z.coerce.number().int().positive(),
     defer_extension_days: z.coerce.number().int().positive(),
     max_defer_count: z.coerce.number().int().nonnegative(),
     advance_pct: z.coerce.number().gt(0).max(1),
@@ -71,6 +103,11 @@ export const seasonSchema = z
       .transform((v) => v === true || v === 'true'),
 
     application_open_at: nullableTimestamp,
+    // HQ 2026-08-12: registration cutoff, separate from application_close_at
+    // (the submission cutoff, unchanged). Nullable like its siblings -- an
+    // unset value means "no registration cutoff", the same open convention
+    // isApplicationClosed already uses for a null application_close_at.
+    registration_close_at: nullableTimestamp,
     application_close_at: nullableTimestamp,
     scoring_complete_at: nullableTimestamp,
     main_round_start_at: nullableTimestamp,
@@ -128,6 +165,24 @@ export const seasonSchema = z
     message: 'min_participants must be <= max_applicants',
     path: ['min_participants'],
   })
+  // The post-defer floor is a fallback FROM min_participants, not a higher bar.
+  .refine((s) => s.absolute_min_participants <= s.min_participants, {
+    message: 'absolute_min_participants must be <= min_participants',
+    path: ['absolute_min_participants'],
+  })
+  // Registering has to close at or before submitting does -- HQ 2026-08-12's
+  // whole point was two DIFFERENT dates in a specific order, not two names
+  // for the same instant.
+  .refine(
+    (s) =>
+      !s.registration_close_at ||
+      !s.application_close_at ||
+      new Date(s.registration_close_at).getTime() <= new Date(s.application_close_at).getTime(),
+    {
+      message: 'registration_close_at must be at or before application_close_at',
+      path: ['registration_close_at'],
+    },
+  )
   .refine(
     (s) =>
       Math.abs(s.prize_first_pct + s.prize_second_pct + s.prize_third_pct - 100) < 0.01,
@@ -139,15 +194,34 @@ export const seasonSchema = z
 
 export type SeasonInput = z.infer<typeof seasonSchema>
 
-export const DEFAULT_SEASON: SeasonInput = {
+/**
+ * What the FORM starts from -- which is not the same shape as what it must SUBMIT.
+ *
+ * ★is_fixture is optional here and required in SeasonInput, and that gap is the
+ * feature. DEFAULT_SEASON is the initial state of the new-season form; if it
+ * carried a value, one radio would arrive pre-selected and an admin could submit
+ * without ever deciding, which is exactly what a required choice is meant to
+ * prevent. `undefined` means "nobody has said yet" and renders as neither option
+ * checked. The edit page passes the row's real value, so editing an existing
+ * season shows what it currently is rather than asking again from scratch.
+ */
+export type SeasonFormInitial = Omit<SeasonInput, 'is_fixture'> & {
+  is_fixture?: boolean | null
+}
+
+export const DEFAULT_SEASON: SeasonFormInitial = {
   name: 'NEW SEASON',
   season_number: 1,
   status: 'draft',
   max_applicants: 500,
   top_n_advance: 50,
-  min_participants: 50,
+  // HQ 2026-08-12: 50 was stale. 100 = the real "does this tournament open"
+  // bar (distinct from the Founding Creator free-membership cap, which is
+  // also 100 but an unrelated, platform-lifetime number).
+  min_participants: 100,
+  absolute_min_participants: 80,
   defer_extension_days: 7,
-  max_defer_count: 2,
+  max_defer_count: 3,
   advance_pct: 0.1,
   advance_min: 10,
   advance_max: 50,
@@ -179,6 +253,7 @@ export const DEFAULT_SEASON: SeasonInput = {
   poster_url: null,
   lobby_featured: false,
   application_open_at: null,
+  registration_close_at: null,
   application_close_at: null,
   scoring_complete_at: null,
   main_round_start_at: null,

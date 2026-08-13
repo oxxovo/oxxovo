@@ -22,7 +22,7 @@ export function LogoutButton() {
     <button
       onClick={handleLogout}
       disabled={loading}
-      className="w-full px-3 py-2 text-xs text-white/60 hover:text-[#ff4444] border border-white/10 hover:border-[#ff4444]/40 rounded transition disabled:opacity-50"
+      className="shrink-0 px-3 py-1.5 text-xs text-white/60 hover:text-[#ff4444] border border-white/10 hover:border-[#ff4444]/40 rounded transition disabled:opacity-50"
     >
       {loading ? t.layout.signing_out : t.layout.sign_out}
     </button>

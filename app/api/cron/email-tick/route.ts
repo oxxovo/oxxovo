@@ -28,6 +28,8 @@ import {
   sendNotSelected,
   sendMainRoundStart,
   sendSubmissionDeadline,
+  sendRegistrationCount,
+  sendDeferralNotice,
   sendResultsAnnounced,
   sendMembershipRenewal,
   sendMembershipFoundingExpiry,
@@ -44,12 +46,12 @@ import {
   type VideoLiveRound,
 } from '@/lib/video-live'
 import { getDisplayNames } from '@/lib/nickname'
-import { isRehearsalFixture } from '@/lib/lobby'
+import { isFixtureSeason } from '@/lib/lobby'
 import { sendSubmissionReceipts, type ReceiptTally } from '@/lib/email/submission-receipts'
 import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { isMembershipEnabled } from '@/lib/membership'
 import { getPlatformConfigMap } from '@/lib/partners'
-import type { Season } from '@/lib/seasons'
+import { getActiveApplicationCount, type Season } from '@/lib/seasons'
 
 const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'
 const VALID_INTERVALS = ['day', 'week', 'month', 'year']
@@ -86,6 +88,15 @@ type TickReport = {
   // a failure wants investigating, a deferral wants the next tick.
   mainRoundStart: ({ season: string } & BatchTally)[]
   submissionDeadline: ({ season: string; reminderHour: number } & BatchTally)[]
+  // HQ 2026-08-12: D-14/7/3/1 before registration_close_at, to everyone
+  // currently registered (not pre-registered) for the season.
+  registrationCount: ({ season: string; reminderDay: number } & BatchTally)[]
+  // HQ 2026-08-12: fired once per application_defer_count value when
+  // defer_season_schedule has actually shifted the calendar -- detected here
+  // (not signaled by season-tick) by simply re-checking every season's
+  // current defer_count every tick; dedup makes repeats a no-op and a NEW
+  // defer_count naturally fires again.
+  deferralNotice: ({ season: string; deferCount: number } & BatchTally)[]
   resultsAnnounced: ({ season: string } & BatchTally)[]
   // Finalist advancement notices (SelectedTop50 + NotSelected), fired once a
   // season's scoring window has completed and season-tick has set the
@@ -163,6 +174,8 @@ async function handle(request: NextRequest) {
     ranAt: now.toISOString(),
     mainRoundStart: [],
     submissionDeadline: [],
+    registrationCount: [],
+    deferralNotice: [],
     resultsAnnounced: [],
     finalistResults: [],
     videoLive: [],
@@ -210,6 +223,57 @@ async function handle(request: NextRequest) {
       }
     }
 
+    // Registration-count notice (HQ 2026-08-12): D-14/7/3/1 before
+    // registration_close_at (NOT application_close_at -- a different clock
+    // from submissionDeadline above, on purpose). Recomputed from
+    // registration_close_at fresh every tick, the same way submissionDeadline
+    // is recomputed from main_round_end_at above -- if defer_season_schedule
+    // pushes registration_close_at out, the D-14/7/3/1 fire times move with
+    // it automatically (they are back-calculated, not stored absolute
+    // instants). What does NOT automatically move: the per-(application,
+    // reminder_day) dedup. If D-14 already fired against the ORIGINAL close
+    // date and a defer later pushes the date out, D-14 will not re-fire for
+    // the new date -- canSend only knows "reminder_day=14 already sent for
+    // this applicant", not which close-date version it was sent against.
+    // Flagged as a known gap (backlog), not solved here.
+    if (season.registration_close_at && !isFixtureSeason(season)) {
+      const registrationCloseAt = new Date(season.registration_close_at)
+      const reminderDays = Array.isArray(season.registration_reminder_days)
+        ? (season.registration_reminder_days as number[])
+        : []
+      for (const reminderDay of reminderDays) {
+        const fireAt = new Date(
+          registrationCloseAt.getTime() - reminderDay * 86_400_000,
+        )
+        if (fireAt <= now && now < registrationCloseAt) {
+          const result = await fireRegistrationCount(season, reminderDay, budget)
+          report.registrationCount.push({
+            season: season.id,
+            reminderDay,
+            ...result,
+          })
+        }
+      }
+    }
+
+    // Deferral notice (HQ 2026-08-12): defer_season_schedule (season-tick)
+    // shifted the calendar -- someone has to tell the people who registered,
+    // or "registration reopened" is invisible to everyone but an admin
+    // reading sendAdminAlert's inbox. Detected here, not signaled by
+    // season-tick: every season with application_defer_count > 0 fires every
+    // tick, and canSend's per-defer_count dedup makes every tick after the
+    // first a no-op for that defer_count -- a LATER defer (count goes 1 -> 2)
+    // naturally fires again because the variant changed. Fixture-excluded
+    // for the same reason every other participant-facing send here is.
+    if (season.application_defer_count > 0 && !isFixtureSeason(season)) {
+      const result = await fireDeferralNotice(season, season.application_defer_count, budget)
+      report.deferralNotice.push({
+        season: season.id,
+        deferCount: season.application_defer_count,
+        ...result,
+      })
+    }
+
     // Finalist advancement notices: once scoring is complete, season-tick has
     // (or soon will) set selected/rejected statuses. Fire SelectedTop50 to the
     // Finalists and NotSelected to the rest. Before advancement runs there are
@@ -232,10 +296,26 @@ async function handle(request: NextRequest) {
     }
 
     // ⑥F. ★Rehearsal fixtures are excluded by the SAME predicate the lobby uses
-    // (lib/lobby.isRehearsalFixture) -- season_test and the zz_ probes carry real
+    // (lib/lobby.isFixtureSeason) -- season_test and the zz_ probes carry real
     // addresses, and a second definition of "is this a real competition" is how
     // one of them would eventually receive production mail.
-    if (!isRehearsalFixture(season)) {
+    //
+    // ★2026-08-09: that sentence stopped being true for a few hours and this is
+    // the repair. The lobby moved to the is_fixture COLUMN and this line was
+    // still asking the id/number heuristic -- so the two definitions had in fact
+    // split, exactly as the sentence above warns. The column was already on this
+    // row: the tick reads the base table with select('*'), so it was fetched and
+    // then ignored.
+    //
+    // ★WHY THIS DIRECTION IS NOT A TRADE. The heuristic can only be wrong by
+    // clearing a rehearsal (a season numbered below 900 with an unconventional
+    // id), which sends real mail to test addresses and cannot be taken back. The
+    // column can only be wrong by holding a real season's mail, which is visible
+    // and fixable -- and it is now hard to reach at all: /admin/seasons requires
+    // the answer, season-tick's clone inherits it, host/new writes it. The
+    // heuristic remains as isFixtureSeason's fallback for a read that did not
+    // carry the column, which this one always does.
+    if (!isFixtureSeason(season)) {
       for (const r of await fireVideoLive(season, now)) {
         report.videoLive.push({ season: season.id, ...r })
       }
@@ -656,6 +736,101 @@ async function fireSubmissionDeadline(
   )
 }
 
+// ── registration_count ────────────────────────────────────────────────────
+
+async function fireRegistrationCount(
+  season: Season,
+  reminderDay: number,
+  budget: TickBudget,
+): Promise<BatchTally> {
+  const supabase = createSupabaseAdmin()
+  // Recipients = everyone REGISTERED for this season (HQ 2026-08-12: "the
+  // people who registered, not pre-registrants"). Broader than the "active"
+  // status set the count itself uses below -- waitlisted registrants are
+  // still registrants and should hear the same number, even though they are
+  // not part of it. Excludes rows already past the application phase
+  // (mirrors defer_season_schedule's already_advanced check) -- a shortfall
+  // notice makes no sense once the season has moved on.
+  const { data: rows, error } = await supabase
+    .from('genesis_applications')
+    .select('id, email, creator_name, country, main_round_submitted_at')
+    .eq('season_id', season.id)
+    .in('status', ['pending', 'waitlist', 'verifying', 'flagged', 'eligible'])
+  if (error) {
+    console.error('[cron] registration_count applicant load failed:', error.message)
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
+  }
+
+  // ★The number in the email MUST be the same number defer_season_schedule
+  // decides on, or the participant sees one count and the automated decision
+  // uses another (HQ 2026-08-12, "가장 중요한 것"). getActiveApplicationCount
+  // calls count_active_registrations, the same SQL function defer_season_
+  // schedule now calls for its own v_active -- one definition, both callers.
+  const currentCount = await getActiveApplicationCount(season.id)
+
+  return await dispatchBatch(
+    (rows ?? []) as ApplicantRow[],
+    'registration_count',
+    async (row) =>
+      sendRegistrationCount({
+        toEmail: row.email,
+        country: row.country,
+        creatorName: row.creator_name,
+        seasonName: season.display_name,
+        currentCount,
+        minParticipants: season.min_participants,
+        registrationCloseAt: season.registration_close_at,
+        reminderDay,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
+    budget,
+    reminderDay,
+  )
+}
+
+// ── deferral_notice ───────────────────────────────────────────────────────
+
+async function fireDeferralNotice(
+  season: Season,
+  deferCount: number,
+  budget: TickBudget,
+): Promise<BatchTally> {
+  const supabase = createSupabaseAdmin()
+  // Same recipient definition as registration_count -- registrants of this
+  // season (waitlist included), excluding rows already past the application
+  // phase.
+  const { data: rows, error } = await supabase
+    .from('genesis_applications')
+    .select('id, email, creator_name, country, main_round_submitted_at')
+    .eq('season_id', season.id)
+    .in('status', ['pending', 'waitlist', 'verifying', 'flagged', 'eligible'])
+  if (error) {
+    console.error('[cron] deferral_notice applicant load failed:', error.message)
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
+  }
+
+  return await dispatchBatch(
+    (rows ?? []) as ApplicantRow[],
+    'deferral_notice',
+    async (row) =>
+      sendDeferralNotice({
+        toEmail: row.email,
+        country: row.country,
+        creatorName: row.creator_name,
+        seasonName: season.display_name,
+        deferCount,
+        maxDeferCount: season.max_defer_count,
+        newRegistrationCloseAt: season.registration_close_at,
+        newApplicationCloseAt: season.application_close_at,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
+    budget,
+    deferCount,
+  )
+}
+
 // ── results_announced ─────────────────────────────────────────────────────
 
 async function fireResultsAnnounced(season: Season, budget: TickBudget): Promise<BatchTally> {
@@ -724,23 +899,9 @@ async function fireFinalistResults(season: Season, budget: TickBudget): Promise<
     return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
   }
 
-  const selected = await dispatchBatch(
-    (selRes.data ?? []) as ApplicantRow[],
-    'selected_top50',
-    async (row) =>
-      sendSelectedTop50({
-        toEmail: row.email,
-        country: row.country,
-        creatorName: row.creator_name,
-        seasonName: season.display_name,
-        topNAdvance: season.top_n_advance,
-        totalParticipants: total,
-        mainRoundStartAt: season.main_round_start_at,
-        applicationId: row.id,
-        seasonId: season.id,
-      }),
-    budget,
-  )
+  // ★Big cohort first: the shared tick budget is spent in call order, so
+  // whichever of these runs second is the one that can defer. Rejected is
+  // deferred to the next tick, not lost -- HQ-accepted (2026-08-10).
   const rejected = await dispatchBatch(
     (rejRes.data ?? []) as ApplicantRow[],
     'not_selected',
@@ -765,6 +926,23 @@ async function fireFinalistResults(season: Season, budget: TickBudget): Promise<
     },
     budget,
   )
+  const selected = await dispatchBatch(
+    (selRes.data ?? []) as ApplicantRow[],
+    'selected_top50',
+    async (row) =>
+      sendSelectedTop50({
+        toEmail: row.email,
+        country: row.country,
+        creatorName: row.creator_name,
+        seasonName: season.display_name,
+        topNAdvance: season.top_n_advance,
+        totalParticipants: total,
+        mainRoundStartAt: season.main_round_start_at,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
+    budget,
+  )
 
   return {
     sent: selected.sent + rejected.sent,
@@ -781,6 +959,8 @@ type TemplateName =
   | 'not_selected'
   | 'main_round_start'
   | 'submission_deadline'
+  | 'registration_count'
+  | 'deferral_notice'
   | 'results_announced'
 
 async function dispatchBatch(

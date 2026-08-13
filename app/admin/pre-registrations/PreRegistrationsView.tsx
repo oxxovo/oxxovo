@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { useT } from '@/lib/admin-i18n'
+import { AdminPageHeader } from '../AdminPageHeader'
 
 export type PreRegRow = {
   id: string
@@ -83,10 +84,7 @@ export function PreRegistrationsView({
 
   return (
     <div className="p-8 max-w-7xl">
-      <header className="mb-6">
-        <h1 className="text-3xl font-black mb-1">{t.pre_reg.title}</h1>
-        <p className="text-sm text-white/40">{t.pre_reg.subtitle}</p>
-      </header>
+      <AdminPageHeader title={t.pre_reg.title} subtitle={t.pre_reg.subtitle} />
 
       <div className="flex flex-wrap items-end gap-3 mb-6">
         <label className="block">
