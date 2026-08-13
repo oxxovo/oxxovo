@@ -33,6 +33,7 @@ import { musicPickerOrFilter, musicPickerPathOk, isUuid, type MusicScopeRow } fr
 import { isOwnedBy } from '@/lib/studio-sweep-scope'
 import { isMusicEnabled } from '@/lib/music-gate'
 import { shouldHoldPrelim } from '@/lib/watch-hold'
+import { checkApplyGate } from '@/lib/membership'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -1105,6 +1106,7 @@ export type SubmitResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'membership_required'
         | 'registration_closed'
         | 'application_closed'
         | 'round_closed'
@@ -1119,6 +1121,7 @@ export type RegisterForSeasonResult =
       ok: false
       reason:
         | 'no_application'
+        | 'membership_required'
         | 'registration_closed'
         | 'already_registered'
         | 'application_info_required'
@@ -1133,13 +1136,20 @@ export type RegisterForSeasonResult =
 // video (free_entry_url stays null), so a participant can claim a
 // capacity/waitlist slot before registration_close_at without having a
 // finished entry yet. Gated the same way submitGeneration/submitRender's
-// no-existing-row branches are (registration window, capacity), because
-// minting the row IS the same event there -- this function is just that same
-// mint, pulled out to run WITHOUT a render. Deliberately does not touch
-// checkApplyGate/Founding-creator claiming: that gate is wired into
-// POST /api/apply only today, not the Studio path at all (measured while
-// designing this, 2026-08-12) -- there is no membership decision currently
-// made anywhere in the Studio flow to relocate.
+// no-existing-row branches are (registration window, capacity, and now
+// membership) -- minting the row IS the same event there, and this function
+// is that same mint, pulled out to run WITHOUT a render.
+//
+// checkApplyGate() is called HERE, in submitGeneration's 5a, and in
+// submitRender's 7a -- the three places that mint a fresh row, mirroring
+// exactly where capacity is already decided (HQ 2026-08-12: "first come" and
+// "the membership requirement" are both decided at mint time, on purpose, in
+// the SAME places -- splitting them across a subset of the mint sites is how
+// this drifts a third time). fail-closed is inherited from checkApplyGate
+// itself: an unreadable membership profile classifies as anonymous
+// (lib/membership.ts getMembershipState), which is not isActiveCreator, which
+// the gate refuses -- "cannot verify" and "confirmed non-member" return the
+// identical result on purpose, both membership_required.
 //
 // The row this creates is filled in later by submitGeneration's 5c branch or
 // submitRender's 7c branch (both already existed for a DIFFERENT reason --
@@ -1157,6 +1167,9 @@ export async function registerForSeason(args: {
   const cfg = await getSeasonStudioConfig(args.seasonId)
   const effectiveRound = resolveEffectiveRound(cfg)
   if (effectiveRound !== 'application') return { ok: false, reason: 'no_application' }
+
+  const gate = await checkApplyGate(args.userId)
+  if (!gate.ok) return { ok: false, reason: 'membership_required' }
 
   const season = await getSeasonById(args.seasonId)
   if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
@@ -1336,6 +1349,10 @@ export async function submitGeneration(args: {
     // submit in one sitting, still allowed right up to the registration
     // cutoff). See registerForSeason() above for the register-only path, and
     // the 5c branch below for filling in a row that already exists.
+    // Membership gate at the SAME mint point as capacity, on purpose (HQ
+    // 2026-08-12) -- see registerForSeason()'s header comment.
+    const gate = await checkApplyGate(args.userId)
+    if (!gate.ok) return { ok: false, reason: 'membership_required' }
     const season = await getSeasonById(args.seasonId)
     if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
     if (isRegistrationClosed(season)) return { ok: false, reason: 'registration_closed' }
@@ -2050,6 +2067,7 @@ export type SubmitRenderResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'membership_required'
         | 'registration_closed'
         | 'application_closed'
         | 'round_closed'
@@ -2171,6 +2189,10 @@ export async function submitRender(args: {
     // same call (walk-in register-and-submit stays allowed through the
     // registration cutoff). See registerForSeason() for the register-only
     // path and the 7c branch below for filling in an already-registered row.
+    // Membership gate at the SAME mint point as capacity, on purpose (HQ
+    // 2026-08-12) -- see registerForSeason()'s header comment.
+    const gate = await checkApplyGate(args.userId)
+    if (!gate.ok) return { ok: false, reason: 'membership_required' }
     const season = await getSeasonById(args.seasonId)
     if (!season) return { ok: false, reason: 'failed', detail: 'season not found' }
     if (isRegistrationClosed(season)) return { ok: false, reason: 'registration_closed' }

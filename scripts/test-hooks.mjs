@@ -12,6 +12,43 @@ export async function resolve(specifier, context, nextResolve) {
   if (specifier === 'next/cache') {
     return { url: new URL('./next-cache-stub.mjs', import.meta.url).href, shortCircuit: true }
   }
+  // `next/headers` (lib/supabase-server.ts's cookie-based client) does not
+  // resolve here either. lib/studio.ts importing checkApplyGate
+  // (2026-08-12) pulled lib/membership.ts -> lib/user-auth.ts -> next/headers
+  // into the graph of any test that reaches lib/studio.ts at all (e.g.
+  // lib/dst-boundaries.test.ts, via an EDL/keyframe helper it did not
+  // previously need to load this far to get). The stub THROWS rather than
+  // no-ops: nothing under test should ever actually call cookies() (every
+  // gate function under test takes userId directly), so a call reaching this
+  // stub is a real bug, not a state this harness silently tolerates.
+  if (specifier === 'next/headers') {
+    return {
+      url:
+        'data:text/javascript,' +
+        encodeURIComponent(
+          'export const cookies = () => { throw new Error("next/headers stubbed under node --test -- a code path called it that the test did not expect to reach a cookie-based client") };\n' +
+            'export const headers = cookies;\n',
+        ),
+      shortCircuit: true,
+    }
+  }
+  // Same 2026-08-12 chain, second hop: lib/membership.ts also imports
+  // getPlatformConfigMap from lib/partners.ts, which imports
+  // sendPartnerEligible from lib/email/send.tsx -- a .tsx (JSX) file node's
+  // native type-stripping cannot transform at all, regardless of which
+  // export is used. Stubbed the same way: throws if actually called (it
+  // should never be, from a test).
+  if (specifier === '@/lib/email/send' || specifier.endsWith('/lib/email/send.tsx')) {
+    return {
+      url:
+        'data:text/javascript,' +
+        encodeURIComponent(
+          'const stub = (name) => (...args) => { throw new Error(`lib/email/send stubbed under node --test -- ${name} must not be called from a test`) };\n' +
+            'export const sendPartnerEligible = stub("sendPartnerEligible");\n',
+        ),
+      shortCircuit: true,
+    }
+  }
   // The `@/` path alias (tsconfig paths -> repo root) is a bundler feature; node
   // sees it as a bare package name and fails. Map it to the repo root, which is
   // this file's parent directory. Without this, any module under test that
