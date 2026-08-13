@@ -29,6 +29,7 @@ import {
   sendMainRoundStart,
   sendSubmissionDeadline,
   sendRegistrationCount,
+  sendDeferralNotice,
   sendResultsAnnounced,
   sendMembershipRenewal,
   sendMembershipFoundingExpiry,
@@ -90,6 +91,12 @@ type TickReport = {
   // HQ 2026-08-12: D-14/7/3/1 before registration_close_at, to everyone
   // currently registered (not pre-registered) for the season.
   registrationCount: ({ season: string; reminderDay: number } & BatchTally)[]
+  // HQ 2026-08-12: fired once per application_defer_count value when
+  // defer_season_schedule has actually shifted the calendar -- detected here
+  // (not signaled by season-tick) by simply re-checking every season's
+  // current defer_count every tick; dedup makes repeats a no-op and a NEW
+  // defer_count naturally fires again.
+  deferralNotice: ({ season: string; deferCount: number } & BatchTally)[]
   resultsAnnounced: ({ season: string } & BatchTally)[]
   // Finalist advancement notices (SelectedTop50 + NotSelected), fired once a
   // season's scoring window has completed and season-tick has set the
@@ -168,6 +175,7 @@ async function handle(request: NextRequest) {
     mainRoundStart: [],
     submissionDeadline: [],
     registrationCount: [],
+    deferralNotice: [],
     resultsAnnounced: [],
     finalistResults: [],
     videoLive: [],
@@ -246,6 +254,24 @@ async function handle(request: NextRequest) {
           })
         }
       }
+    }
+
+    // Deferral notice (HQ 2026-08-12): defer_season_schedule (season-tick)
+    // shifted the calendar -- someone has to tell the people who registered,
+    // or "registration reopened" is invisible to everyone but an admin
+    // reading sendAdminAlert's inbox. Detected here, not signaled by
+    // season-tick: every season with application_defer_count > 0 fires every
+    // tick, and canSend's per-defer_count dedup makes every tick after the
+    // first a no-op for that defer_count -- a LATER defer (count goes 1 -> 2)
+    // naturally fires again because the variant changed. Fixture-excluded
+    // for the same reason every other participant-facing send here is.
+    if (season.application_defer_count > 0 && !isFixtureSeason(season)) {
+      const result = await fireDeferralNotice(season, season.application_defer_count, budget)
+      report.deferralNotice.push({
+        season: season.id,
+        deferCount: season.application_defer_count,
+        ...result,
+      })
     }
 
     // Finalist advancement notices: once scoring is complete, season-tick has
@@ -763,6 +789,48 @@ async function fireRegistrationCount(
   )
 }
 
+// ── deferral_notice ───────────────────────────────────────────────────────
+
+async function fireDeferralNotice(
+  season: Season,
+  deferCount: number,
+  budget: TickBudget,
+): Promise<BatchTally> {
+  const supabase = createSupabaseAdmin()
+  // Same recipient definition as registration_count -- registrants of this
+  // season (waitlist included), excluding rows already past the application
+  // phase.
+  const { data: rows, error } = await supabase
+    .from('genesis_applications')
+    .select('id, email, creator_name, country, main_round_submitted_at')
+    .eq('season_id', season.id)
+    .in('status', ['pending', 'waitlist', 'verifying', 'flagged', 'eligible'])
+  if (error) {
+    console.error('[cron] deferral_notice applicant load failed:', error.message)
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
+  }
+
+  return await dispatchBatch(
+    (rows ?? []) as ApplicantRow[],
+    'deferral_notice',
+    async (row) =>
+      sendDeferralNotice({
+        toEmail: row.email,
+        country: row.country,
+        creatorName: row.creator_name,
+        seasonName: season.display_name,
+        deferCount,
+        maxDeferCount: season.max_defer_count,
+        newRegistrationCloseAt: season.registration_close_at,
+        newApplicationCloseAt: season.application_close_at,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
+    budget,
+    deferCount,
+  )
+}
+
 // ── results_announced ─────────────────────────────────────────────────────
 
 async function fireResultsAnnounced(season: Season, budget: TickBudget): Promise<BatchTally> {
@@ -892,6 +960,7 @@ type TemplateName =
   | 'main_round_start'
   | 'submission_deadline'
   | 'registration_count'
+  | 'deferral_notice'
   | 'results_announced'
 
 async function dispatchBatch(

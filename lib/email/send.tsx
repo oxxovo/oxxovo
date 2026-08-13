@@ -58,6 +58,11 @@ import {
   type RegistrationCountProps,
 } from './templates/RegistrationCount'
 import {
+  DeferralNotice,
+  subjectFor as deferralNoticeSubject,
+  type DeferralNoticeProps,
+} from './templates/DeferralNotice'
+import {
   ResultsAnnounced,
   subjectFor as resultsAnnouncedSubject,
   type ResultsAnnouncedProps,
@@ -162,11 +167,16 @@ function unsubscribeHeaders(toEmail: string): Record<string, string> {
 // Shared engine: dedup + render + resend + log. Every send* helper funnels
 // through this so retry/dedup/logging behavior is identical across templates.
 async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
-  // registration_count's numeric variant is a DAY count, not an hour count --
-  // stored under its own metadata key so it can never collide with
-  // submission_deadline's reminder_hour (lib/email/log.ts canSend/
-  // alreadySent match on whichever key applies to the templateKey).
-  const reminderKey = input.templateKey === 'registration_count' ? 'reminder_day' : 'reminder_hour'
+  // registration_count's numeric variant is a DAY count and deferral_notice's
+  // is a DEFER COUNT, neither an hour count -- each stored under its own
+  // metadata key so none can collide with another (lib/email/log.ts
+  // canSend/alreadySent match on whichever key applies to the templateKey).
+  const reminderKey =
+    input.templateKey === 'registration_count'
+      ? 'reminder_day'
+      : input.templateKey === 'deferral_notice'
+        ? 'defer_count'
+        : 'reminder_hour'
   const baseMetadata: Record<string, unknown> | null =
     input.reminderHour != null || input.metadata
       ? { ...(input.metadata ?? {}), ...(input.reminderHour != null ? { [reminderKey]: input.reminderHour } : {}) }
@@ -600,6 +610,45 @@ export async function sendRegistrationCount(
     applicationId: input.applicationId,
     seasonId: input.seasonId,
     reminderHour: input.reminderDay,
+  })
+}
+
+type SendDeferralNoticeInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  deferCount: number
+  maxDeferCount: number
+  newRegistrationCloseAt: string | null
+  newApplicationCloseAt: string | null
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendDeferralNotice(
+  input: SendDeferralNoticeInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: DeferralNoticeProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    deferCount: input.deferCount,
+    maxDeferCount: input.maxDeferCount,
+    newRegistrationCloseAt: input.newRegistrationCloseAt,
+    newApplicationCloseAt: input.newApplicationCloseAt,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'deferral_notice',
+    language: lang,
+    subject: deferralNoticeSubject(props),
+    element: <DeferralNotice {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+    reminderHour: input.deferCount,
   })
 }
 

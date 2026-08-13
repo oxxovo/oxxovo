@@ -21,6 +21,13 @@ export type TemplateKey =
   // 'reminder_day', a separate key from submission_deadline's 'reminder_hour'
   // so the two multi-fire templates never share a match.
   | 'registration_count'
+  // HQ 2026-08-12: fired when defer_season_schedule actually shifts a
+  // season's calendar -- "registration reopened, does anyone know?" Multi-
+  // fire like registration_count/submission_deadline (once per
+  // application_defer_count value, so a season that defers 2 or 3 times
+  // notifies each time, not just the first). Dedup on metadata->>
+  // 'defer_count', its own key separate from reminder_hour/reminder_day.
+  | 'deferral_notice'
   | 'results_announced'
   | 'awarded_contact_request'
   | 'partner_invitation'
@@ -84,14 +91,14 @@ export async function logEmail(input: LogEmailInput): Promise<void> {
 // a 'sent' row. The DB partial unique index also blocks duplicates, but
 // checking up front lets us return 'skipped' cleanly without hitting Resend.
 //
-// submission_deadline and registration_count are both multi-fire templates
-// (one row per entry in seasons.deadline_reminder_hours /
-// registration_reminder_days respectively), so callers MUST pass the numeric
-// variant for those two. Other templates ignore it. The two templates use
-// DIFFERENT metadata keys (reminder_hour vs reminder_day) on purpose -- they
-// count back from different clocks (application_close_at vs
-// registration_close_at) and a shared key would let a "24" from one collide
-// with a "24" from the other if the two were ever compared.
+// submission_deadline, registration_count, and deferral_notice are all
+// multi-fire templates (one row per entry in seasons.deadline_reminder_hours
+// / registration_reminder_days / per application_defer_count value
+// respectively), so callers MUST pass the numeric variant for those three.
+// Other templates ignore it. The three templates use DIFFERENT metadata keys
+// (reminder_hour / reminder_day / defer_count) on purpose -- a shared key
+// would let a "1" from one collide with a "1" from another if the values
+// were ever compared or a query forgot to filter by templateKey.
 export async function alreadySent(
   applicationId: string,
   templateKey: TemplateKey,
@@ -110,6 +117,8 @@ export async function alreadySent(
     q = q.eq('metadata->>reminder_hour', String(reminderHour))
   } else if (templateKey === 'registration_count' && reminderHour != null) {
     q = q.eq('metadata->>reminder_day', String(reminderHour))
+  } else if (templateKey === 'deferral_notice' && reminderHour != null) {
+    q = q.eq('metadata->>defer_count', String(reminderHour))
   }
 
   const { data, error } = await q.limit(1)
@@ -165,6 +174,8 @@ export async function canSend(
     q = q.eq('metadata->>reminder_hour', String(reminderHour))
   } else if (templateKey === 'registration_count' && reminderHour != null) {
     q = q.eq('metadata->>reminder_day', String(reminderHour))
+  } else if (templateKey === 'deferral_notice' && reminderHour != null) {
+    q = q.eq('metadata->>defer_count', String(reminderHour))
   }
 
   const { data, error } = await q
