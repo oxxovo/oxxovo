@@ -26,7 +26,13 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* ★2026-08-11: Arial/Helvetica stay FIRST -- measured (getComputedStyle +
+     screenshot diff), this is byte-identical English rendering to before
+     (Geist was never actually wired into this rule either, despite being
+     loaded -- a separate, pre-existing gap, not touched here). Korean-only
+     glyphs Arial/Helvetica can't render fall through to Noto Sans KR
+     instead of whatever the OS substitutes. */
+  font-family: Arial, Helvetica, var(--font-noto-kr), sans-serif;
 }
 
 details > summary::-webkit-details-marker {

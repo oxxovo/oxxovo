@@ -8,7 +8,6 @@ import {
 } from '@/lib/ip-info';
 import {
   getCurrentSeason,
-  formatAiProviderList,
   formatPanelLabel,
 } from '@/lib/seasons';
 
@@ -16,7 +15,6 @@ export default async function AboutPage() {
   const season = await getCurrentSeason();
   const seasonName = season?.name ?? 'OXXOVO';
   const panelLabel = season ? formatPanelLabel(season.ai_models) : 'multi-AI';
-  const providerList = season ? formatAiProviderList(season.ai_models) : 'multiple AI providers';
 
   return (
     <main className="min-h-screen bg-[#030305] text-white">
@@ -88,9 +86,9 @@ export default async function AboutPage() {
           transparent scoring.
         </P>
         <P>
-          Entries are evaluated by a {panelLabel} panel — {providerList} —
-          combined with a community vote, so no single judge, human or
-          machine, decides alone. Our goal is to build the trust and the
+          Entries are evaluated by a {panelLabel} panel — multiple
+          independent AI models — combined with a community vote, so no
+          single judge, human or machine, decides alone. Our goal is to build the trust and the
           standard that competitive AI creation will need.
         </P>
       </Section>

@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { formatFooterStatusLine } from '@/lib/ip-info';
 import {
   getCurrentSeason,
-  formatAiProviderList,
   formatPanelLabel,
   formatWeightPercent,
   advanceCountLabel,
@@ -16,7 +15,6 @@ type Faq = { q: string; a: string };
 
 function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
   const panelLabel = formatPanelLabel(season.ai_models);
-  const providerList = formatAiProviderList(season.ai_models);
   const prizePool = Number(season.total_prize_pool).toLocaleString();
   const prize1 = Number(season.prize_first).toLocaleString();
   const prize2 = Number(season.prize_second).toLocaleString();
@@ -66,7 +64,7 @@ function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
     },
     {
       q: `What is ${panelLabel} Scoring?`,
-      a: `OXXOVO has multiple AI systems — ${providerList} — evaluate each entry independently. Their results are combined through a consensus-based method, designed to reduce the bias of any single model.`,
+      a: `OXXOVO uses multiple independent AI systems to evaluate each entry. Their results are combined through a consensus-based method, designed to reduce the bias of any single model.`,
     },
     {
       q: 'Are there human judges?',

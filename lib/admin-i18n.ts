@@ -715,6 +715,14 @@ export type Messages = {
     logout: string
     login: string
     cta_default: string
+    // ★2026-08-11 (TK found on prod): resolveSeasonCta()'s actual runtime
+    // labels were never translated -- only the season===null code fallback
+    // (cta_default, above) was. These mirror its 3 states exactly (lib/
+    // seasons.ts SeasonCtaState); resolveSeasonCta's own `label` stays
+    // English for callers not wired for i18n (e.g. /tournament).
+    cta_open: (seasonName: string) => string
+    cta_before_open: string
+    cta_waitlist: string
     eyebrow: string
     h1_line1: string
     h1_line2: string
@@ -722,6 +730,11 @@ export type Messages = {
     sub2: string
     hero_tournament_btn: string
     hero_submit_prefix: string
+    // ★2026-08-11 (TK found on prod): the season-loaded branch used to name
+    // the judging companies (formatAiProviderList) -- same leak 제니3 already
+    // closed for the model-NAME list (step2_body/faq_a5), just missed here.
+    // No company/model names, ever.
+    hero_submit_scoring: (panelLabel: string) => string
     hero_submit_fallback: string
     countdown_label: string
     countdown_days: string
@@ -1621,6 +1634,9 @@ const MESSAGES_EN: Messages = {
     logout: 'Log out',
     login: 'Log in',
     cta_default: 'Apply now',
+    cta_open: (seasonName) => `Apply to ${seasonName}`,
+    cta_before_open: 'Get notified when applications open',
+    cta_waitlist: 'Join the waitlist',
     eyebrow: 'AI Competitive Creation Platform',
     h1_line1: 'The Global Arena',
     h1_line2: 'for AI Creators.',
@@ -1628,6 +1644,7 @@ const MESSAGES_EN: Messages = {
     sub2: 'Same tools. Same clock. Skill decides.',
     hero_tournament_btn: 'Tournament Info',
     hero_submit_prefix: 'Submit your AI video.',
+    hero_submit_scoring: (panelLabel) => `${panelLabel} scoring by multiple independent AI models.`,
     hero_submit_fallback: 'AI verified scoring.',
     countdown_label: 'Application Closes In',
     countdown_days: 'Days',
@@ -2519,6 +2536,9 @@ const MESSAGES_KO: Messages = {
     logout: '로그아웃',
     login: '로그인',
     cta_default: '참가 신청',
+    cta_open: (seasonName) => `${seasonName} 참가 신청`,
+    cta_before_open: '신청 오픈 알림 받기',
+    cta_waitlist: '대기자 명단 등록',
     eyebrow: 'AI 창작 경쟁 플랫폼',
     h1_line1: 'AI 크리에이터를 위한',
     h1_line2: '글로벌 아레나.',
@@ -2526,6 +2546,7 @@ const MESSAGES_KO: Messages = {
     sub2: '같은 도구. 같은 시간. 오직 실력으로.',
     hero_tournament_btn: '대회 안내',
     hero_submit_prefix: 'AI 영상을 제출하세요.',
+    hero_submit_scoring: (panelLabel) => `${panelLabel} 채점 — 복수의 이종 AI 모델이 참여합니다.`,
     hero_submit_fallback: 'AI 검증 채점.',
     countdown_label: '신청 마감까지',
     countdown_days: '일',
