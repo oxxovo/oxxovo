@@ -2,6 +2,21 @@
 
 Updated 2026-06-13: now covers the COMPOSE render pipeline (ffmpeg).
 
+=====================================================================
+★★배포 자동화가 레포마다 다르다 (2026-08-12, 실측으로 발견) ★★
+=====================================================================
+merge = deploy가 아니라고 가정하지 마라 -- 레포마다 다르다:
+  - 앱(oxxovo, Vercel): `git.deploymentEnabled.main = false` -- **수동**.
+    main에 push해도 안 붙는다. CLI로 명시적으로 `vercel deploy` 해야 뜬다.
+  - 워커(oxxovo-studio, Railway, 이 문서): **main push = 즉시 자동배포**
+    (line 137 "Redeploys on every push to the service's configured branch"
+    가 원래도 적혀 있었지만, 두 레포를 나란히 놓고 대조한 적이 없어서
+    머지 작업 중 실제로 놓칠 뻔했다 -- 2026-08-12, H 머지 ③단계).
+같은 "main으로 병합"이라는 동작이 한쪽은 배포 없음, 한쪽은 즉시 배포로
+갈린다. **두 레포를 같이 다루는 작업(머지 트레인 등)에서는 다음 머지로
+넘어가기 전에 이 표를 다시 봐라** -- "방금 그 레포는 자동배포가 켜져
+있었나"를 매번 새로 판단하지 말고 여기서 확인해라.
+
 Step-by-step for deploying the Studio worker (oxxovo/oxxovo-studio) to Railway.
 The worker is a long-running poller that drives TWO queues:
   - generation_jobs -- calls fal.ai, uploads the clip to Cloudflare R2.
