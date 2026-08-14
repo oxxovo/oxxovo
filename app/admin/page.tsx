@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { type Season } from '@/lib/seasons'
 import { DashboardView, type ScoringStats } from './DashboardView'
 import { scoringCoverage } from '@/lib/scoring-coverage'
@@ -7,8 +8,12 @@ import { scoringCoverage } from '@/lib/scoring-coverage'
 export default async function AdminDashboard() {
   const admin = await requireAdmin()
   const supabase = await createSupabaseServer()
+  const adminDb = createSupabaseAdmin()
 
-  const { data: seasons } = await supabase
+  // seasons carries the secret main_round_twist, so it reads via service
+  // role rather than the authenticated-role client (2026-08-14, GRANT
+  // hardening).
+  const { data: seasons } = await adminDb
     .from('seasons')
     .select('*')
     .order('season_number', { ascending: false })

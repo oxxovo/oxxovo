@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ContactsView, type ContactRow } from './ContactsView'
 import { type Season } from '@/lib/seasons'
 
@@ -11,9 +12,12 @@ export default async function ContactsPage({
   await requireAdmin()
   const { season: seasonParam } = await searchParams
   const supabase = await createSupabaseServer()
+  const admin = createSupabaseAdmin()
 
-  // All seasons for the dropdown.
-  const { data: seasonsData } = await supabase
+  // All seasons for the dropdown. seasons carries the secret
+  // main_round_twist, so it reads via service role rather than the
+  // authenticated-role client (2026-08-14, GRANT hardening).
+  const { data: seasonsData } = await admin
     .from('seasons')
     .select('id, name, season_number, status, is_fixture')
     .order('season_number', { ascending: false })

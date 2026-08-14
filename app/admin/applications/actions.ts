@@ -114,7 +114,10 @@ export async function saveStatus(id: string, status: string): Promise<AdminActio
         })
       } else {
         const ranks = await loadScoredRanks(supabase, season.id)
-        const next = await loadNextSeason(supabase)
+        // seasons carries the secret main_round_twist, so this reads via
+        // service role rather than the authenticated-role client (2026-08-14,
+        // GRANT hardening).
+        const next = await loadNextSeason(createSupabaseAdmin())
         const m = ranks.get(row.id)
         await sendNotSelected({
           toEmail: row.email,

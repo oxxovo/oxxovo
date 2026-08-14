@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
-import { createSupabaseServer } from '@/lib/supabase-server'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { type Season } from '@/lib/seasons'
 import { type SeasonFormInitial, type SeasonInput } from '@/lib/season-schema'
 import { SeasonForm } from '../SeasonForm'
@@ -18,7 +18,7 @@ export default async function SeasonEditPage({
   const { id } = await params
   const { saved } = await searchParams
 
-  const supabase = await createSupabaseServer()
+  const supabase = createSupabaseAdmin()
   const { data, error } = await supabase
     .from('seasons')
     .select('*')

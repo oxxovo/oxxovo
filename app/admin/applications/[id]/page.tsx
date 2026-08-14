@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ApplicationDetail, type ScoringDetail } from '../ApplicationDetail'
 import { type ApplicationRow } from '../ApplicationsView'
 
@@ -26,8 +27,11 @@ export default async function ApplicationDetailPage({
   }
 
   // Season name for context + scoring_results (application round) in parallel.
+  // seasons carries the secret main_round_twist, so it reads via service role
+  // rather than the authenticated-role client (2026-08-14, GRANT hardening).
+  const admin = createSupabaseAdmin()
   const [seasonRes, scoringRes] = await Promise.all([
-    supabase
+    admin
       .from('seasons')
       .select('name, season_number')
       .eq('id', data.season_id)

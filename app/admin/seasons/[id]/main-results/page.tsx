@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseServer } from '@/lib/supabase-server'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { computeFinalScore, computeCommunityScore } from '@/lib/scoring'
 import { getMainRoundVoteTally } from '@/lib/watch'
 import { type Season } from '@/lib/seasons'
@@ -19,8 +20,12 @@ export default async function MainResultsPage({
   await requireAdmin()
   const { id } = await params
   const supabase = await createSupabaseServer()
+  const admin = createSupabaseAdmin()
 
-  const { data: seasonData, error: seasonErr } = await supabase
+  // seasons carries the secret main_round_twist, so it reads via service
+  // role rather than the authenticated-role client (2026-08-14, GRANT
+  // hardening).
+  const { data: seasonData, error: seasonErr } = await admin
     .from('seasons')
     .select('*')
     .eq('id', id)

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
-import { createSupabaseServer } from '@/lib/supabase-server'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { seasonSchema, type SeasonInput } from '@/lib/season-schema'
 
 export type SeasonFormState = {
@@ -32,7 +32,7 @@ function parseFormData(formData: FormData): unknown {
 }
 
 async function persistSeason(input: SeasonInput, id?: string) {
-  const supabase = await createSupabaseServer()
+  const supabase = createSupabaseAdmin()
   const payload = { ...input, updated_at: new Date().toISOString() }
 
   if (id) {
@@ -54,7 +54,7 @@ export async function deleteSeason(id: string): Promise<void> {
   await requireAdmin()
   if (!id) throw new Error('Season id required')
 
-  const supabase = await createSupabaseServer()
+  const supabase = createSupabaseAdmin()
   const { error } = await supabase.from('seasons').delete().eq('id', id)
   if (error) throw new Error(error.message)
 

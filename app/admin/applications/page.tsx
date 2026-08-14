@@ -17,10 +17,13 @@ export default async function ApplicationsPage({
   await requireAdmin()
   const { season: seasonParam } = await searchParams
   const supabase = await createSupabaseServer()
+  const admin = createSupabaseAdmin()
 
   // Load seasons (for dropdown + top_n_advance for recommendations title).
-  // Default selection = active or most recent.
-  const { data: seasonsData } = await supabase
+  // Default selection = active or most recent. seasons carries the secret
+  // main_round_twist, so this reads via service role rather than the
+  // authenticated-role client (2026-08-14, seasons GRANT hardening).
+  const { data: seasonsData } = await admin
     .from('seasons')
     .select('id, name, season_number, status, top_n_advance')
     .order('season_number', { ascending: false })
@@ -39,7 +42,6 @@ export default async function ApplicationsPage({
   let applications: ApplicationRow[] = []
   let recommendations: RecommendationRow[] = []
   if (selectedSeasonId) {
-    const admin = createSupabaseAdmin()
     const [appsRes, scoringRes, recsRes] = await Promise.all([
       supabase
         .from('genesis_applications')

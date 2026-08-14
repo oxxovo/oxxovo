@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/admin-auth'
-import { createSupabaseServer } from '@/lib/supabase-server'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { type Season } from '@/lib/seasons'
 import { SeasonsListView } from './SeasonsListView'
 
@@ -10,7 +10,7 @@ export default async function SeasonsListPage({
 }) {
   await requireAdmin()
   const { deleted } = await searchParams
-  const supabase = await createSupabaseServer()
+  const supabase = createSupabaseAdmin()
   const { data, error } = await supabase
     .from('seasons')
     .select('*')

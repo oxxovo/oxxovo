@@ -1,12 +1,12 @@
 import { requireAdmin } from '@/lib/admin-auth'
-import { createSupabaseServer } from '@/lib/supabase-server'
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { DEFAULT_SEASON, type SeasonFormInitial } from '@/lib/season-schema'
 import { SeasonForm } from '../SeasonForm'
 import { NewSeasonHeader } from '../SeasonPageHeader'
 
 export default async function NewSeasonPage() {
   await requireAdmin()
-  const supabase = await createSupabaseServer()
+  const supabase = createSupabaseAdmin()
 
   const { data: latest } = await supabase
     .from('seasons')
