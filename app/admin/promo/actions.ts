@@ -69,6 +69,70 @@ export async function createPromoVideoAction(input: {
   return { ok: true, id: data.id as string }
 }
 
+export type UpdatePromoMetaState = { ok: true } | { ok: false; error: string }
+
+// Persist caption + channel selection, decoupled from both approval and
+// publish. "Saved" is not "approved" -- two separate commits (HQ 2026-08-14).
+export async function updatePromoMetaAction(input: {
+  id: string
+  caption: string
+  channels: string[]
+}): Promise<UpdatePromoMetaState> {
+  await requireAdmin()
+  const admin = createSupabaseAdmin()
+  const { error } = await admin
+    .from('promo_videos')
+    .update({ caption: input.caption.trim() || null, channels: input.channels })
+    .eq('id', input.id)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/admin/promo')
+  return { ok: true }
+}
+
+export type SetApprovedState = { ok: true } | { ok: false; error: string }
+
+// The one write that flips promo_videos.approved. Un-approving clears
+// approved_by/approved_at too -- a re-approval always records who did it and
+// when, rather than leaving a stale attribution from a prior approval.
+export async function setPromoApprovedAction(id: string, approved: boolean): Promise<SetApprovedState> {
+  const admin_profile = await requireAdmin()
+  const admin = createSupabaseAdmin()
+  const { error } = await admin
+    .from('promo_videos')
+    .update(
+      approved
+        ? { approved: true, approved_by: admin_profile.id, approved_at: new Date().toISOString() }
+        : { approved: false, approved_by: null, approved_at: null },
+    )
+    .eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/admin/promo')
+  return { ok: true }
+}
+
+export type UpdateCadenceState = { ok: true } | { ok: false; error: string }
+
+// platform_config writer for the publish cadence. TK sets these from this
+// screen -- never seeded by SQL (HQ 2026-08-14): an empty `weekdays` IS the
+// pause state, so an operator can stop auto-publish just by clearing it here.
+export async function updatePromoCadenceAction(input: {
+  weekdays: string[]
+  time: string
+  timezone: string
+}): Promise<UpdateCadenceState> {
+  await requireAdmin()
+  const admin = createSupabaseAdmin()
+  const rows = [
+    { key: 'promo_publish_weekdays', value: input.weekdays.join(',') },
+    { key: 'promo_publish_time', value: input.time.trim() },
+    { key: 'promo_publish_timezone', value: input.timezone.trim() },
+  ]
+  const { error } = await admin.from('platform_config').upsert(rows, { onConflict: 'key' })
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/admin/promo')
+  return { ok: true }
+}
+
 export type DeletePromoState = { ok: true } | { ok: false; error: string }
 
 // 3) 행 + Storage 객체 삭제. 이미 게시된 건은 막지 않음(원격 글은 Postiz 에서 별도 관리).

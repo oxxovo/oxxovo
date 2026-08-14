@@ -9,7 +9,14 @@ import {
   createUploadUrlAction,
   createPromoVideoAction,
   deletePromoVideoAction,
+  updatePromoMetaAction,
+  setPromoApprovedAction,
+  updatePromoCadenceAction,
 } from './actions'
+
+// Mirrors lib/promo-schedule.PromoCadence -- not imported directly, that
+// module is `server-only` and this file is a client component.
+export type Cadence = { weekdays: string[]; time: string | null; timezone: string | null }
 
 export type PromoRow = {
   id: string
@@ -22,6 +29,18 @@ export type PromoRow = {
   postizPostId: string | null
   postedChannels: string[] | null
   postedAt: string | null
+  approved: boolean
+  approvedAt: string | null
+  caption: string
+  channels: string[]
+}
+
+export type PublishLogEntry = {
+  attemptedAt: string
+  triggeredBy: string
+  channels: string[]
+  status: string
+  errorMessage: string | null
 }
 
 const BUCKET = 'promo-videos'
@@ -41,7 +60,7 @@ const CHANNEL_LABEL: Record<string, string> = {
 const DICT = {
   ko: {
     title: '홍보영상',
-    subtitle: '영상을 업로드하고 Instagram / TikTok / YouTube / X 4채널에 발행합니다. (수동 업로드 v1)',
+    subtitle: '영상을 저장하고 캡션·채널을 확정한 뒤 승인하면, 수동 발행 또는 예약된 cron으로 4채널에 나갑니다.',
     upload_title: '영상 업로드',
     upload_hint: '브라우저에서 Storage로 직행 업로드(대용량 OK). mp4 / mov / webm.',
     f_label: '라벨 (식별용, 선택)',
@@ -52,37 +71,60 @@ const DICT = {
     upload_ok: '업로드 완료',
     upload_err: '업로드 실패',
     archive_title: '아카이브 (최대 100건)',
+    search_ph: '테마/라벨 검색…',
+    search_btn: '검색',
+    search_clear: '지우기',
     empty: '업로드된 영상이 없습니다.',
-    col_when: '생성',
-    col_label: '라벨',
-    col_status: '상태',
+    empty_search: '검색 결과가 없습니다.',
     col_posted: '게시',
-    col_actions: '',
-    publish_title: '4채널 발행',
+    meta_title: '캡션 · 채널',
     f_channels: '채널',
     f_caption: '캡션',
     caption_ph: '게시 문구 (채널 공통)…',
-    f_when: '시점',
-    when_now: '즉시',
-    when_schedule: '예약',
-    publish_btn: '발행',
+    save_btn: '저장',
+    saving: '저장 중…',
+    save_ok: '저장됨',
+    save_err: '저장 실패',
+    approve_title: '승인',
+    approve_btn: '승인',
+    unapprove_btn: '승인 취소',
+    approved_by: (when: string) => `승인됨 (${when})`,
+    not_approved: '미승인',
+    publish_btn: '지금 발행',
     publishing: '발행 중…',
     publish_ok: (n: number) => `${n}개 채널 발행 요청 완료`,
     publish_err: '발행 실패',
+    publish_hint_unapproved: '먼저 승인하세요',
     postiz_off: 'Postiz 미연결 — 키 주입 + 배포 후 발행이 활성됩니다.',
     delete_btn: '삭제',
     deleting: '삭제 중…',
     confirm_delete: (label: string) =>
       `'${label}' 영상을 삭제할까요?\nStorage 파일도 함께 삭제되며, 되돌릴 수 없습니다.`,
     posted_none: '—',
-    play: '재생',
     err_no_channel: '채널을 1개 이상 선택하세요.',
     err_disabled: 'Postiz 미연결 상태입니다.',
     err_no_video: '영상 URL이 없습니다.',
+    history_title: '발행 이력',
+    history_none: '발행 시도 없음',
+    history_manual: '수동',
+    history_cron: '자동(cron)',
+    history_success: '성공',
+    history_failed: '실패',
+    cadence_title: '발행 주기',
+    cadence_hint: '요일을 1개도 안 고르면 자동 발행이 정지됩니다(별도 스위치 없음, 이게 그 스위치입니다).',
+    cadence_weekdays: '요일',
+    cadence_time: '시각 (HH:MM, 24시간제)',
+    cadence_timezone: '시간대 (IANA, 예: Asia/Seoul)',
+    cadence_save: '저장',
+    cadence_saving: '저장 중…',
+    cadence_saved: '저장됨',
+    cadence_save_err: '저장 실패',
+    cadence_paused: '지금 정지 상태 (요일 0개)',
+    weekday: { mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' },
   },
   en: {
     title: 'Promo Videos',
-    subtitle: 'Upload a video and publish to Instagram / TikTok / YouTube / X. (manual upload v1)',
+    subtitle: 'Save the video, lock in caption + channels, then approve. Publishing is manual or via the scheduled cron.',
     upload_title: 'Upload video',
     upload_hint: 'Direct browser-to-Storage upload (large files OK). mp4 / mov / webm.',
     f_label: 'Label (for reference, optional)',
@@ -93,33 +135,56 @@ const DICT = {
     upload_ok: 'Uploaded',
     upload_err: 'Upload failed',
     archive_title: 'Archive (up to 100)',
+    search_ph: 'Search theme/label…',
+    search_btn: 'Search',
+    search_clear: 'Clear',
     empty: 'No uploaded videos yet.',
-    col_when: 'Created',
-    col_label: 'Label',
-    col_status: 'Status',
+    empty_search: 'No results.',
     col_posted: 'Posted',
-    col_actions: '',
-    publish_title: 'Publish to 4 channels',
+    meta_title: 'Caption · Channels',
     f_channels: 'Channels',
     f_caption: 'Caption',
     caption_ph: 'Post text (shared across channels)…',
-    f_when: 'When',
-    when_now: 'Now',
-    when_schedule: 'Schedule',
-    publish_btn: 'Publish',
+    save_btn: 'Save',
+    saving: 'Saving…',
+    save_ok: 'Saved',
+    save_err: 'Save failed',
+    approve_title: 'Approval',
+    approve_btn: 'Approve',
+    unapprove_btn: 'Unapprove',
+    approved_by: (when: string) => `Approved (${when})`,
+    not_approved: 'Not approved',
+    publish_btn: 'Publish now',
     publishing: 'Publishing…',
     publish_ok: (n: number) => `Publish requested to ${n} channel(s)`,
     publish_err: 'Publish failed',
+    publish_hint_unapproved: 'Approve first',
     postiz_off: 'Postiz not connected — publishing activates after key injection + deploy.',
     delete_btn: 'Delete',
     deleting: 'Deleting…',
     confirm_delete: (label: string) =>
       `Delete '${label}'?\nThe Storage file is removed too, and this cannot be undone.`,
     posted_none: '—',
-    play: 'Play',
     err_no_channel: 'Select at least one channel.',
     err_disabled: 'Postiz is not connected.',
     err_no_video: 'No video URL.',
+    history_title: 'Publish history',
+    history_none: 'No publish attempts',
+    history_manual: 'Manual',
+    history_cron: 'Auto (cron)',
+    history_success: 'Success',
+    history_failed: 'Failed',
+    cadence_title: 'Publish cadence',
+    cadence_hint: 'Zero weekdays selected pauses auto-publish (no separate switch -- this is the switch).',
+    cadence_weekdays: 'Weekdays',
+    cadence_time: 'Time (HH:MM, 24h)',
+    cadence_timezone: 'Timezone (IANA, e.g. Asia/Seoul)',
+    cadence_save: 'Save',
+    cadence_saving: 'Saving…',
+    cadence_saved: 'Saved',
+    cadence_save_err: 'Save failed',
+    cadence_paused: 'Currently paused (0 weekdays)',
+    weekday: { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' },
   },
 }
 
@@ -129,10 +194,16 @@ export function PromoView({
   rows,
   channels,
   postizEnabled,
+  publishLog,
+  q,
+  cadence,
 }: {
   rows: PromoRow[]
   channels: string[]
   postizEnabled: boolean
+  publishLog: Record<string, PublishLogEntry[]>
+  q: string
+  cadence: Cadence
 }) {
   const lang = useAdminLang()
   const t = DICT[lang]
@@ -147,10 +218,88 @@ export function PromoView({
         </div>
       )}
 
+      <CadenceForm t={t} cadence={cadence} />
+
       <UploadForm t={t} />
 
-      <Archive t={t} rows={rows} channels={channels} postizEnabled={postizEnabled} />
+      <Archive t={t} rows={rows} channels={channels} postizEnabled={postizEnabled} publishLog={publishLog} q={q} />
     </div>
+  )
+}
+
+const WEEKDAYS: (keyof Dict['weekday'])[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+
+function CadenceForm({ t, cadence }: { t: Dict; cadence: Cadence }) {
+  const router = useRouter()
+  const [weekdays, setWeekdays] = useState<string[]>(cadence.weekdays)
+  const [time, setTime] = useState(cadence.time ?? '')
+  const [timezone, setTimezone] = useState(cadence.timezone ?? '')
+  const [pending, startPending] = useTransition()
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const toggle = (d: string) =>
+    setWeekdays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))
+
+  const handleSave = () => {
+    setMsg(null)
+    startPending(async () => {
+      const res = await updatePromoCadenceAction({ weekdays, time, timezone })
+      if (!res.ok) {
+        setMsg({ ok: false, text: `${t.cadence_save_err}: ${res.error}` })
+        return
+      }
+      setMsg({ ok: true, text: t.cadence_saved })
+      router.refresh()
+    })
+  }
+
+  return (
+    <section className="border border-white/10 rounded p-5 bg-white/[.02] mb-10 max-w-xl">
+      <h2 className="text-xs uppercase tracking-[0.2em] text-[#ff8844] font-bold mb-1">{t.cadence_title}</h2>
+      <p className="text-[11px] text-white/40 mb-4">{t.cadence_hint}</p>
+
+      <div className="space-y-3">
+        <Labeled label={t.cadence_weekdays}>
+          <div className="flex flex-wrap gap-2">
+            {WEEKDAYS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => toggle(d)}
+                className={`px-2.5 py-1 rounded text-[11px] border transition ${
+                  weekdays.includes(d)
+                    ? 'border-[#ff8844]/60 bg-[#ff8844]/10 text-[#ffb488]'
+                    : 'border-white/10 text-white/40 hover:text-white/70'
+                }`}
+              >
+                {t.weekday[d]}
+              </button>
+            ))}
+          </div>
+        </Labeled>
+        <Labeled label={t.cadence_time}>
+          <input value={time} onChange={(e) => setTime(e.target.value)} className={inputCls} placeholder="18:00" />
+        </Labeled>
+        <Labeled label={t.cadence_timezone}>
+          <input
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            className={inputCls}
+            placeholder="Asia/Seoul"
+          />
+        </Labeled>
+        {weekdays.length === 0 && <p className="text-[11px] text-white/35">{t.cadence_paused}</p>}
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={pending}
+          className="px-3 py-1.5 rounded border border-white/15 text-white/70 text-xs font-bold hover:border-white/35 transition disabled:opacity-40"
+        >
+          {pending ? t.cadence_saving : t.cadence_save}
+        </button>
+        {msg && <p className={`text-[11px] ${msg.ok ? 'text-emerald-300' : 'text-[#ff8888]'}`}>{msg.text}</p>}
+      </div>
+    </section>
   )
 }
 
@@ -259,20 +408,41 @@ function Archive({
   rows,
   channels,
   postizEnabled,
+  publishLog,
+  q,
 }: {
   t: Dict
   rows: PromoRow[]
   channels: string[]
   postizEnabled: boolean
+  publishLog: Record<string, PublishLogEntry[]>
+  q: string
 }) {
   return (
     <section>
-      <h2 className="text-xs uppercase tracking-[0.2em] text-[#ff8844] font-bold mb-3">
-        {t.archive_title}
-      </h2>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h2 className="text-xs uppercase tracking-[0.2em] text-[#ff8844] font-bold">{t.archive_title}</h2>
+        <form action="/admin/promo" method="get" className="flex gap-2">
+          <input
+            type="text"
+            name="q"
+            defaultValue={q}
+            placeholder={t.search_ph}
+            className="rounded border border-white/15 bg-black/30 px-3 py-1.5 text-xs text-white placeholder:text-white/30 focus:border-[#ff8844] focus:outline-none"
+          />
+          <button type="submit" className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:border-white/35">
+            {t.search_btn}
+          </button>
+          {q && (
+            <a href="/admin/promo" className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/50 hover:border-white/35">
+              {t.search_clear}
+            </a>
+          )}
+        </form>
+      </div>
       {rows.length === 0 ? (
         <div className="border border-white/10 rounded px-4 py-8 text-center text-white/40 text-xs">
-          {t.empty}
+          {q ? t.empty_search : t.empty}
         </div>
       ) : (
         <div className="space-y-4">
@@ -283,6 +453,7 @@ function Archive({
               row={r}
               channels={channels}
               postizEnabled={postizEnabled}
+              history={publishLog[r.id] ?? []}
             />
           ))}
         </div>
@@ -296,11 +467,13 @@ function PromoCard({
   row,
   channels,
   postizEnabled,
+  history,
 }: {
   t: Dict
   row: PromoRow
   channels: string[]
   postizEnabled: boolean
+  history: PublishLogEntry[]
 }) {
   const router = useRouter()
   const [deleting, startDelete] = useTransition()
@@ -363,7 +536,12 @@ function PromoCard({
             )}
           </div>
 
-          <PublishPanel t={t} row={row} channels={channels} postizEnabled={postizEnabled} />
+          {/* One card, one flow: save meta -> approve -> publish, all here --
+              scattering these across screens is what leaves TK stuck on "why
+              isn't it going out" (HQ 2026-08-14). */}
+          <PublishCard t={t} row={row} channels={channels} postizEnabled={postizEnabled} />
+
+          <HistoryList t={t} history={history} />
 
           {/* Irreversible (Storage file is gone, and it's 지수3's rendered
               output -- redoing it means regenerating, not undoing). Was
@@ -384,7 +562,7 @@ function PromoCard({
   )
 }
 
-function PublishPanel({
+function PublishCard({
   t,
   row,
   channels,
@@ -396,47 +574,83 @@ function PublishPanel({
   postizEnabled: boolean
 }) {
   const router = useRouter()
-  const [selected, setSelected] = useState<string[]>(channels)
-  const [caption, setCaption] = useState('')
-  const [scheduled, setScheduled] = useState(false)
-  const [when, setWhen] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [selected, setSelected] = useState<string[]>(row.channels.length ? row.channels : [])
+  const [caption, setCaption] = useState(row.caption)
+  const [savePending, startSave] = useTransition()
+  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  // Optimistic: the toggle flips this immediately so the Publish button
+  // enables/disables without waiting on a server round-trip (HQ 2026-08-14 --
+  // "승인하면 새로고침 없이 즉시 활성"). The server action still runs and
+  // router.refresh() reconciles; on failure we revert.
+  const [approved, setApproved] = useState(row.approved)
+  const [approvePending, startApprove] = useTransition()
+
+  const [publishBusy, setPublishBusy] = useState(false)
+  const [publishMsg, setPublishMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const toggle = (c: string) =>
     setSelected((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
 
-  const disabled = !postizEnabled || !row.videoUrl
+  const metaDisabled = false // caption/channels can always be edited, even pre-approval
+
+  const handleSave = () => {
+    setSaveMsg(null)
+    startSave(async () => {
+      const res = await updatePromoMetaAction({ id: row.id, caption, channels: selected })
+      if (!res.ok) {
+        setSaveMsg({ ok: false, text: `${t.save_err}: ${res.error}` })
+        return
+      }
+      setSaveMsg({ ok: true, text: t.save_ok })
+      router.refresh()
+    })
+  }
+
+  const handleApproveToggle = () => {
+    const next = !approved
+    setApproved(next) // optimistic
+    startApprove(async () => {
+      const res = await setPromoApprovedAction(row.id, next)
+      if (!res.ok) {
+        setApproved(!next) // revert
+        return
+      }
+      router.refresh()
+    })
+  }
+
+  const publishDisabled = !postizEnabled || !row.videoUrl || !approved
 
   const handlePublish = async () => {
-    setMsg(null)
-    if (!postizEnabled) return setMsg({ ok: false, text: t.err_disabled })
-    if (!row.videoUrl) return setMsg({ ok: false, text: t.err_no_video })
-    if (selected.length === 0) return setMsg({ ok: false, text: t.err_no_channel })
+    setPublishMsg(null)
+    if (!postizEnabled) return setPublishMsg({ ok: false, text: t.err_disabled })
+    if (!row.videoUrl) return setPublishMsg({ ok: false, text: t.err_no_video })
+    if (!approved) return setPublishMsg({ ok: false, text: t.publish_hint_unapproved })
+    if (selected.length === 0) return setPublishMsg({ ok: false, text: t.err_no_channel })
 
-    setBusy(true)
+    setPublishBusy(true)
     try {
-      const scheduledAt = scheduled && when ? new Date(when).toISOString() : undefined
       const res = await fetch('/api/admin/promo/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promoVideoId: row.id, channels: selected, caption, scheduledAt }),
+        body: JSON.stringify({ promoVideoId: row.id }),
       })
       const j = await res.json()
-      if (!res.ok) throw new Error(j.detail || j.error || `HTTP ${res.status}`)
-      setMsg({ ok: true, text: t.publish_ok((j.channels ?? selected).length) })
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setPublishMsg({ ok: true, text: t.publish_ok((j.channels ?? selected).length) })
       router.refresh()
     } catch (e) {
-      setMsg({ ok: false, text: `${t.publish_err}: ${e instanceof Error ? e.message : String(e)}` })
+      setPublishMsg({ ok: false, text: `${t.publish_err}: ${e instanceof Error ? e.message : String(e)}` })
     } finally {
-      setBusy(false)
+      setPublishBusy(false)
     }
   }
 
   return (
     <div className="mt-3 border-t border-white/5 pt-3">
       <div className="text-[10px] uppercase tracking-wider text-[#ff8844]/80 font-bold mb-2">
-        {t.publish_title}
+        {t.meta_title}
       </div>
 
       <div className="flex flex-wrap gap-2 mb-2">
@@ -445,7 +659,7 @@ function PublishPanel({
             key={c}
             type="button"
             onClick={() => toggle(c)}
-            disabled={disabled}
+            disabled={metaDisabled}
             className={`px-2.5 py-1 rounded text-[11px] border transition disabled:opacity-40 ${
               selected.includes(c)
                 ? 'border-[#ff8844]/60 bg-[#ff8844]/10 text-[#ffb488]'
@@ -461,53 +675,89 @@ function PublishPanel({
         value={caption}
         onChange={(e) => setCaption(e.target.value)}
         rows={2}
-        disabled={disabled}
+        disabled={metaDisabled}
         className={`${inputCls} resize-y mb-2 disabled:opacity-40`}
         placeholder={t.caption_ph}
       />
 
-      <div className="flex items-center gap-3 mb-2 text-[11px]">
-        <label className="flex items-center gap-1.5 text-white/60">
-          <input
-            type="radio"
-            checked={!scheduled}
-            onChange={() => setScheduled(false)}
-            disabled={disabled}
-          />
-          {t.when_now}
-        </label>
-        <label className="flex items-center gap-1.5 text-white/60">
-          <input
-            type="radio"
-            checked={scheduled}
-            onChange={() => setScheduled(true)}
-            disabled={disabled}
-          />
-          {t.when_schedule}
-        </label>
-        {scheduled && (
-          <input
-            type="datetime-local"
-            value={when}
-            onChange={(e) => setWhen(e.target.value)}
-            disabled={disabled}
-            className="px-2 py-1 bg-[#100608] border border-white/10 rounded text-[11px] text-white"
-          />
+      <div className="flex items-center gap-2 mb-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={savePending}
+          className="px-3 py-1.5 rounded border border-white/15 text-white/70 text-[11px] font-bold hover:border-white/35 transition disabled:opacity-40"
+        >
+          {savePending ? t.saving : t.save_btn}
+        </button>
+        {saveMsg && (
+          <span className={`text-[11px] ${saveMsg.ok ? 'text-emerald-300' : 'text-[#ff8888]'}`}>{saveMsg.text}</span>
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={handlePublish}
-        disabled={disabled || busy}
-        className="px-3 py-1.5 rounded bg-[#ff4444]/80 text-white text-[11px] font-bold uppercase tracking-wider hover:bg-[#ff4444] transition disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        {busy ? t.publishing : t.publish_btn}
-      </button>
+      {/* Approval + publish live together, on purpose (HQ 2026-08-14) -- a
+          disabled Publish button always sits next to the reason it's
+          disabled, not on a separate tab/page. */}
+      <div className="flex items-center flex-wrap gap-3 pt-3 border-t border-white/5">
+        <button
+          type="button"
+          onClick={handleApproveToggle}
+          disabled={approvePending}
+          className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider transition disabled:opacity-40 ${
+            approved
+              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40'
+              : 'bg-white/5 text-white/50 border border-white/10 hover:border-white/30'
+          }`}
+        >
+          {approved ? t.unapprove_btn : t.approve_btn}
+        </button>
+        <span className="text-[11px] text-white/40">
+          {approved && row.approvedAt
+            ? t.approved_by(new Date(row.approvedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }))
+            : t.not_approved}
+        </span>
 
-      {msg && (
-        <p className={`mt-2 text-[11px] ${msg.ok ? 'text-emerald-300' : 'text-[#ff8888]'}`}>{msg.text}</p>
+        <div className="ml-auto flex items-center gap-2">
+          {!approved && <span className="text-[11px] text-[#ff8844]">{t.publish_hint_unapproved}</span>}
+          <button
+            type="button"
+            onClick={handlePublish}
+            disabled={publishDisabled || publishBusy}
+            className="px-3 py-1.5 rounded bg-[#ff4444]/80 text-white text-[11px] font-bold uppercase tracking-wider hover:bg-[#ff4444] transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {publishBusy ? t.publishing : t.publish_btn}
+          </button>
+        </div>
+      </div>
+
+      {publishMsg && (
+        <p className={`mt-2 text-[11px] ${publishMsg.ok ? 'text-emerald-300' : 'text-[#ff8888]'}`}>{publishMsg.text}</p>
       )}
+    </div>
+  )
+}
+
+function HistoryList({ t, history }: { t: Dict; history: PublishLogEntry[] }) {
+  if (history.length === 0) return null
+  return (
+    <div className="mt-3 pt-3 border-t border-white/5">
+      <div className="text-[10px] uppercase tracking-wider text-white/35 font-bold mb-1.5">{t.history_title}</div>
+      <ul className="space-y-1">
+        {history.map((h, i) => (
+          <li key={i} className="text-[11px] text-white/50 flex flex-wrap items-center gap-x-2">
+            <span className="text-white/30">
+              {new Date(h.attemptedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+            </span>
+            <span className="text-white/40">{h.triggeredBy === 'cron' ? t.history_cron : t.history_manual}</span>
+            <span className={h.status === 'success' ? 'text-emerald-300/80' : 'text-[#ff8888]/80'}>
+              {h.status === 'success' ? t.history_success : t.history_failed}
+            </span>
+            {h.channels.length > 0 && (
+              <span className="text-white/30">{h.channels.map((c) => CHANNEL_LABEL[c] ?? c).join(', ')}</span>
+            )}
+            {h.errorMessage && <span className="text-[#ff8888]/60 truncate max-w-[280px]">{h.errorMessage}</span>}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
