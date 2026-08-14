@@ -18,7 +18,6 @@
 | 5 | award-gate 부분 코호트 확정 — `countBlockingFailed`로 이미 닫혔는지 확인만 (새 작업 아님) | $0 | 없음 | 전체 테스트 착수 전 확인 예정 |
 | 6 | email-tick 300초 예산 — 제안 3건(중복 alreadySent 제거 / 틱당 예산+deferred 보고 / 429 처리) | 코드 소량 | 전체 테스트(리허설) 실주행(계산 아닌 실측 필요) | 리허설 전 |
 | 7 | 멀티 admin — **마이그는 이미 Run됨**(2026-08-11 실측: `is_staff()` RPC 200·role CHECK 확인). 남은 건 코드 머지뿐(`feat/multi-admin`, `bbc1356`) + 매니저로 올릴 실사용자 부재(현재 profiles 7행 중 실사용자는 대표님 1명, 나머지는 테스트/픽스처 계정) | 머지 1건 | 후보가 될 실사용자가 먼저 가입 | 미정 |
-| 10 | `lib/email/schedule-lines.ts` "결과 안내" bullet 부재 | 미측정 | 레인 A 소관 — 제니2 경유로 지시 | 미정 |
 | 23 | 등록 취소(참가자가 스스로 등록을 물릴 수 있는 경로) — HQ 2026-08-12 명시적으로 이번 범위 제외. 정원 카운트+Founding 순번이 등록에 얽혀 있어 취소 시 무엇을 되돌리나(대기자 승격? Founding 번호 반납?)가 별건 설계가 필요 | 설계 필요 | 없음 | 미정 |
 | 12 | **전체 테스트(리허설) 착수 시 선행 확인** — season_test·season_test2의 `scoring_start_at`이 스테일이라 버퍼 게이트에 차단된다. 시계 압축 시 그 컬럼도 같이 당겨야 "워커가 조용히 0건"이 안 난다 | 미측정 | 전체 테스트 계획 자체가 아직 없음(2026-08-10 기준, 8/11·8/13·8/14는 본부가 무효화함) | 전체 테스트 착수 시 |
 | 14 | [C]④ Pro Editor | 본체 관여 아님 | 지수2C가 병렬 진행 | 지수2C 소관 |
@@ -33,6 +32,7 @@
 
 | # | 요약 | 종결 근거 |
 |---|---|---|
+| c10b | `lib/email/schedule-lines.ts` "결과 안내" bullet 부재 | `6256e33`(2026-08-08 최초 배선, 결과안내 컬럼 없어 미포함)→`d918402`(같은 날, AI심사 컬럼 타입 누락 수정)→`3610be3`(2026-08-10, `prelim_results_announcement_at` 전용 컬럼 확보로 결과안내 불릿 추가). 2026-08-13 이 창에서 season_0 실값(`prelim_results_announcement_at=2026-11-08T20:00:00Z`)을 `formatScheduleMoment`/`prelimReceiptLines`에 직접 통과시켜 재검증: KR "11월 9일 오전 5시(한국 시간)" / EN "Nov 8, 12:00 PM PT" — 세 불릿(공개/AI심사/결과안내) 전부 각자 컬럼에서 렌더, 타이핑된 리터럴 없음. DB 쓰기 0 |
 | c21 | 21. 멤버십 게이트를 실제 참가 경로(`registerForSeason`)에 배선 | HQ 2026-08-12 지시대로 집행(판정 아님, 이미 확정된 정책): `checkApplyGate`를 `registerForSeason`/`submitGeneration` 5a/`submitRender` 7a 세 곳(모두 신규 행 mint 시점, 정원 판정과 같은 자리) 전부에 배선, fail-closed(`getMembershipState`가 이미 그렇게 설계돼 있음, 수정 불필요). 실측 검증: `scripts/zz_probe_membership_gate_2026-08-12.mjs` — Founding 캡을 `claimed+1`로 실측 낮춰 실제 101번째(zz_ B)가 `registerForSeason`에서 `membership_required`로 막히고 100번째(zz_ A, 실제 Founding 클레임)는 통과하는 것을 확인 후 전부 원복(카운터 2→1, 캡 100 복귀, zz_ 계정/행 0건 잔존 확인). 부수: 이 배선이 `lib/dst-boundaries.test.ts`를 깨서(`lib/studio.ts`가 새로 끌어온 `next/headers`+`lib/email/send.tsx`를 `scripts/test-hooks.mjs`가 스텁 안 하고 있었음) 그 두 스텁을 공유 테스트 훅에 추가, 507/507 복구 |
 | c1 | `in_progress` 영구 skip (lease/타임아웃 부재) | PR #3 lease 4단계, 2026-08-09 프로덕션 로그로 확인(`ITEM_DEADLINE=1389s LEASE_STALE=46min`) |
 | c2 | 채점 재현성 3건(Gemini 아암 D 채택 / 모델ID 고정 / Gemini 대응) | 본부 판정 완료. 2026-08-10 Defect1(b) 대조군 실측이 사후 실증 |
