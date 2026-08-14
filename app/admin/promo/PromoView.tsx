@@ -1,10 +1,11 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminLang } from '@/lib/admin-i18n'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { AdminPageHeader } from '../AdminPageHeader'
+import { PROMO_TIMEZONES, normalizePromoTime, nextPublishSlot, type PromoCadence } from '@/lib/promo-schedule'
 import {
   createUploadUrlAction,
   createPromoVideoAction,
@@ -14,9 +15,7 @@ import {
   updatePromoCadenceAction,
 } from './actions'
 
-// Mirrors lib/promo-schedule.PromoCadence -- not imported directly, that
-// module is `server-only` and this file is a client component.
-export type Cadence = { weekdays: string[]; time: string | null; timezone: string | null }
+export type Cadence = PromoCadence
 
 export type PromoRow = {
   id: string
@@ -120,6 +119,11 @@ const DICT = {
     cadence_saved: '저장됨',
     cadence_save_err: '저장 실패',
     cadence_paused: '지금 정지 상태 (요일 0개)',
+    cadence_time_ph: '예: 6, 630, 6:30, 18',
+    cadence_time_err: '시각 형식을 읽을 수 없습니다 (예: 6, 630, 6:30, 18)',
+    cadence_timezone_placeholder: '선택…',
+    cadence_next: (when: string) => `다음 발행은: ${when}`,
+    cadence_next_none: '요일·시각·시간대를 모두 정하면 다음 발행 시각이 여기 표시됩니다.',
     weekday: { mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' },
   },
   en: {
@@ -184,6 +188,11 @@ const DICT = {
     cadence_saved: 'Saved',
     cadence_save_err: 'Save failed',
     cadence_paused: 'Currently paused (0 weekdays)',
+    cadence_time_ph: 'e.g. 6, 630, 6:30, 18',
+    cadence_time_err: "Couldn't read that time (e.g. 6, 630, 6:30, 18)",
+    cadence_timezone_placeholder: 'Select…',
+    cadence_next: (when: string) => `Next publish: ${when}`,
+    cadence_next_none: 'Pick weekdays, a time, and a timezone to see the next publish slot here.',
     weekday: { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' },
   },
 }
@@ -232,7 +241,12 @@ const WEEKDAYS: (keyof Dict['weekday'])[] = ['mon', 'tue', 'wed', 'thu', 'fri', 
 function CadenceForm({ t, cadence }: { t: Dict; cadence: Cadence }) {
   const router = useRouter()
   const [weekdays, setWeekdays] = useState<string[]>(cadence.weekdays)
+  // `time` is the last VALID normalized value (starts from what's saved);
+  // `timeDraft` is exactly what's in the input, including invalid partial
+  // typing -- kept separate so the field doesn't fight the user mid-keystroke.
   const [time, setTime] = useState(cadence.time ?? '')
+  const [timeDraft, setTimeDraft] = useState(cadence.time ?? '')
+  const [timeErr, setTimeErr] = useState(false)
   const [timezone, setTimezone] = useState(cadence.timezone ?? '')
   const [pending, startPending] = useTransition()
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -240,8 +254,36 @@ function CadenceForm({ t, cadence }: { t: Dict; cadence: Cadence }) {
   const toggle = (d: string) =>
     setWeekdays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))
 
+  // "6" -> "06:00" etc, on blur -- the field corrects itself instead of
+  // requiring the operator to type the exact HH:MM shape (HQ 2026-08-14).
+  const handleTimeBlur = () => {
+    if (!timeDraft.trim()) {
+      setTime('')
+      setTimeErr(false)
+      return
+    }
+    const normalized = normalizePromoTime(timeDraft)
+    if (normalized === null) {
+      setTimeErr(true)
+      return
+    }
+    setTime(normalized)
+    setTimeDraft(normalized)
+    setTimeErr(false)
+  }
+
+  // Preview reuses the exact same window/weekday logic the cron runs (see
+  // lib/promo-schedule) -- never a second, hand-written approximation.
+  const next = useMemo(() => {
+    if (timeErr || weekdays.length === 0 || !time || !timezone) return null
+    return nextPublishSlot({ weekdays, time, timezone }, new Date())
+  }, [weekdays, time, timezone, timeErr])
+
+  const saveDisabled = pending || timeErr
+
   const handleSave = () => {
     setMsg(null)
+    if (timeErr) return
     startPending(async () => {
       const res = await updatePromoCadenceAction({ weekdays, time, timezone })
       if (!res.ok) {
@@ -278,21 +320,46 @@ function CadenceForm({ t, cadence }: { t: Dict; cadence: Cadence }) {
           </div>
         </Labeled>
         <Labeled label={t.cadence_time}>
-          <input value={time} onChange={(e) => setTime(e.target.value)} className={inputCls} placeholder="18:00" />
+          <input
+            value={timeDraft}
+            onChange={(e) => {
+              setTimeDraft(e.target.value)
+              setTimeErr(false)
+            }}
+            onBlur={handleTimeBlur}
+            className={`${inputCls} ${timeErr ? 'border-[#ff4444]/60' : ''}`}
+            placeholder={t.cadence_time_ph}
+          />
+          {timeErr && <p className="mt-1 text-[11px] text-[#ff8888]">{t.cadence_time_err}</p>}
         </Labeled>
         <Labeled label={t.cadence_timezone}>
-          <input
+          <select
             value={timezone}
             onChange={(e) => setTimezone(e.target.value)}
             className={inputCls}
-            placeholder="Asia/Seoul"
-          />
+          >
+            <option value="">{t.cadence_timezone_placeholder}</option>
+            {PROMO_TIMEZONES.map((tz) => (
+              <option key={tz.value} value={tz.value}>
+                {tz.label}
+              </option>
+            ))}
+          </select>
         </Labeled>
+
+        <p className="text-[11px] text-[#ffb488]">
+          {next
+            ? t.cadence_next(
+                `${next.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} (${new Intl.DateTimeFormat(undefined, { timeZone: timezone, dateStyle: 'medium', timeStyle: 'short' }).format(next)} ${timezone})`,
+              )
+            : t.cadence_next_none}
+        </p>
+
         {weekdays.length === 0 && <p className="text-[11px] text-white/35">{t.cadence_paused}</p>}
         <button
           type="button"
           onClick={handleSave}
-          disabled={pending}
+          disabled={saveDisabled}
           className="px-3 py-1.5 rounded border border-white/15 text-white/70 text-xs font-bold hover:border-white/35 transition disabled:opacity-40"
         >
           {pending ? t.cadence_saving : t.cadence_save}

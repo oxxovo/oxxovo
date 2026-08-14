@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { isValidPromoTimezone, normalizePromoTime } from '@/lib/promo-schedule'
 
 const BUCKET = 'promo-videos'
 
@@ -115,17 +116,42 @@ export type UpdateCadenceState = { ok: true } | { ok: false; error: string }
 // platform_config writer for the publish cadence. TK sets these from this
 // screen -- never seeded by SQL (HQ 2026-08-14): an empty `weekdays` IS the
 // pause state, so an operator can stop auto-publish just by clearing it here.
+//
+// ★value_type IS ALWAYS PASSED. platform_config.value_type is NOT NULL with
+// no default -- an upsert() compiles to `INSERT ... ON CONFLICT DO UPDATE`,
+// and Postgres validates the proposed INSERT row against NOT NULL
+// constraints before it even looks at the conflict, so omitting value_type
+// fails EVEN THOUGH the row already exists and the statement would only ever
+// UPDATE it in practice (reproduced live 2026-08-14: TK's save hit exactly
+// this — "null value in column value_type ... violates not-null
+// constraint" — and because all 3 rows are one upsert() call/one SQL
+// statement, the failure was atomic: weekdays and time were not saved
+// either, not just timezone).
+//
+// ★timezone is server-validated against the same closed list the <select>
+// renders (lib/promo-schedule.PROMO_TIMEZONES) -- not free text. TK typed
+// "korea" once; that is not an IANA name, would have saved silently, and the
+// cron would then just never fire with no error anywhere.
 export async function updatePromoCadenceAction(input: {
   weekdays: string[]
   time: string
   timezone: string
 }): Promise<UpdateCadenceState> {
   await requireAdmin()
+
+  const time = input.time.trim() ? normalizePromoTime(input.time) : ''
+  if (input.time.trim() && time === null) {
+    return { ok: false, error: `invalid time "${input.time}" -- use HH:MM` }
+  }
+  if (input.timezone.trim() && !isValidPromoTimezone(input.timezone.trim())) {
+    return { ok: false, error: `invalid timezone "${input.timezone}"` }
+  }
+
   const admin = createSupabaseAdmin()
   const rows = [
-    { key: 'promo_publish_weekdays', value: input.weekdays.join(',') },
-    { key: 'promo_publish_time', value: input.time.trim() },
-    { key: 'promo_publish_timezone', value: input.timezone.trim() },
+    { key: 'promo_publish_weekdays', value: input.weekdays.join(','), value_type: 'text' },
+    { key: 'promo_publish_time', value: time ?? '', value_type: 'text' },
+    { key: 'promo_publish_timezone', value: input.timezone.trim(), value_type: 'text' },
   ]
   const { error } = await admin.from('platform_config').upsert(rows, { onConflict: 'key' })
   if (error) return { ok: false, error: error.message }
