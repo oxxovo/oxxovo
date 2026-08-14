@@ -60,9 +60,11 @@ const DICT = {
     round_application: '예선',
     round_label: (r: string) => `이번 제출: ${r}`,
     theme_label: '주제',
-    twist_label: '트위스트',
-    twist_hidden: '트위스트는 공개 시점에 표시됩니다.',
-    no_theme: '주제 미정',
+    // ★2026-08-13 (제니3 확정): "트위스트"는 반전/의외성 뉘앙스라 로션 도포
+    // 같은 확정 의무 요건을 "안 넣어도 되는 것"처럼 약하게 읽히게 만든다.
+    // 내부 컬럼명(main_round_twist)은 그대로 -- 화면 라벨만 분리.
+    twist_label: '필수 조건',
+    no_theme: '자유 주제 — 당신의 실력을 보여주세요',
     balance: '크레딧 잔액',
     used_label: (u: number, m: number) => `생성 ${u}/${m}회 사용`,
     need_apply: '생성은 가능하지만, 제출하려면 먼저 신청이 필요합니다.',
@@ -193,9 +195,8 @@ const DICT = {
     round_application: 'Application',
     round_label: (r: string) => `This submission: ${r}`,
     theme_label: 'Theme',
-    twist_label: 'Twist',
-    twist_hidden: 'The twist appears at reveal time.',
-    no_theme: 'Theme TBD',
+    twist_label: 'Required Element',
+    no_theme: 'Open theme — show us what you can create',
     balance: 'Credit balance',
     used_label: (u: number, m: number) => `${u}/${m} generations used`,
     need_apply: 'You can generate, but you must apply before you can submit.',
@@ -489,7 +490,7 @@ export default function StudioPage() {
           <p className="mt-1 text-sm text-white/50">{t.subtitle}</p>
         </div>
 
-        <ThemeBanner t={t} state={state} lang={lang} />
+        <ThemeBanner t={t} state={state} />
         <StatusBar t={t} state={state} />
         <BuyCredits token={token} />
 
@@ -594,7 +595,7 @@ export default function StudioPage() {
   )
 }
 
-function ThemeBanner({ t, state, lang }: { t: Dict; state: StudioState; lang: Lang }) {
+function ThemeBanner({ t, state }: { t: Dict; state: StudioState }) {
   const roundLabel = state.season.round === 'main' ? t.round_main : t.round_application
   return (
     <div className="rounded-xl border border-[#8b22ff]/30 bg-[#8b22ff]/[.06] p-5">
@@ -610,14 +611,18 @@ function ThemeBanner({ t, state, lang }: { t: Dict; state: StudioState; lang: La
         <div className="text-[10px] uppercase tracking-wider text-white/40">{t.theme_label}</div>
         <div className="text-lg font-bold text-white">{state.season.theme ?? t.no_theme}</div>
       </div>
-      <div className="mt-3">
-        <div className="text-[10px] uppercase tracking-wider text-white/40">{t.twist_label}</div>
-        {state.season.twistRevealed && state.season.twist ? (
+      {/* ★2026-08-13 (제니3 확정): "예선엔 트위스트가 없다" -- during prelim
+          this row does not render at all (no placeholder either; a hidden-
+          until-later note reads as withheld, not absent). Only appears once
+          twistRevealed, matching isMainThemeRevealed's gate -- the same
+          instant the theme label itself goes from the prelim placeholder to
+          the real main-round theme. */}
+      {state.season.twistRevealed && state.season.twist && (
+        <div className="mt-3">
+          <div className="text-[10px] uppercase tracking-wider text-white/40">{t.twist_label}</div>
           <div className="text-sm text-[#d9b8ff]">{state.season.twist}</div>
-        ) : (
-          <div className={`text-sm text-white/35 ${lang === 'ko' ? '' : 'italic'}`}>{t.twist_hidden}</div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

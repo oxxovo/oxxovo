@@ -136,6 +136,39 @@ is missing`). 원인 조사 중 `.vercel/project.json`이 프로덕션
    같은 이유(게이트 우회는 실 관리자 계정만 가능, 데모 로그인은
    프로덕션에서 막혀 있고 admin 계정도 아님). 대표님 육안 확인 필요.
 
+## 6. 4차 배포 — 2026-08-13, force-dynamic 수정 + 히어로 이탤릭
+
+**지수2C · 제니2 지시 · 대표님 승인.** 3차 배포(§5)의 `builtAt`이
+`force-dynamic` 수정(`bba544b`, `app/studio/layout.tsx` — session6 게이트를
+정적 빌드에 굳혀버려서 `/studio`가 404였던 원인) 이전 빌드였다는 게
+드러나 재배포. main이 그 사이 다시 앞서 있었음(`bba544b` + docs 3건,
+겹치는 파일 없음) — `feat/studio-lane-c`로 merge(충돌 0), 히어로
+이탤릭 옵션 2(`0458543`)도 같이 실려서 나감.
+
+### 배포 전 필수 확인 — 지난 사고 재발 방지
+
+`.vercel/project.json`을 `C:\Users\Tom\oxxovo`(정본)와 대조 — **이미
+일치**(3차 배포 때 고친 게 이 세션 내내 유지됨), 그래도 지시대로 다시
+복사해서 시작. 스트레이 프로젝트(`oxxovo-lane-c`)는 이번 배포와 무관하게
+그대로 둠(HQ 쪽에서도 "그냥 둔다"로 이미 기록, `backlog_honcho.md` #27).
+
+### 배포
+
+`vercel deploy --prod --yes` → `dpl_4r7fxujL9aTXEiWjjkiH6EagKJ23`,
+`readyState: READY`, `target: production`, `www.oxxovo.ai` alias 완료.
+`inspectorUrl`이 올바른 프로젝트(`oxxovo`)를 가리키는 것도 확인.
+
+### 배포 후 실측
+
+① `builtAt`: `2026-08-13T04:14:11.309Z`(배포 전) →
+   `2026-08-13T05:07:50.673Z`(배포 후) — 갱신 확인.
+② `data-dpl-id="dpl_4r7fxujL9aTXEiWjjkiH6EagKJ23"` — 신규 배포 ID와 일치.
+③ `/studio`: **200**(이전 404 해소). 단 본문 해시가 `/`와 **바이트
+   동일** — `/studio`도 게이트를 그대로 통과해 "Coming Soon"을 보여줌
+   (실제 스튜디오 화면이 새어나간 게 아니라, "정적 빌드가 깨져서 404"
+   버그가 "다른 모든 경로처럼 게이트를 정상 통과"로 고쳐진 것). 공개
+   게이트(SITE_PUBLIC_ENABLED)는 건드리지 않음 — 확인됨.
+
 ## 관련
 `deploy_trains_2026-08-06.md`(배포됨 기준 갱신) ·
 `worker_deploy_procedure_2026-08-06.md`(이번에 따른 선례) ·

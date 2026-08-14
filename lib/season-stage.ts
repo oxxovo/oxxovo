@@ -47,6 +47,22 @@ const CLOSED: SeasonStage = {
   theme: null,
 }
 
+// ★Single source of truth for "is the main-round theme/required-element public
+// yet" -- shared with lib/seasons-theme.ts (Studio) so the two surfaces open at
+// the exact same instant instead of two independently-tuned gates drifting
+// apart (2026-08-13: caught before shipping -- Studio was about to gate on
+// `round === 'main'` alone, which is main_round_start_at, strictly LATER than
+// this -- finalists learn what they're making before the round starts, not at
+// the instant it starts). Deliberately NOT theme_announcement_minutes_before /
+// isTwistRevealed() (lib/seasons.ts) -- that lead-time only drives the
+// MainRoundStart email's copy, a different, unrelated concern.
+export function isMainThemeRevealed(
+  finalistReveal: { count: number; revealAt: string } | null,
+  inMainRound: boolean,
+): boolean {
+  return finalistReveal != null || inMainRound
+}
+
 // `seasonId` is passed separately because the Watch surface resolves an id even
 // when the season row itself is unavailable, and the finalist queries are keyed on
 // the id alone. A null season means we know nothing about the calendar, so the
@@ -64,7 +80,7 @@ export async function resolveSeasonStage(
 
   if (!season) return { ...CLOSED, inMainRound, finalists, finalistReveal }
 
-  const showTheme = finalistReveal != null || inMainRound
+  const showTheme = isMainThemeRevealed(finalistReveal, inMainRound)
   const theme = showTheme ? (season.main_round_theme_label ?? null) : null
 
   const content = getBannerStage(

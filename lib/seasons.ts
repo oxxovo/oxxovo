@@ -236,6 +236,14 @@ export type ThemeDisplay = {
 // The twist becomes public at main_round_start_at minus
 // theme_announcement_minutes_before. Reuses the existing announcement lead
 // time — no separate reveal column.
+//
+// ★2026-08-13: NOT the live Studio/Watch reveal path anymore (that moved to
+// isMainThemeRevealed, lib/season-stage.ts -- gated on finalist selection,
+// which happens before main_round_start_at, not at this later lead-time
+// instant). This function's only remaining consumer is the MainRoundStart
+// email's copy (theme_announcement_minutes_before is informational content
+// there, app/api/cron/email-tick/route.ts) -- kept as-is for that, not dead,
+// just no longer what decides what a finalist sees on screen.
 export function isTwistRevealed(
   s: Pick<ThemeSource, 'main_round_start_at' | 'theme_announcement_minutes_before'>,
   now: Date = new Date(),
@@ -246,10 +254,10 @@ export function isTwistRevealed(
   return now.getTime() >= revealMs
 }
 
-// Single source of truth for how theme + twist render. theme (season_theme) is
-// always shown; twist (main_round_twist) is shown ONLY once revealed. Pure and
-// side-effect free, so it is safe to call on the client — but it can only ever
-// reveal a twist that the caller already holds, and the client never holds one.
+// ★2026-08-13: no longer called by Studio (see isMainThemeRevealed above) --
+// kept as a documented pure function pairing season_theme + isTwistRevealed's
+// gate, in case something else legitimately wants that specific lead-time
+// semantic later. Not currently wired into any live UI.
 // (The deprecated main_round_theme is the PUBLIC main-round brief now, NOT a
 // twist fallback — it drives the Watch banner + season_theme, so it must not
 // leak into the twist slot; TK 2026-07-13.)
