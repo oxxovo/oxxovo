@@ -80,6 +80,10 @@ export default async function SeasonEditPage({
     studio_max_generations_per_round: season.studio_max_generations_per_round ?? 10,
     poster_url: season.poster_url ?? null,
     main_round_theme_label: season.main_round_theme_label ?? null,
+    // ★SECRET -- this page already reads `seasons` via service role (the
+    // 2026-08-14 GRANT hardening moved every admin seasons read here), so
+    // exposing this on the admin edit form is not a new leak.
+    main_round_twist: season.main_round_twist ?? null,
     lobby_featured: season.lobby_featured ?? false,
     application_open_at: season.application_open_at,
     registration_close_at: season.registration_close_at,

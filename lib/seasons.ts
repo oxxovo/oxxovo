@@ -176,6 +176,11 @@ export type Season = {
   // The SECRET surprise element, if any, lives in main_round_twist (still off
   // the view, still reveal-gated) -- not here. (TK 2026-07-12: A = public/early.)
   main_round_theme: string | null
+  // ★SECRET. Off the seasons_public view, service-role read only (theme-hybrid
+  // migration). Never on the base Season type until now -- absent from a type
+  // is not absent from the database (2026-08-08 lesson, scoring_start_at).
+  // Added 2026-08-15 so the admin edit form can read/write it.
+  main_round_twist: string | null
   // Short display label for main_round_theme (e.g. "Cosmetic Commercial Film").
   // main_round_theme is a full brief -- 901 chars / 10 lines for season 0 -- and
   // every surface that shows it is a one-line slot. So the UI shows THIS and
@@ -560,7 +565,12 @@ type ApplicationLike = { status: string }
 
 // When the theme should appear in the UI countdown → reveal transition.
 // Returns null when start_at is missing (season schedule not yet set).
-export function getThemeRevealTime(season: Season): Date | null {
+// Narrowed to the 2 fields it actually reads (not the full Season) so the
+// admin edit form can call it live off in-progress form state, not just a
+// saved row.
+export function getThemeRevealTime(
+  season: Pick<Season, 'main_round_start_at' | 'theme_announcement_minutes_before'>,
+): Date | null {
   if (!season.main_round_start_at) return null
   const startMs = new Date(season.main_round_start_at).getTime()
   const offsetMs = season.theme_announcement_minutes_before * 60 * 1000

@@ -256,6 +256,13 @@ export type Messages = {
     field_poster_url: string
     field_lobby_featured: string
     hint_poster_url: string
+    group_secret: string
+    secret_banner: string
+    field_twist: string
+    reveal_time_label: (kst: string, pt: string) => string
+    reveal_time_unset: string
+    reveal_time_hint: string
+    char_count: (n: number) => string
   }
   delete: {
     button: string
@@ -1175,6 +1182,14 @@ const MESSAGES_EN: Messages = {
     group_lobby: 'Lobby (home tournaments card)',
     field_poster_url: 'Poster URL',
     field_lobby_featured: 'Feature in lobby (pin first)',
+    group_secret: 'Secret content',
+    secret_banner: 'SECRET — not visible to participants until reveal time.',
+    field_twist: 'Main round required element (twist)',
+    reveal_time_label: (kst, pt) => `Reveal time: ${kst} KST · ${pt} PT`,
+    reveal_time_unset: 'Reveal time unknown -- set Main round start above first.',
+    reveal_time_hint:
+      'From getThemeRevealTime() (main round start minus theme reveal lead time). This is the email-announcement lead time, not necessarily the live Studio/Watch reveal moment -- that gate is finalist-selection based (lib/season-stage.ts) and can fire earlier.',
+    char_count: (n) => `${n} characters`,
     hint_poster_url: 'Optional. Empty = purple gradient + theme fallback.',
   },
   delete: {
@@ -2095,6 +2110,14 @@ const MESSAGES_KO: Messages = {
     field_poster_url: '포스터 URL',
     field_lobby_featured: '로비 featured (맨 앞 고정)',
     hint_poster_url: '선택. 비우면 퍼플 그라데이션 + 테마 폴백.',
+    group_secret: '비밀 콘텐츠',
+    secret_banner: '비밀 — 공개 시점까지 참가자에게 안 보입니다.',
+    field_twist: '본선 필수 요소 (트위스트)',
+    reveal_time_label: (kst, pt) => `공개 시점: 한국시간 ${kst} · 태평양시간 ${pt}`,
+    reveal_time_unset: '공개 시점 미확정 — 위의 본선 시작일을 먼저 입력하세요.',
+    reveal_time_hint:
+      'getThemeRevealTime() 기준(본선 시작 - 주제 공개 리드타임). 이메일 발표 시점이며, 실제 Studio/Watch 화면 공개와는 다른 게이트일 수 있습니다 — 그건 파이널리스트 선정 시점 기준(lib/season-stage.ts)이라 이보다 먼저 열릴 수 있습니다.',
+    char_count: (n) => `${n}자`,
   },
   delete: {
     button: '시즌 삭제',

@@ -1,9 +1,10 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useMemo, useState } from 'react'
 import { saveSeason, type SeasonFormState } from './actions'
 import { type SeasonFormInitial } from '@/lib/season-schema'
 import { useT } from '@/lib/admin-i18n'
+import { getThemeRevealTime } from '@/lib/seasons'
 
 const initialState: SeasonFormState = { ok: false }
 
@@ -67,6 +68,20 @@ export function SeasonForm({
   const [pct1, setPct1] = useState(Number(initial.prize_first_pct))
   const [pct2, setPct2] = useState(Number(initial.prize_second_pct))
   const [pct3, setPct3] = useState(Number(initial.prize_third_pct))
+
+  // Also controlled -- needed live (not just on submit) so the twist reveal-
+  // time preview below reacts as either field is edited, not just what was
+  // saved last.
+  const [mainRoundStartAtIso, setMainRoundStartAtIso] = useState(initial.main_round_start_at ?? '')
+  const [themeLeadMinutes, setThemeLeadMinutes] = useState(Number(initial.theme_announcement_minutes_before))
+  const revealTime = useMemo(
+    () =>
+      getThemeRevealTime({
+        main_round_start_at: mainRoundStartAtIso || null,
+        theme_announcement_minutes_before: themeLeadMinutes,
+      }),
+    [mainRoundStartAtIso, themeLeadMinutes],
+  )
 
   const sumPct = round2(pct1 + pct2 + pct3)
   const sumOk = Math.abs(sumPct - 100) < 0.01
@@ -156,7 +171,13 @@ export function SeasonForm({
       </Group>
 
       <Group title={t.season_form.group_timing}>
-        <Field label={t.season_form.field_theme_reveal} name="theme_announcement_minutes_before" type="number" defaultValue={initial.theme_announcement_minutes_before} error={fieldError('theme_announcement_minutes_before')} />
+        <ControlledNumberField
+          label={t.season_form.field_theme_reveal}
+          name="theme_announcement_minutes_before"
+          value={themeLeadMinutes}
+          onChange={setThemeLeadMinutes}
+          error={fieldError('theme_announcement_minutes_before')}
+        />
         <Field label={t.season_form.field_submission_hours} name="submission_hours" type="number" defaultValue={initial.submission_hours} error={fieldError('submission_hours')} />
       </Group>
 
@@ -295,10 +316,43 @@ export function SeasonForm({
         <DatetimeField label={t.season_form.field_prelim_results_announcement} name="prelim_results_announcement_at" defaultValue={toDatetimeLocal(initial.prelim_results_announcement_at)} error={fieldError('prelim_results_announcement_at')} />
         <DatetimeField label={t.season_form.field_community_vote_start} name="community_vote_start_at" defaultValue={toDatetimeLocal(initial.community_vote_start_at)} error={fieldError('community_vote_start_at')} />
         <DatetimeField label={t.season_form.field_community_vote_end} name="community_vote_end_at" defaultValue={toDatetimeLocal(initial.community_vote_end_at)} error={fieldError('community_vote_end_at')} />
-        <DatetimeField label={t.season_form.field_main_start} name="main_round_start_at" defaultValue={toDatetimeLocal(initial.main_round_start_at)} error={fieldError('main_round_start_at')} />
+        <DatetimeField
+          label={t.season_form.field_main_start}
+          name="main_round_start_at"
+          defaultValue={toDatetimeLocal(initial.main_round_start_at)}
+          error={fieldError('main_round_start_at')}
+          onIsoChange={setMainRoundStartAtIso}
+        />
         <DatetimeField label={t.season_form.field_main_end} name="main_round_end_at" defaultValue={toDatetimeLocal(initial.main_round_end_at)} error={fieldError('main_round_end_at')} />
         <DatetimeField label={t.season_form.field_awards} name="awards_announcement_at" defaultValue={toDatetimeLocal(initial.awards_announcement_at)} error={fieldError('awards_announcement_at')} />
       </Group>
+
+      <fieldset>
+        <legend className="text-xs uppercase tracking-[0.2em] text-[#ff8844] font-bold mb-1">
+          {t.season_form.group_secret}
+        </legend>
+        <div className="mb-3 px-3 py-2 rounded border border-[#ff4444]/40 bg-[#ff4444]/[.06] text-xs font-bold text-[#ff8888]">
+          {t.season_form.secret_banner}
+        </div>
+        <p className="mb-4 text-[10px] text-white/35 max-w-2xl">{t.season_form.reveal_time_hint}</p>
+        <div className="mb-4">
+          {revealTime ? (
+            <p className="text-xs text-[#ff8844]">
+              {t.season_form.reveal_time_label(formatInZone(revealTime.toISOString(), KST_TZ), formatInZone(revealTime.toISOString(), PT_TZ))}
+            </p>
+          ) : (
+            <p className="text-xs text-white/40">{t.season_form.reveal_time_unset}</p>
+          )}
+        </div>
+        <div className="grid grid-cols-1 gap-4">
+          <TextareaField
+            label={t.season_form.field_twist}
+            name="main_round_twist"
+            defaultValue={initial.main_round_twist ?? ''}
+            error={fieldError('main_round_twist')}
+          />
+        </div>
+      </fieldset>
 
       <div className="flex items-center gap-3 pt-4 border-t border-white/10">
         <button
@@ -349,6 +403,43 @@ function Field({
         step={step}
         defaultValue={String(defaultValue)}
         className={`w-full px-3 py-2 bg-[#100608] border rounded text-sm text-white focus:border-[#ff8844] focus:outline-none transition ${
+          error ? 'border-[#ff4444]' : 'border-white/10'
+        }`}
+      />
+      {hint && !error && <p className="mt-1 text-[10px] text-white/35">{hint}</p>}
+      {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
+    </label>
+  )
+}
+
+// Free-text, no length cap enforced anywhere in the DB for the fields that
+// use this (checked: no CHECK constraint found), so this shows a running
+// count rather than a "remaining" countdown against a limit that doesn't
+// exist.
+function TextareaField({
+  label, name, defaultValue, error, hint, rows = 6,
+}: {
+  label: string
+  name: string
+  defaultValue: string
+  error?: string
+  hint?: string
+  rows?: number
+}) {
+  const t = useT()
+  const [value, setValue] = useState(defaultValue)
+  return (
+    <label className="block">
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-[11px] uppercase tracking-wider text-white/50">{label}</span>
+        <span className="text-[10px] text-white/35 tabular-nums">{t.season_form.char_count(value.length)}</span>
+      </div>
+      <textarea
+        name={name}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        rows={rows}
+        className={`w-full px-3 py-2 bg-[#100608] border rounded text-sm text-white focus:border-[#ff8844] focus:outline-none transition resize-y ${
           error ? 'border-[#ff4444]' : 'border-white/10'
         }`}
       />
@@ -444,13 +535,18 @@ function Select({
 }
 
 function DatetimeField({
-  label, name, defaultValue, error, hint,
+  label, name, defaultValue, error, hint, onIsoChange,
 }: {
   label: string
   name: string
   defaultValue: string
   error?: string
   hint?: string
+  // Optional: fires with the converted ISO value on every edit. For fields
+  // another part of the form needs to react to live (e.g. the twist
+  // reveal-time preview off main_round_start_at) -- most callers don't need
+  // this, the hidden input already carries the value at submit time.
+  onIsoChange?: (iso: string) => void
 }) {
   const t = useT()
   // datetime-local input value is "YYYY-MM-DDTHH:mm" in the user's local tz —
@@ -468,7 +564,10 @@ function DatetimeField({
       <input
         type="datetime-local"
         value={localValue}
-        onChange={(e) => setLocalValue(e.target.value)}
+        onChange={(e) => {
+          setLocalValue(e.target.value)
+          onIsoChange?.(fromDatetimeLocal(e.target.value))
+        }}
         className={`w-full px-3 py-2 bg-[#100608] border rounded text-sm text-white focus:border-[#ff8844] focus:outline-none transition ${
           error ? 'border-[#ff4444]' : 'border-white/10'
         }`}
