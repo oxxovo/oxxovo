@@ -4,7 +4,6 @@
 
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { AdminPageHeader } from '../AdminPageHeader'
 import { SettingsView, type ConfigRow, type HistoryRow } from './SettingsView'
 
 export const dynamic = 'force-dynamic'
@@ -44,13 +43,5 @@ export default async function AdminSettingsPage() {
     changedAt: r.changed_at as string,
   }))
 
-  return (
-    <div className="p-8 max-w-5xl">
-      <AdminPageHeader
-        title="Settings"
-        subtitle="platform_config -- every operator-set value in one place. Type is enforced by value_type (bool/int/decimal/text); switches ending in _enabled ask for a second confirm before saving."
-      />
-      <SettingsView rows={rows} history={history} />
-    </div>
-  )
+  return <SettingsView rows={rows} history={history} />
 }

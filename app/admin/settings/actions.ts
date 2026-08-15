@@ -25,8 +25,13 @@ export async function updateConfigValueAction(key: string, rawValue: string): Pr
     .single()
   if (readErr || !existing) return { ok: false, error: `unknown key "${key}"` }
 
+  // Backstop only -- the UI already blocks Save on this same check (with a
+  // localized message). Reaching here means the client check was bypassed,
+  // so an English technical string is fine; nobody normally sees it.
   const result = validateConfigValue(existing.value_type, rawValue)
-  if (!result.ok) return { ok: false, error: result.error }
+  if (!result.ok) {
+    return { ok: false, error: `invalid value for ${result.valueType} "${result.raw}" (${result.errorCode})` }
+  }
 
   if (result.normalized === existing.value) return { ok: true, noop: true }
 

@@ -12,7 +12,16 @@
 
 export type ConfigValueType = 'bool' | 'int' | 'decimal' | 'text'
 
-export type ValidateResult = { ok: true; normalized: string } | { ok: false; error: string }
+// No error MESSAGE here on purpose -- this file has no admin-i18n access
+// (it is imported client-side for instant feedback, same as
+// lib/promo-schedule.ts), and a hardcoded string would not follow the
+// language toggle (HQ 2026-08-16: exactly the class of bug this whole file's
+// caller screen just got called out for). The UI translates errorCode.
+export type ValidateErrorCode = 'bool_invalid' | 'int_invalid' | 'decimal_invalid' | 'unknown_type'
+
+export type ValidateResult =
+  | { ok: true; normalized: string }
+  | { ok: false; errorCode: ValidateErrorCode; raw: string; valueType: string }
 
 // Master-switch keys (member_hosted_enabled, membership_enabled,
 // session6_enabled, studio_purchase_enabled as of 2026-08-15) -- these flip
@@ -30,14 +39,14 @@ export function validateConfigValue(valueType: string, raw: string): ValidateRes
   switch (valueType) {
     case 'bool':
       if (raw !== 'true' && raw !== 'false') {
-        return { ok: false, error: `bool 값은 true/false만 허용됩니다 (받은 값: "${raw}")` }
+        return { ok: false, errorCode: 'bool_invalid', raw, valueType }
       }
       return { ok: true, normalized: raw }
 
     case 'int': {
       const trimmed = raw.trim()
       if (!INT_RE.test(trimmed)) {
-        return { ok: false, error: `int 값은 정수만 허용됩니다 (받은 값: "${raw}")` }
+        return { ok: false, errorCode: 'int_invalid', raw, valueType }
       }
       return { ok: true, normalized: trimmed }
     }
@@ -45,7 +54,7 @@ export function validateConfigValue(valueType: string, raw: string): ValidateRes
     case 'decimal': {
       const trimmed = raw.trim()
       if (!DECIMAL_RE.test(trimmed) || !Number.isFinite(Number(trimmed))) {
-        return { ok: false, error: `decimal 값은 숫자만 허용됩니다 (받은 값: "${raw}")` }
+        return { ok: false, errorCode: 'decimal_invalid', raw, valueType }
       }
       return { ok: true, normalized: trimmed }
     }
@@ -54,6 +63,6 @@ export function validateConfigValue(valueType: string, raw: string): ValidateRes
       return { ok: true, normalized: raw.trim() }
 
     default:
-      return { ok: false, error: `알 수 없는 value_type: "${valueType}"` }
+      return { ok: false, errorCode: 'unknown_type', raw, valueType }
   }
 }
