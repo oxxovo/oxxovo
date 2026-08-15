@@ -106,13 +106,16 @@ export const seasonSchema = z
     main_round_theme_label: z
       .union([z.string(), z.null(), z.undefined()])
       .transform((v) => (v ?? '').trim() || null),
+    // ★PUBLIC (verified live, 2026-08-15: readable via seasons_public with the
+    // anon key, no login). The full brief main_round_theme_label summarizes.
+    // Despite the similar name, this is NOT the secret -- see
+    // main_round_twist below.
+    main_round_theme: z
+      .union([z.string(), z.null(), z.undefined()])
+      .transform((v) => (v ?? '').trim() || null),
     // ★SECRET (lib/seasons-theme.ts) -- base table only, never on
     // seasons_public, service-role read only. No length cap: no DB CHECK
     // found, and this field already holds long values with no rejection.
-    // (main_round_theme is deliberately NOT added alongside this -- despite
-    // its name, that field is the PUBLIC main-round brief, already exposed on
-    // seasons_public since main_round_theme_public_2026-07. Flagged back to
-    // HQ rather than labeling it "secret" here, which would be false.)
     main_round_twist: z
       .union([z.string(), z.null(), z.undefined()])
       .transform((v) => (v ?? '').trim() || null),
@@ -298,6 +301,7 @@ export const DEFAULT_SEASON: SeasonFormInitial = {
   studio_max_generations_per_round: 10,
   poster_url: null,
   main_round_theme_label: null,
+  main_round_theme: null,
   main_round_twist: null,
   lobby_featured: false,
   application_open_at: null,

@@ -80,6 +80,9 @@ export default async function SeasonEditPage({
     studio_max_generations_per_round: season.studio_max_generations_per_round ?? 10,
     poster_url: season.poster_url ?? null,
     main_round_theme_label: season.main_round_theme_label ?? null,
+    // ★PUBLIC (seasons_public exposes it) -- vs. main_round_twist below,
+    // which is SECRET. Same table read either way.
+    main_round_theme: season.main_round_theme ?? null,
     // ★SECRET -- this page already reads `seasons` via service role (the
     // 2026-08-14 GRANT hardening moved every admin seasons read here), so
     // exposing this on the admin edit form is not a new leak.

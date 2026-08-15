@@ -199,6 +199,10 @@ export type Messages = {
     field_video_main_min: string
     field_video_main_max: string
     field_theme_label: string
+    field_theme_full: string
+    public_banner: string
+    public_evidence: string
+    public_redirect_to_twist: string
     field_theme_reveal: string
     field_submission_hours: string
     field_total_pool: string
@@ -1127,6 +1131,11 @@ const MESSAGES_EN: Messages = {
     field_video_main_min: 'Main round min',
     field_video_main_max: 'Main round max',
     field_theme_label: 'Main round theme label (short, public)',
+    field_theme_full: 'Main round theme (full brief)',
+    public_banner: 'PUBLIC — anyone can read this right now.',
+    public_evidence: 'Evidence: this column is on the seasons_public view, readable with no login.',
+    public_redirect_to_twist:
+      'Whatever you type here is public immediately. To lock in a main-round theme ahead of time without revealing it, use the Secret content -> twist field below instead.',
     field_theme_reveal: 'Theme reveal (minutes before)',
     field_submission_hours: 'Submission window (hours)',
     field_total_pool: 'Total prize pool',
@@ -2054,6 +2063,11 @@ const MESSAGES_KO: Messages = {
     field_video_main_min: '본선 영상 최소',
     field_video_main_max: '본선 영상 최대',
     field_theme_label: '본선 주제 라벨 (짧은 공개용)',
+    field_theme_full: '본선 주제 (전체 브리핑)',
+    public_banner: '공개 — 지금도 누구나 읽을 수 있습니다.',
+    public_evidence: '근거: 이 컬럼은 seasons_public 뷰에 올라가 있어 로그인 없이도 읽힙니다.',
+    public_redirect_to_twist:
+      '여기 쓰는 내용은 즉시 공개됩니다. 본선 주제를 미리 정해두되 공개는 나중에 하려면, 아래 비밀 콘텐츠 -> twist 칸을 쓰세요.',
     field_theme_reveal: '주제 공개 (분 전)',
     field_submission_hours: '제출 기간 (시간)',
     field_total_pool: '총 상금 풀',

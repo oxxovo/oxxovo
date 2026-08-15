@@ -170,6 +170,27 @@ export function SeasonForm({
         <Field label={t.season_form.field_theme_label} name="main_round_theme_label" defaultValue={initial.main_round_theme_label ?? ''} error={fieldError('main_round_theme_label')} />
       </Group>
 
+      {/* ★Deliberately far from the Secret content fieldset below (HQ
+          2026-08-16: "두 칸이 나란히 있으면 다음 사람이 또 헷갈린다") -- this is
+          the PUBLIC main-round brief, not the secret. Similar name, opposite
+          gate; see main_round_twist for the actual secret. */}
+      <fieldset>
+        <legend className="text-xs uppercase tracking-[0.2em] text-emerald-400 font-bold mb-1">
+          {t.season_form.field_theme_full}
+        </legend>
+        <div className="mb-1 px-3 py-2 rounded border border-emerald-500/40 bg-emerald-500/[.06] text-xs font-bold text-emerald-300">
+          {t.season_form.public_banner}
+        </div>
+        <p className="mb-1 text-[10px] text-white/35 max-w-2xl">{t.season_form.public_evidence}</p>
+        <p className="mb-3 text-[10px] text-white/50 max-w-2xl">{t.season_form.public_redirect_to_twist}</p>
+        <TextareaField
+          label={t.season_form.field_theme_full}
+          name="main_round_theme"
+          defaultValue={initial.main_round_theme ?? ''}
+          error={fieldError('main_round_theme')}
+        />
+      </fieldset>
+
       <Group title={t.season_form.group_timing}>
         <ControlledNumberField
           label={t.season_form.field_theme_reveal}
