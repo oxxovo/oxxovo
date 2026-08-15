@@ -15,7 +15,7 @@ export default async function AdminSettingsPage() {
 
   const { data: configData, error: configErr } = await admin
     .from('platform_config')
-    .select('key, value, value_type, description, updated_at')
+    .select('key, value, value_type, description, description_ko, updated_at')
     .order('key')
   if (configErr) throw new Error(`platform_config read failed: ${configErr.message}`)
 
@@ -24,17 +24,19 @@ export default async function AdminSettingsPage() {
     value: r.value as string,
     valueType: r.value_type as string,
     description: (r.description as string | null) ?? null,
+    descriptionKo: (r.description_ko as string | null) ?? null,
     updatedAt: r.updated_at as string,
   }))
 
   const { data: historyData } = await admin
     .from('platform_config_history')
-    .select('key, value_type, old_value, new_value, changed_by_email, changed_at')
+    .select('key, field, value_type, old_value, new_value, changed_by_email, changed_at')
     .order('changed_at', { ascending: false })
     .limit(100)
 
   const history: HistoryRow[] = (historyData ?? []).map((r) => ({
     key: r.key as string,
+    field: (r.field as string) ?? 'value',
     valueType: r.value_type as string,
     oldValue: r.old_value as string | null,
     newValue: r.new_value as string,

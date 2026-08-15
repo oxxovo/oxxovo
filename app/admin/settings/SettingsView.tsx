@@ -4,18 +4,20 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminLang } from '@/lib/admin-i18n'
 import { validateConfigValue, isRiskKey } from '@/lib/settings-validate'
-import { updateConfigValueAction } from './actions'
+import { updateConfigValueAction, updateConfigDescriptionKoAction } from './actions'
 
 export type ConfigRow = {
   key: string
   value: string
   valueType: string
   description: string | null
+  descriptionKo: string | null
   updatedAt: string
 }
 
 export type HistoryRow = {
   key: string
+  field: string
   valueType: string
   oldValue: string | null
   newValue: string
@@ -30,6 +32,9 @@ const DICT = {
     saving: '저장 중…',
     saved: '저장됨',
     no_desc: '(설명 없음)',
+    no_desc_ko: '한국어 설명이 아직 없습니다. 아래에 입력하고 저장하세요.',
+    en_source_prefix: '영어 원문',
+    ko_desc_placeholder: '한국어 설명 입력…',
     risk_warn: '이 스위치는 공개 화면 전체를 켜고 끕니다. 정말 바꾸시겠습니까?',
     risk_confirm: '확인, 변경',
     risk_cancel: '취소',
@@ -39,7 +44,10 @@ const DICT = {
     col_when: '시각',
     col_who: '관리자',
     col_key: '키',
+    col_field: '항목',
     col_change: '변경',
+    field_value: '값',
+    field_description_ko: '설명(KO)',
     bool_on: 'ON',
     bool_off: 'OFF',
   },
@@ -49,6 +57,9 @@ const DICT = {
     saving: 'Saving…',
     saved: 'Saved',
     no_desc: '(no description)',
+    no_desc_ko: 'No Korean description yet -- add one below and save.',
+    en_source_prefix: 'EN source',
+    ko_desc_placeholder: 'Korean description…',
     risk_warn: 'This switch turns a public surface on/off for everyone. Apply this change?',
     risk_confirm: 'Confirm change',
     risk_cancel: 'Cancel',
@@ -58,7 +69,10 @@ const DICT = {
     col_when: 'When',
     col_who: 'Admin',
     col_key: 'Key',
+    col_field: 'Field',
     col_change: 'Change',
+    field_value: 'value',
+    field_description_ko: 'description (KO)',
     bool_on: 'ON',
     bool_off: 'OFF',
   },
@@ -92,6 +106,7 @@ export function SettingsView({ rows, history }: { rows: ConfigRow[]; history: Hi
                   <th className="pb-2 pr-4 font-normal">{t.col_when}</th>
                   <th className="pb-2 pr-4 font-normal">{t.col_who}</th>
                   <th className="pb-2 pr-4 font-normal">{t.col_key}</th>
+                  <th className="pb-2 pr-4 font-normal">{t.col_field}</th>
                   <th className="pb-2 font-normal">{t.col_change}</th>
                 </tr>
               </thead>
@@ -103,6 +118,9 @@ export function SettingsView({ rows, history }: { rows: ConfigRow[]; history: Hi
                     </td>
                     <td className="py-2 pr-4 text-white/70 whitespace-nowrap">{h.changedByEmail}</td>
                     <td className="py-2 pr-4 font-mono text-white/80">{h.key}</td>
+                    <td className="py-2 pr-4 text-white/50 whitespace-nowrap">
+                      {h.field === 'description_ko' ? t.field_description_ko : t.field_value}
+                    </td>
                     <td className="py-2 text-white/70">
                       {t.from_to(h.oldValue ?? '(null)', h.newValue)}
                     </td>
@@ -169,7 +187,6 @@ function SettingsRow({ row, t }: { row: ConfigRow; t: Dict }) {
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs text-white/50 max-w-xl">{row.description || t.no_desc}</p>
         </div>
 
         <div className="shrink-0 flex items-center gap-2">
@@ -209,6 +226,8 @@ function SettingsRow({ row, t }: { row: ConfigRow; t: Dict }) {
         </div>
       </div>
 
+      <DescriptionKoEditor rowKey={row.key} description={row.description} descriptionKo={row.descriptionKo} t={t} />
+
       {!validation.ok && dirty && (
         <p className="mt-2 text-xs text-[#ff8888]">{validation.error}</p>
       )}
@@ -239,6 +258,77 @@ function SettingsRow({ row, t }: { row: ConfigRow; t: Dict }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// English description stays visible and untouched (source of truth for
+// code/docs); Korean is what TK actually reads on this screen, so it is the
+// prominent, editable field (HQ 2026-08-15: "번역해서 넣어주면 다음에 또 우리를
+// 찾으신다" -- TK edits it himself here, same RPC + history as a value save).
+function DescriptionKoEditor({
+  rowKey,
+  description,
+  descriptionKo,
+  t,
+}: {
+  rowKey: string
+  description: string | null
+  descriptionKo: string | null
+  t: Dict
+}) {
+  const router = useRouter()
+  const [draft, setDraft] = useState(descriptionKo ?? '')
+  const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const dirty = draft.trim() !== (descriptionKo ?? '')
+  const canSave = dirty && !pending
+
+  function save() {
+    setError(null)
+    setMsg(null)
+    startTransition(async () => {
+      const res = await updateConfigDescriptionKoAction(rowKey, draft)
+      if (!res.ok) {
+        setError(res.error)
+        return
+      }
+      setMsg(t.saved)
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-white/5">
+      <p className="text-xs text-white/40 italic">
+        {t.en_source_prefix}: {description || t.no_desc}
+      </p>
+      <div className="mt-1.5 flex items-start gap-2 max-w-xl">
+        <textarea
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setMsg(null)
+            setError(null)
+          }}
+          disabled={pending}
+          rows={2}
+          placeholder={descriptionKo ? undefined : t.no_desc_ko}
+          className="flex-1 px-2.5 py-1.5 bg-[#100608] border border-white/10 rounded text-xs text-white/85 focus:border-[#ff8844] focus:outline-none disabled:opacity-50 resize-y"
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={!canSave}
+          className="shrink-0 px-2.5 py-1.5 rounded bg-white/10 text-white text-[10px] font-bold uppercase tracking-wider hover:bg-white/20 transition disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          {pending ? t.saving : t.save}
+        </button>
+      </div>
+      {error && <p className="mt-1.5 text-xs text-[#ff8888]">{error}</p>}
+      {msg && !error && <p className="mt-1.5 text-xs text-[#6cff9c]">{msg}</p>}
     </div>
   )
 }

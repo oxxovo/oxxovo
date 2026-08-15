@@ -41,3 +41,35 @@ export async function updateConfigValueAction(key: string, rawValue: string): Pr
   revalidatePath('/admin/settings')
   return { ok: true }
 }
+
+// Korean description editor. No value_type gate (description_ko is free text
+// for any key), but the SAME RPC as the value save, so a description edit
+// gets the identical who/when/what -> what history row (HQ 2026-08-15: TK
+// edits this himself now instead of asking us to translate on demand, and
+// that only works if it is trustworthy the same way value edits are).
+export async function updateConfigDescriptionKoAction(key: string, koText: string): Promise<UpdateConfigState> {
+  const admin_profile = await requireAdmin()
+  const admin = createSupabaseAdmin()
+
+  const { data: existing, error: readErr } = await admin
+    .from('platform_config')
+    .select('description_ko')
+    .eq('key', key)
+    .single()
+  if (readErr || !existing) return { ok: false, error: `unknown key "${key}"` }
+
+  const normalized = koText.trim()
+  if (normalized === (existing.description_ko ?? '')) return { ok: true, noop: true }
+
+  const { error } = await admin.rpc('update_platform_config', {
+    p_key: key,
+    p_new_value: normalized,
+    p_admin_id: admin_profile.id,
+    p_admin_email: admin_profile.email,
+    p_field: 'description_ko',
+  })
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/admin/settings')
+  return { ok: true }
+}
