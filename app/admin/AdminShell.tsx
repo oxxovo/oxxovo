@@ -25,6 +25,7 @@ type NavItemKey =
   | 'watch_home'
   | 'watch_videos'
   | 'broadcasts'
+  | 'settings'
 
 const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean }> = [
   { href: '/admin', key: 'dashboard', emoji: '🏠' },
@@ -44,6 +45,7 @@ const NAV: Array<{ href: string; key: NavItemKey; emoji: string; soon?: boolean 
   { href: '/admin/comments', key: 'comments', emoji: '🗨️' },
   { href: '/admin/watch-home', key: 'watch_home', emoji: '📺' },
   { href: '/admin/watch-videos', key: 'watch_videos', emoji: '🎞️' },
+  { href: '/admin/settings', key: 'settings', emoji: '⚙️' },
 ]
 
 export function AdminShell({
