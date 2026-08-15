@@ -578,6 +578,14 @@ we fund D1 with promo credits and validate the money path once, live, in D2.
 
 Do these at launch, not before:
 - `studio_purchase_enabled = true` (platform_config)
+  - ★**Before flipping this on for real public exposure (e.g. season_0 opening
+    9/9/2026), confirm the Buy Credits "test mode" tag on `/studio` actually
+    reflects `STRIPE_SECRET_KEY`** -- it shipped hardcoded once already (fixed
+    2026-08-15, `app/studio/actions.ts` `getPurchaseOptions()` /
+    `app/studio/page.tsx` `BuyCredits`, see backlog c30). A stale/reverted
+    fix here means a participant sees "test mode" on a real charge the moment
+    the gate opens to real traffic. `lib/stripe.test.ts` has the local
+    control test (flips the key both ways, never touches prod env).
 - `session6_enabled = true` (master switch -- opens Studio on prod)
 - season_0 auto-activates draft->active at application_open_at (7/25 00:00 PT);
   confirm studio_round + schedule.

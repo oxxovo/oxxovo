@@ -53,18 +53,27 @@ import {
 import { getMusicGate } from '@/lib/music-gate'
 import { getBalance, getStudioPricing, getStudioPurchaseConfig, creditsForCostOrNull } from '@/lib/credits'
 import { isSession6Enabled } from '@/lib/session6'
+import { isTestMode } from '@/lib/stripe'
 import { getCreatorProfile } from '@/lib/profile'
 import { getDisplayName } from '@/lib/nickname'
 import { sendSubmissionReceipts, type ReceiptSeasonRef } from '@/lib/email/submission-receipts'
 
-export type PurchaseOptions = { enabled: boolean; packUsd: number[]; creditUsdValue: number }
+export type PurchaseOptions = { enabled: boolean; packUsd: number[]; creditUsdValue: number; testMode: boolean }
 
 // Credit top-up packs for the /studio buy section. Gated by both session6 and
 // the dedicated studio_purchase_enabled switch.
+//
+// testMode is derived from the actual STRIPE_SECRET_KEY prefix (lib/stripe
+// .isTestMode), never hardcoded -- BuyCredits is a client component and
+// cannot read server env itself, so the server must hand it down. A hardcoded
+// "test mode" label previously shipped regardless of which key was live
+// (2026-07-13 launch blocker, reports/studio_stripe_launch_blocker_2026-07
+// .md fix (a)); fixed 2026-08-15 after the key went live and the label did
+// not follow it -- the tag must never claim test mode on a live key.
 export async function getPurchaseOptions(): Promise<PurchaseOptions> {
-  if (!(await isSession6Enabled())) return { enabled: false, packUsd: [], creditUsdValue: 0.1 }
+  if (!(await isSession6Enabled())) return { enabled: false, packUsd: [], creditUsdValue: 0.1, testMode: isTestMode() }
   const cfg = await getStudioPurchaseConfig()
-  return { enabled: cfg.enabled, packUsd: cfg.packUsd, creditUsdValue: cfg.creditUsdValue }
+  return { enabled: cfg.enabled, packUsd: cfg.packUsd, creditUsdValue: cfg.creditUsdValue, testMode: isTestMode() }
 }
 
 async function verifyToken(

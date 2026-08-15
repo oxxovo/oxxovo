@@ -685,7 +685,8 @@ function BuyCredits({ token }: { token: string }) {
   return (
     <section className="mt-6 rounded-xl border border-white/10 bg-white/[.02] p-5">
       <h2 className="text-xs uppercase tracking-[0.2em] text-[#b66cff] font-bold mb-3">
-        Buy credits <span className="ml-1 text-[9px] text-amber-300/80">test mode</span>
+        Buy credits
+        {opts.testMode && <span className="ml-1 text-[9px] text-amber-300/80">test mode</span>}
       </h2>
       <div className="flex flex-wrap gap-3">
         {opts.packUsd.map((usd) => {
