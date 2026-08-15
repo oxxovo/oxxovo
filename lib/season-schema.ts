@@ -74,6 +74,8 @@ export const seasonSchema = z
     prize_third_pct: z.coerce.number().min(0).max(100),
 
     main_round_video_seconds: z.coerce.number().int().positive(),
+    main_round_video_min_seconds: z.coerce.number().int().positive(),
+    main_round_video_max_seconds: z.coerce.number().int().positive(),
     theme_announcement_minutes_before: z.coerce.number().int().nonnegative(),
     submission_hours: z.coerce.number().int().positive(),
     community_vote_weight: z.coerce.number().min(0).max(1),
@@ -98,6 +100,12 @@ export const seasonSchema = z
     poster_url: z
       .union([z.string(), z.null(), z.undefined()])
       .transform((v) => (v ?? '').trim() || null),
+    // Short display label for main_round_theme (lib/seasons.ts). Same empty
+    // -> null convention as poster_url -- an unset label is a real state
+    // (falls back to season_theme/id in the UI), not an error.
+    main_round_theme_label: z
+      .union([z.string(), z.null(), z.undefined()])
+      .transform((v) => (v ?? '').trim() || null),
     lobby_featured: z
       .union([z.literal('true'), z.literal('false'), z.boolean(), z.undefined()])
       .transform((v) => v === true || v === 'true'),
@@ -110,6 +118,15 @@ export const seasonSchema = z
     registration_close_at: nullableTimestamp,
     application_close_at: nullableTimestamp,
     scoring_complete_at: nullableTimestamp,
+    // When AI scoring is scheduled to START (distinct from scoring_complete_at,
+    // the "done" marker -- see lib/seasons.ts comment on the same column).
+    scoring_start_at: nullableTimestamp,
+    // When the preliminary-result email is scheduled to go out (a schedule,
+    // not the release marker -- prelim_released_at is separate and not on
+    // this form).
+    prelim_results_announcement_at: nullableTimestamp,
+    community_vote_start_at: nullableTimestamp,
+    community_vote_end_at: nullableTimestamp,
     main_round_start_at: nullableTimestamp,
     main_round_end_at: nullableTimestamp,
     awards_announcement_at: nullableTimestamp,
@@ -119,6 +136,23 @@ export const seasonSchema = z
     {
       message: 'video min must be <= video max',
       path: ['application_video_max_seconds'],
+    },
+  )
+  .refine(
+    (s) => s.main_round_video_min_seconds <= s.main_round_video_max_seconds,
+    {
+      message: 'main round video min must be <= max',
+      path: ['main_round_video_max_seconds'],
+    },
+  )
+  .refine(
+    (s) =>
+      !s.community_vote_start_at ||
+      !s.community_vote_end_at ||
+      new Date(s.community_vote_start_at).getTime() <= new Date(s.community_vote_end_at).getTime(),
+    {
+      message: 'community_vote_start_at must be at or before community_vote_end_at',
+      path: ['community_vote_end_at'],
     },
   )
   .refine(
@@ -233,6 +267,8 @@ export const DEFAULT_SEASON: SeasonFormInitial = {
   prize_second_pct: 25,
   prize_third_pct: 15,
   main_round_video_seconds: 30,
+  main_round_video_min_seconds: 15,
+  main_round_video_max_seconds: 40,
   theme_announcement_minutes_before: 60,
   submission_hours: 48,
   community_vote_weight: 0.5,
@@ -251,11 +287,16 @@ export const DEFAULT_SEASON: SeasonFormInitial = {
   studio_round: 'main',
   studio_max_generations_per_round: 10,
   poster_url: null,
+  main_round_theme_label: null,
   lobby_featured: false,
   application_open_at: null,
   registration_close_at: null,
   application_close_at: null,
   scoring_complete_at: null,
+  scoring_start_at: null,
+  prelim_results_announcement_at: null,
+  community_vote_start_at: null,
+  community_vote_end_at: null,
   main_round_start_at: null,
   main_round_end_at: null,
   awards_announcement_at: null,

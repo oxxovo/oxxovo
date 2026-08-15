@@ -196,6 +196,9 @@ export type Messages = {
     field_video_app_min: string
     field_video_app_max: string
     field_video_main: string
+    field_video_main_min: string
+    field_video_main_max: string
+    field_theme_label: string
     field_theme_reveal: string
     field_submission_hours: string
     field_total_pool: string
@@ -217,12 +220,20 @@ export type Messages = {
     field_app_close: string
     hint_app_close: string
     field_scoring_complete: string
+    field_scoring_start: string
+    field_prelim_results_announcement: string
+    field_community_vote_start: string
+    field_community_vote_end: string
     field_main_start: string
     field_main_end: string
     field_awards: string
     hint_07: string
     hint_03: string
     hint_0_100: string
+    // Datetime field timezone disclosure -- HQ 2026-08-15 (a date typed with
+    // no visible timezone gets read backwards by the next person).
+    datetime_local_tz_note: (tz: string) => string
+    datetime_preview: (kst: string, pt: string) => string
     split_total_label: string
     split_total_bad: string
     saving: string
@@ -1105,7 +1116,10 @@ const MESSAGES_EN: Messages = {
     hint_defer: 'If under min participants, extend deadline N days, up to max times',
     field_video_app_min: 'Application min',
     field_video_app_max: 'Application max',
-    field_video_main: 'Main round',
+    field_video_main: 'Main round (legacy single value)',
+    field_video_main_min: 'Main round min',
+    field_video_main_max: 'Main round max',
+    field_theme_label: 'Main round theme label (short, public)',
     field_theme_reveal: 'Theme reveal (minutes before)',
     field_submission_hours: 'Submission window (hours)',
     field_total_pool: 'Total prize pool',
@@ -1127,13 +1141,19 @@ const MESSAGES_EN: Messages = {
       'New applicants must register by this date. Already-registered participants can still submit up to Submission close.',
     field_app_close: 'Submission close (video)',
     hint_app_close: 'Hard cutoff to finish and submit the video, for anyone already registered.',
-    field_scoring_complete: 'Scoring complete',
+    field_scoring_complete: 'Scoring complete (done marker)',
+    field_scoring_start: 'Scoring start (scheduled)',
+    field_prelim_results_announcement: 'Preliminary results email (scheduled)',
+    field_community_vote_start: 'Community vote start',
+    field_community_vote_end: 'Community vote end',
     field_main_start: 'Main round start',
     field_main_end: 'Main round end',
     field_awards: 'Awards announcement',
     hint_07: 'e.g. 0.7',
     hint_03: 'e.g. 0.3',
     hint_0_100: '0-100',
+    datetime_local_tz_note: (tz) => `Entered in your browser's local time${tz ? ` (${tz})` : ''}.`,
+    datetime_preview: (kst, pt) => `Saves as: ${kst} KST · ${pt} PT`,
     split_total_label: 'Total',
     split_total_bad: '✕ must equal 100%',
     saving: 'Saving…',
@@ -2015,7 +2035,10 @@ const MESSAGES_KO: Messages = {
     hint_defer: '최소 참가자 미달 시 마감 N일 연장, 최대 횟수까지',
     field_video_app_min: '지원 영상 최소',
     field_video_app_max: '지원 영상 최대',
-    field_video_main: '본선 영상',
+    field_video_main: '본선 영상 (옛 단일값)',
+    field_video_main_min: '본선 영상 최소',
+    field_video_main_max: '본선 영상 최대',
+    field_theme_label: '본선 주제 라벨 (짧은 공개용)',
     field_theme_reveal: '주제 공개 (분 전)',
     field_submission_hours: '제출 기간 (시간)',
     field_total_pool: '총 상금 풀',
@@ -2037,13 +2060,19 @@ const MESSAGES_KO: Messages = {
       '신규 참가자는 이 날짜까지 등록해야 합니다. 이미 등록한 참가자는 제출 마감까지 영상을 제출할 수 있습니다.',
     field_app_close: '제출 마감 (영상)',
     hint_app_close: '이미 등록한 참가자가 영상을 완성해 제출해야 하는 하드컷입니다.',
-    field_scoring_complete: '채점 완료',
+    field_scoring_complete: '채점 완료 (완료 마커)',
+    field_scoring_start: '채점 시작 (예정)',
+    field_prelim_results_announcement: '예선 결과 안내 메일 (예정)',
+    field_community_vote_start: '커뮤니티 투표 시작',
+    field_community_vote_end: '커뮤니티 투표 종료',
     field_main_start: '본선 시작',
     field_main_end: '본선 종료',
     field_awards: '시상 발표',
     hint_07: '예: 0.7',
     hint_03: '예: 0.3',
     hint_0_100: '0~100',
+    datetime_local_tz_note: (tz) => `입력 기준: 당신 브라우저의 로컬 시간${tz ? ` (${tz})` : ''}.`,
+    datetime_preview: (kst, pt) => `저장하면: 한국시간 ${kst} · 태평양시간 ${pt}`,
     split_total_label: '합계',
     split_total_bad: '✕ 합계가 100%가 되어야 합니다',
     saving: '저장 중…',

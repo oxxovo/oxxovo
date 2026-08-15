@@ -24,6 +24,27 @@ function fromDatetimeLocal(v: string): string {
   return d.toISOString()
 }
 
+const KST_TZ = 'Asia/Seoul'
+const PT_TZ = 'America/Los_Angeles'
+
+// Format an ISO instant in a fixed IANA zone -- used for the "saves as" dual
+// preview (HQ 2026-08-15: a schedule date with no visible timezone gets read
+// backwards by whoever opens this form next; datetime-local shows/edits in
+// the ADMIN'S OWN browser clock, which is not necessarily KST or PT).
+function formatInZone(iso: string, timeZone: string): string {
+  const d = new Date(iso)
+  if (!iso || Number.isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d)
+}
+
 export function SeasonForm({
   id,
   initial,
@@ -129,6 +150,9 @@ export function SeasonForm({
         <Field label={t.season_form.field_video_app_min} name="application_video_min_seconds" type="number" defaultValue={initial.application_video_min_seconds} error={fieldError('application_video_min_seconds')} />
         <Field label={t.season_form.field_video_app_max} name="application_video_max_seconds" type="number" defaultValue={initial.application_video_max_seconds} error={fieldError('application_video_max_seconds')} />
         <Field label={t.season_form.field_video_main} name="main_round_video_seconds" type="number" defaultValue={initial.main_round_video_seconds} error={fieldError('main_round_video_seconds')} />
+        <Field label={t.season_form.field_video_main_min} name="main_round_video_min_seconds" type="number" defaultValue={initial.main_round_video_min_seconds} error={fieldError('main_round_video_min_seconds')} />
+        <Field label={t.season_form.field_video_main_max} name="main_round_video_max_seconds" type="number" defaultValue={initial.main_round_video_max_seconds} error={fieldError('main_round_video_max_seconds')} />
+        <Field label={t.season_form.field_theme_label} name="main_round_theme_label" defaultValue={initial.main_round_theme_label ?? ''} error={fieldError('main_round_theme_label')} />
       </Group>
 
       <Group title={t.season_form.group_timing}>
@@ -266,7 +290,11 @@ export function SeasonForm({
         <DatetimeField label={t.season_form.field_app_open} name="application_open_at" defaultValue={toDatetimeLocal(initial.application_open_at)} error={fieldError('application_open_at')} />
         <DatetimeField label={t.season_form.field_registration_close} name="registration_close_at" defaultValue={toDatetimeLocal(initial.registration_close_at)} error={fieldError('registration_close_at')} hint={t.season_form.hint_registration_close} />
         <DatetimeField label={t.season_form.field_app_close} name="application_close_at" defaultValue={toDatetimeLocal(initial.application_close_at)} error={fieldError('application_close_at')} hint={t.season_form.hint_app_close} />
+        <DatetimeField label={t.season_form.field_scoring_start} name="scoring_start_at" defaultValue={toDatetimeLocal(initial.scoring_start_at)} error={fieldError('scoring_start_at')} />
         <DatetimeField label={t.season_form.field_scoring_complete} name="scoring_complete_at" defaultValue={toDatetimeLocal(initial.scoring_complete_at)} error={fieldError('scoring_complete_at')} />
+        <DatetimeField label={t.season_form.field_prelim_results_announcement} name="prelim_results_announcement_at" defaultValue={toDatetimeLocal(initial.prelim_results_announcement_at)} error={fieldError('prelim_results_announcement_at')} />
+        <DatetimeField label={t.season_form.field_community_vote_start} name="community_vote_start_at" defaultValue={toDatetimeLocal(initial.community_vote_start_at)} error={fieldError('community_vote_start_at')} />
+        <DatetimeField label={t.season_form.field_community_vote_end} name="community_vote_end_at" defaultValue={toDatetimeLocal(initial.community_vote_end_at)} error={fieldError('community_vote_end_at')} />
         <DatetimeField label={t.season_form.field_main_start} name="main_round_start_at" defaultValue={toDatetimeLocal(initial.main_round_start_at)} error={fieldError('main_round_start_at')} />
         <DatetimeField label={t.season_form.field_main_end} name="main_round_end_at" defaultValue={toDatetimeLocal(initial.main_round_end_at)} error={fieldError('main_round_end_at')} />
         <DatetimeField label={t.season_form.field_awards} name="awards_announcement_at" defaultValue={toDatetimeLocal(initial.awards_announcement_at)} error={fieldError('awards_announcement_at')} />
@@ -424,12 +452,15 @@ function DatetimeField({
   error?: string
   hint?: string
 }) {
+  const t = useT()
   // datetime-local input value is "YYYY-MM-DDTHH:mm" in the user's local tz —
   // unsuitable for the zod `datetime({ offset: true })` validator. We render
   // a visible (unnamed) datetime-local and mirror the converted ISO value into
   // a hidden input that actually carries the field's `name` to the server.
   const [localValue, setLocalValue] = useState(defaultValue)
   const isoValue = fromDatetimeLocal(localValue)
+  const browserTz =
+    typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : ''
 
   return (
     <label className="block">
@@ -443,6 +474,12 @@ function DatetimeField({
         }`}
       />
       <input type="hidden" name={name} value={isoValue} />
+      <p className="mt-1 text-[10px] text-white/35">{t.season_form.datetime_local_tz_note(browserTz)}</p>
+      {isoValue && (
+        <p className="mt-0.5 text-[10px] text-[#ff8844]">
+          {t.season_form.datetime_preview(formatInZone(isoValue, KST_TZ), formatInZone(isoValue, PT_TZ))}
+        </p>
+      )}
       {hint && !error && <p className="mt-1 text-[10px] text-white/35">{hint}</p>}
       {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
     </label>
