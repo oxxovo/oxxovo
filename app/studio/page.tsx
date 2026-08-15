@@ -733,7 +733,7 @@ function Generator({
   const t2vModels = state.models.filter((m) => !m.acceptsI2v)
   const [modelId, setModelId] = useState(t2vModels[0]?.id ?? '')
   const model = t2vModels.find((m) => m.id === modelId) ?? t2vModels[0]
-  const [duration, setDuration] = useState(model?.min_duration_seconds ?? 4)
+  const [durationRaw, setDuration] = useState(model?.min_duration_seconds ?? 4)
   const [prompt, setPrompt] = useState('')
   // CameraDirector (Stage 1): chosen preset + advanced params. No preset = the
   // legacy free-prompt path, untouched.
@@ -747,15 +747,32 @@ function Generator({
   // differ" honesty notice until the participant generates or edits away.
   const [promoteNote, setPromoteNote] = useState(false)
 
-  // Clamp duration into the selected model's range when the model changes.
-  useEffect(() => {
-    if (!model) return
-    setDuration((d) => Math.min(Math.max(d, model.min_duration_seconds), model.max_duration_seconds))
-  }, [model])
+  // Clamp duration into the selected model's range when the model changes --
+  // adjusted during render, not in an effect (React's documented pattern for
+  // state that depends on a prior render's value: "adjust state while
+  // rendering" -- calling setState here bails out before the browser paints,
+  // so switching models never costs a visible extra frame the way an
+  // effect-based clamp would).
+  const [clampedModel, setClampedModel] = useState(model ?? null)
+  const duration =
+    model && model !== clampedModel
+      ? Math.min(Math.max(durationRaw, model.min_duration_seconds), model.max_duration_seconds)
+      : durationRaw
+  if (model && model !== clampedModel) {
+    setClampedModel(model)
+    setDuration(duration)
+  }
 
-  // Apply a draft promotion prefill (one-shot; parent clears it after).
-  useEffect(() => {
-    if (!prefill) return
+  // Apply a draft promotion prefill (one-shot; parent clears it after). The
+  // field resets happen during render (tracking the last-applied prefill
+  // object, same pattern as the duration clamp above); only the parent
+  // notification -- a real side effect, reaching outside this component --
+  // stays in an effect. Guarded on `prefill === appliedPrefill` so it fires
+  // exactly once per distinct prefill even if onPrefillApplied's identity
+  // changes across renders.
+  const [appliedPrefill, setAppliedPrefill] = useState<Prefill | null>(null)
+  if (prefill && prefill !== appliedPrefill) {
+    setAppliedPrefill(prefill)
     setModelId(prefill.modelId)
     setPrompt(prefill.prompt)
     setPresetId(prefill.presetId)
@@ -763,9 +780,10 @@ function Generator({
     setCfgOn(prefill.cfgScale !== null)
     if (prefill.cfgScale !== null) setCfgScale(prefill.cfgScale)
     setPromoteNote(true)
-    onPrefillApplied()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefill])
+  }
+  useEffect(() => {
+    if (prefill && prefill === appliedPrefill) onPrefillApplied()
+  }, [prefill, appliedPrefill, onPrefillApplied])
 
   const preset = presetId ? state.presets.find((p) => p.id === presetId) ?? null : null
   // The SERVER assembles the real prompt; this mirror exists only so the
@@ -903,7 +921,6 @@ function Generator({
         <CameraDirector
           t={t}
           presets={state.presets}
-          model={model ?? null}
           presetId={presetId}
           onPick={setPresetId}
         />
@@ -992,13 +1009,11 @@ function Generator({
 function CameraDirector({
   t,
   presets,
-  model,
   presetId,
   onPick,
 }: {
   t: Dict
   presets: StudioPreset[]
-  model: StudioModel | null
   presetId: string | null
   onPick: (id: string | null) => void
 }) {
@@ -1442,7 +1457,6 @@ function JobCard({
       <div className="relative aspect-video w-full bg-black">
         {hasVideo ? (
           <button type="button" onClick={() => onPreview(job)} title={job.prompt} className="group block h-full w-full">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <video src={job.video_url!} preload="metadata" muted playsInline className="h-full w-full object-cover" />
             <span className="absolute inset-0 flex items-center justify-center text-4xl text-white/0 transition group-hover:bg-black/30 group-hover:text-white/90">▶</span>
           </button>
