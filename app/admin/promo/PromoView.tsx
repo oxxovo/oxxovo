@@ -10,6 +10,8 @@ import {
   createUploadUrlAction,
   createPromoVideoAction,
   deletePromoVideoAction,
+  restorePromoVideoAction,
+  permanentlyDeletePromoVideoAction,
   updatePromoMetaAction,
   setPromoApprovedAction,
   updatePromoCadenceAction,
@@ -32,6 +34,14 @@ export type PromoRow = {
   approvedAt: string | null
   caption: string
   channels: string[]
+}
+
+export type TrashRow = {
+  id: string
+  label: string | null
+  videoUrl: string | null
+  source: string
+  deletedAt: string
 }
 
 export type PublishLogEntry = {
@@ -98,7 +108,7 @@ const DICT = {
     delete_btn: '삭제',
     deleting: '삭제 중…',
     confirm_delete: (label: string) =>
-      `'${label}' 영상을 삭제할까요?\nStorage 파일도 함께 삭제되며, 되돌릴 수 없습니다.`,
+      `'${label}' 영상을 삭제할까요?\n목록에서만 사라지고 파일은 그대로입니다 — "최근 삭제"에서 복구할 수 있습니다.`,
     posted_none: '—',
     err_no_channel: '채널을 1개 이상 선택하세요.',
     err_disabled: 'Postiz 미연결 상태입니다.',
@@ -125,6 +135,22 @@ const DICT = {
     cadence_next: (when: string) => `다음 발행은: ${when}`,
     cadence_next_none: '요일·시각·시간대를 모두 정하면 다음 발행 시각이 여기 표시됩니다.',
     weekday: { mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' },
+    trash_title: '최근 삭제',
+    trash_empty: '삭제된 영상이 없습니다.',
+    trash_deleted_at: (when: string) => `삭제됨 ${when}`,
+    restore_btn: '복구',
+    restoring: '복구 중…',
+    permadelete_btn: '완전 삭제',
+    permadeleting: '완전 삭제 중…',
+    permadelete_confirm_title: '완전 삭제 — 되돌릴 수 없습니다',
+    permadelete_confirm_body_lead: '이 조작은 되돌릴 수 없습니다. 계속하려면 아래에 정확히 입력하세요: ',
+    permadelete_confirm_body_tail: '',
+    permadelete_confirm_input_ph: (phrase: string) => `"${phrase}" 입력`,
+    permadelete_forever: '영구 삭제',
+    permadelete_cancel: '취소',
+    permadelete_ok_file: '완전 삭제됨 (파일도 삭제)',
+    permadelete_ok_no_file: '완전 삭제됨 — 파일은 R2에 남아 있습니다(이 앱은 R2 자격증명이 없음, 별도 정리 필요)',
+    permadelete_err: '완전 삭제 실패',
   },
   en: {
     title: 'Promo Videos',
@@ -167,7 +193,7 @@ const DICT = {
     delete_btn: 'Delete',
     deleting: 'Deleting…',
     confirm_delete: (label: string) =>
-      `Delete '${label}'?\nThe Storage file is removed too, and this cannot be undone.`,
+      `Delete '${label}'?\nIt only disappears from this list -- the file is untouched, and you can restore it from "Recently deleted."`,
     posted_none: '—',
     err_no_channel: 'Select at least one channel.',
     err_disabled: 'Postiz is not connected.',
@@ -194,6 +220,22 @@ const DICT = {
     cadence_next: (when: string) => `Next publish: ${when}`,
     cadence_next_none: 'Pick weekdays, a time, and a timezone to see the next publish slot here.',
     weekday: { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' },
+    trash_title: 'Recently deleted',
+    trash_empty: 'No deleted videos.',
+    trash_deleted_at: (when: string) => `Deleted ${when}`,
+    restore_btn: 'Restore',
+    restoring: 'Restoring…',
+    permadelete_btn: 'Delete forever',
+    permadeleting: 'Deleting forever…',
+    permadelete_confirm_title: 'Delete forever — cannot be undone',
+    permadelete_confirm_body_lead: 'This cannot be undone. Type exactly to continue: ',
+    permadelete_confirm_body_tail: '',
+    permadelete_confirm_input_ph: (phrase: string) => `Type "${phrase}"`,
+    permadelete_forever: 'Delete forever',
+    permadelete_cancel: 'Cancel',
+    permadelete_ok_file: 'Permanently deleted (file removed too)',
+    permadelete_ok_no_file: 'Permanently deleted -- the file is still on R2 (this app has no R2 credentials; needs separate cleanup)',
+    permadelete_err: 'Permanent delete failed',
   },
 }
 
@@ -201,6 +243,7 @@ type Dict = (typeof DICT)['en']
 
 export function PromoView({
   rows,
+  trashRows,
   channels,
   postizEnabled,
   publishLog,
@@ -208,6 +251,7 @@ export function PromoView({
   cadence,
 }: {
   rows: PromoRow[]
+  trashRows: TrashRow[]
   channels: string[]
   postizEnabled: boolean
   publishLog: Record<string, PublishLogEntry[]>
@@ -232,6 +276,8 @@ export function PromoView({
       <UploadForm t={t} />
 
       <Archive t={t} rows={rows} channels={channels} postizEnabled={postizEnabled} publishLog={publishLog} q={q} />
+
+      <Trash t={t} rows={trashRows} />
     </div>
   )
 }
@@ -623,6 +669,146 @@ function PromoCard({
           >
             {deleting ? t.deleting : t.delete_btn}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// HQ 2026-08-16: soft-deleted rows, with restore + a genuinely irreversible
+// permanent-delete gated behind a typed confirmation (DeleteSeasonButton's
+// pattern) -- so "완전 삭제" needs two deliberate steps (move to trash, then
+// type the confirm phrase here), not one click from the live archive.
+function Trash({ t, rows }: { t: Dict; rows: TrashRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <section className="mt-10">
+        <h2 className="text-xs uppercase tracking-[0.2em] text-white/40 font-bold mb-3">{t.trash_title}</h2>
+        <div className="border border-white/10 rounded px-4 py-6 text-center text-white/30 text-xs">
+          {t.trash_empty}
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="mt-10">
+      <h2 className="text-xs uppercase tracking-[0.2em] text-white/40 font-bold mb-3">{t.trash_title}</h2>
+      <div className="space-y-3">
+        {rows.map((r) => (
+          <TrashCard key={r.id} t={t} row={r} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function TrashCard({ t, row }: { t: Dict; row: TrashRow }) {
+  const router = useRouter()
+  const [restoring, startRestore] = useTransition()
+  const [confirming, setConfirming] = useState(false)
+  const [confirmText, setConfirmText] = useState('')
+  const [pending, startPending] = useTransition()
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const expected = `delete ${row.label || row.id}`
+  const canDelete = confirmText.trim().toLowerCase() === expected.toLowerCase()
+
+  const handleRestore = () => {
+    startRestore(async () => {
+      await restorePromoVideoAction(row.id)
+      router.refresh()
+    })
+  }
+
+  const handlePermaDelete = () => {
+    setMsg(null)
+    startPending(async () => {
+      const res = await permanentlyDeletePromoVideoAction(row.id)
+      if (!res.ok) {
+        setMsg({ ok: false, text: `${t.permadelete_err}: ${res.error}` })
+        return
+      }
+      setMsg({ ok: true, text: res.fileDeleted ? t.permadelete_ok_file : t.permadelete_ok_no_file })
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="border border-white/10 rounded bg-white/[.02] overflow-hidden">
+      <div className="flex gap-4 p-4">
+        <div className="w-24 shrink-0">
+          {row.videoUrl ? (
+            <video src={row.videoUrl} muted className="w-full rounded bg-black aspect-[9/16] object-contain" />
+          ) : (
+            <div className="w-full aspect-[9/16] rounded bg-black/40" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-white truncate">{row.label || row.id}</p>
+          <p className="mt-1 text-xs text-white/40">{t.trash_deleted_at(new Date(row.deletedAt).toLocaleString())}</p>
+
+          {msg && (
+            <p className={`mt-2 text-xs ${msg.ok ? 'text-emerald-300' : 'text-[#ff8888]'}`}>{msg.text}</p>
+          )}
+
+          {!confirming ? (
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={handleRestore}
+                disabled={restoring}
+                className="rounded bg-emerald-500/90 px-3 py-1.5 text-xs font-bold text-black transition hover:bg-emerald-400 disabled:opacity-50"
+              >
+                {restoring ? t.restoring : t.restore_btn}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(true)}
+                className="rounded border border-[#ff4444]/40 px-3 py-1.5 text-xs font-bold text-[#ff8888] hover:bg-[#ff4444]/10 transition"
+              >
+                {t.permadelete_btn}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 border border-[#ff4444]/40 bg-[#ff4444]/[.06] rounded p-3">
+              <p className="text-xs text-[#ff8888] font-bold mb-1">{t.permadelete_confirm_title}</p>
+              <p className="text-xs text-white/60 mb-2">
+                {t.permadelete_confirm_body_lead}
+                <code className="px-1.5 py-0.5 bg-black/40 rounded text-[#ff8844]">{expected}</code>
+                {t.permadelete_confirm_body_tail}
+              </p>
+              <input
+                type="text"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder={t.permadelete_confirm_input_ph(expected)}
+                className="w-full px-3 py-2 mb-2 bg-[#100608] border border-white/10 rounded text-sm text-white focus:border-[#ff8844] focus:outline-none"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handlePermaDelete}
+                  disabled={!canDelete || pending}
+                  className="px-3 py-1.5 rounded bg-[#ff4444] text-white text-xs font-bold uppercase tracking-wider hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {pending ? t.permadeleting : t.permadelete_forever}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirming(false)
+                    setConfirmText('')
+                  }}
+                  disabled={pending}
+                  className="px-3 py-1.5 rounded border border-white/15 text-white/70 text-xs font-bold uppercase tracking-wider hover:text-white transition"
+                >
+                  {t.permadelete_cancel}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

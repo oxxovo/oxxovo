@@ -3,7 +3,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { isPostizEnabled, PROMO_CHANNELS } from '@/lib/postiz'
 import { getPlatformConfigMap } from '@/lib/partners'
 import { parseCadence } from '@/lib/promo-schedule'
-import { PromoView, type PromoRow, type PublishLogEntry } from './PromoView'
+import { PromoView, type PromoRow, type PublishLogEntry, type TrashRow } from './PromoView'
 
 // ★force-dynamic -- without it this page can get baked into the static
 // build, same class of bug as the /studio 404 (2026-08-13, session6 switch
@@ -26,10 +26,27 @@ export default async function PromoPage({
     .select(
       'id, created_at, theme_note, status, source, video_url, duration_seconds, postiz_post_id, posted_channels, posted_at, approved, approved_at, caption, channels',
     )
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(100)
   if (q) query = query.ilike('theme_note', `%${q}%`)
   const { data } = await query
+
+  // Trash -- soft-deleted rows, most recently deleted first. Separate,
+  // smaller query (no need for the full column list the live archive uses).
+  const { data: trashData } = await admin
+    .from('promo_videos')
+    .select('id, theme_note, video_url, source, deleted_at')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+    .limit(50)
+  const trashRows: TrashRow[] = (trashData ?? []).map((r) => ({
+    id: r.id,
+    label: r.theme_note,
+    videoUrl: r.video_url,
+    source: r.source,
+    deletedAt: r.deleted_at as string,
+  }))
 
   const rows: PromoRow[] = (data ?? []).map((r) => ({
     id: r.id,
@@ -75,6 +92,7 @@ export default async function PromoPage({
   return (
     <PromoView
       rows={rows}
+      trashRows={trashRows}
       channels={[...PROMO_CHANNELS]}
       postizEnabled={isPostizEnabled()}
       publishLog={logByVideo}

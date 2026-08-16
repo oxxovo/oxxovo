@@ -161,29 +161,83 @@ export async function updatePromoCadenceAction(input: {
 
 export type DeletePromoState = { ok: true } | { ok: false; error: string }
 
-// 3) 행 + Storage 객체 삭제. 이미 게시된 건은 막지 않음(원격 글은 Postiz 에서 별도 관리).
+// 3) Soft delete -- HQ 2026-08-16: "삭제를 잘못하면 항상 지수를 찾아야 되나?
+// 아니다." Sets deleted_at only; the row and its file are both left exactly
+// as they were. Nothing here touches Storage or R2 -- file cleanup happens
+// ONLY at permanentlyDeletePromoVideoAction, and only after this soft
+// delete already moved the row out of the visible archive.
 export async function deletePromoVideoAction(id: string): Promise<DeletePromoState> {
   await requireAdmin()
   const admin = createSupabaseAdmin()
 
-  const { data: row } = await admin
+  const { error } = await admin
     .from('promo_videos')
-    .select('video_url')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/admin/promo')
+  return { ok: true }
+}
+
+export type RestorePromoState = { ok: true } | { ok: false; error: string }
+
+// Undo for the above -- the whole point of soft delete. Trash-only UI action.
+export async function restorePromoVideoAction(id: string): Promise<RestorePromoState> {
+  await requireAdmin()
+  const admin = createSupabaseAdmin()
+
+  const { error } = await admin
+    .from('promo_videos')
+    .update({ deleted_at: null })
+    .eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/admin/promo')
+  return { ok: true }
+}
+
+export type PermanentDeleteState = { ok: true; fileDeleted: boolean } | { ok: false; error: string }
+
+// Real, irreversible delete -- only reachable from inside the Trash view
+// (requires deleted_at already set, so a video can never be permanently
+// deleted in one step from the live archive). Deletes the Supabase Storage
+// object when the video is hosted there; R2-hosted videos (the vast
+// majority -- 92/93 measured 2026-08-16) can NOT be deleted from this app,
+// because R2 credentials live only in the separate worker repo's env, never
+// this app's. Rather than silently leaving an orphan (the original bug,
+// backlog #31), that case is logged to promo_video_orphan_files so the file
+// is never simply lost track of.
+export async function permanentlyDeletePromoVideoAction(id: string): Promise<PermanentDeleteState> {
+  await requireAdmin()
+  const admin = createSupabaseAdmin()
+
+  const { data: row, error: readErr } = await admin
+    .from('promo_videos')
+    .select('video_url, deleted_at')
     .eq('id', id)
     .single()
+  if (readErr || !row) return { ok: false, error: readErr?.message ?? 'not found' }
+  if (!row.deleted_at) return { ok: false, error: 'not in trash -- soft delete first' }
 
-  // Storage 객체 경로 복원 (.../promo-videos/<path>).
-  if (row?.video_url) {
+  let fileDeleted = false
+  const videoUrl = row.video_url as string | null
+  if (videoUrl) {
     const marker = `/${BUCKET}/`
-    const idx = (row.video_url as string).indexOf(marker)
+    const idx = videoUrl.indexOf(marker)
     if (idx >= 0) {
-      const path = (row.video_url as string).slice(idx + marker.length)
-      await admin.storage.from(BUCKET).remove([path])
+      const path = videoUrl.slice(idx + marker.length)
+      const { error: rmErr } = await admin.storage.from(BUCKET).remove([path])
+      fileDeleted = !rmErr
+    } else {
+      await admin.from('promo_video_orphan_files').insert({
+        promo_video_id: id,
+        video_url: videoUrl,
+        reason: 'r2_hosted_no_app_credentials',
+      })
     }
   }
 
   const { error } = await admin.from('promo_videos').delete().eq('id', id)
   if (error) return { ok: false, error: error.message }
   revalidatePath('/admin/promo')
-  return { ok: true }
+  return { ok: true, fileDeleted }
 }
