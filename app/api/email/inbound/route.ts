@@ -143,12 +143,25 @@ export async function POST(req: NextRequest) {
   const admin = createSupabaseAdmin()
 
   // 3. Dedup on Message-ID (Cloudflare can retry).
+  // ★FAIL-CLOSED (2026-08-16, head office). A query error here (permission,
+  // RLS, a dropped column, a network blip) used to be silently discarded --
+  // only `data` was read, never `error` -- so "can't tell if this is a
+  // duplicate" read as "not a duplicate" and the auto-reply went out anyway.
+  // That is the exact failure this gate exists to prevent. Uncertain now
+  // means skip, not send: a customer email that isn't auto-processed during a
+  // DB hiccup can still be followed up by a human; a duplicate reply cannot be
+  // un-sent.
   if (messageId) {
-    const { data: existing } = await admin
+    const { data: existing, error: dedupErr } = await admin
       .from('email_inbound_log')
       .select('id')
       .eq('message_id', messageId)
       .maybeSingle()
+    if (dedupErr) {
+      console.error('[inbound] dedup check failed, skipping rather than risking a duplicate reply:', dedupErr.message)
+      await logInbound({ messageId, from, to, subject, action: 'skipped', skipReason: 'db_error' })
+      return NextResponse.json({ ok: true, action: 'skipped', reason: 'db_error' })
+    }
     if (existing) {
       return NextResponse.json({ ok: true, action: 'skipped', reason: 'duplicate' })
     }
@@ -162,14 +175,26 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Per-sender daily cap (counts actioned messages: replies + escalations).
+  // ★FAIL-CLOSED (2026-08-16, head office) -- same shape as the dedup fix
+  // above. `count` used to be read with the error silently dropped, so a
+  // query failure produced `count = null` -> `(count ?? 0) >= CAP` was always
+  // false -> the cap that exists specifically so "someone hammering info@
+  // can't turn us into their personal reply bot" (this file's own comment)
+  // was the one gate a DB hiccup disabled outright. Can't count -> can't
+  // confirm under the cap -> treated as AT the cap.
   const since = new Date()
   since.setUTCHours(0, 0, 0, 0)
-  const { count } = await admin
+  const { count, error: capErr } = await admin
     .from('email_inbound_log')
     .select('id', { count: 'exact', head: true })
     .eq('from_email', from)
     .in('action', ['replied', 'escalated'])
     .gte('created_at', since.toISOString())
+  if (capErr) {
+    console.error('[inbound] rate-cap check failed, treating as at-cap rather than unlimited:', capErr.message)
+    await logInbound({ messageId, from, to, subject, action: 'skipped', skipReason: 'db_error' })
+    return NextResponse.json({ ok: true, action: 'skipped', reason: 'db_error' })
+  }
   if ((count ?? 0) >= PER_SENDER_DAILY_CAP) {
     await logInbound({ messageId, from, to, subject, action: 'skipped', skipReason: 'rate_cap' })
     return NextResponse.json({ ok: true, action: 'skipped', reason: 'rate_cap' })

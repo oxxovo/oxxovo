@@ -15,6 +15,7 @@ import { getResend, EMAIL_FROM, APP_URL } from './client'
 import type { RankAward } from '@/lib/seasons'
 import { detectEmailLang, type EmailLang } from './lang'
 import { logEmail, alreadySent, type TemplateKey } from './log'
+import { sendAdminAlert } from './admin-alert'
 import { isRateLimitError } from './deferral'
 import {
   PreRegistered,
@@ -237,7 +238,7 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
         : { ok: false, error: error.message }
     }
 
-    await logEmail({
+    const logged = await logEmail({
       applicationId: input.applicationId,
       seasonId: input.seasonId,
       toEmail: input.toEmail,
@@ -248,6 +249,21 @@ async function executeSend(input: ExecuteSendInput): Promise<SendResult> {
       status: 'sent',
       metadata: baseMetadata,
     })
+    // ★The send genuinely happened -- `ok: true` below is still true, and
+    // stays true, so nothing upstream retries and duplicate-sends. What
+    // changes is that a human finds out the dedup row didn't land, instead
+    // of the next tick quietly discovering "no record of this" and sending
+    // it again. Fire-and-forget, never lets an alert-send failure surface
+    // as this function failing.
+    if (!logged) {
+      sendAdminAlert(
+        `[email log] insert failed after a real send -- ${input.templateKey} to ${input.toEmail}`,
+        `<p>logEmail() failed to record a 'sent' row for <b>${input.templateKey}</b> to <b>${input.toEmail}</b> ` +
+          `(applicationId=${input.applicationId ?? 'none'}). The email WAS sent (Resend id ${data?.id ?? 'unknown'}). ` +
+          `Without this row the next dedup check will not see it as sent and may resend it -- check email_logs and, ` +
+          `if the row is really missing, insert it manually or investigate why the insert failed.</p>`,
+      ).catch((e) => console.error('[email send] admin alert for log failure also failed:', e))
+    }
     return { ok: true, messageId: data?.id ?? null }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)

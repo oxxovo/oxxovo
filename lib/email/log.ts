@@ -67,7 +67,18 @@ export type LogEmailInput = {
   metadata?: Record<string, unknown> | null
 }
 
-export async function logEmail(input: LogEmailInput): Promise<void> {
+// ★RETURNS WHETHER THE ROW ACTUALLY LANDED (2026-08-16, head office audit,
+// backlog #26). Still never throws -- a logging failure must not break the
+// email send path, that part was always right. What was wrong is that the
+// caller had no way to tell the difference between "logged" and "didn't",
+// so a 'sent' row that failed to insert read as success on both ends: the
+// send genuinely happened AND executeSend reported ok:true, but the NEXT
+// tick's canSend/alreadySent check finds no row and concludes "never sent" --
+// a duplicate customer-facing email waiting to happen, not a hypothetical.
+// The boolean lets executeSend alert on exactly that case without changing
+// what it returns to ITS caller (the send itself still succeeded; lying
+// about that would risk a retry-triggered duplicate from a different angle).
+export async function logEmail(input: LogEmailInput): Promise<boolean> {
   const admin = createSupabaseAdmin()
   const { error } = await admin.from('email_logs').insert({
     application_id: input.applicationId ?? null,
@@ -84,7 +95,9 @@ export async function logEmail(input: LogEmailInput): Promise<void> {
   if (error) {
     // Don't throw — logging failure should not break the email send path.
     console.error('[email log] insert failed:', error.message, input.templateKey)
+    return false
   }
+  return true
 }
 
 // Returns true if (applicationId, templateKey [, reminderHour]) already has

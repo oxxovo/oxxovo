@@ -33,7 +33,8 @@
     "inspect:music-state": "node --env-file=.env.local scripts/inspect-music-state.mjs",
     "test:music-grid-parity": "node --import ./scripts/test-register.mjs e2e/music-grid-parity.mjs",
     "r2:orphans": "node --env-file=.env.local --env-file=../oxxovo-studio/.env scripts/r2-orphan-sweep.mjs",
-    "deploy:prod": "node scripts/deploy-prod.mjs"
+    "deploy:prod": "node scripts/deploy-prod.mjs",
+    "check:grants": "node --env-file=.env.local scripts/check-service-role-grants.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",

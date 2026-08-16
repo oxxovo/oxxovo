@@ -34,6 +34,23 @@ import { spawnSync } from 'node:child_process'
 
 const allowDirty = process.argv.includes('--allow-dirty')
 
+// ★HARD GATE, NO OVERRIDE (2026-08-16, head office audit). A table missing
+// service_role DML fails at the first real query, in production, silently in
+// every case measured so far (dedup/rate-cap checks that read `data` and
+// never `error`) -- not at build time, not at deploy time, until this check.
+// See scripts/check-service-role-grants.mjs for what it actually does and why
+// it cannot be a CI step instead (needs the real service-role key; CI runs
+// with placeholders on purpose).
+console.error('Checking service_role table grants...')
+const grantsCheck = spawnSync('node', ['--env-file=.env.local', 'scripts/check-service-role-grants.mjs'], {
+  stdio: 'inherit',
+  shell: process.platform === 'win32',
+})
+if (grantsCheck.status !== 0) {
+  console.error('\nRefusing to deploy -- fix the grant(s) above and re-run.\n')
+  process.exit(grantsCheck.status ?? 1)
+}
+
 function git(args) {
   const r = spawnSync('git', args, { encoding: 'utf8' })
   if (r.status !== 0) {
