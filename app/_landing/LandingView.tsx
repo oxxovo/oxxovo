@@ -24,6 +24,8 @@ import { getMembershipLandingData } from '@/app/membership/actions'
 import type { MembershipLandingData } from '@/app/membership/types'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 import { useT, useAdminLang, setAdminLang, type Lang } from '@/lib/admin-i18n'
+import { getFaqItems, type FaqItem } from '@/lib/faq'
+import { resolveFaqText } from '@/lib/faq-tokens'
 
 type TimeLeft = { days: string; hours: string; minutes: string; seconds: string }
 const ZERO_TIME: TimeLeft = { days: '00', hours: '00', minutes: '00', seconds: '00' }
@@ -47,6 +49,10 @@ export function LandingView() {
   // in it. Starts hidden so the first paint never offers a link the rule will take
   // back a moment later.
   const [watchNav, setWatchNav] = useState(false)
+  // DB-first FAQ (app/admin/faq, reports/admin_faq_editor_design_2026-08-12.md).
+  // Empty until fetched AND while the DB has 0 active rows -- both cases fall
+  // back to the hardcoded faq_q1~q9/faq_a1~a9 below, section-level, never merged.
+  const [faqItems, setFaqItems] = useState<FaqItem[]>([])
 
   useEffect(() => {
     getCurrentSeason().then((s) => {
@@ -56,6 +62,7 @@ export function LandingView() {
     getMembershipLandingData().then(setMembership).catch(() => setMembership(null))
     getCurrentSeasonStage().then(setStage).catch(() => setStage(null))
     getWatchNavVisible().then(setWatchNav).catch(() => setWatchNav(false))
+    getFaqItems('landing_home').then(setFaqItems).catch(() => setFaqItems([]))
   }, [])
 
   // Reflect the cookie-session sign-in state in the nav.
@@ -451,6 +458,9 @@ export function LandingView() {
         </div>
 
         {season ? (
+          faqItems.length > 0 ? (
+            <DbFaq items={faqItems} season={season} membership={membership} lang={lang} />
+          ) : (
           <div className="max-w-3xl mx-auto space-y-3">
             <Faq q={t.landing.faq_q1(season.name)}>
               {t.landing.faq_a1(season.application_video_min_seconds, season.application_video_max_seconds)}
@@ -523,6 +533,7 @@ export function LandingView() {
               {t.landing.faq_a9}
             </Faq>
           </div>
+          )
         ) : (
           <SectionLoading />
         )}
@@ -570,6 +581,37 @@ function Faq({ q, children }: { q: string; children: React.ReactNode }) {
       </summary>
       <div className="px-5 pb-5 text-white/65 leading-relaxed text-[15px]">{children}</div>
     </details>
+  )
+}
+
+// DB-sourced FAQ (app/admin/faq). One item is skipped entirely -- not shown
+// blank, not shown with a raw {{token}} -- if any of its tokens cannot
+// resolve right now ([[feedback-absent-is-not-zero]], design §4).
+function DbFaq({
+  items,
+  season,
+  membership,
+  lang,
+}: {
+  items: FaqItem[]
+  season: Season
+  membership: MembershipLandingData | null
+  lang: Lang
+}) {
+  return (
+    <div className="max-w-3xl mx-auto space-y-3">
+      {items.map((item) => {
+        const q = lang === 'ko' ? item.questionKo : item.questionEn
+        const rawAnswer = lang === 'ko' ? item.answerKo : item.answerEn
+        const resolved = resolveFaqText(rawAnswer, { season, membership, lang })
+        if (!resolved.ok) return null
+        return (
+          <Faq key={item.id} q={q}>
+            {resolved.text}
+          </Faq>
+        )
+      })}
+    </div>
   )
 }
 

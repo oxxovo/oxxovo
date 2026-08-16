@@ -95,6 +95,7 @@ export type Messages = {
       watch_home: string
       watch_videos: string
       broadcasts: string
+      faq: string
       settings: string
     }
   }
@@ -1122,6 +1123,7 @@ const MESSAGES_EN: Messages = {
       watch_home: 'Watch as Home',
       watch_videos: 'Video moderation',
       broadcasts: 'Broadcasts',
+      faq: 'FAQ',
       settings: 'Settings',
     },
   },
@@ -2160,6 +2162,7 @@ const MESSAGES_KO: Messages = {
       watch_home: 'Watch 홈 전환',
       watch_videos: '영상 관리',
       broadcasts: '연락처 발송',
+      faq: 'FAQ',
       settings: '설정',
     },
   },
