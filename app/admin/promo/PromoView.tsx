@@ -136,8 +136,9 @@ const DICT = {
     cadence_next_none: '요일·시각·시간대를 모두 정하면 다음 발행 시각이 여기 표시됩니다.',
     weekday: { mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' },
     trash_title: '최근 삭제',
-    trash_empty: '삭제된 영상이 없습니다.',
     trash_deleted_at: (when: string) => `삭제됨 ${when}`,
+    just_deleted: (label: string) => `삭제했습니다 · ${label}`,
+    undo_btn: '되돌리기',
     restore_btn: '복구',
     restoring: '복구 중…',
     permadelete_btn: '완전 삭제',
@@ -221,8 +222,9 @@ const DICT = {
     cadence_next_none: 'Pick weekdays, a time, and a timezone to see the next publish slot here.',
     weekday: { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' },
     trash_title: 'Recently deleted',
-    trash_empty: 'No deleted videos.',
     trash_deleted_at: (when: string) => `Deleted ${when}`,
+    just_deleted: (label: string) => `Deleted · ${label}`,
+    undo_btn: 'Undo',
     restore_btn: 'Restore',
     restoring: 'Restoring…',
     permadelete_btn: 'Delete forever',
@@ -258,8 +260,26 @@ export function PromoView({
   q: string
   cadence: Cadence
 }) {
+  const router = useRouter()
   const lang = useAdminLang()
   const t = DICT[lang]
+
+  // Shown right where the delete happened, not just in Trash below -- the
+  // immediate undo IS the safety net (HQ 2026-08-16: "목록을 찾아가지 않아도
+  // 된다"). Lives here (not in Archive/PromoCard) because the card itself
+  // unmounts the moment the list refreshes post-delete.
+  const [justDeleted, setJustDeleted] = useState<{ id: string; label: string } | null>(null)
+  const [restoring, startRestore] = useTransition()
+
+  const handleUndo = () => {
+    if (!justDeleted) return
+    const id = justDeleted.id
+    startRestore(async () => {
+      await restorePromoVideoAction(id)
+      setJustDeleted(null)
+      router.refresh()
+    })
+  }
 
   return (
     <div className="p-8 max-w-5xl">
@@ -271,13 +291,45 @@ export function PromoView({
         </div>
       )}
 
+      {justDeleted && (
+        <div className="mb-6 flex items-center justify-between gap-3 border border-emerald-500/30 bg-emerald-500/[.08] rounded px-4 py-3 text-xs text-emerald-200">
+          <span>{t.just_deleted(justDeleted.label)}</span>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={restoring}
+              className="font-bold text-emerald-300 hover:underline disabled:opacity-50"
+            >
+              {restoring ? t.restoring : t.undo_btn}
+            </button>
+            <button
+              type="button"
+              onClick={() => setJustDeleted(null)}
+              className="text-emerald-200/50 hover:text-emerald-200"
+              aria-label={t.permadelete_cancel}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Trash t={t} rows={trashRows} />
+
       <CadenceForm t={t} cadence={cadence} />
 
       <UploadForm t={t} />
 
-      <Archive t={t} rows={rows} channels={channels} postizEnabled={postizEnabled} publishLog={publishLog} q={q} />
-
-      <Trash t={t} rows={trashRows} />
+      <Archive
+        t={t}
+        rows={rows}
+        channels={channels}
+        postizEnabled={postizEnabled}
+        publishLog={publishLog}
+        q={q}
+        onDeleted={(id, label) => setJustDeleted({ id, label })}
+      />
     </div>
   )
 }
@@ -523,6 +575,7 @@ function Archive({
   postizEnabled,
   publishLog,
   q,
+  onDeleted,
 }: {
   t: Dict
   rows: PromoRow[]
@@ -530,6 +583,7 @@ function Archive({
   postizEnabled: boolean
   publishLog: Record<string, PublishLogEntry[]>
   q: string
+  onDeleted: (id: string, label: string) => void
 }) {
   return (
     <section>
@@ -567,6 +621,7 @@ function Archive({
               channels={channels}
               postizEnabled={postizEnabled}
               history={publishLog[r.id] ?? []}
+              onDeleted={onDeleted}
             />
           ))}
         </div>
@@ -581,12 +636,14 @@ function PromoCard({
   channels,
   postizEnabled,
   history,
+  onDeleted,
 }: {
   t: Dict
   row: PromoRow
   channels: string[]
   postizEnabled: boolean
   history: PublishLogEntry[]
+  onDeleted: (id: string, label: string) => void
 }) {
   const router = useRouter()
   const [deleting, startDelete] = useTransition()
@@ -597,13 +654,13 @@ function PromoCard({
       : t.posted_none
 
   const handleDelete = () => {
-    // Irreversible (lib/studio-actors-adjacent output, remade by hand if lost
-    // by mistake) -- names the specific video rather than a generic "this
-    // one", so a reflexive OK on the browser dialog still shows what it just
-    // agreed to.
+    // Soft delete now (HQ 2026-08-16) -- names the specific video rather than
+    // a generic "this one", so a reflexive OK on the browser dialog still
+    // shows what it just agreed to.
     if (!confirm(t.confirm_delete(row.label || row.id))) return
     startDelete(async () => {
       await deletePromoVideoAction(row.id)
+      onDeleted(row.id, row.label || row.id)
       router.refresh()
     })
   }
@@ -675,30 +732,38 @@ function PromoCard({
   )
 }
 
-// HQ 2026-08-16: soft-deleted rows, with restore + a genuinely irreversible
-// permanent-delete gated behind a typed confirmation (DeleteSeasonButton's
-// pattern) -- so "완전 삭제" needs two deliberate steps (move to trash, then
-// type the confirm phrase here), not one click from the live archive.
+// HQ 2026-08-16 (moved near the top, up from below the 100-row archive --
+// "93개 아래에 있어 끝까지 스크롤해야 보인다, 그건 없는 것과 비슷하다"):
+// collapsed by default so it stays out of the way day to day, but the count
+// sits right in the title, and the section renders nothing at all when
+// empty -- 0 is the common case and must add zero visual noise.
+// Restore + a genuinely irreversible permanent-delete gated behind a typed
+// confirmation (DeleteSeasonButton's pattern) -- so "완전 삭제" needs two
+// deliberate steps (move to trash, then type the confirm phrase here), not
+// one click from the live archive.
 function Trash({ t, rows }: { t: Dict; rows: TrashRow[] }) {
-  if (rows.length === 0) {
-    return (
-      <section className="mt-10">
-        <h2 className="text-xs uppercase tracking-[0.2em] text-white/40 font-bold mb-3">{t.trash_title}</h2>
-        <div className="border border-white/10 rounded px-4 py-6 text-center text-white/30 text-xs">
-          {t.trash_empty}
-        </div>
-      </section>
-    )
-  }
+  const [open, setOpen] = useState(false)
+  if (rows.length === 0) return null
 
   return (
-    <section className="mt-10">
-      <h2 className="text-xs uppercase tracking-[0.2em] text-white/40 font-bold mb-3">{t.trash_title}</h2>
-      <div className="space-y-3">
-        {rows.map((r) => (
-          <TrashCard key={r.id} t={t} row={r} />
-        ))}
-      </div>
+    <section className="mb-6 border border-white/10 rounded bg-white/[.02]">
+      <button
+        type="button"
+        onClick={() => setOpen((x) => !x)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+      >
+        <span className="text-xs uppercase tracking-[0.2em] text-white/50 font-bold">
+          {t.trash_title} ({rows.length})
+        </span>
+        <span className="text-white/30 text-xs">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          {rows.map((r) => (
+            <TrashCard key={r.id} t={t} row={r} />
+          ))}
+        </div>
+      )}
     </section>
   )
 }
