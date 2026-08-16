@@ -36,12 +36,7 @@ const DICT = {
     saving: '저장 중…',
     saved: '저장됨',
     no_desc: '(설명 없음)',
-    no_desc_ko: '한국어 설명이 아직 없습니다. 아래에 입력하고 저장하세요.',
-    en_source_prefix: '영어 원문',
-    view_original: '원문 보기',
-    hide_original: '원문 접기',
-    edit_korean: '한국어 편집',
-    hide_korean: '한국어 접기',
+    no_desc_ko: '설명을 적어주세요',
     risk_badge: '위험',
     err_bool_invalid: (raw: string) => `bool 값은 true/false만 허용됩니다 (받은 값: "${raw}")`,
     err_int_invalid: (raw: string) => `int 값은 정수만 허용됩니다 (받은 값: "${raw}")`,
@@ -73,12 +68,7 @@ const DICT = {
     saving: 'Saving…',
     saved: 'Saved',
     no_desc: '(no description)',
-    no_desc_ko: 'No Korean description yet -- add one below and save.',
-    en_source_prefix: 'EN source',
-    view_original: 'View original',
-    hide_original: 'Hide original',
-    edit_korean: 'Edit Korean',
-    hide_korean: 'Hide Korean',
+    no_desc_ko: 'Add a description',
     risk_badge: 'risk',
     err_bool_invalid: (raw: string) => `bool only accepts true/false (got: "${raw}")`,
     err_int_invalid: (raw: string) => `int only accepts a whole number (got: "${raw}")`,
@@ -302,16 +292,17 @@ function SettingsRow({ row, t }: { row: ConfigRow; t: Dict }) {
   )
 }
 
-// The screen follows the language toggle -- it does not show both languages
-// at once (HQ 2026-08-16: an earlier instruction to "keep the English
-// original visible" was about PRESERVATION in the DB, not simultaneous
-// on-screen display; conflating the two meant Korean mode still showed the
-// English caption and English mode still showed the Korean textarea). Korean
-// mode shows Korean primarily -- English is one click away via "View
-// original," never deleted. English mode shows English primarily -- Korean
-// is one click away via "Edit Korean." If Korean is empty, its slot shows
-// English instead of going blank, but as a PLACEHOLDER only (never written
-// back as a fake translation).
+// The screen shows only the picked language -- no expand/collapse toggle
+// (HQ 2026-08-16: a "View original"/"Edit Korean" link was itself a second
+// toggle competing with the language toggle, and if Korean's empty slot
+// showed English as a placeholder, Korean mode still displayed English text
+// -- both read as "the toggle didn't work" from the admin's side even though
+// the underlying data was fine. Rule going forward: the screen shows only
+// what's picked, nothing else). Korean mode = the Korean textarea only
+// (editable; empty prompts for input, never falls back to English). English
+// mode = the English text only (read-only; not editable here). English is
+// preserved in the DB either way -- "preserved" and "always on screen" are
+// different things.
 function DescriptionKoEditor({
   rowKey,
   description,
@@ -329,7 +320,6 @@ function DescriptionKoEditor({
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState(false)
 
   const dirty = draft.trim() !== (descriptionKo ?? '')
   const canSave = dirty && !pending
@@ -348,59 +338,33 @@ function DescriptionKoEditor({
     })
   }
 
-  const koEditor = (
-    <div className="flex items-start gap-2 max-w-xl">
-      <textarea
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value)
-          setMsg(null)
-          setError(null)
-        }}
-        disabled={pending}
-        rows={2}
-        placeholder={descriptionKo ? undefined : description || t.no_desc_ko}
-        className="flex-1 px-2.5 py-1.5 bg-[#100608] border border-white/10 rounded text-xs text-white/85 focus:border-[#ff8844] focus:outline-none disabled:opacity-50 resize-y"
-      />
-      <button
-        type="button"
-        onClick={save}
-        disabled={!canSave}
-        className="shrink-0 px-2.5 py-1.5 rounded bg-white/10 text-white text-[10px] font-bold uppercase tracking-wider hover:bg-white/20 transition disabled:opacity-30 disabled:cursor-not-allowed"
-      >
-        {pending ? t.saving : t.save}
-      </button>
-    </div>
-  )
-
-  const toggleBtn = (label: string) => (
-    <button
-      type="button"
-      onClick={() => setExpanded((x) => !x)}
-      className="mt-1.5 text-[10px] text-white/40 hover:text-white/70 underline underline-offset-2"
-    >
-      {label}
-    </button>
-  )
-
   return (
     <div className="mt-3 pt-3 border-t border-white/5">
       {lang === 'ko' ? (
-        <>
-          {koEditor}
-          {toggleBtn(expanded ? t.hide_original : t.view_original)}
-          {expanded && (
-            <p className="mt-1 text-xs text-white/40 italic">
-              {t.en_source_prefix}: {description || t.no_desc}
-            </p>
-          )}
-        </>
+        <div className="flex items-start gap-2 max-w-xl">
+          <textarea
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setMsg(null)
+              setError(null)
+            }}
+            disabled={pending}
+            rows={2}
+            placeholder={t.no_desc_ko}
+            className="flex-1 px-2.5 py-1.5 bg-[#100608] border border-white/10 rounded text-xs text-white/85 focus:border-[#ff8844] focus:outline-none disabled:opacity-50 resize-y"
+          />
+          <button
+            type="button"
+            onClick={save}
+            disabled={!canSave}
+            className="shrink-0 px-2.5 py-1.5 rounded bg-white/10 text-white text-[10px] font-bold uppercase tracking-wider hover:bg-white/20 transition disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {pending ? t.saving : t.save}
+          </button>
+        </div>
       ) : (
-        <>
-          <p className="text-xs text-white/70 max-w-xl">{description || t.no_desc}</p>
-          {toggleBtn(expanded ? t.hide_korean : t.edit_korean)}
-          {expanded && <div className="mt-1.5">{koEditor}</div>}
-        </>
+        <p className="text-xs text-white/70 max-w-xl">{description || t.no_desc}</p>
       )}
       {error && <p className="mt-1.5 text-xs text-[#ff8888]">{error}</p>}
       {msg && !error && <p className="mt-1.5 text-xs text-[#6cff9c]">{msg}</p>}

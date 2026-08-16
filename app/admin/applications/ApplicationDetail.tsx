@@ -360,7 +360,7 @@ function ScoringSection({
                   )}
                   {out.strengths && out.strengths.length > 0 && (
                     <div className="mb-2">
-                      <div className="text-[10px] text-emerald-300/70 mb-1">Strengths</div>
+                      <div className="text-[10px] text-emerald-300/70 mb-1">{t.application_detail.ai_output_strengths}</div>
                       <ul className="text-[11px] text-white/70 list-disc list-inside space-y-0.5">
                         {out.strengths.map((s, i) => (
                           <li key={i}>{s}</li>
@@ -370,7 +370,7 @@ function ScoringSection({
                   )}
                   {out.weaknesses && out.weaknesses.length > 0 && (
                     <div>
-                      <div className="text-[10px] text-red-300/70 mb-1">Weaknesses</div>
+                      <div className="text-[10px] text-red-300/70 mb-1">{t.application_detail.ai_output_weaknesses}</div>
                       <ul className="text-[11px] text-white/70 list-disc list-inside space-y-0.5">
                         {out.weaknesses.map((w, i) => (
                           <li key={i}>{w}</li>

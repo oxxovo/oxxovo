@@ -5,17 +5,9 @@
 
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { AdminPageHeader } from '../AdminPageHeader'
+import { MessagesView, type ChatLogRow } from './MessagesView'
 
 export const dynamic = 'force-dynamic'
-
-type ChatLogRow = {
-  id: string
-  ip: string | null
-  question: string
-  reply: string | null
-  created_at: string
-}
 
 export default async function MessagesPage() {
   await requireAdmin()
@@ -36,35 +28,5 @@ export default async function MessagesPage() {
     tableMissing = true
   }
 
-  return (
-    <div className="p-8">
-      <AdminPageHeader
-        title="Help Assistant — Out-of-scope"
-        subtitle="Questions the chatbot could not answer from the knowledge base (pointed to info@oxxovo.ai)."
-      />
-
-      {tableMissing ? (
-        <div className="rounded-lg border border-amber-400/30 bg-amber-400/[.05] px-5 py-4 text-sm text-amber-200/80">
-          Collection not enabled yet — run <code>reports/chat_logs_migration_2026-06.sql</code> in Supabase.
-        </div>
-      ) : rows.length === 0 ? (
-        <p className="text-white/40 text-sm">No out-of-scope questions yet.</p>
-      ) : (
-        <div className="space-y-3">
-          {rows.map((r) => (
-            <div key={r.id} className="rounded-lg border border-white/10 bg-white/[.03] px-5 py-4">
-              <div className="flex items-center justify-between gap-4 mb-2">
-                <span className="text-xs text-white/40">
-                  {new Date(r.created_at).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })} PT
-                </span>
-                <span className="text-[10px] text-white/25">{r.ip ?? '—'}</span>
-              </div>
-              <p className="text-sm text-white/90 mb-2">{r.question}</p>
-              {r.reply && <p className="text-xs text-white/40 whitespace-pre-wrap">{r.reply}</p>}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+  return <MessagesView rows={rows} tableMissing={tableMissing} />
 }

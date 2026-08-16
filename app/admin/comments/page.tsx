@@ -5,8 +5,8 @@
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getDisplayNames } from '@/lib/nickname'
-import { AdminPageHeader } from '../AdminPageHeader'
-import { ModerationRow, type ModComment } from './ModerationRow'
+import { CommentsView } from './CommentsView'
+import { type ModComment } from './ModerationRow'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,7 +37,7 @@ export default async function AdminCommentsPage() {
 
   const comments: ModComment[] = rows.map((r) => ({
     id: r.id,
-    authorName: names.get(r.user_id) ?? 'Creator',
+    authorName: names.get(r.user_id) ?? null,
     body: r.body,
     status: r.status,
     reportCount: r.report_count,
@@ -46,35 +46,5 @@ export default async function AdminCommentsPage() {
     createdAt: r.created_at,
   }))
 
-  return (
-    <main className="min-h-screen bg-[#030305] text-white px-6 py-10">
-      <div className="max-w-5xl mx-auto">
-        <AdminPageHeader
-          title="Comment moderation"
-          subtitle="Reported comments, most-reported first. Hide removes a comment from public view (it is kept, never deleted)."
-        />
-
-        {comments.length === 0 ? (
-          <p className="mt-10 text-sm text-white/40">No reported comments. 🎉</p>
-        ) : (
-          <table className="mt-8 w-full text-left">
-            <thead>
-              <tr className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/40">
-                <th className="py-2 pr-3 font-semibold">Reports</th>
-                <th className="py-2 pr-3 font-semibold">Author</th>
-                <th className="py-2 pr-3 font-semibold">Comment</th>
-                <th className="py-2 pr-3 font-semibold">Status</th>
-                <th className="py-2 font-semibold">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comments.map((c) => (
-                <ModerationRow key={c.id} c={c} />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </main>
-  )
+  return <CommentsView comments={comments} />
 }

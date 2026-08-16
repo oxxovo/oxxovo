@@ -192,6 +192,7 @@ function ScoringStatsBlock({
   stats: ScoringStats
   flaggedCount: number
 }) {
+  const t = useT()
   const totalJudged = stats.completed
   const hasUrgent = flaggedCount > 0
   // ★An entry the scorer never received is the only kind an operator can still
@@ -201,42 +202,37 @@ function ScoringStatsBlock({
   return (
     <section className="mb-10">
       <div className="flex items-baseline justify-between mb-3">
-        <h2 className="text-lg font-bold">
-          {season.name} · Scoring progress
-        </h2>
+        <h2 className="text-lg font-bold">{t.dashboard.scoring_progress(season.name)}</h2>
         {hasUrgent && (
           <Link
             href="/admin/applications?segment=flagged"
             className="text-xs text-red-300 hover:underline"
           >
-            🚩 {flaggedCount} need review →
+            {t.dashboard.flagged_need_review(flaggedCount)}
           </Link>
         )}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MiniStat label={`Judged / ${stats.scorable} with a film`} value={totalJudged} tone="default" />
-        <MiniStat label="In progress" value={stats.in_progress} tone="indigo" />
-        <MiniStat label="Failed" value={stats.failed} tone="red-soft" />
+        <MiniStat label={t.dashboard.judged_of_scorable(stats.scorable)} value={totalJudged} tone="default" />
+        <MiniStat label={t.dashboard.in_progress} value={stats.in_progress} tone="indigo" />
+        <MiniStat label={t.dashboard.failed} value={stats.failed} tone="red-soft" />
         <MiniStat
-          label="★Never enqueued"
+          label={t.dashboard.never_enqueued}
           value={stats.unjudged}
           tone={hasGap ? 'red' : 'default'}
         />
       </div>
       {hasGap && (
-        <p className="mt-2 text-xs text-red-300">
-          {stats.unjudged}편이 영상은 있는데 채점 행이 없습니다 — 실패가 아니라 <strong>큐에 들어가지
-          않은 것</strong>입니다. 실패 목록에는 나타나지 않습니다.
-        </p>
+        <p className="mt-2 text-xs text-red-300">{t.dashboard.gap_explanation(stats.unjudged)}</p>
       )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-        <MiniStat label="Flagged" value={flaggedCount} tone={hasUrgent ? 'red' : 'default'} />
+        <MiniStat label={t.dashboard.flagged} value={flaggedCount} tone={hasUrgent ? 'red' : 'default'} />
       </div>
       <div className="grid grid-cols-4 gap-3 mt-3">
-        <MiniStat label="Confidence: none" value={stats.none} tone="default" />
-        <MiniStat label="Confidence: low" value={stats.low} tone="default" />
-        <MiniStat label="Confidence: medium" value={stats.medium} tone="amber" />
-        <MiniStat label="Confidence: high" value={stats.high} tone={stats.high > 0 ? 'red' : 'default'} />
+        <MiniStat label={t.dashboard.confidence_none} value={stats.none} tone="default" />
+        <MiniStat label={t.dashboard.confidence_low} value={stats.low} tone="default" />
+        <MiniStat label={t.dashboard.confidence_medium} value={stats.medium} tone="amber" />
+        <MiniStat label={t.dashboard.confidence_high} value={stats.high} tone={stats.high > 0 ? 'red' : 'default'} />
       </div>
     </section>
   )

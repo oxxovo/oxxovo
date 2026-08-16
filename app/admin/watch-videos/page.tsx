@@ -5,10 +5,10 @@
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getDisplayNames } from '@/lib/nickname'
-import { WatchVideoModRow, type ModVideo } from './WatchVideoModRow'
-import { PrelimHoldPanel, type HeldSeason } from './PrelimHoldPanel'
+import { WatchVideosView } from './WatchVideosView'
+import { type ModVideo } from './WatchVideoModRow'
+import { type HeldSeason } from './PrelimHoldPanel'
 import { countPrelimEntries, type PrelimEntry } from '@/lib/prelim-release'
-import { AdminPageHeader } from '../AdminPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -192,7 +192,7 @@ export default async function AdminWatchVideosPage() {
   const rows: ModVideo[] = apps
     .map((a) => ({
       id: a.id,
-      displayName: (a.user_id ? names.get(a.user_id) : undefined) ?? a.creator_name?.trim() ?? 'Creator',
+      displayName: (a.user_id ? names.get(a.user_id) : undefined) ?? a.creator_name?.trim() ?? null,
       status: a.status,
       moderationStatus: a.moderation_status,
       moderationFlags: flagsToList(a.moderation_flags),
@@ -204,37 +204,5 @@ export default async function AdminWatchVideosPage() {
     }))
     .sort((a, b) => b.reportCount - a.reportCount)
 
-  return (
-    <main className="min-h-screen bg-[#030305] text-white px-6 py-10">
-      <div className="max-w-5xl mx-auto">
-        <AdminPageHeader
-          title="Video moderation"
-          subtitle="Reported, AI-flagged, or hidden videos. Hide removes a video from Watch without changing its competition status (scoring/awards are unaffected)."
-        />
-
-        <PrelimHoldPanel seasons={heldSeasons} />
-
-        {rows.length === 0 ? (
-          <p className="mt-10 text-sm text-white/40">Nothing to review. 🎉</p>
-        ) : (
-          <table className="mt-8 w-full text-left">
-            <thead>
-              <tr className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/40">
-                <th className="py-2 pr-3 font-semibold">Reports</th>
-                <th className="py-2 pr-3 font-semibold">Creator</th>
-                <th className="py-2 pr-3 font-semibold">Flags</th>
-                <th className="py-2 pr-3 font-semibold">Video</th>
-                <th className="py-2 font-semibold">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((v) => (
-                <WatchVideoModRow key={v.id} v={v} />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </main>
-  )
+  return <WatchVideosView rows={rows} heldSeasons={heldSeasons} />
 }

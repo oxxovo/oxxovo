@@ -119,6 +119,18 @@ export type Messages = {
     quick_actions: string
     new_season: string
     manage_seasons: string
+    scoring_progress: (seasonName: string) => string
+    flagged_need_review: (n: number) => string
+    judged_of_scorable: (n: number) => string
+    in_progress: string
+    failed: string
+    never_enqueued: string
+    gap_explanation: (n: number) => string
+    flagged: string
+    confidence_none: string
+    confidence_low: string
+    confidence_medium: string
+    confidence_high: string
   }
   status: {
     active: string
@@ -420,6 +432,8 @@ export type Messages = {
     integrity_high_warning: string
     ai_outputs_toggle: string
     ai_outputs_hide: string
+    ai_output_strengths: string
+    ai_output_weaknesses: string
   }
   video: {
     embed_failed: string
@@ -996,6 +1010,72 @@ export type Messages = {
     score_originality: string
     score_integrity_verified: string
   }
+  watch_home: {
+    title: string
+    subtitle: string
+    toggle_on: string
+    toggle_off: string
+  }
+  watch_videos: {
+    title: string
+    subtitle: string
+    empty: string
+    col_reports: string
+    col_creator: string
+    col_flags: string
+    col_video: string
+    col_action: string
+    creator_fallback: string
+    ai_flagged: string
+    scanning: string
+    hidden_badge: string
+    prelim_link: string
+    main_link: string
+    approve_btn: string
+    hide_btn: string
+    unhide_btn: string
+    hold_title: string
+    hold_desc: string
+    hold_held_count: (n: number) => string
+    hold_close_at: (stamp: string) => string
+    hold_released: (stamp: string) => string
+    hold_cohort_count: (n: number) => string
+    hold_late_count: (n: number) => string
+    hold_not_released: string
+    hold_auto_on: string
+    hold_auto_off: string
+    hold_off_suffix: string
+    hold_none: string
+    hold_release_confirm: (name: string, count: number) => string
+    hold_release_btn: (count: number) => string
+    hold_releasing: string
+    hold_released_msg: (n: number) => string
+    hold_release_err_forbidden: string
+    hold_release_err_generic: string
+  }
+  messages: {
+    title: string
+    subtitle: string
+    table_missing: string
+    empty: string
+    ip_fallback: string
+  }
+  comments: {
+    title: string
+    subtitle: string
+    empty: string
+    col_reports: string
+    col_author: string
+    col_comment: string
+    col_status: string
+    col_action: string
+    author_fallback: string
+    view_video: string
+    status_visible: string
+    status_hidden: string
+    hide_btn: string
+    unhide_btn: string
+  }
 }
 
 const MESSAGES_EN: Messages = {
@@ -1048,6 +1128,19 @@ const MESSAGES_EN: Messages = {
     quick_actions: 'Quick actions',
     new_season: '+ New season',
     manage_seasons: 'Manage seasons',
+    scoring_progress: (seasonName) => `${seasonName} · Scoring progress`,
+    flagged_need_review: (n) => `🚩 ${n} need review →`,
+    judged_of_scorable: (n) => `Judged / ${n} with a film`,
+    in_progress: 'In progress',
+    failed: 'Failed',
+    never_enqueued: '★Never enqueued',
+    gap_explanation: (n) =>
+      `${n} have a film but no scoring row -- not a failure, just never enqueued. It will not show up in the failed list.`,
+    flagged: 'Flagged',
+    confidence_none: 'Confidence: none',
+    confidence_low: 'Confidence: low',
+    confidence_medium: 'Confidence: medium',
+    confidence_high: 'Confidence: high',
   },
   status: {
     active: 'active',
@@ -1356,6 +1449,8 @@ const MESSAGES_EN: Messages = {
     integrity_high_warning: 'High-confidence integrity suspicion — admin review required before this entry can proceed.',
     ai_outputs_toggle: 'Show AI raw outputs',
     ai_outputs_hide: 'Hide AI raw outputs',
+    ai_output_strengths: 'Strengths',
+    ai_output_weaknesses: 'Weaknesses',
   },
   video: {
     embed_failed: 'Unable to embed this video.',
@@ -1928,6 +2023,76 @@ const MESSAGES_EN: Messages = {
     score_originality: 'Originality',
     score_integrity_verified: 'Integrity Verified',
   },
+  watch_home: {
+    title: 'Watch as Home',
+    subtitle:
+      "When ON, the site root (oxxovo.ai) shows the Watch surface. When OFF, the root shows the marketing landing. The landing always stays reachable at /welcome (Watch sidebar “Tournament”). Turn this ON only after Season 0 has enough videos so Watch isn't empty.",
+    toggle_on: 'ON — root shows Watch',
+    toggle_off: 'OFF — root shows landing',
+  },
+  watch_videos: {
+    title: 'Video moderation',
+    subtitle:
+      'Reported, AI-flagged, or hidden videos. Hide removes a video from Watch without changing its competition status (scoring/awards are unaffected).',
+    empty: 'Nothing to review. 🎉',
+    col_reports: 'Reports',
+    col_creator: 'Creator',
+    col_flags: 'Flags',
+    col_video: 'Video',
+    col_action: 'Action',
+    creator_fallback: 'Creator',
+    ai_flagged: 'AI flagged',
+    scanning: 'scanning',
+    hidden_badge: 'hidden',
+    prelim_link: 'prelim →',
+    main_link: 'main →',
+    approve_btn: 'Approve',
+    hide_btn: 'Hide',
+    unhide_btn: 'Unhide',
+    hold_title: 'Preliminary release hold (anti-copy hold)',
+    hold_desc:
+      'Held preliminary videos are visible to no one but their own creator. Releasing a cohort all at once stops an earlier entrant’s work from being copied. Releasing only changes visibility -- scoring/rank is unaffected.',
+    hold_held_count: (n) => `${n} held`,
+    hold_close_at: (stamp) => `Application close ${stamp}`,
+    hold_released: (stamp) => `Released ${stamp}`,
+    hold_cohort_count: (n) => `cohort ${n}`,
+    hold_late_count: (n) => `${n} arrived after release`,
+    hold_not_released: 'Not released yet',
+    hold_auto_on: 'Auto-release ON — the first on-the-hour cron after close releases it automatically',
+    hold_auto_off: 'Auto-release OFF — only this button releases it',
+    hold_off_suffix: ' · new submissions no longer held (hold OFF)',
+    hold_none: 'Nothing held',
+    hold_release_confirm: (name, count) =>
+      `${name}: releasing ${count} held preliminary video(s) right now, publicly, irreversibly. Proceed?`,
+    hold_release_btn: (count) => `Release all preliminary (${count})`,
+    hold_releasing: 'Releasing…',
+    hold_released_msg: (n) => `${n} released`,
+    hold_release_err_forbidden: 'Forbidden',
+    hold_release_err_generic: 'Failed — try again',
+  },
+  messages: {
+    title: 'Help Assistant — Out-of-scope',
+    subtitle: "Questions the chatbot could not answer from the knowledge base (pointed to info@oxxovo.ai).",
+    table_missing: 'Collection not enabled yet — run reports/chat_logs_migration_2026-06.sql in Supabase.',
+    empty: 'No out-of-scope questions yet.',
+    ip_fallback: '—',
+  },
+  comments: {
+    title: 'Comment moderation',
+    subtitle: 'Reported comments, most-reported first. Hide removes a comment from public view (it is kept, never deleted).',
+    empty: 'No reported comments. 🎉',
+    col_reports: 'Reports',
+    col_author: 'Author',
+    col_comment: 'Comment',
+    col_status: 'Status',
+    col_action: 'Action',
+    author_fallback: 'Creator',
+    view_video: 'view video →',
+    status_visible: 'visible',
+    status_hidden: 'hidden',
+    hide_btn: 'Hide',
+    unhide_btn: 'Unhide',
+  },
 }
 
 const MESSAGES_KO: Messages = {
@@ -1980,6 +2145,19 @@ const MESSAGES_KO: Messages = {
     quick_actions: '빠른 작업',
     new_season: '+ 새 시즌',
     manage_seasons: '시즌 관리',
+    scoring_progress: (seasonName) => `${seasonName} · 채점 진행상황`,
+    flagged_need_review: (n) => `🚩 검토 필요 ${n}건 →`,
+    judged_of_scorable: (n) => `채점완료 / 영상보유 ${n}`,
+    in_progress: '진행 중',
+    failed: '실패',
+    never_enqueued: '★큐 미등록',
+    gap_explanation: (n) =>
+      `${n}편이 영상은 있는데 채점 행이 없습니다 — 실패가 아니라 큐에 들어가지 않은 것입니다. 실패 목록에는 나타나지 않습니다.`,
+    flagged: '플래그됨',
+    confidence_none: '신뢰도: 없음',
+    confidence_low: '신뢰도: 낮음',
+    confidence_medium: '신뢰도: 중간',
+    confidence_high: '신뢰도: 높음',
   },
   status: {
     active: '진행 중',
@@ -2288,6 +2466,8 @@ const MESSAGES_KO: Messages = {
     integrity_high_warning: '명백한 의심 — 진행 전 관리자 검토가 필요합니다.',
     ai_outputs_toggle: 'AI 원본 출력 보기',
     ai_outputs_hide: 'AI 원본 출력 접기',
+    ai_output_strengths: '강점',
+    ai_output_weaknesses: '약점',
   },
   video: {
     embed_failed: '이 영상은 임베드할 수 없습니다.',
@@ -2851,6 +3031,76 @@ const MESSAGES_KO: Messages = {
     score_execution: '완성도',
     score_originality: '독창성',
     score_integrity_verified: '무결성 검증됨',
+  },
+  watch_home: {
+    title: 'Watch 홈 전환',
+    subtitle:
+      'ON이면 사이트 루트(oxxovo.ai)가 Watch 화면을 보여줍니다. OFF면 루트가 마케팅 랜딩을 보여줍니다. 랜딩은 항상 /welcome에서 볼 수 있습니다(Watch 사이드바 "Tournament"). 시즌 0에 영상이 충분히 쌓인 뒤에만 ON으로 켜세요 — Watch가 비어 보이지 않도록.',
+    toggle_on: 'ON — 루트가 Watch를 보여줍니다',
+    toggle_off: 'OFF — 루트가 랜딩을 보여줍니다',
+  },
+  watch_videos: {
+    title: '영상 관리',
+    subtitle:
+      '신고됨·AI 플래그·숨김 처리된 영상. 숨기기는 시합 상태(채점/시상)에 영향 없이 Watch 노출만 끕니다.',
+    empty: '검토할 항목이 없습니다 🎉',
+    col_reports: '신고',
+    col_creator: '참가자',
+    col_flags: '플래그',
+    col_video: '영상',
+    col_action: '조치',
+    creator_fallback: '참가자',
+    ai_flagged: 'AI 플래그',
+    scanning: '검사 중',
+    hidden_badge: '숨김',
+    prelim_link: '예선 →',
+    main_link: '본선 →',
+    approve_btn: '승인',
+    hide_btn: '숨기기',
+    unhide_btn: '숨김 해제',
+    hold_title: '예선 공개 보류 (anti-copy hold)',
+    hold_desc:
+      '보류 중인 예선 영상은 본인 외에는 아무에게도 보이지 않습니다. 코호트 전체를 한 번에 공개해 먼저 제출한 사람의 작품이 복제되지 않도록 하는 장치입니다. 공개는 노출만 바꾸며 채점/순위에는 영향이 없습니다.',
+    hold_held_count: (n) => `보류 ${n}편`,
+    hold_close_at: (stamp) => `신청 마감 ${stamp}`,
+    hold_released: (stamp) => `공개됨 ${stamp}`,
+    hold_cohort_count: (n) => `코호트 ${n}편`,
+    hold_late_count: (n) => `공개 이후 유입 ${n}편`,
+    hold_not_released: '아직 공개되지 않음',
+    hold_auto_on: '자동 공개 ON — 마감 시각 이후 첫 정시 cron이 자동으로 공개합니다',
+    hold_auto_off: '자동 공개 OFF — 이 버튼으로만 공개됩니다',
+    hold_off_suffix: ' · 신규 제출은 더 이상 보류되지 않음(hold OFF)',
+    hold_none: '보류 없음',
+    hold_release_confirm: (name, count) =>
+      `${name}: 보류 중인 예선 ${count}편을 지금 전체 공개합니다. 되돌릴 수 없습니다. 진행할까요?`,
+    hold_release_btn: (count) => `예선 전체 공개 (${count})`,
+    hold_releasing: '공개 중…',
+    hold_released_msg: (n) => `${n}편 공개됨`,
+    hold_release_err_forbidden: '권한 없음',
+    hold_release_err_generic: '실패 — 다시 시도하세요',
+  },
+  messages: {
+    title: '도움말 챗봇 — 답변 범위 밖',
+    subtitle: '챗봇이 지식베이스로 답 못한 질문 모음(info@oxxovo.ai로 안내됨).',
+    table_missing: '아직 수집이 활성화되지 않았습니다 — Supabase에서 reports/chat_logs_migration_2026-06.sql을 실행하세요.',
+    empty: '아직 답변 범위 밖 질문이 없습니다.',
+    ip_fallback: '—',
+  },
+  comments: {
+    title: '댓글 관리',
+    subtitle: '신고된 댓글, 신고 많은 순. 숨기기는 공개 노출만 끄고 삭제하지 않습니다.',
+    empty: '신고된 댓글이 없습니다 🎉',
+    col_reports: '신고',
+    col_author: '작성자',
+    col_comment: '댓글',
+    col_status: '상태',
+    col_action: '조치',
+    author_fallback: '참가자',
+    view_video: '영상 보기 →',
+    status_visible: '공개',
+    status_hidden: '숨김',
+    hide_btn: '숨기기',
+    unhide_btn: '숨김 해제',
   },
 }
 

@@ -2,9 +2,11 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { useT } from '@/lib/admin-i18n'
 import { setWatchAsHome } from './actions'
 
 export function WatchHomeToggle({ initial }: { initial: boolean }) {
+  const t = useT()
   const router = useRouter()
   const [on, setOn] = useState(initial)
   const [pending, start] = useTransition()
@@ -35,7 +37,7 @@ export function WatchHomeToggle({ initial }: { initial: boolean }) {
           className={`absolute top-1 h-6 w-6 rounded-full bg-white transition ${on ? 'left-7' : 'left-1'}`}
         />
       </button>
-      <span className="text-sm font-bold">{on ? 'ON — root shows Watch' : 'OFF — root shows landing'}</span>
+      <span className="text-sm font-bold">{on ? t.watch_home.toggle_on : t.watch_home.toggle_off}</span>
     </div>
   )
 }
