@@ -306,6 +306,9 @@ export type Messages = {
     deleting: string
     cancel: string
     delete_failed: string
+    blocked_applications: (n: number) => string
+    blocked_generation_jobs: (n: number) => string
+    blocked_render_jobs: (n: number) => string
   }
   login: {
     brand_tag: string
@@ -1331,7 +1334,7 @@ const MESSAGES_EN: Messages = {
     button: 'Delete season',
     confirm_title: 'Delete this season?',
     confirm_body_lead: (name) =>
-      `This permanently removes ${name} and all references on the public site. Applications tied to this season are not deleted but will become orphaned. Type `,
+      `This permanently removes ${name}. If the season has any applications or Studio jobs, the delete is refused instead -- nothing is silently orphaned. Type `,
     confirm_body_type: 'delete <name>',
     confirm_body_tail: ' to confirm.',
     confirm_input_ph: (name) => `delete ${name}`,
@@ -1339,6 +1342,9 @@ const MESSAGES_EN: Messages = {
     deleting: 'Deleting…',
     cancel: 'Cancel',
     delete_failed: 'Delete failed',
+    blocked_applications: (n) => `Can't delete -- ${n} participant(s) have applications in this season.`,
+    blocked_generation_jobs: (n) => `Can't delete -- ${n} Studio generation job(s) exist for this season.`,
+    blocked_render_jobs: (n) => `Can't delete -- ${n} Studio render job(s) exist for this season.`,
   },
   login: {
     brand_tag: 'OXXOVO',
@@ -2366,7 +2372,7 @@ const MESSAGES_KO: Messages = {
     button: '시즌 삭제',
     confirm_title: '이 시즌을 삭제하시겠습니까?',
     confirm_body_lead: (name) =>
-      `${name}이(가) 영구 삭제되며 공개 사이트의 모든 참조에서 제거됩니다. 이 시즌의 지원서는 삭제되지 않지만 고아 상태가 됩니다. 확인하려면 `,
+      `${name}이(가) 영구 삭제됩니다. 이 시즌에 지원서나 Studio 작업이 하나라도 있으면 삭제가 거부됩니다 — 조용히 고아 상태가 되지 않습니다. 확인하려면 `,
     confirm_body_type: 'delete <이름>',
     confirm_body_tail: '을(를) 입력하세요.',
     confirm_input_ph: (name) => `delete ${name}`,
@@ -2374,6 +2380,9 @@ const MESSAGES_KO: Messages = {
     deleting: '삭제 중…',
     cancel: '취소',
     delete_failed: '삭제 실패',
+    blocked_applications: (n) => `삭제할 수 없습니다 — 참가자 ${n}명이 이 시즌에 지원서를 냈습니다.`,
+    blocked_generation_jobs: (n) => `삭제할 수 없습니다 — 이 시즌의 Studio 생성 작업이 ${n}건 있습니다.`,
+    blocked_render_jobs: (n) => `삭제할 수 없습니다 — 이 시즌의 Studio 렌더 작업이 ${n}건 있습니다.`,
   },
   login: {
     brand_tag: 'OXXOVO',

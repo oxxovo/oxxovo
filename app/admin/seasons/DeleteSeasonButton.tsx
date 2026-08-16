@@ -24,7 +24,24 @@ export function DeleteSeasonButton({
     setError(null)
     startTransition(async () => {
       try {
-        await deleteSeason(id)
+        const res = await deleteSeason(id)
+        if (!res.ok) {
+          switch (res.reason) {
+            case 'has_applications':
+              setError(t.delete.blocked_applications(res.count))
+              break
+            case 'has_generation_jobs':
+              setError(t.delete.blocked_generation_jobs(res.count))
+              break
+            case 'has_render_jobs':
+              setError(t.delete.blocked_render_jobs(res.count))
+              break
+            default:
+              setError(res.message || t.delete.delete_failed)
+          }
+        }
+        // ok:true never actually reaches here -- deleteSeason redirects on
+        // success, which Next intercepts before this promise resolves.
       } catch (e) {
         setError(e instanceof Error ? e.message : t.delete.delete_failed)
       }

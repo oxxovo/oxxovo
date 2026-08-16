@@ -59,13 +59,38 @@ async function persistSeason(input: SeasonInput, id?: string) {
   return data.id as string
 }
 
-export async function deleteSeason(id: string): Promise<void> {
+export type DeleteSeasonResult =
+  | { ok: true }
+  | { ok: false; reason: 'has_applications' | 'has_generation_jobs' | 'has_render_jobs'; count: number }
+  | { ok: false; reason: 'unknown'; message: string }
+
+// HQ 2026-08-16: seasons.id is referenced by genesis_applications /
+// generation_jobs / render_jobs, all NO ACTION/RESTRICT (verified live --
+// see reports/seasons_fk_cascade_check_2026-08-16.sql), so a season with any
+// of the three can never actually be deleted -- the FK constraint refuses it
+// atomically, nothing is ever partially removed. But the raw Postgres
+// rejection ("violates foreign key constraint... on table
+// \"genesis_applications\"") means nothing to a non-technical operator.
+// Pre-checking and returning a typed reason (translated in
+// DeleteSeasonButton.tsx) answers "why" the way TK actually asked for it:
+// "참가자 N명이 있어 지울 수 없습니다."
+export async function deleteSeason(id: string): Promise<DeleteSeasonResult> {
   await requireAdmin()
-  if (!id) throw new Error('Season id required')
+  if (!id) return { ok: false, reason: 'unknown', message: 'Season id required' }
 
   const supabase = createSupabaseAdmin()
+
+  const [apps, gens, renders] = await Promise.all([
+    supabase.from('genesis_applications').select('id', { count: 'exact', head: true }).eq('season_id', id),
+    supabase.from('generation_jobs').select('id', { count: 'exact', head: true }).eq('season_id', id),
+    supabase.from('render_jobs').select('id', { count: 'exact', head: true }).eq('season_id', id),
+  ])
+  if ((apps.count ?? 0) > 0) return { ok: false, reason: 'has_applications', count: apps.count as number }
+  if ((gens.count ?? 0) > 0) return { ok: false, reason: 'has_generation_jobs', count: gens.count as number }
+  if ((renders.count ?? 0) > 0) return { ok: false, reason: 'has_render_jobs', count: renders.count as number }
+
   const { error } = await supabase.from('seasons').delete().eq('id', id)
-  if (error) throw new Error(error.message)
+  if (error) return { ok: false, reason: 'unknown', message: error.message }
 
   revalidatePath('/')
   revalidatePath('/apply')
