@@ -30,6 +30,8 @@
 | 29 | `main_round_twist` 언어별 컬럼 분리 — 단일 컬럼(TEXT 1개, KR/EN 별도 컬럼 없음)이라 사이트 언어 토글이 이 값을 못 바꾼다. 라벨(`main_round_theme_label`)이면 영문 단일 표기로 넘어가지만, 트위스트는 참가자가 읽고 작품을 만들어야 하는 주제라 한쪽 언어만 넣으면 절반이 못 읽는다. 지금은 TK 판정대로 한 컬럼에 EN 먼저 + KR 병기("A scene applying lotion to the face (얼굴에 로션을 바르는 장면)")로 우회(2026-08-14, `reports/season0_main_round_twist_2026-08-14.sql`) | 컬럼 분리 시 스키마+코드 소량 | 없음 | 미정 |
 | 31 | `deletePromoVideoAction`이 R2에 저장된 영상은 안 지운다 — Supabase Storage 마커(`/promo-videos/`)가 `video_url`에 있을 때만 Storage 객체를 지우는데, 콘텐츠 영상 91개는 R2 URL(`pub-....r2.dev/promo/...`)이라 이 삭제 액션의 파일-삭제 분기 자체가 안 탄다. 2026-08-14 실삭제 사고에서 발견(`reports/promo_deleted_row_recovery_2026-08-14.sql`) — 이번엔 파일이 안 지워진 게 다행이었지만(행만 복구하면 됨), 구조적으로는 "행은 지웠는데 R2엔 고아 파일이 계속 쌓인다"는 뜻. soft delete(#32 예정) 설계 시 함께 정리 — 완전 삭제(하드 삭제) 단계에서는 R2 객체도 실제로 지우도록 배선 | soft delete 작업에 곁들이면 소량 | 없음, soft delete 설계와 같이 판단 | 9/9 전 |
 
+| 33 | **음악 100곡 파일럿 — Soundverse API 키 403 Invalid로 막힘.** 오늘 안에 키 3개를 순차로 시도(출처불명 워커 키 → 첫 재발급 키 → `platform.soundverse.ai` "Manage keys" 발급 키, PAYG $100 충전 계정) 전부 동일하게 거부됨. 문서상 존재하지 않는 경로(`/v7/status`)와 문서에 있는 실제 생성 엔드포인트(`POST /v5/generate/music/sync`, 문서 예시curl 그대로)를 나란히 대조해도 둘 다 정확히 같은 `403 {"detail":"Invalid API Key"}` — 엔드포인트 문제가 아니라 키 자체가 Soundverse 인증 DB에서 거부되는 상태로 확정, 우리 쪽 원인(Railway 반영·Bearer 헤더 형식) 전부 배제됨. 대표님이 이 근거로 Soundverse에 문의 발송함(2026-08-15). 곡 생성 0건, DB 쓰기 0건, 비용 0. 현재 Railway `oxxovo-studio`(production) `SOUNDVERSE_API_KEY` = platform.soundverse.ai 발급 키(가장 최근 값) | $0(시도 실패라 과금 없음) | Soundverse 지원팀 회신 | 회신 오면 재개, 그 전엔 음악 손대지 않음 |
+
 ## CLOSED (기록 보존)
 
 | # | 요약 | 종결 근거 |
