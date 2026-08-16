@@ -51,7 +51,13 @@ import { sendSubmissionReceipts, type ReceiptTally } from '@/lib/email/submissio
 import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { isMembershipEnabled } from '@/lib/membership'
 import { getPlatformConfigMap } from '@/lib/partners'
-import { getActiveApplicationCount, type Season } from '@/lib/seasons'
+import {
+  getActiveApplicationCount,
+  computeSubmissionCloseAt,
+  deadlineReminderFireTimes,
+  registrationReminderFireTimes,
+  type Season,
+} from '@/lib/seasons'
 
 const APP_URL = process.env.APP_URL ?? 'https://www.oxxovo.ai'
 const VALID_INTERVALS = ['day', 'week', 'month', 'year']
@@ -199,26 +205,23 @@ async function handle(request: NextRequest) {
       // derivation stays only as the fallback for seasons whose end is not set
       // yet, which is how the column itself is computed at creation
       // (lib/season-schedule.ts).
-      const submissionCloseAt = season.main_round_end_at
-        ? new Date(season.main_round_end_at)
-        : new Date(
-            new Date(season.main_round_start_at).getTime() +
-              season.submission_hours * 3_600_000,
-          )
+      // computeSubmissionCloseAt/deadlineReminderFireTimes are shared with the
+      // admin edit form's live preview (lib/seasons.ts) -- one definition of
+      // this boundary, not a second hand-copy that can drift from it.
+      const submissionCloseAt = computeSubmissionCloseAt(season)
       const reminderHours = Array.isArray(season.deadline_reminder_hours)
         ? (season.deadline_reminder_hours as number[])
         : []
-      for (const reminderHour of reminderHours) {
-        const fireAt = new Date(
-          submissionCloseAt.getTime() - reminderHour * 3_600_000,
-        )
-        if (fireAt <= now && now < submissionCloseAt) {
-          const result = await fireSubmissionDeadline(season, reminderHour, budget)
-          report.submissionDeadline.push({
-            season: season.id,
-            reminderHour,
-            ...result,
-          })
+      if (submissionCloseAt) {
+        for (const { n: reminderHour, fireAt } of deadlineReminderFireTimes(season, reminderHours)) {
+          if (fireAt && fireAt <= now && now < submissionCloseAt) {
+            const result = await fireSubmissionDeadline(season, reminderHour, budget)
+            report.submissionDeadline.push({
+              season: season.id,
+              reminderHour,
+              ...result,
+            })
+          }
         }
       }
     }
@@ -241,11 +244,8 @@ async function handle(request: NextRequest) {
       const reminderDays = Array.isArray(season.registration_reminder_days)
         ? (season.registration_reminder_days as number[])
         : []
-      for (const reminderDay of reminderDays) {
-        const fireAt = new Date(
-          registrationCloseAt.getTime() - reminderDay * 86_400_000,
-        )
-        if (fireAt <= now && now < registrationCloseAt) {
+      for (const { n: reminderDay, fireAt } of registrationReminderFireTimes(season.registration_close_at, reminderDays)) {
+        if (fireAt && fireAt <= now && now < registrationCloseAt) {
           const result = await fireRegistrationCount(season, reminderDay, budget)
           report.registrationCount.push({
             season: season.id,

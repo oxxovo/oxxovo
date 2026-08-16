@@ -121,7 +121,7 @@ export function validateVideoUrl(
   return { valid: true, platform: parsed.platform, embedSrc, href: parsed.href }
 }
 
-const PLATFORM_DISPLAY_NAMES: Record<string, string> = {
+export const PLATFORM_DISPLAY_NAMES: Record<string, string> = {
   youtube: 'YouTube',
   vimeo: 'Vimeo',
   instagram: 'Instagram',
@@ -130,6 +130,26 @@ const PLATFORM_DISPLAY_NAMES: Record<string, string> = {
   // allowed_video_platforms (season_0 = ['studio']), so anything that prints
   // that column needs a name for it or the screen shows lowercase "studio".
   studio: 'OXXOVO Studio',
+}
+
+// The full closed set seasons.allowed_video_platforms may contain -- every
+// PARSEABLE_PLATFORMS entry (an external URL host validateVideoUrl can
+// recognise) plus 'studio' (the in-platform source, never a URL). Exported so
+// the admin edit form's checkbox list and the zod schema's enum both read
+// from this ONE list rather than each hardcoding their own copy of it.
+export const ALLOWED_VIDEO_PLATFORM_VALUES = [...PARSEABLE_PLATFORMS, 'studio'] as const
+export type AllowedVideoPlatform = (typeof ALLOWED_VIDEO_PLATFORM_VALUES)[number]
+
+// DB column is plain string[] (defensive -- a stray/legacy value must not
+// crash a read). The admin edit form's zod schema is the narrower closed
+// enum, so a row read from the DB needs filtering down to it first. Drops
+// anything unrecognized rather than throwing -- fail-closed, same posture as
+// acceptsExternalUrl above.
+export function filterKnownVideoPlatforms(list: string[] | null | undefined): AllowedVideoPlatform[] {
+  if (!Array.isArray(list)) return []
+  return list.filter((p): p is AllowedVideoPlatform =>
+    (ALLOWED_VIDEO_PLATFORM_VALUES as readonly string[]).includes(p),
+  )
 }
 
 // English brand names in both ko/en — platform names are universally recognized

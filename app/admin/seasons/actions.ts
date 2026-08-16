@@ -15,14 +15,23 @@ export type SeasonFormState = {
   fieldErrors?: Record<string, string[]>
 }
 
+// Fields the form encodes as a hidden JSON-string input (array/nullable-array
+// values FormData itself cannot represent) rather than a plain form field.
+const JSON_FIELDS = new Set([
+  'ai_models',
+  'deadline_reminder_hours',
+  'registration_reminder_days',
+  'allowed_video_platforms',
+])
+
 function parseFormData(formData: FormData): unknown {
   const raw: Record<string, unknown> = {}
   for (const [key, value] of formData.entries()) {
-    if (key === 'ai_models') {
+    if (JSON_FIELDS.has(key)) {
       try {
         raw[key] = JSON.parse(value as string)
       } catch {
-        raw[key] = []
+        raw[key] = key === 'registration_reminder_days' ? null : []
       }
       continue
     }

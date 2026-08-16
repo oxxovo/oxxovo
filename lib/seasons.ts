@@ -577,6 +577,46 @@ export function getThemeRevealTime(
   return new Date(startMs - offsetMs)
 }
 
+// The instant the submission-deadline reminder emails (deadline_reminder_hours)
+// count down to. main_round_end_at is the authority when set -- it is also
+// what canSubmitMainRound refuses against, so a reminder must agree with the
+// same clock that actually locks submission (email-tick learned this the hard
+// way: re-deriving from submission_hours agreed for season_0/1 but NOT
+// season_test, 76 minutes apart). Falls back to
+// main_round_start_at + submission_hours only when end_at isn't set yet (how
+// the column itself is computed at creation, lib/season-schedule.ts).
+// Shared by app/api/cron/email-tick and the admin edit form's live preview so
+// there is exactly one definition of this boundary, not two that can drift.
+export function computeSubmissionCloseAt(
+  season: Pick<Season, 'main_round_end_at' | 'main_round_start_at' | 'submission_hours'>,
+): Date | null {
+  if (season.main_round_end_at) return new Date(season.main_round_end_at)
+  if (!season.main_round_start_at) return null
+  return new Date(new Date(season.main_round_start_at).getTime() + season.submission_hours * 3_600_000)
+}
+
+export type ReminderFireTime = { n: number; fireAt: Date | null }
+
+// deadline_reminder_hours -> fire instants, counted back from
+// computeSubmissionCloseAt. Same math as email-tick's per-tick loop.
+export function deadlineReminderFireTimes(
+  season: Pick<Season, 'main_round_end_at' | 'main_round_start_at' | 'submission_hours'>,
+  hours: number[],
+): ReminderFireTime[] {
+  const closeAt = computeSubmissionCloseAt(season)
+  return hours.map((n) => ({ n, fireAt: closeAt ? new Date(closeAt.getTime() - n * 3_600_000) : null }))
+}
+
+// registration_reminder_days -> fire instants, counted back from
+// registration_close_at. Same math as email-tick's per-tick loop.
+export function registrationReminderFireTimes(
+  registrationCloseAt: string | null,
+  days: number[],
+): ReminderFireTime[] {
+  const closeAt = registrationCloseAt ? new Date(registrationCloseAt) : null
+  return days.map((n) => ({ n, fireAt: closeAt ? new Date(closeAt.getTime() - n * 86_400_000) : null }))
+}
+
 export function isMainRoundThemeRevealed(
   season: Season,
   now: Date = new Date(),

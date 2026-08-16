@@ -4,7 +4,8 @@ import { useActionState, useMemo, useState } from 'react'
 import { saveSeason, type SeasonFormState } from './actions'
 import { type SeasonFormInitial } from '@/lib/season-schema'
 import { useT } from '@/lib/admin-i18n'
-import { getThemeRevealTime } from '@/lib/seasons'
+import { getThemeRevealTime, computeSubmissionCloseAt, deadlineReminderFireTimes, registrationReminderFireTimes } from '@/lib/seasons'
+import { ALLOWED_VIDEO_PLATFORM_VALUES, PLATFORM_DISPLAY_NAMES, type AllowedVideoPlatform } from '@/lib/video-url'
 
 const initialState: SeasonFormState = { ok: false }
 
@@ -83,6 +84,39 @@ export function SeasonForm({
     [mainRoundStartAtIso, themeLeadMinutes],
   )
 
+  // Same reasoning, for the deadline/registration reminder previews below:
+  // controlled so they react to in-progress edits, not just the saved row.
+  const [mainRoundEndAtIso, setMainRoundEndAtIso] = useState(initial.main_round_end_at ?? '')
+  const [submissionHours, setSubmissionHours] = useState(Number(initial.submission_hours))
+  const [registrationCloseAtIso, setRegistrationCloseAtIso] = useState(initial.registration_close_at ?? '')
+  const [deadlineReminderHours, setDeadlineReminderHours] = useState<number[]>(initial.deadline_reminder_hours ?? [])
+  const [registrationReminderDays, setRegistrationReminderDays] = useState<number[]>(
+    initial.registration_reminder_days ?? [],
+  )
+  const [allowedPlatforms, setAllowedPlatforms] = useState<AllowedVideoPlatform[]>(initial.allowed_video_platforms)
+
+  const submissionCloseAt = useMemo(
+    () =>
+      computeSubmissionCloseAt({
+        main_round_end_at: mainRoundEndAtIso || null,
+        main_round_start_at: mainRoundStartAtIso || null,
+        submission_hours: submissionHours,
+      }),
+    [mainRoundEndAtIso, mainRoundStartAtIso, submissionHours],
+  )
+  const deadlineReminderPreview = useMemo(
+    () =>
+      deadlineReminderFireTimes(
+        { main_round_end_at: mainRoundEndAtIso || null, main_round_start_at: mainRoundStartAtIso || null, submission_hours: submissionHours },
+        deadlineReminderHours,
+      ),
+    [mainRoundEndAtIso, mainRoundStartAtIso, submissionHours, deadlineReminderHours],
+  )
+  const registrationReminderPreview = useMemo(
+    () => registrationReminderFireTimes(registrationCloseAtIso || null, registrationReminderDays),
+    [registrationCloseAtIso, registrationReminderDays],
+  )
+
   const sumPct = round2(pct1 + pct2 + pct3)
   const sumOk = Math.abs(sumPct - 100) < 0.01
   const previewAmount = (pct: number) =>
@@ -91,6 +125,17 @@ export function SeasonForm({
       : 0
 
   const fieldError = (key: string) => state.fieldErrors?.[key]?.[0]
+  // Zod reports a bad ARRAY ELEMENT with an indexed path (e.g.
+  // "deadline_reminder_hours.0"), which fieldError's exact-key lookup misses
+  // entirely -- a control-test case (bad entry in an array field) would show
+  // "saved" with no error banner while actually failing validation.
+  const arrayError = (key: string) => {
+    const errs = state.fieldErrors
+    if (!errs) return undefined
+    if (errs[key]?.[0]) return errs[key][0]
+    const indexedKey = Object.keys(errs).find((k) => k.startsWith(`${key}.`))
+    return indexedKey ? errs[indexedKey][0] : undefined
+  }
 
   const bannerText =
     state.messageKey === 'validation_failed'
@@ -102,6 +147,15 @@ export function SeasonForm({
   return (
     <form action={formAction} className="space-y-10">
       <input type="hidden" name="ai_models" value={JSON.stringify(aiModels)} />
+      <input type="hidden" name="allowed_video_platforms" value={JSON.stringify(allowedPlatforms)} />
+      <input type="hidden" name="deadline_reminder_hours" value={JSON.stringify(deadlineReminderHours)} />
+      {/* Empty list -> null, matching the DB convention (every existing row is
+          either null or a populated array, never []) -- see season-schema.ts. */}
+      <input
+        type="hidden"
+        name="registration_reminder_days"
+        value={registrationReminderDays.length === 0 ? 'null' : JSON.stringify(registrationReminderDays)}
+      />
 
       {bannerText && (
         <div
@@ -168,6 +222,16 @@ export function SeasonForm({
         <Field label={t.season_form.field_video_main_min} name="main_round_video_min_seconds" type="number" defaultValue={initial.main_round_video_min_seconds} error={fieldError('main_round_video_min_seconds')} />
         <Field label={t.season_form.field_video_main_max} name="main_round_video_max_seconds" type="number" defaultValue={initial.main_round_video_max_seconds} error={fieldError('main_round_video_max_seconds')} />
         <Field label={t.season_form.field_theme_label} name="main_round_theme_label" defaultValue={initial.main_round_theme_label ?? ''} error={fieldError('main_round_theme_label')} />
+        <Field label={t.season_form.field_season_theme} name="season_theme" defaultValue={initial.season_theme ?? ''} error={fieldError('season_theme')} />
+        <div className="md:col-span-2">
+          <PlatformCheckboxes
+            label={t.season_form.field_allowed_video_platforms}
+            hint={t.season_form.hint_allowed_video_platforms}
+            selected={allowedPlatforms}
+            onChange={setAllowedPlatforms}
+            error={arrayError('allowed_video_platforms')}
+          />
+        </div>
       </Group>
 
       {/* ★Deliberately far from the Secret content fieldset below (HQ
@@ -199,7 +263,40 @@ export function SeasonForm({
           onChange={setThemeLeadMinutes}
           error={fieldError('theme_announcement_minutes_before')}
         />
-        <Field label={t.season_form.field_submission_hours} name="submission_hours" type="number" defaultValue={initial.submission_hours} error={fieldError('submission_hours')} />
+        <ControlledNumberField
+          label={t.season_form.field_submission_hours}
+          name="submission_hours"
+          value={submissionHours}
+          onChange={setSubmissionHours}
+          error={fieldError('submission_hours')}
+        />
+        <div className="md:col-span-2">
+          <IntArrayEditor
+            label={t.season_form.field_deadline_reminder_hours}
+            hint={t.season_form.hint_deadline_reminder_hours}
+            values={deadlineReminderHours}
+            onChange={setDeadlineReminderHours}
+            error={arrayError('deadline_reminder_hours')}
+          />
+          <div className="mt-2 space-y-0.5">
+            {submissionCloseAt && (
+              <p className="text-[10px] text-white/40">
+                {t.season_form.submission_close_computed(formatInZone(submissionCloseAt.toISOString(), KST_TZ), formatInZone(submissionCloseAt.toISOString(), PT_TZ))}
+              </p>
+            )}
+            {deadlineReminderPreview.length === 0 ? (
+              <p className="text-[10px] text-white/35">{t.season_form.array_empty}</p>
+            ) : (
+              deadlineReminderPreview.map(({ n, fireAt }, i) => (
+                <p key={i} className="text-[10px] text-[#ff8844]">
+                  {fireAt
+                    ? t.season_form.deadline_reminder_preview(n, formatInZone(fireAt.toISOString(), KST_TZ), formatInZone(fireAt.toISOString(), PT_TZ))
+                    : t.season_form.deadline_reminder_preview_unset(n)}
+                </p>
+              ))
+            )}
+          </div>
+        </div>
       </Group>
 
       <Group title={t.season_form.group_pool}>
@@ -330,7 +427,14 @@ export function SeasonForm({
 
       <Group title={t.season_form.group_schedule}>
         <DatetimeField label={t.season_form.field_app_open} name="application_open_at" defaultValue={toDatetimeLocal(initial.application_open_at)} error={fieldError('application_open_at')} />
-        <DatetimeField label={t.season_form.field_registration_close} name="registration_close_at" defaultValue={toDatetimeLocal(initial.registration_close_at)} error={fieldError('registration_close_at')} hint={t.season_form.hint_registration_close} />
+        <DatetimeField
+          label={t.season_form.field_registration_close}
+          name="registration_close_at"
+          defaultValue={toDatetimeLocal(initial.registration_close_at)}
+          error={fieldError('registration_close_at')}
+          hint={t.season_form.hint_registration_close}
+          onIsoChange={setRegistrationCloseAtIso}
+        />
         <DatetimeField label={t.season_form.field_app_close} name="application_close_at" defaultValue={toDatetimeLocal(initial.application_close_at)} error={fieldError('application_close_at')} hint={t.season_form.hint_app_close} />
         <DatetimeField label={t.season_form.field_scoring_start} name="scoring_start_at" defaultValue={toDatetimeLocal(initial.scoring_start_at)} error={fieldError('scoring_start_at')} />
         <DatetimeField label={t.season_form.field_scoring_complete} name="scoring_complete_at" defaultValue={toDatetimeLocal(initial.scoring_complete_at)} error={fieldError('scoring_complete_at')} />
@@ -344,8 +448,37 @@ export function SeasonForm({
           error={fieldError('main_round_start_at')}
           onIsoChange={setMainRoundStartAtIso}
         />
-        <DatetimeField label={t.season_form.field_main_end} name="main_round_end_at" defaultValue={toDatetimeLocal(initial.main_round_end_at)} error={fieldError('main_round_end_at')} />
+        <DatetimeField
+          label={t.season_form.field_main_end}
+          name="main_round_end_at"
+          defaultValue={toDatetimeLocal(initial.main_round_end_at)}
+          error={fieldError('main_round_end_at')}
+          onIsoChange={setMainRoundEndAtIso}
+        />
         <DatetimeField label={t.season_form.field_awards} name="awards_announcement_at" defaultValue={toDatetimeLocal(initial.awards_announcement_at)} error={fieldError('awards_announcement_at')} />
+
+        <div className="md:col-span-2">
+          <IntArrayEditor
+            label={t.season_form.field_registration_reminder_days}
+            hint={t.season_form.hint_registration_reminder_days}
+            values={registrationReminderDays}
+            onChange={setRegistrationReminderDays}
+            error={arrayError('registration_reminder_days')}
+          />
+          <div className="mt-2 space-y-0.5">
+            {registrationReminderPreview.length === 0 ? (
+              <p className="text-[10px] text-white/35">{t.season_form.array_empty}</p>
+            ) : (
+              registrationReminderPreview.map(({ n, fireAt }, i) => (
+                <p key={i} className="text-[10px] text-[#ff8844]">
+                  {fireAt
+                    ? t.season_form.registration_reminder_preview(n, formatInZone(fireAt.toISOString(), KST_TZ), formatInZone(fireAt.toISOString(), PT_TZ))
+                    : t.season_form.registration_reminder_preview_unset(n)}
+                </p>
+              ))
+            )}
+          </div>
+        </div>
       </Group>
 
       <fieldset>
@@ -675,6 +808,104 @@ function PercentField({
       </div>
       {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
     </label>
+  )
+}
+
+// Structured editor for a plain number[] field (deadline_reminder_hours,
+// registration_reminder_days) -- HQ 2026-08-16: "배열·목록 칸은 자유 입력으로
+// 두지 마라... 잘못된 값이 들어가면 메일이 안 나가거나 제출이 막힌다, 그리고
+// 조용히 그렇게 된다." Each row is a real number input (not a CSV text field
+// a typo can silently corrupt); min=1 step=1 blocks non-positive/fractional
+// entries at the browser level, and the zod schema (z.coerce.number().int()
+// .positive()) is the real gate a bypassed client still has to pass.
+function IntArrayEditor({
+  label, hint, values, onChange, error,
+}: {
+  label: string
+  hint?: string
+  values: number[]
+  onChange: (values: number[]) => void
+  error?: string
+}) {
+  const t = useT()
+  const update = (i: number, v: number) => onChange(values.map((x, idx) => (idx === i ? v : x)))
+  const add = () => onChange([...values, 1])
+  const remove = (i: number) => onChange(values.filter((_, idx) => idx !== i))
+
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wider text-white/50 mb-1.5">{label}</div>
+      <div className="flex flex-wrap items-center gap-2">
+        {values.map((v, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={v}
+              onChange={(e) => update(i, e.target.value === '' ? 0 : Number(e.target.value))}
+              className={`w-20 px-2 py-1.5 bg-[#100608] border rounded text-sm text-white focus:border-[#ff8844] focus:outline-none transition tabular-nums ${
+                error ? 'border-[#ff4444]' : 'border-white/10'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              className="text-xs text-white/40 hover:text-[#ff4444]"
+              aria-label={t.season_form.array_remove_aria}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button type="button" onClick={add} className="text-xs text-[#ff8844] hover:underline">
+          {t.season_form.array_add}
+        </button>
+      </div>
+      {hint && !error && <p className="mt-1 text-[10px] text-white/35">{hint}</p>}
+      {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
+    </div>
+  )
+}
+
+// Closed-set checkbox list for allowed_video_platforms -- not free text, so a
+// typo can't silently produce a platform validateVideoUrl will never match
+// (HQ 2026-08-16).
+function PlatformCheckboxes({
+  label, hint, selected, onChange, error,
+}: {
+  label: string
+  hint?: string
+  selected: AllowedVideoPlatform[]
+  onChange: (values: AllowedVideoPlatform[]) => void
+  error?: string
+}) {
+  const toggle = (p: AllowedVideoPlatform) =>
+    onChange(selected.includes(p) ? selected.filter((x) => x !== p) : [...selected, p])
+
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wider text-white/50 mb-1.5">{label}</div>
+      <div
+        className={`flex flex-wrap gap-3 px-3 py-2.5 bg-[#100608] border rounded ${
+          error ? 'border-[#ff4444]' : 'border-white/10'
+        }`}
+      >
+        {ALLOWED_VIDEO_PLATFORM_VALUES.map((p) => (
+          <label key={p} className="flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={selected.includes(p)}
+              onChange={() => toggle(p)}
+              className="h-4 w-4 accent-[#ff8844]"
+            />
+            <span className="text-sm text-white/80">{PLATFORM_DISPLAY_NAMES[p] ?? p}</span>
+          </label>
+        ))}
+      </div>
+      {hint && !error && <p className="mt-1 text-[10px] text-white/35">{hint}</p>}
+      {error && <p className="mt-1 text-[10px] text-[#ff8888]">{error}</p>}
+    </div>
   )
 }
 

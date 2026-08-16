@@ -272,6 +272,21 @@ export type Messages = {
     field_poster_url: string
     field_lobby_featured: string
     hint_poster_url: string
+    field_allowed_video_platforms: string
+    hint_allowed_video_platforms: string
+    field_deadline_reminder_hours: string
+    hint_deadline_reminder_hours: string
+    submission_close_computed: (kst: string, pt: string) => string
+    field_registration_reminder_days: string
+    hint_registration_reminder_days: string
+    field_season_theme: string
+    array_add: string
+    array_remove_aria: string
+    array_empty: string
+    deadline_reminder_preview: (hour: number, kst: string, pt: string) => string
+    deadline_reminder_preview_unset: (hour: number) => string
+    registration_reminder_preview: (day: number, kst: string, pt: string) => string
+    registration_reminder_preview_unset: (day: number) => string
     group_secret: string
     secret_banner: string
     field_twist: string
@@ -1284,6 +1299,24 @@ const MESSAGES_EN: Messages = {
     group_lobby: 'Lobby (home tournaments card)',
     field_poster_url: 'Poster URL',
     field_lobby_featured: 'Feature in lobby (pin first)',
+    field_allowed_video_platforms: 'Allowed video platforms',
+    hint_allowed_video_platforms:
+      'Closed list -- a submission on a platform not checked here is silently refused (validateVideoUrl).',
+    field_deadline_reminder_hours: 'Submission deadline reminders (hours before)',
+    hint_deadline_reminder_hours:
+      'Fires that many hours before the submission deadline (main round end, or start + submission window if end is unset).',
+    submission_close_computed: (kst, pt) => `Computed submission deadline: ${kst} KST · ${pt} PT`,
+    field_registration_reminder_days: 'Registration-count reminders (days before, D-N)',
+    hint_registration_reminder_days:
+      'Fires that many days before registration closes. Empty = no reminders sent (a real, valid state, not an error).',
+    field_season_theme: 'Preliminary theme (public, free text, optional)',
+    array_add: '+ Add',
+    array_remove_aria: 'Remove',
+    array_empty: 'None configured.',
+    deadline_reminder_preview: (hour, kst, pt) => `${hour}h before: ${kst} KST · ${pt} PT`,
+    deadline_reminder_preview_unset: (hour) => `${hour}h before: unknown -- set Main round end (or start) above`,
+    registration_reminder_preview: (day, kst, pt) => `D-${day}: ${kst} KST · ${pt} PT`,
+    registration_reminder_preview_unset: (day) => `D-${day}: unknown -- set Registration close above`,
     group_secret: 'Secret content',
     secret_banner: 'SECRET — not visible to participants until reveal time.',
     field_twist: 'Main round required element (twist)',
@@ -2302,6 +2335,24 @@ const MESSAGES_KO: Messages = {
     field_poster_url: '포스터 URL',
     field_lobby_featured: '로비 featured (맨 앞 고정)',
     hint_poster_url: '선택. 비우면 퍼플 그라데이션 + 테마 폴백.',
+    field_allowed_video_platforms: '허용 영상 플랫폼',
+    hint_allowed_video_platforms:
+      '고정 목록 — 여기 체크 안 된 플랫폼으로 제출하면 조용히 거부됩니다(validateVideoUrl).',
+    field_deadline_reminder_hours: '제출 마감 알림 (몇 시간 전)',
+    hint_deadline_reminder_hours:
+      '제출 마감(본선 종료, 종료일이 없으면 시작일+제출기간) 몇 시간 전에 발송됩니다.',
+    submission_close_computed: (kst, pt) => `계산된 제출 마감: 한국시간 ${kst} · 태평양시간 ${pt}`,
+    field_registration_reminder_days: '등록 현황 알림 (며칠 전, D-N)',
+    hint_registration_reminder_days:
+      '신청 마감 며칠 전에 발송됩니다. 비어 있으면 알림을 안 보냅니다(오류 아닌 정상 상태).',
+    field_season_theme: '예선 주제 (공개, 자유 텍스트, 선택)',
+    array_add: '+ 추가',
+    array_remove_aria: '삭제',
+    array_empty: '설정된 항목이 없습니다.',
+    deadline_reminder_preview: (hour, kst, pt) => `${hour}시간 전: 한국시간 ${kst} · 태평양시간 ${pt}`,
+    deadline_reminder_preview_unset: (hour) => `${hour}시간 전: 미확정 — 위에서 본선 종료(또는 시작)를 먼저 입력하세요`,
+    registration_reminder_preview: (day, kst, pt) => `D-${day}: 한국시간 ${kst} · 태평양시간 ${pt}`,
+    registration_reminder_preview_unset: (day) => `D-${day}: 미확정 — 위에서 신청 마감을 먼저 입력하세요`,
     group_secret: '비밀 콘텐츠',
     secret_banner: '비밀 — 공개 시점까지 참가자에게 안 보입니다.',
     field_twist: '본선 필수 요소 (트위스트)',

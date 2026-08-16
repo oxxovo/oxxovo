@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ALLOWED_VIDEO_PLATFORM_VALUES } from '@/lib/video-url'
 
 const aiModelSchema = z.object({
   name: z.string().min(1, 'model name required'),
@@ -76,8 +77,28 @@ export const seasonSchema = z
     main_round_video_seconds: z.coerce.number().int().positive(),
     main_round_video_min_seconds: z.coerce.number().int().positive(),
     main_round_video_max_seconds: z.coerce.number().int().positive(),
+    // Closed set (lib/video-url.ALLOWED_VIDEO_PLATFORM_VALUES) -- an entry not
+    // in this list can never pass validateVideoUrl(), which is exactly the
+    // "silently rejects every submission" failure mode this field exists to
+    // prevent (HQ 2026-08-16). Not "required non-empty": a season that only
+    // accepts Studio (season_0 = ['studio']) is a legitimate, deliberate state.
+    allowed_video_platforms: z.array(z.enum(ALLOWED_VIDEO_PLATFORM_VALUES)),
     theme_announcement_minutes_before: z.coerce.number().int().nonnegative(),
     submission_hours: z.coerce.number().int().positive(),
+    // Fires deadline_reminder_hours[i] hours before the submission deadline
+    // (computeSubmissionCloseAt, lib/seasons.ts) -- shared with
+    // app/api/cron/email-tick, which is what actually sends. Positive
+    // integers only: a non-numeric or zero/negative entry either throws in
+    // the cron's date math or fires in the past and never sends, and does so
+    // silently (HQ 2026-08-16, the whole reason this got a real editor
+    // instead of a free-text field).
+    deadline_reminder_hours: z.array(z.coerce.number().int().positive()),
+    // Same shape, days before registration_close_at (D-14/7/3/1 for season_0).
+    // Nullable -- unlike deadline_reminder_hours, "no rows configured" is a
+    // real state (sends nothing) distinct from "configured empty" (also sends
+    // nothing, same effect) -- kept nullable to match the DB column rather
+    // than collapsing the two.
+    registration_reminder_days: z.array(z.coerce.number().int().positive()).nullable(),
     community_vote_weight: z.coerce.number().min(0).max(1),
     ai_score_weight: z.coerce.number().min(0).max(1),
 
@@ -111,6 +132,13 @@ export const seasonSchema = z
     // Despite the similar name, this is NOT the secret -- see
     // main_round_twist below.
     main_round_theme: z
+      .union([z.string(), z.null(), z.undefined()])
+      .transform((v) => (v ?? '').trim() || null),
+    // PUBLIC (renders on lobby/tournament/studio -- prelim entrants see it).
+    // Free-form preliminary-round theme; stays NULL for season_0 by design
+    // (the preliminary is open-ended there). Distinct from main_round_theme
+    // (the main round's own, separate public brief).
+    season_theme: z
       .union([z.string(), z.null(), z.undefined()])
       .transform((v) => (v ?? '').trim() || null),
     // ★SECRET (lib/seasons-theme.ts) -- base table only, never on
@@ -282,8 +310,14 @@ export const DEFAULT_SEASON: SeasonFormInitial = {
   main_round_video_seconds: 30,
   main_round_video_min_seconds: 15,
   main_round_video_max_seconds: 40,
+  // Matches every non-Studio-only season in the DB today (season_0 is the
+  // deliberate exception, set to ['studio'] since Studio entries never carry
+  // an external URL).
+  allowed_video_platforms: ['youtube', 'vimeo', 'instagram', 'tiktok'],
   theme_announcement_minutes_before: 60,
   submission_hours: 48,
+  deadline_reminder_hours: [24, 6],
+  registration_reminder_days: null,
   community_vote_weight: 0.5,
   ai_score_weight: 0.5,
   scoring_intent_clarity_weight: 0.25,
@@ -302,6 +336,7 @@ export const DEFAULT_SEASON: SeasonFormInitial = {
   poster_url: null,
   main_round_theme_label: null,
   main_round_theme: null,
+  season_theme: null,
   main_round_twist: null,
   lobby_featured: false,
   application_open_at: null,

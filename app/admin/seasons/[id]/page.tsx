@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { type Season } from '@/lib/seasons'
 import { type SeasonFormInitial, type SeasonInput } from '@/lib/season-schema'
+import { filterKnownVideoPlatforms } from '@/lib/video-url'
 import { SeasonForm } from '../SeasonForm'
 import { DeleteSeasonButton } from '../DeleteSeasonButton'
 import { EditSeasonHeader, DangerZoneHeading } from '../SeasonPageHeader'
@@ -65,8 +66,11 @@ export default async function SeasonEditPage({
     main_round_video_seconds: season.main_round_video_seconds,
     main_round_video_min_seconds: season.main_round_video_min_seconds,
     main_round_video_max_seconds: season.main_round_video_max_seconds,
+    allowed_video_platforms: filterKnownVideoPlatforms(season.allowed_video_platforms),
     theme_announcement_minutes_before: season.theme_announcement_minutes_before,
     submission_hours: season.submission_hours,
+    deadline_reminder_hours: season.deadline_reminder_hours ?? [],
+    registration_reminder_days: season.registration_reminder_days ?? null,
     community_vote_weight: season.community_vote_weight,
     ai_score_weight: season.ai_score_weight,
     scoring_intent_clarity_weight: season.scoring_intent_clarity_weight,
@@ -83,6 +87,7 @@ export default async function SeasonEditPage({
     // ★PUBLIC (seasons_public exposes it) -- vs. main_round_twist below,
     // which is SECRET. Same table read either way.
     main_round_theme: season.main_round_theme ?? null,
+    season_theme: season.season_theme ?? null,
     // ★SECRET -- this page already reads `seasons` via service role (the
     // 2026-08-14 GRANT hardening moved every admin seasons read here), so
     // exposing this on the admin edit form is not a new leak.
