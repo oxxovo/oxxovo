@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getUserOrNull } from '@/lib/user-auth'
 import { canSubmitMainRound, getSeasonById } from '@/lib/seasons'
+import { getRevealedTheme } from '@/lib/seasons-theme'
 import { validateVideoUrl } from '@/lib/video-url'
 import { getMembershipState, isMembershipEnabled } from '@/lib/membership'
 import { getStripe } from '@/lib/stripe'
@@ -293,6 +294,21 @@ export async function loadMyScores(): Promise<MyRoundScore[]> {
     originality: (r.consensus_originality as number | null) ?? null,
     ai: parseAi(r.ai_outputs),
   }))
+}
+
+// ★2026-08-16 (head office leak audit). MainRoundCard used to render
+// season.main_round_theme_label directly -- season came from getSeasonById(),
+// which reads seasons_public through the anon client. That view carried the
+// column with no gate, so the value was reachable by anyone (reproduced live,
+// same leak as Watch's). This wraps getRevealedTheme() (lib/seasons-theme.ts,
+// service-role, applies isMainThemeRevealed) so /profile resolves the theme
+// through the same one function Studio and Watch use -- not a fourth
+// independent read of a column that should not have been publicly readable
+// in the first place.
+export async function loadRevealedMainRoundTheme(
+  seasonId: string,
+): Promise<{ theme: string | null; twist: string | null; revealed: boolean }> {
+  return getRevealedTheme(seasonId)
 }
 
 export async function loadDisplayName(): Promise<string | null> {

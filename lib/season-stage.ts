@@ -22,7 +22,15 @@ import {
   type BannerContent,
   type Finalist,
 } from './watch'
+import { getRevealedTheme } from './seasons-theme'
+import { isMainThemeRevealed } from './theme-reveal'
 import type { Season } from './seasons'
+
+// Re-exported for existing callers/tests -- the function itself now lives in
+// lib/theme-reveal.ts (no local imports, so lib/seasons-theme.ts can depend
+// on it without a cycle back through this file). See that file for the full
+// history/rationale comment.
+export { isMainThemeRevealed }
 
 export type SeasonStage = {
   content: BannerContent
@@ -47,22 +55,6 @@ const CLOSED: SeasonStage = {
   theme: null,
 }
 
-// ★Single source of truth for "is the main-round theme/required-element public
-// yet" -- shared with lib/seasons-theme.ts (Studio) so the two surfaces open at
-// the exact same instant instead of two independently-tuned gates drifting
-// apart (2026-08-13: caught before shipping -- Studio was about to gate on
-// `round === 'main'` alone, which is main_round_start_at, strictly LATER than
-// this -- finalists learn what they're making before the round starts, not at
-// the instant it starts). Deliberately NOT theme_announcement_minutes_before /
-// isTwistRevealed() (lib/seasons.ts) -- that lead-time only drives the
-// MainRoundStart email's copy, a different, unrelated concern.
-export function isMainThemeRevealed(
-  finalistReveal: { count: number; revealAt: string } | null,
-  inMainRound: boolean,
-): boolean {
-  return finalistReveal != null || inMainRound
-}
-
 // `seasonId` is passed separately because the Watch surface resolves an id even
 // when the season row itself is unavailable, and the finalist queries are keyed on
 // the id alone. A null season means we know nothing about the calendar, so the
@@ -75,13 +67,24 @@ export async function resolveSeasonStage(
   const mainStart = season?.main_round_start_at ? Date.parse(season.main_round_start_at) : null
   const inMainRound = mainStart != null && now.getTime() >= mainStart
 
-  const finalistReveal = await getFinalistRevealState(seasonId)
+  // ★2026-08-16 (head office leak audit): theme comes from getRevealedTheme()
+  // (lib/seasons-theme.ts), NOT from season.main_round_theme_label. That field
+  // was reachable through seasons_public (anon-readable, reproduced live) --
+  // this function's own gate check below was cosmetic against a value anyone
+  // could already read directly over REST. getRevealedTheme() reads the base
+  // seasons table with the service-role client and applies the SAME
+  // isMainThemeRevealed gate internally, so Watch, Studio, and /profile all
+  // now resolve the theme through that one function -- not three places
+  // independently reading a column and each hoping the gate was checked.
+  const [finalistReveal, revealedTheme] = await Promise.all([
+    getFinalistRevealState(seasonId),
+    getRevealedTheme(seasonId, now),
+  ])
   const finalists = inMainRound ? await getFinalists(seasonId) : []
 
   if (!season) return { ...CLOSED, inMainRound, finalists, finalistReveal }
 
-  const showTheme = isMainThemeRevealed(finalistReveal, inMainRound)
-  const theme = showTheme ? (season.main_round_theme_label ?? null) : null
+  const theme = revealedTheme.theme
 
   const content = getBannerStage(
     {
@@ -95,7 +98,7 @@ export async function resolveSeasonStage(
       // Real winners, not the calendar: award_rank is written by a manual admin
       // approval, so "announced" must never be claimed before any rank exists.
       winnerCount: finalists.filter((f) => f.awardRank != null).length,
-      theme: season.main_round_theme_label ?? null,
+      theme,
     },
     now,
   )

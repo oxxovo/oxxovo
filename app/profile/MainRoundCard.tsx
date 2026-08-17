@@ -41,11 +41,18 @@ export type MockOverrides = {
   closeInSeconds?: number
 }
 
+export type RevealedTheme = { theme: string | null; twist: string | null; revealed: boolean }
+
 type MainRoundCardProps = {
   app: ProfileApplication
   season: Season
   messages: SystemMessages
   lang: Lang
+  // ★2026-08-16: gated separately from `season` -- see app/profile/page.tsx.
+  // Never read season.main_round_theme_label directly, that field is only on
+  // `season` because the Season type is shared everywhere; the anon-readable
+  // source it comes from was the leak.
+  revealedTheme: RevealedTheme
   mockOverrides?: MockOverrides
 }
 
@@ -75,11 +82,22 @@ export function MainRoundCard({
   season,
   messages,
   lang,
+  revealedTheme,
   mockOverrides,
 }: MainRoundCardProps) {
   const effectiveStatus = mockOverrides?.status ?? app.status
   const effectiveApp = effectiveStatus === app.status ? app : { ...app, status: effectiveStatus }
   const effectiveSeason = useMemo(() => applyMockSeason(season, mockOverrides), [season, mockOverrides])
+  // Dev-only preview of the revealed/hidden state (mock_theme_revealed=1|0),
+  // same NODE_ENV gate as mockOverrides itself (app/profile/page.tsx). The
+  // real fetch already respects the real gate; this only lets a developer
+  // force-preview the OTHER state without waiting for the actual date.
+  const effectiveRevealedTheme: RevealedTheme =
+    mockOverrides?.themeRevealed === undefined
+      ? revealedTheme
+      : mockOverrides.themeRevealed
+        ? { theme: revealedTheme.theme ?? '(mock) Preview Theme Label', twist: revealedTheme.twist, revealed: true }
+        : { theme: null, twist: null, revealed: false }
 
   const check = canSubmitMainRound(effectiveApp, effectiveSeason)
 
@@ -104,6 +122,7 @@ export function MainRoundCard({
         season={effectiveSeason}
         messages={messages}
         lang={lang}
+        revealedTheme={effectiveRevealedTheme}
         mockOverrides={mockOverrides}
       />
     )
@@ -150,12 +169,14 @@ function SubmitFormCard({
   season,
   messages,
   lang,
+  revealedTheme,
   mockOverrides,
 }: {
   app: ProfileApplication
   season: Season
   messages: SystemMessages
   lang: Lang
+  revealedTheme: RevealedTheme
   mockOverrides?: MockOverrides
 }) {
   const t = useT()
@@ -251,9 +272,9 @@ function SubmitFormCard({
         <div className="text-[10px] uppercase tracking-wider text-white/40 mb-2">
           {t.profile.main_round_theme_label}
         </div>
-        {season.main_round_theme_label ? (
+        {revealedTheme.theme ? (
           <div className="rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.08] px-4 py-3">
-            <p className="text-lg font-bold text-[#d4a7ff]">{season.main_round_theme_label}</p>
+            <p className="text-lg font-bold text-[#d4a7ff]">{revealedTheme.theme}</p>
             <a
               href="/rules"
               className="mt-1 inline-block text-xs font-semibold text-[#b66cff] hover:text-[#d4a7ff] transition"

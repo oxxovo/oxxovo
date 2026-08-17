@@ -12,7 +12,7 @@
 import 'server-only'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getFinalistRevealState } from '@/lib/watch'
-import { isMainThemeRevealed } from '@/lib/season-stage'
+import { isMainThemeRevealed } from '@/lib/theme-reveal'
 import type { ThemeDisplay } from '@/lib/seasons'
 
 // ★2026-08-13 (제니2/제니3): the reveal gate here MUST match Watch's
