@@ -29,34 +29,44 @@ const URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 if (!URL || !KEY) {
   console.error('Missing env (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).')
-  process.exit(1)
-}
-const admin = createClient(URL, KEY, { auth: { autoRefreshToken: false, persistSession: false } })
+  process.exitCode = 1
+} else {
+  const admin = createClient(URL, KEY, { auth: { autoRefreshToken: false, persistSession: false } })
 
-const { data, error } = await admin.rpc('check_service_role_grants')
+  const { data, error } = await admin.rpc('check_service_role_grants')
 
-if (error) {
-  // ★The function itself might not exist yet (not Run), or might have lost
-  // its own EXECUTE grant -- either way this is "can't tell", and per the
-  // fail-closed rule this whole check exists to enforce, "can't tell" must
-  // not read as "clean". Refuse.
-  console.error('check_service_role_grants RPC failed -- treating as a check failure, not a pass:')
-  console.error(`  ${error.message}`)
-  console.error('  (has reports/service_role_grants_check_2026-08-16.sql been Run?)')
-  process.exit(1)
+  if (error) {
+    // ★The function itself might not exist yet (not Run), or might have lost
+    // its own EXECUTE grant -- either way this is "can't tell", and per the
+    // fail-closed rule this whole check exists to enforce, "can't tell" must
+    // not read as "clean". Refuse.
+    console.error('check_service_role_grants RPC failed -- treating as a check failure, not a pass:')
+    console.error(`  ${error.message}`)
+    console.error('  (has reports/service_role_grants_check_2026-08-16.sql been Run?)')
+    process.exitCode = 1
+  } else {
+    const rows = data ?? []
+    if (rows.length === 0) {
+      console.log('✓ every public base table has full service_role DML (SELECT/INSERT/UPDATE/DELETE)')
+      process.exitCode = 0
+    } else {
+      console.error(`✖ ${rows.length} table(s) missing service_role privileges:\n`)
+      for (const r of rows) {
+        console.error(`  ${r.table_name}: missing ${r.missing_privileges.join(', ')}`)
+      }
+      console.error(
+        '\nFix: GRANT ALL ON public.<table> TO service_role; (or GRANT the specific missing ones), then re-run this check.',
+      )
+      process.exitCode = 1
+    }
+  }
 }
 
-const rows = data ?? []
-if (rows.length === 0) {
-  console.log('✓ every public base table has full service_role DML (SELECT/INSERT/UPDATE/DELETE)')
-  process.exit(0)
-}
-
-console.error(`✖ ${rows.length} table(s) missing service_role privileges:\n`)
-for (const r of rows) {
-  console.error(`  ${r.table_name}: missing ${r.missing_privileges.join(', ')}`)
-}
-console.error(
-  '\nFix: GRANT ALL ON public.<table> TO service_role; (or GRANT the specific missing ones), then re-run this check.',
-)
-process.exit(1)
+// ★process.exitCode, NOT process.exit() -- on this Windows/Node combo,
+// process.exit() forces immediate handle teardown and races with the
+// Supabase client's lingering fetch/keep-alive handle, crashing with
+// `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` regardless of the
+// exit code requested (reproduced: printed the ✓ success line, then crashed,
+// and the crash's exit code -- not 0 -- was what deploy-prod.mjs's spawnSync
+// saw, refusing a deploy the check had actually passed). exitCode lets the
+// event loop drain naturally instead of forcing it.
