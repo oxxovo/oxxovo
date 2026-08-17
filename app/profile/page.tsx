@@ -74,7 +74,7 @@ function ProfilePageInner() {
   // ★2026-08-16 leak fix: NOT read off `season` (that comes from the anon-
   // readable seasons_public view). Fetched separately through the same
   // service-role-gated getRevealedTheme() Watch and Studio use.
-  const [revealedTheme, setRevealedTheme] = useState<{ theme: string | null; twist: string | null; revealed: boolean } | null>(null)
+  const [revealedTheme, setRevealedTheme] = useState<{ prelimTheme: string | null; theme: string | null; twist: string | null; twistRevealed: boolean } | null>(null)
   const [studioFunnel, setStudioFunnel] = useState(false)
   const [membership, setMembership] = useState<MembershipDashboard | null>(null)
   const [hostLink, setHostLink] = useState(false)
@@ -153,7 +153,7 @@ function ProfilePageInner() {
     })
     loadRevealedMainRoundTheme(currentSeasonId)
       .then((r) => { if (!cancelled) setRevealedTheme(r) })
-      .catch(() => { if (!cancelled) setRevealedTheme({ theme: null, twist: null, revealed: false }) })
+      .catch(() => { if (!cancelled) setRevealedTheme({ prelimTheme: null, theme: null, twist: null, twistRevealed: false }) })
     // Studio funnel flag -> show a direct "Enter Studio" link for returning
     // participants (session6 on + studio application round).
     getStudioApplicationFlag(currentSeasonId)

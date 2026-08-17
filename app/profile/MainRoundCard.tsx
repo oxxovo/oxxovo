@@ -41,7 +41,7 @@ export type MockOverrides = {
   closeInSeconds?: number
 }
 
-export type RevealedTheme = { theme: string | null; twist: string | null; revealed: boolean }
+export type RevealedTheme = { prelimTheme: string | null; theme: string | null; twist: string | null; twistRevealed: boolean }
 
 type MainRoundCardProps = {
   app: ProfileApplication
@@ -88,16 +88,14 @@ export function MainRoundCard({
   const effectiveStatus = mockOverrides?.status ?? app.status
   const effectiveApp = effectiveStatus === app.status ? app : { ...app, status: effectiveStatus }
   const effectiveSeason = useMemo(() => applyMockSeason(season, mockOverrides), [season, mockOverrides])
-  // Dev-only preview of the revealed/hidden state (mock_theme_revealed=1|0),
-  // same NODE_ENV gate as mockOverrides itself (app/profile/page.tsx). The
-  // real fetch already respects the real gate; this only lets a developer
-  // force-preview the OTHER state without waiting for the actual date.
-  const effectiveRevealedTheme: RevealedTheme =
-    mockOverrides?.themeRevealed === undefined
-      ? revealedTheme
-      : mockOverrides.themeRevealed
-        ? { theme: revealedTheme.theme ?? '(mock) Preview Theme Label', twist: revealedTheme.twist, revealed: true }
-        : { theme: null, twist: null, revealed: false }
+  // ★2026-08-17: mockOverrides.themeRevealed no longer maps to anything --
+  // the theme label has no reveal gate at all now (always shown once set),
+  // and this card only ever renders once the main round is already active
+  // (canSubmitMainRound gates SubmitFormCard on now >= main_round_start_at),
+  // so the label is unconditionally available by the time anyone sees this.
+  // Field kept on MockOverrides for now (harmless, unused) rather than
+  // touching the URL-param plumbing in page.tsx as part of this fix.
+  const effectiveRevealedTheme: RevealedTheme = revealedTheme
 
   const check = canSubmitMainRound(effectiveApp, effectiveSeason)
 

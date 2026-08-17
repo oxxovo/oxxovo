@@ -222,33 +222,54 @@ export type Season = {
 // Source shape for the theme-display helper. main_round_twist / main_round_theme
 // are optional because the public Season object (from the view) never carries
 // them — only a server-side read of the base table provides them.
+// main_round_theme_label IS on seasons_public (never secret), carried here too
+// so getThemeDisplay has one shape for every field it reads.
 export type ThemeSource = {
   season_theme?: string | null
   main_round_twist?: string | null
   main_round_theme?: string | null
+  main_round_theme_label?: string | null
   main_round_start_at: string | null
   theme_announcement_minutes_before: number
 }
 
+// ★2026-08-17 (head office / TK): TWO independent lines, not one value with a
+// fallback chain. `prelimTheme` and `mainTheme` used to collapse into a single
+// `theme` field (main label if revealed, else season_theme, else a hardcoded
+// placeholder) -- that one-line design is what let the main-round label win
+// over the prelim's "open theme" copy the instant it was entered (months
+// before anyone should see it), because there was no signal for "which round
+// is this participant actually in" in the value itself. Two separate fields
+// means a caller renders BOTH, or picks the one it needs, without either ever
+// masquerading as the other.
 export type ThemeDisplay = {
-  theme: string | null
-  // null until the twist is revealed (or when no secret was provided, e.g. on
-  // the client). Never expose a non-null twist before isTwistRevealed() is true.
+  // season_theme. Always public, never gated -- prelim was never secret.
+  prelimTheme: string | null
+  // main_round_theme_label. ALSO never time-gated (2026-08-17 TK decision) --
+  // shown from the moment it's set, on purpose, so participants can start
+  // preparing for the main round during the prelim. Site-wide public-launch
+  // visibility (currently off) is the only thing standing between this and an
+  // audience today, and that is not this function's concern.
+  mainTheme: string | null
+  // main_round_twist (the required element). The ONLY field left gated by
+  // time -- null until isTwistRevealed() is true. Never expose a non-null
+  // twist before that.
   twist: string | null
-  revealed: boolean
+  twistRevealed: boolean
 }
 
 // The twist becomes public at main_round_start_at minus
 // theme_announcement_minutes_before. Reuses the existing announcement lead
 // time — no separate reveal column.
 //
-// ★2026-08-13: NOT the live Studio/Watch reveal path anymore (that moved to
-// isMainThemeRevealed, lib/season-stage.ts -- gated on finalist selection,
-// which happens before main_round_start_at, not at this later lead-time
-// instant). This function's only remaining consumer is the MainRoundStart
-// email's copy (theme_announcement_minutes_before is informational content
-// there, app/api/cron/email-tick/route.ts) -- kept as-is for that, not dead,
-// just no longer what decides what a finalist sees on screen.
+// ★THE gate for the required element, full stop (2026-08-17, reaffirmed after
+// a 2026-08-13 detour). Between 2026-08-13 and today, Studio/Watch briefly
+// gated BOTH the theme label and the twist on finalist selection
+// (isMainThemeRevealed, lib/theme-reveal.ts) instead -- TK's call was that the
+// theme label should never have been gated at all (see ThemeDisplay above),
+// and that fixing the label should not touch the twist's own timing, which
+// stays exactly this function. isMainThemeRevealed is not deleted (still
+// tested, still exported) but nothing here calls it any more.
 export function isTwistRevealed(
   s: Pick<ThemeSource, 'main_round_start_at' | 'theme_announcement_minutes_before'>,
   now: Date = new Date(),
@@ -259,20 +280,19 @@ export function isTwistRevealed(
   return now.getTime() >= revealMs
 }
 
-// ★2026-08-13: no longer called by Studio (see isMainThemeRevealed above) --
-// kept as a documented pure function pairing season_theme + isTwistRevealed's
-// gate, in case something else legitimately wants that specific lead-time
-// semantic later. Not currently wired into any live UI.
-// (The deprecated main_round_theme is the PUBLIC main-round brief now, NOT a
-// twist fallback — it drives the Watch banner + season_theme, so it must not
-// leak into the twist slot; TK 2026-07-13.)
+// ★THE single source every surface reads the theme/twist through (Watch,
+// Studio, /profile -- see lib/seasons-theme.ts getRevealedTheme, which is the
+// only place outside this file allowed to read main_round_theme_label/
+// main_round_twist off a season row; enforce that in review, not just here).
+// A caller reading either column directly, anywhere else, is the fourth
+// independent read this design exists to prevent.
 export function getThemeDisplay(s: ThemeSource, now: Date = new Date()): ThemeDisplay {
-  const revealed = isTwistRevealed(s, now)
-  const twistRaw = s.main_round_twist ?? null
+  const twistRevealed = isTwistRevealed(s, now)
   return {
-    theme: s.season_theme ?? null,
-    twist: revealed ? twistRaw : null,
-    revealed,
+    prelimTheme: s.season_theme ?? null,
+    mainTheme: s.main_round_theme_label ?? null,
+    twist: twistRevealed ? (s.main_round_twist ?? null) : null,
+    twistRevealed,
   }
 }
 

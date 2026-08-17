@@ -59,7 +59,11 @@ const DICT = {
     round_main: '본선',
     round_application: '예선',
     round_label: (r: string) => `이번 제출: ${r}`,
-    theme_label: '주제',
+    // ★2026-08-17 (TK 확정): 예선 주제와 본선 주제를 한 줄 안에서 경쟁시킨
+    // 게 문제였다(main_round_theme_label이 채워지자마자 "자유 주제" 자리를
+    // 대신 차지함) -- 이제 두 줄, 각자 자기 값만 읽는다.
+    prelim_theme_label: '예선 주제',
+    main_theme_label: '본선 주제',
     // ★2026-08-13 (제니3 확정): "트위스트"는 반전/의외성 뉘앙스라 로션 도포
     // 같은 확정 의무 요건을 "안 넣어도 되는 것"처럼 약하게 읽히게 만든다.
     // 내부 컬럼명(main_round_twist)은 그대로 -- 화면 라벨만 분리.
@@ -194,7 +198,8 @@ const DICT = {
     round_main: 'Main round',
     round_application: 'Application',
     round_label: (r: string) => `This submission: ${r}`,
-    theme_label: 'Theme',
+    prelim_theme_label: 'Preliminary theme',
+    main_theme_label: 'Main round theme',
     twist_label: 'Required Element',
     no_theme: 'Open theme — show us what you can create',
     balance: 'Credit balance',
@@ -607,16 +612,29 @@ function ThemeBanner({ t, state }: { t: Dict; state: StudioState }) {
           {t.round_label(roundLabel)}
         </span>
       </div>
+      {/* ★2026-08-17 (TK 확정): 두 줄, 각자 자기 값만 읽는다 -- 예전엔 한
+          줄이 main_round_theme_label(있으면) -> season_theme -> "자유
+          주제" 순으로 경쟁했는데, 라벨이 채워지자마자(7월에 이미 입력됨)
+          "자유 주제" 자리를 대신 차지해서 예선 중인데도 본선 주제가 뜨는
+          결함이 있었다(2026-08-16 감사에서 발견). 본선 주제 줄은 시간
+          게이트가 아예 없다 -- 예선 중에도 항상 보이는 게 의도다(참가자가
+          본선을 미리 준비하게). */}
       <div className="mt-3">
-        <div className="text-[10px] uppercase tracking-wider text-white/40">{t.theme_label}</div>
-        <div className="text-lg font-bold text-white">{state.season.theme ?? t.no_theme}</div>
+        <div className="text-[10px] uppercase tracking-wider text-white/40">{t.prelim_theme_label}</div>
+        <div className="text-lg font-bold text-white">{state.season.prelimTheme ?? t.no_theme}</div>
+      </div>
+      <div className="mt-3">
+        <div className="text-[10px] uppercase tracking-wider text-white/40">{t.main_theme_label}</div>
+        <div className="text-lg font-bold text-white">{state.season.theme ?? '—'}</div>
       </div>
       {/* ★2026-08-13 (제니3 확정): "예선엔 트위스트가 없다" -- during prelim
           this row does not render at all (no placeholder either; a hidden-
           until-later note reads as withheld, not absent). Only appears once
-          twistRevealed, matching isMainThemeRevealed's gate -- the same
-          instant the theme label itself goes from the prelim placeholder to
-          the real main-round theme. */}
+          twistRevealed. ★UNLIKE the theme label above, the twist stays
+          time-gated (isTwistRevealed, lib/seasons.ts -- 11/8 19:00 PT for
+          season_0) -- 2026-08-17: separating the theme label's gate from the
+          twist's was the whole point of this change, not removing the
+          twist's. */}
       {state.season.twistRevealed && state.season.twist && (
         <div className="mt-3">
           <div className="text-[10px] uppercase tracking-wider text-white/40">{t.twist_label}</div>

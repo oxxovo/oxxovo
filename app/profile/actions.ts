@@ -301,14 +301,19 @@ export async function loadMyScores(): Promise<MyRoundScore[]> {
 // which reads seasons_public through the anon client. That view carried the
 // column with no gate, so the value was reachable by anyone (reproduced live,
 // same leak as Watch's). This wraps getRevealedTheme() (lib/seasons-theme.ts,
-// service-role, applies isMainThemeRevealed) so /profile resolves the theme
-// through the same one function Studio and Watch use -- not a fourth
-// independent read of a column that should not have been publicly readable
-// in the first place.
+// service-role) so /profile resolves the theme through the same one function
+// Studio and Watch use -- not a fourth independent read of a column that
+// should not have been publicly readable in the first place.
+//
+// ★2026-08-17: theme label is unconditional now (no reveal gate -- see
+// ThemeDisplay, lib/seasons.ts), only the twist stays gated. Field renamed
+// locally (mainTheme -> theme) to match app/studio/actions.ts's StudioState
+// shape, same convention on both surfaces.
 export async function loadRevealedMainRoundTheme(
   seasonId: string,
-): Promise<{ theme: string | null; twist: string | null; revealed: boolean }> {
-  return getRevealedTheme(seasonId)
+): Promise<{ prelimTheme: string | null; theme: string | null; twist: string | null; twistRevealed: boolean }> {
+  const d = await getRevealedTheme(seasonId)
+  return { prelimTheme: d.prelimTheme, theme: d.mainTheme, twist: d.twist, twistRevealed: d.twistRevealed }
 }
 
 export async function loadDisplayName(): Promise<string | null> {

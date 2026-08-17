@@ -58,10 +58,11 @@ export function LiveStatusBar({
   // "본선 진출작 공개까지" counting to the reveal date.
   revealAtISO?: string | null
   // Public main-round theme LABEL (season.main_round_theme_label, e.g. "Cosmetic
-  // Commercial Film"). Non-null only from the "Judging Complete" stage onward
-  // (the caller gates it) so it reads as a come-back teaser before the main
-  // round. NOT main_round_theme -- that is the full brief (901 chars for season
-  // 0) and this is a one-line slot; the full text lives on /rules.
+  // Commercial Film"). ★2026-08-17: no reveal gate any more -- non-null as
+  // soon as the season row has it set, prelim included (intentional, so the
+  // audience gets a come-back teaser early). NOT main_round_theme -- that is
+  // the full brief (901 chars for season 0) and this is a one-line slot; the
+  // full text lives on /rules.
   theme?: string | null
   // Community vote window: while open, the panel shows a "투표 마감까지" countdown
   // to voteEndISO so the audience feels the deadline (not just a static date).

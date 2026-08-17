@@ -42,8 +42,11 @@ export type SeasonStage = {
   // count comes from finalistReveal and the roster stays private.
   finalists: Finalist[]
   finalistReveal: { count: number; revealAt: string } | null
-  // The main-round theme LABEL, and only from "judging complete" onward. Never the
-  // full main_round_theme brief, and never during the open prelim (no leak).
+  // The main-round theme LABEL (main_round_theme_label). Never gated
+  // (2026-08-17 TK decision -- see ThemeDisplay.mainTheme, lib/seasons.ts) --
+  // shown as soon as it's set, prelim included. Never the full
+  // main_round_theme brief, and never the twist/required element -- those
+  // stay off this type entirely.
   theme: string | null
 }
 
@@ -67,15 +70,15 @@ export async function resolveSeasonStage(
   const mainStart = season?.main_round_start_at ? Date.parse(season.main_round_start_at) : null
   const inMainRound = mainStart != null && now.getTime() >= mainStart
 
-  // ★2026-08-16 (head office leak audit): theme comes from getRevealedTheme()
-  // (lib/seasons-theme.ts), NOT from season.main_round_theme_label. That field
-  // was reachable through seasons_public (anon-readable, reproduced live) --
-  // this function's own gate check below was cosmetic against a value anyone
-  // could already read directly over REST. getRevealedTheme() reads the base
-  // seasons table with the service-role client and applies the SAME
-  // isMainThemeRevealed gate internally, so Watch, Studio, and /profile all
-  // now resolve the theme through that one function -- not three places
-  // independently reading a column and each hoping the gate was checked.
+  // ★theme comes from getRevealedTheme() (lib/seasons-theme.ts), NOT from
+  // season.main_round_theme_label directly -- that field sat on
+  // seasons_public (anon-readable, reproduced live 2026-08-16) and reading it
+  // here would be a second independent access path to a column only
+  // getRevealedTheme() may touch. It is also unconditional now (2026-08-17):
+  // the label carries no time gate at all, so this is not "the same gate,
+  // called from one more place" -- there is no gate on this field any more.
+  // finalistReveal is unrelated -- it feeds the separate "N finalists
+  // advanced, revealed on {date}" roster teaser, not the theme.
   const [finalistReveal, revealedTheme] = await Promise.all([
     getFinalistRevealState(seasonId),
     getRevealedTheme(seasonId, now),
@@ -84,7 +87,7 @@ export async function resolveSeasonStage(
 
   if (!season) return { ...CLOSED, inMainRound, finalists, finalistReveal }
 
-  const theme = revealedTheme.theme
+  const theme = revealedTheme.mainTheme
 
   const content = getBannerStage(
     {

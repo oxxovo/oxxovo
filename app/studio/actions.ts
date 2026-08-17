@@ -93,6 +93,11 @@ export type StudioState = {
     displayName: string
     seasonNumber: number
     round: EffectiveRound
+    // ★2026-08-17: two independent lines, not one value with a fallback --
+    // ThemeBanner renders BOTH ("예선 주제: {prelimTheme}" / "본선 주제:
+    // {theme}"), never one competing for the other's row. See
+    // ThemeDisplay, lib/seasons.ts.
+    prelimTheme: string | null
     theme: string | null
     twist: string | null
     twistRevealed: boolean
@@ -207,9 +212,10 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
           displayName: season.display_name,
           seasonNumber: season.season_number,
           round: effectiveRound,
-          theme: theme.theme,
+          prelimTheme: theme.prelimTheme,
+          theme: theme.mainTheme,
           twist: theme.twist,
-          twistRevealed: theme.revealed,
+          twistRevealed: theme.twistRevealed,
         },
         models,
         imageModels,
