@@ -24,7 +24,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdmin } from './supabase-admin'
-import { sendAdminAlert } from './email/admin-alert'
+import { sendAdminAlertOnceDaily } from './admin-alert-dedup'
 
 type Admin = SupabaseClient
 
@@ -163,25 +163,33 @@ export async function creditParticipationForSeason(
 
   const { data: seasonRow, error: seasonErr } = await admin
     .from('seasons')
-    .select('points_fee_basis_usd')
+    .select('points_fee_basis_usd, is_fixture')
     .eq('id', seasonId)
     .maybeSingle()
   if (seasonErr) return { attempted: 0, credited: 0, alreadyCredited: 0, errors: [seasonErr.message] }
 
   const basisUsd = seasonRow?.points_fee_basis_usd
   if (basisUsd == null) {
-    // fail-closed (HQ ③), but never SILENTLY -- one alert per season this
-    // happens for, not per application.
-    await sendAdminAlert(
-      `[OXXOVO] Championship Points blocked: ${seasonId} has no points_fee_basis_usd`,
-      `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
-        <h2 style="color: #c0392b;">Championship Points not credited</h2>
-        <p><strong>${seasonId}</strong>'s application window closed, but
-           <code>seasons.points_fee_basis_usd</code> is NULL. No points were
-           credited for this season -- set the column and this will run on the
-           next tick (fail-closed, not silent: this is that alert).</p>
-      </div>`,
-    )
+    // fail-closed (HQ ③), but never SILENTLY -- EXCEPT fixture/rehearsal
+    // seasons (HQ 2026-08-19 ①): nobody is ever going to set a real fee basis
+    // on season_test, so alerting there is not "still blocked", it's noise --
+    // 58 identical mails in ~29h buried the real ones. Non-fixture seasons
+    // still alert, capped at once/day per season (HQ 2026-08-19 ②) so a real
+    // season stuck on this for a week is one mail a day, not one an hour.
+    if (!seasonRow?.is_fixture) {
+      await sendAdminAlertOnceDaily(
+        `championship_points_basis_null_${seasonId}`,
+        `[OXXOVO] Championship Points blocked: ${seasonId} has no points_fee_basis_usd`,
+        `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
+          <h2 style="color: #c0392b;">Championship Points not credited</h2>
+          <p><strong>${seasonId}</strong>'s application window closed, but
+             <code>seasons.points_fee_basis_usd</code> is NULL. No points were
+             credited for this season -- set the column and this will run on the
+             next tick (fail-closed, not silent: this is that alert, capped at
+             once/day while it persists).</p>
+        </div>`,
+      )
+    }
     return { attempted: 0, credited: 0, alreadyCredited: 0, errors: [], skipped: 'basis_null' }
   }
 

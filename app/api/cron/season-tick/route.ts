@@ -37,6 +37,7 @@ import {
   type ScoringLeaseWatchReport,
 } from '@/lib/scoring-lease-watch'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
+import { sendAdminAlertOnceDaily } from '@/lib/admin-alert-dedup'
 import {
   reportPricingHealth,
   pricingAlertHtml,
@@ -153,7 +154,10 @@ async function handle(request: NextRequest) {
     .from('seasons')
     .select('*')
   if (seasonsErr) {
-    await sendAdminAlert(
+    // Standing condition, not a one-shot event -- an outage here repeats every
+    // hourly tick until fixed. Capped at once/day (HQ 2026-08-19 audit).
+    await sendAdminAlertOnceDaily(
+      'season_tick_seasons_load_failed',
       '[OXXOVO] season-tick FAILED to load seasons',
       `<p>The season-tick cron could not read the seasons table:</p><pre>${seasonsErr.message}</pre>`,
     )
@@ -572,8 +576,12 @@ async function handle(request: NextRequest) {
     )
   }
   for (const id of flaggedBlocks) {
+    // Standing condition until a human resolves the flag(s) -- capped at
+    // once/day per season (HQ 2026-08-19 audit), same shape as the
+    // championship-points basis_null storm this was found alongside.
     alerts.push(
-      sendAdminAlert(
+      sendAdminAlertOnceDaily(
+        `season_tick_flagged_block_${id}`,
         `[OXXOVO] ${id}: Finalist advancement blocked by flagged reviews`,
         `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
           <h2 style="color: #c0392b;">Integrity reviews pending</h2>
@@ -603,8 +611,14 @@ async function handle(request: NextRequest) {
     )
   }
   if (errors.length > 0) {
+    // Catch-all bucket -- a persistent internal error repeats every tick.
+    // Capped at once/day (HQ 2026-08-19 audit). Trade-off: a SECOND, different
+    // error that shows up later the same day waits for tomorrow's mail rather
+    // than getting its own -- accepted since every run's full errors[] is still
+    // in the Vercel cron logs, this only caps the EMAIL volume.
     alerts.push(
-      sendAdminAlert(
+      sendAdminAlertOnceDaily(
+        'season_tick_general_errors',
         '[OXXOVO] season-tick reported errors',
         `<div style="font-family: Arial, sans-serif; max-width: 560px; color: #1a1a1a;">
           <h2 style="color: #c0392b;">season-tick errors</h2>
