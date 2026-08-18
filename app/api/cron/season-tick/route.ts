@@ -46,6 +46,12 @@ import {
 import { reportBelowFloorAlert } from '@/lib/below-floor-alert'
 import type { Season } from '@/lib/seasons'
 import { isFixtureSeason } from '@/lib/lobby'
+import {
+  creditParticipationForSeason,
+  creditTop50ForApplications,
+  type ParticipationResult,
+  type Top50Result,
+} from '@/lib/championship-points'
 
 // Run at request time — a prerendered 'now' would silently ignore time-based
 // triggers.
@@ -102,6 +108,11 @@ type SeasonTickReport = {
   belowFloorAlerts: { id: string; active: number; floor: number | null; recovered: boolean }[]
   prelimReleases: { id: string; released: number }[]
   advancements: { id: string; advanced: number; rejected: number; nTarget: number }[]
+  // Championship Points (HQ 2026-08-18). Isolated, never-throwing steps -- a
+  // points failure must not cost the tick its reminder/results/main-round
+  // mail. See lib/championship-points.ts.
+  championshipParticipation: { id: string; result: ParticipationResult }[]
+  championshipTop50: { id: string; result: Top50Result }[]
   skippedCreation?: string
   errors: string[]
   asyncSweep?: AsyncSweepReport
@@ -337,6 +348,32 @@ async function handle(request: NextRequest) {
     if (released > 0) prelimReleases.push({ id: s.id, released })
   }
 
+  // ── 1.7 CHAMPIONSHIP POINTS -- PARTICIPATION ────────────────────────────
+  // Same gate as prelim hold release (application_close_at passed) -- HQ
+  // 2026-08-18 ④ confirmed application_close_at is the SUBMISSION deadline
+  // (registration_close_at is the earlier "start an entry" cutoff, a
+  // different column on purpose -- lib/seasons.ts:128-134). Fully isolated:
+  // creditParticipationForSeason() never throws, and this loop iteration is
+  // wrapped anyway so a bug here cannot touch status transitions,
+  // advancement, or any of the mail below.
+  const championshipParticipation: SeasonTickReport['championshipParticipation'] = []
+  for (const s of seasons) {
+    if (!s.application_close_at || nowMs < new Date(s.application_close_at).getTime()) continue
+    try {
+      const result = await creditParticipationForSeason(s.id, now)
+      if (result.credited > 0 || result.errors.length > 0) {
+        championshipParticipation.push({ id: s.id, result })
+      }
+      if (result.errors.length > 0) {
+        errors.push(...result.errors.map((e) => `championshipPoints participation ${s.id}: ${e}`))
+      }
+    } catch (e) {
+      errors.push(
+        `championshipPoints participation ${s.id} threw: ${e instanceof Error ? e.message : String(e)}`,
+      )
+    }
+  }
+
   // ── 2. STATUS TRANSITIONS ────────────────────────────────────────────────
   const transitions: SeasonTickReport['transitions'] = []
   for (const s of seasons) {
@@ -387,6 +424,7 @@ async function handle(request: NextRequest) {
   // Participant emails (Finalist / not-selected) are wired in step 5.
   const advancements: SeasonTickReport['advancements'] = []
   const flaggedBlocks: string[] = []
+  const championshipTop50: SeasonTickReport['championshipTop50'] = []
   for (const s of seasons) {
     if (!s.scoring_complete_at || nowMs < new Date(s.scoring_complete_at).getTime()) continue
     const { data, error } = await supabase.rpc('advance_season_finalists', { p_season_id: s.id })
@@ -405,6 +443,32 @@ async function handle(request: NextRequest) {
         rejected: Number(row.rejected),
         nTarget: Number(row.n_target),
       })
+      // Championship Points -- Top 50 (HQ 2026-08-18). Query the CURRENTLY
+      // selected set rather than diffing "newly advanced" -- an
+      // already-credited application is a no-op (unique index), so this is
+      // exactly as safe and much simpler. Isolated: a failure here must not
+      // touch the advancement result already recorded above, or the
+      // Finalist-advanced mail below.
+      try {
+        const { data: selected, error: selErr } = await supabase
+          .from('genesis_applications')
+          .select('id, user_id')
+          .eq('season_id', s.id)
+          .eq('status', 'selected')
+        if (selErr) {
+          errors.push(`championshipPoints top50 ${s.id}: ${selErr.message}`)
+        } else {
+          const result = await creditTop50ForApplications(s.id, selected ?? [], now)
+          if (result.credited > 0 || result.errors.length > 0) {
+            championshipTop50.push({ id: s.id, result })
+          }
+          if (result.errors.length > 0) {
+            errors.push(...result.errors.map((e) => `championshipPoints top50 ${s.id}: ${e}`))
+          }
+        }
+      } catch (e) {
+        errors.push(`championshipPoints top50 ${s.id} threw: ${e instanceof Error ? e.message : String(e)}`)
+      }
     }
   }
 
@@ -605,6 +669,8 @@ async function handle(request: NextRequest) {
     belowFloorAlerts,
     prelimReleases,
     advancements,
+    championshipParticipation,
+    championshipTop50,
     ...(skippedCreation ? { skippedCreation } : {}),
     ...(asyncSweep ? { asyncSweep } : {}),
     ...(leaseSweep ? { leaseSweep } : {}),

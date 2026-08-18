@@ -15,6 +15,14 @@ import {
 } from '@/lib/email/send'
 import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { recomputePartnerStats } from '@/lib/partners'
+import { syncAwardPoints } from '@/lib/championship-points'
+
+// Only 1/2/3 carry Championship Points -- any other award_rank value (a raw
+// rank field allows 1-99) maps to "not on the podium" for points purposes,
+// which reverses whatever award credit that application had.
+function pointsRankOf(rank: number | null): 1 | 2 | 3 | null {
+  return rank === 1 || rank === 2 || rank === 3 ? rank : null
+}
 
 export type AdminActionState = {
   ok: boolean
@@ -148,7 +156,7 @@ export async function saveAwardRank(
   id: string,
   rank: number | null,
 ): Promise<AdminActionState> {
-  await requireAdmin()
+  const admin = await requireAdmin()
   if (rank !== null && (!Number.isInteger(rank) || rank < 1 || rank > 99)) {
     return { ok: false, errorMessage: 'Award rank must be 1-99 or null' }
   }
@@ -164,6 +172,22 @@ export async function saveAwardRank(
   revalidatePath('/admin/applications')
   revalidatePath(`/admin/applications/${id}`)
   revalidatePath('/admin/contacts')
+
+  // Championship Points -- never let a points failure block the award_rank
+  // write above, which already succeeded and is the source of truth.
+  try {
+    const sync = await syncAwardPoints({
+      applicationId: row.id,
+      seasonId: row.season_id,
+      userId: row.user_id,
+      newRank: pointsRankOf(rank),
+      reason: `award_rank set to ${rank ?? 'null'} via saveAwardRank`,
+      actor: `admin:${admin.id}`,
+    })
+    if (!sync.ok) console.error('[saveAwardRank] championship points sync failed:', sync.error)
+  } catch (e) {
+    console.error('[saveAwardRank] championship points sync threw:', e instanceof Error ? e.message : String(e))
+  }
 
   // An award rank (1-3) credits cumulative_wins and can upgrade the user's
   // tier / promote them to eligibility. Recompute reflects whatever the rank
@@ -356,6 +380,7 @@ type MainRoundRanked = {
     country: string
     creator_name: string
     award_rank: number | null
+    user_id: string | null
   }
   finalScore: number
 }
@@ -372,7 +397,7 @@ async function rankMainRound(
   const [appsRes, scoringRes, voteTally] = await Promise.all([
     supabase
       .from('genesis_applications')
-      .select('id, email, country, creator_name, award_rank, main_round_submitted_at')
+      .select('id, email, country, creator_name, award_rank, user_id, main_round_submitted_at')
       .eq('season_id', seasonId)
       .not('main_round_submitted_at', 'is', null),
     supabase
@@ -401,6 +426,7 @@ async function rankMainRound(
         country: a.country,
         creator_name: a.creator_name,
         award_rank: a.award_rank,
+        user_id: a.user_id,
       },
       // Layer-2: Soak(community_vote_weight=0)엔 final===verified(커뮤니티 무시).
       // 가중 시즌(0.5)엔 AI50 + 관객50 블렌드로 우승자 선정.
@@ -444,7 +470,7 @@ export type ApproveAwardsResult =
 // 승인 — 상위 3을 award_rank 1/2/3으로 자동 입력 + 상금 이메일 발사.
 // 서버 재계산 랭킹 기준 (admin이 본 화면 순서가 아니라 DB 진실원천).
 export async function approveTop3Awards(seasonId: string): Promise<ApproveAwardsResult> {
-  await requireAdmin()
+  const admin = await requireAdmin()
   const r = await rankMainRound(seasonId)
   if (!r) return { ok: false, error: 'season_not_found' }
   if (r.ranked.length === 0) return { ok: false, error: 'no_scored_submissions' }
@@ -500,6 +526,24 @@ export async function approveTop3Awards(seasonId: string): Promise<ApproveAwards
       .eq('id', app.id)
     if (error) return { ok: false, error: 'update_failed', detail: error.message }
     await fireAwardPayoutEmail(app, rank, r.season)
+
+    // Championship Points -- never blocks the award write above.
+    try {
+      const sync = await syncAwardPoints({
+        applicationId: app.id,
+        seasonId,
+        userId: app.user_id,
+        newRank: rank,
+        reason: `Top-3 approved via approveTop3Awards (rank ${rank})`,
+        actor: `admin:${admin.id}`,
+      })
+      if (!sync.ok) console.error('[approveTop3Awards] championship points sync failed:', sync.error)
+    } catch (e) {
+      console.error(
+        '[approveTop3Awards] championship points sync threw:',
+        e instanceof Error ? e.message : String(e),
+      )
+    }
   }
 
   revalidatePath(`/admin/seasons/${seasonId}/main-results`)
@@ -515,7 +559,7 @@ export async function saveAwardOverride(
   rank: number | null,
   reason: string,
 ): Promise<AdminActionState> {
-  await requireAdmin()
+  const admin = await requireAdmin()
   if (rank !== null && (!Number.isInteger(rank) || rank < 1 || rank > 99)) {
     return { ok: false, errorMessage: 'Award rank must be 1-99 or null' }
   }
@@ -540,7 +584,7 @@ export async function saveAwardOverride(
     .from('genesis_applications')
     .update(update)
     .eq('id', id)
-    .select('id, email, country, creator_name, season_id')
+    .select('id, email, country, creator_name, season_id, user_id')
     .single()
   if (error) return { ok: false, errorMessage: error.message }
 
@@ -552,6 +596,24 @@ export async function saveAwardOverride(
   if (rank === 1 || rank === 2 || rank === 3) {
     const season = await getSeasonById(row.season_id)
     if (season) await fireAwardPayoutEmail(row, rank, season)
+  }
+
+  // Championship Points -- this IS the disqualification/correction path
+  // (HQ 2026-08-18 ②): a rank change here reverses the old credit and
+  // re-credits the new one ("the reversal of a reversal"). Never blocks the
+  // award_rank write above, which already succeeded.
+  try {
+    const sync = await syncAwardPoints({
+      applicationId: row.id,
+      seasonId: row.season_id,
+      userId: row.user_id,
+      newRank: pointsRankOf(rank),
+      reason: trimmed,
+      actor: `admin:${admin.id}`,
+    })
+    if (!sync.ok) console.error('[saveAwardOverride] championship points sync failed:', sync.error)
+  } catch (e) {
+    console.error('[saveAwardOverride] championship points sync threw:', e instanceof Error ? e.message : String(e))
   }
 
   return { ok: true, messageKey: 'award_saved' }
