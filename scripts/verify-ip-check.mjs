@@ -144,6 +144,38 @@ hr()
       await admin.from('generation_jobs').delete().eq('id', res3.jobId)
       line('  cleanup: test job + charge deleted')
     }
+
+    hr()
+    line('7) BORDERLINE PROMPT (traits only, no name) -- check the flagged/pass-through path')
+    hr()
+    // ★2026-08-18 finding: across 18 trait-only prompts (this one + 17 probed
+    // separately), Haiku 4.5 under this system prompt never returned medium/low
+    // -- it either names the character at confidence=high or doesn't flag at
+    // all. So this step logs whatever comes back rather than asserting a tier;
+    // see the chat report for the full finding and what it means for the
+    // 'flagged' (non-blocking) DB-write path.
+    const borderlinePrompt = 'a young wizard boy with round glasses and a lightning-shaped scar on his forehead'
+    const rDirect = await checkPromptForIp(borderlinePrompt)
+    line(`  direct checkPromptForIp(): ${JSON.stringify(rDirect)}`)
+
+    const res4 = await createGeneration({
+      userId: uid,
+      seasonId: SEASON,
+      modelId,
+      prompt: borderlinePrompt,
+      durationSeconds: testDuration,
+    })
+    line(`  createGeneration(): ${JSON.stringify(res4)}`)
+    if (res4.ok) {
+      const { data: row4 } = await admin.from('generation_jobs').select('ip_check_status, ip_check_note').eq('id', res4.jobId).maybeSingle()
+      line(`  DB row: ${JSON.stringify(row4)}`)
+      check('ip_check_status written (clear or flagged)', row4?.ip_check_status === 'clear' || row4?.ip_check_status === 'flagged', JSON.stringify(row4))
+      await admin.from('credit_transactions').delete().eq('generation_job_id', res4.jobId)
+      await admin.from('generation_jobs').delete().eq('id', res4.jobId)
+      line('  cleanup: test job + charge deleted')
+    } else {
+      check('ip_flag block carries a name', /\w/.test(res4.detail ?? ''), JSON.stringify(res4))
+    }
   }
 }
 
