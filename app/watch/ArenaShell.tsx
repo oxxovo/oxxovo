@@ -31,17 +31,16 @@ const NAV: Item[] = [
 // ── Creator Ranking (PREVIEW, HQ 2026-08-18) ────────────────────────────────
 // Replaces the old WATCH badge. No calculation/snapshot/tie-break/eligibility
 // logic exists yet (explicitly deferred to before 2027 Q1) -- this renders
-// three blank numbered rows + a slow pulse line, nothing else. The row
-// template (RankRow) already supports a real name+points once that data
-// exists, specifically so the truncation rule below is exercised by the same
-// code path production will use, not a separate one written later.
+// three blank numbered rows, nothing else. No pulse/motion (HQ 2026-08-18
+// second pass: with nothing changing on screen there is nothing to pulse --
+// the box is static). The row template (RankRow) already supports a real
+// name+points once that data exists, specifically so the truncation rule
+// below is exercised by the same code path production will use, not a
+// separate one written later.
 //
-// REVEAL_PERIOD_LABEL and PULSE_TEXT_PLACEHOLDER are literals in THIS preview
-// file only -- production reads the period from a config value (never a
-// hardcoded date string) and the pulse copy from 제니3's final wording, not
-// from this file.
+// REVEAL_PERIOD_LABEL is a literal in THIS preview file only -- production
+// reads the period from a config value, never a hardcoded date string.
 const REVEAL_PERIOD_LABEL = '2027 Q1' // PREVIEW literal -- prod reads a config value, never a hardcoded string
-const PULSE_TEXT_PLACEHOLDER = '지금, 당신의 순위는?' // HQ's placeholder copy, not final (제니3 owns it)
 
 // Name truncates (ellipsis), points never shrink -- the fix for the exact bug
 // class from the 2026-08-06 header incident ("an unbreakable string silently
@@ -67,20 +66,17 @@ function RankRow({ rank, name, points }: { rank: number; name?: string; points?:
   )
 }
 
-// Desktop sidebar box. Height is whatever this content needs -- roughly 2x
-// the old single-line WATCH badge, per HQ's ask, once title/subtitle/pulse/
-// 3 rows/CTA are all present; not pinned to a literal pixel target.
+// Desktop sidebar box. Height is whatever this content needs -- HQ 2026-08-18
+// withdrew the earlier "roughly 2x the old badge" ask: with the pulse line
+// gone the box is shorter, and that's correct, not a gap to fill.
 function CreatorRankingBox() {
   return (
     <div className="mb-3 rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.18] px-3 py-3">
       <div className="text-[13px] font-black uppercase tracking-wide text-white">CREATOR RANKING</div>
       <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-white/45">
-        {REVEAL_PERIOD_LABEL} · Championship Points
+        {REVEAL_PERIOD_LABEL} · CHAMPIONSHIP POINTS
       </div>
-      <p className="championship-points-pulse mt-3 text-[10px] font-bold leading-snug text-[#c9a9ff]">
-        {PULSE_TEXT_PLACEHOLDER}
-      </p>
-      <div className="mt-2">
+      <div className="mt-2.5">
         <RankRow rank={1} />
         <RankRow rank={2} />
         <RankRow rank={3} />
