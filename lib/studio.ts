@@ -35,6 +35,7 @@ import { isOwnedBy } from '@/lib/studio-sweep-scope'
 import { isMusicEnabled } from '@/lib/music-gate'
 import { shouldHoldPrelim } from '@/lib/watch-hold'
 import { checkApplyGate } from '@/lib/membership'
+import { checkPromptForIp } from '@/lib/ip-check'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -474,6 +475,9 @@ export type CreateGenerationResult =
         | 'parent_not_ready'
         | 'parent_not_image'
         | 'bad_shots'
+        // Prompt-level IP/likeness check (HQ 2026-08-17, lib/ip-check.ts). detail
+        // carries the TEMP block message (제니3 문구 확정 전) shown to the participant.
+        | 'ip_flag'
       detail?: string
     }
 
@@ -610,6 +614,13 @@ export async function createGeneration(args: {
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'insufficient_credits' }
 
+  // 4a. Prompt-level IP/likeness check (HQ 2026-08-17) -- BEFORE the credit
+  // charge below, so a block never touches the ledger. Checks the ASSEMBLED
+  // prompt (preset text included), not the truncated display copy -- this
+  // path has no truncation, unlike the multi-shot i2v path.
+  const ipCheck = await checkPromptForIp(prompt)
+  if (ipCheck.blocked) return { ok: false, reason: 'ip_flag', detail: ipCheck.blockMessage ?? undefined }
+
   // 5. Insert the job WITH its CryptoBind (generation-time binding).
   const jobId = randomUUID()
   const generatedAt = new Date()
@@ -643,6 +654,8 @@ export async function createGeneration(args: {
     prompt,
     duration_seconds: duration,
     status: 'queued',
+    ip_check_status: ipCheck.status,
+    ip_check_note: ipCheck.status === 'flagged' ? `${ipCheck.what ?? ''} :: ${ipCheck.evidence ?? ''}` : null,
     estimated_cost_usd: estCost,
     credits_charged: credits,
     user_params: userParams,
@@ -792,6 +805,10 @@ export async function createImageGeneration(args: {
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'insufficient_credits' }
 
+  // Prompt-level IP/likeness check (HQ 2026-08-17) -- before the credit charge.
+  const ipCheck = await checkPromptForIp(userPrompt)
+  if (ipCheck.blocked) return { ok: false, reason: 'ip_flag', detail: ipCheck.blockMessage ?? undefined }
+
   const jobId = randomUUID()
   const generatedAt = new Date()
   const cb = buildImageBind({ jobId, pid: args.userId, tid: args.seasonId, modelId: model.id, generatedAt })
@@ -816,6 +833,8 @@ export async function createImageGeneration(args: {
     estimated_cost_usd: estCost,
     credits_charged: credits,
     user_params: userParams,
+    ip_check_status: ipCheck.status,
+    ip_check_note: ipCheck.status === 'flagged' ? `${ipCheck.what ?? ''} :: ${ipCheck.evidence ?? ''}` : null,
     ...cb,
   })
   if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
@@ -1027,6 +1046,13 @@ export async function createI2vGeneration(args: {
   const balance = await getBalance(args.userId)
   if (balance < credits) return { ok: false, reason: 'insufficient_credits' }
 
+  // Prompt-level IP/likeness check (HQ 2026-08-17) -- on the FULL joined shots
+  // BEFORE the 2000-char display truncation below. Truncating first would let
+  // a later shot's IP reference slide past unseen.
+  const fullShotsPrompt = shots.map((s) => s.prompt).join(' / ')
+  const ipCheck = await checkPromptForIp(fullShotsPrompt)
+  if (ipCheck.blocked) return { ok: false, reason: 'ip_flag', detail: ipCheck.blockMessage ?? undefined }
+
   const jobId = randomUUID()
   const generatedAt = new Date()
   const cb = buildI2vBind({
@@ -1038,7 +1064,7 @@ export async function createI2vGeneration(args: {
     generatedAt,
     parentBundle,
   })
-  const displayPrompt = shots.map((s) => s.prompt).join(' / ').slice(0, 2000)
+  const displayPrompt = fullShotsPrompt.slice(0, 2000)
 
   const { error: insErr } = await admin.from('generation_jobs').insert({
     id: jobId,
@@ -1054,6 +1080,8 @@ export async function createI2vGeneration(args: {
     credits_charged: credits,
     parent_image_job_ids: parentIds,
     user_params: { i2v_input: i2vInput, character_id: args.characterId },
+    ip_check_status: ipCheck.status,
+    ip_check_note: ipCheck.status === 'flagged' ? `${ipCheck.what ?? ''} :: ${ipCheck.evidence ?? ''}` : null,
     ...cb, // includes cryptobind_parent_bundle
   })
   if (insErr) return { ok: false, reason: 'failed', detail: insErr.message }
