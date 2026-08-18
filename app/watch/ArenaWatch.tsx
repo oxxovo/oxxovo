@@ -21,6 +21,10 @@ import { getUserOrNull } from '@/lib/user-auth'
 import { ArenaShell } from './ArenaShell'
 import { ArenaFilterBar, type FilterSeason } from './ArenaFilterBar'
 import { ArenaBanner, ArenaHero, LatestEntries, MainRoundSection, FinalistPrelimSection } from './Arena'
+// PREVIEW ONLY (HQ 2026-08-18 design review) -- see ChampionshipPointsTeaser.tsx.
+// Not approved for production; gated behind an explicit query param below so
+// plain /watch traffic never renders it.
+import { ChampionshipPointsTeaser } from './ChampionshipPointsTeaser'
 
 export async function ArenaWatch({
   sort,
@@ -28,12 +32,15 @@ export async function ArenaWatch({
   query,
   round,
   awardRank,
+  cpRows,
 }: {
   sort: WatchSort
   activeSeason?: string
   query?: string
   round?: WatchRound
   awardRank?: number
+  // PREVIEW ONLY -- see ChampionshipPointsTeaser.tsx import above.
+  cpRows?: number
 }) {
   const q = query?.trim().toLowerCase() ?? ''
 
@@ -144,6 +151,9 @@ export async function ArenaWatch({
         voteOpen={voteOpen}
         voteEndISO={currentSeason?.community_vote_end_at ?? null}
       />
+      {/* PREVIEW ONLY -- see ChampionshipPointsTeaser.tsx. Only renders when the
+          preview query param is present, so this never shows on plain /watch. */}
+      {cpRows != null && cpRows > 0 && <ChampionshipPointsTeaser rowCount={cpRows} />}
       <MainRoundSection videos={mainRoundVideos} seasonNames={seasonNames} voteOpen={voteOpen} stage={bannerStage.stage} />
       <FinalistPrelimSection videos={finalistPrelims} seasonNames={seasonNames} />
       <ArenaFilterBar seasons={filterSeasons} activeSeason={activeSeason} seasonName={currentSeason?.name} awardsAt={currentSeason?.awards_announcement_at} />

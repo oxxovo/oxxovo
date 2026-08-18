@@ -59,3 +59,27 @@ details > summary::-webkit-details-marker {
     animation: none;
   }
 }
+
+/* Championship Points teaser (HQ 2026-08-18, PREVIEW ONLY -- not approved for
+   production). One slow opacity breathe on the pulsing line above the blank
+   rank rows -- deliberately much slower/calmer than watch-shimmer-move above,
+   which is an urgent "judging in progress" cue. This is the opposite: quiet
+   certainty, not urgency. The rank rows themselves carry NO animation. */
+@keyframes championship-points-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.championship-points-pulse {
+  animation: championship-points-pulse 3.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .championship-points-pulse {
+    animation: none;
+    opacity: 0.85;
+  }
+}
