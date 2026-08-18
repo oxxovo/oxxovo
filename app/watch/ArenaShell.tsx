@@ -48,7 +48,9 @@ const REVEAL_PERIOD_LABEL = '2027 Q1' // PREVIEW literal -- prod reads a config 
 // browser to clip it instead of growing the row, and `shrink-0` pins the
 // points column so it can never be pushed out. Verified 2026-08-18 with a
 // long synthetic name rendered locally before this shipped (see chat report).
-function RankRow({ rank, name, points }: { rank: number; name?: string; points?: number }) {
+// Exported so /watch/rankings' blank table renders through the SAME row
+// markup, not a second copy of the truncation fix.
+export function RankRow({ rank, name, points }: { rank: number; name?: string; points?: number }) {
   return (
     <div className="flex items-center gap-2 py-1.5">
       <span className="w-4 shrink-0 text-[12px] font-black text-white/70">{rank}</span>
@@ -81,34 +83,39 @@ function CreatorRankingBox() {
         <RankRow rank={2} />
         <RankRow rank={3} />
       </div>
-      {/* "전체 랭킹 보기" -- the full ranking page (up to #500) is explicitly
-          NOT built yet (HQ: before 2027 Q1). This is the LibraryItem pattern
-          this file already uses for other not-yet-launched items: the slot
-          exists, visually intentional, not a dead/broken link. Swap for a
-          real <Link target="_blank" href="/watch/rankings"> once that page
-          exists. Clicking a name (once real) opens that creator's public
-          submission + score + judge notes -- OXXOVO discloses scoring by
-          principle, never gated -- but there is nothing to click while every
-          row is blank. */}
-      <div aria-disabled className="mt-2.5 cursor-not-allowed text-[10px] font-bold text-[#a855ff]/70">
+      {/* "전체 랭킹 보기" -- HQ 2026-08-18 (3rd pass): opens /watch/rankings,
+          a real page now (info-only -- why it's blank, when it opens, what
+          changes after -- plus a longer blank table). Must open in a NEW tab
+          (HQ instruction), same reasoning as the NAV items above. The up-to
+          -#500 list and per-creator judge-note page are still NOT built
+          (deferred to before 2027 Q1) -- that stays a future link inside
+          /watch/rankings itself, not here. */}
+      <Link
+        href="/watch/rankings"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2.5 block text-[10px] font-bold text-[#a855ff] hover:text-[#c9a9ff]"
+      >
         전체 랭킹 보기 →
-      </div>
+      </Link>
     </div>
   )
 }
 
 // Mobile one-liner (HQ: sidebar is hidden on mobile, so #1-3 never appear
-// there -- only this single row, tapping through to the same not-yet-built
-// full ranking page). Rendered by ArenaShell below, md:hidden.
+// there -- only this single row, opening /watch/rankings in a new tab, same
+// destination as the desktop CTA above). Rendered by ArenaShell below, md:hidden.
 function CreatorRankingMobileBar() {
   return (
-    <div
-      aria-disabled
-      className="mb-4 flex cursor-not-allowed items-center justify-between rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.18] px-4 py-3 md:hidden"
+    <Link
+      href="/watch/rankings"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mb-4 flex items-center justify-between rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.18] px-4 py-3 md:hidden"
     >
       <span className="text-[13px] font-black uppercase tracking-wide text-white">CREATOR RANKING</span>
       <span className="text-[16px] text-[#a855ff]/70">→</span>
-    </div>
+    </Link>
   )
 }
 
