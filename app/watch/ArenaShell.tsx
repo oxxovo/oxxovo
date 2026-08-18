@@ -7,8 +7,14 @@ import { useT } from '@/lib/admin-i18n'
 
 // Watch chrome (top bar + left sidebar + main), arena design. The
 // sort/season/champion filters live in the filter bar above the grid, so the
-// sidebar is a static nav: a WATCH badge, icon+title+subtitle platform links, a
-// (pre-launch, disabled) Library, and a helper footer. Uses ArenaTopBar.
+// sidebar is a static nav: a Creator Ranking box (PREVIEW, replaces the old
+// WATCH badge -- TK 2026-08-18: "Watch button inside Watch" redundancy),
+// icon+title+subtitle platform links, a (pre-launch, disabled) Library, and a
+// helper footer. Uses ArenaTopBar.
+//
+// ★PREVIEW ONLY (HQ 2026-08-18, second redesign after the top-bar version was
+// rejected for pushing the video grid off the first screen). The sidebar box
+// does not compete with grid space at all -- this is why TK moved it here.
 
 type Item = { href: string; icon: string; titleKey: 'nav_home' | 'nav_tournament' | 'nav_how' | 'nav_membership' | 'nav_faq' | 'nav_about'; subKey: 'nav_home_sub' | 'nav_tournament_sub' | 'nav_how_sub' | 'nav_membership_sub' | 'nav_faq_sub' | 'nav_about_sub' }
 
@@ -21,6 +27,97 @@ const NAV: Item[] = [
   { href: '/welcome#faq', icon: '❓', titleKey: 'nav_faq', subKey: 'nav_faq_sub' },
   { href: '/welcome#about', icon: 'ℹ️', titleKey: 'nav_about', subKey: 'nav_about_sub' },
 ]
+
+// ── Creator Ranking (PREVIEW, HQ 2026-08-18) ────────────────────────────────
+// Replaces the old WATCH badge. No calculation/snapshot/tie-break/eligibility
+// logic exists yet (explicitly deferred to before 2027 Q1) -- this renders
+// three blank numbered rows, nothing else. No pulse/motion (HQ 2026-08-18
+// second pass: with nothing changing on screen there is nothing to pulse --
+// the box is static). The row template (RankRow) already supports a real
+// name+points once that data exists, specifically so the truncation rule
+// below is exercised by the same code path production will use, not a
+// separate one written later.
+//
+// REVEAL_PERIOD_LABEL is a literal in THIS preview file only -- production
+// reads the period from a config value, never a hardcoded date string.
+const REVEAL_PERIOD_LABEL = '2027 Q1' // PREVIEW literal -- prod reads a config value, never a hardcoded string
+
+// Name truncates (ellipsis), points never shrink -- the fix for the exact bug
+// class from the 2026-08-06 header incident ("an unbreakable string silently
+// eats a flex sibling's space"): `min-w-0 truncate` on the name forces the
+// browser to clip it instead of growing the row, and `shrink-0` pins the
+// points column so it can never be pushed out. Verified 2026-08-18 with a
+// long synthetic name rendered locally before this shipped (see chat report).
+// Exported so /watch/rankings' blank table renders through the SAME row
+// markup, not a second copy of the truncation fix.
+export function RankRow({ rank, name, points }: { rank: number; name?: string; points?: number }) {
+  return (
+    <div className="flex items-center gap-2 py-1.5">
+      <span className="w-4 shrink-0 text-[12px] font-black text-white/70">{rank}</span>
+      {name ? (
+        <>
+          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-white">{name}</span>
+          <span className="shrink-0 text-[11px] font-bold tabular-nums text-[#c9a9ff]">
+            {(points ?? 0).toLocaleString()} pts
+          </span>
+        </>
+      ) : (
+        <div className="h-px flex-1 bg-[#8b22ff]/20" />
+      )}
+    </div>
+  )
+}
+
+// Desktop sidebar box. Height is whatever this content needs -- HQ 2026-08-18
+// withdrew the earlier "roughly 2x the old badge" ask: with the pulse line
+// gone the box is shorter, and that's correct, not a gap to fill.
+function CreatorRankingBox() {
+  return (
+    <div className="mb-3 rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.18] px-3 py-3">
+      <div className="text-[13px] font-black uppercase tracking-wide text-white">CREATOR RANKING</div>
+      <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-white/45">
+        {REVEAL_PERIOD_LABEL} · CHAMPIONSHIP POINTS
+      </div>
+      <div className="mt-2.5">
+        <RankRow rank={1} />
+        <RankRow rank={2} />
+        <RankRow rank={3} />
+      </div>
+      {/* "전체 랭킹 보기" -- HQ 2026-08-18 (3rd pass): opens /watch/rankings,
+          a real page now (info-only -- why it's blank, when it opens, what
+          changes after -- plus a longer blank table). Must open in a NEW tab
+          (HQ instruction), same reasoning as the NAV items above. The up-to
+          -#500 list and per-creator judge-note page are still NOT built
+          (deferred to before 2027 Q1) -- that stays a future link inside
+          /watch/rankings itself, not here. */}
+      <Link
+        href="/watch/rankings"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2.5 block text-[10px] font-bold text-[#a855ff] hover:text-[#c9a9ff]"
+      >
+        전체 랭킹 보기 →
+      </Link>
+    </div>
+  )
+}
+
+// Mobile one-liner (HQ: sidebar is hidden on mobile, so #1-3 never appear
+// there -- only this single row, opening /watch/rankings in a new tab, same
+// destination as the desktop CTA above). Rendered by ArenaShell below, md:hidden.
+function CreatorRankingMobileBar() {
+  return (
+    <Link
+      href="/watch/rankings"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mb-4 flex items-center justify-between rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.18] px-4 py-3 md:hidden"
+    >
+      <span className="text-[13px] font-black uppercase tracking-wide text-white">CREATOR RANKING</span>
+      <span className="text-[16px] text-[#a855ff]/70">→</span>
+    </Link>
+  )
+}
 
 // Personal library -- disabled placeholders until launch (no data yet).
 const LIBRARY: { icon: string; labelKey: 'lib_myvideos' | 'lib_mylikes' | 'lib_watchlater' | 'lib_history' }[] = [
@@ -47,14 +144,7 @@ export function ArenaShell({
 
   const nav = (
     <nav className="flex flex-col gap-1">
-      {/* WATCH badge */}
-      <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-[#8b22ff]/50 bg-[#8b22ff]/[.18] px-3 py-2.5">
-        <span aria-hidden className="text-sm text-[#a855ff]">▶</span>
-        <div className="leading-tight">
-          <div className="text-base font-black tracking-wide text-white">{t.watch.badge_watch}</div>
-          <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/45">{t.watch.badge_subtitle}</div>
-        </div>
-      </div>
+      <CreatorRankingBox />
 
       {NAV.map((n) => (
         <NavItem key={n.href} item={n} title={t.watch[n.titleKey]} subtitle={t.watch[n.subKey]} />
@@ -102,7 +192,10 @@ export function ArenaShell({
           </div>
         )}
 
-        <main className="min-w-0 flex-1 px-6 py-6">{children}</main>
+        <main className="min-w-0 flex-1 px-6 py-6">
+          <CreatorRankingMobileBar />
+          {children}
+        </main>
       </div>
     </>
   )
