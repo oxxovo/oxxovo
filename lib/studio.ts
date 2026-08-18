@@ -36,6 +36,7 @@ import { isMusicEnabled } from '@/lib/music-gate'
 import { shouldHoldPrelim } from '@/lib/watch-hold'
 import { checkApplyGate } from '@/lib/membership'
 import { checkPromptForIp } from '@/lib/ip-check'
+import { checkPromptForCosmetic } from '@/lib/cosmetic-limits'
 
 // Re-export so callers (server actions, the editor) get the EDL segment type
 // from the studio module alongside createRender, without importing the
@@ -478,6 +479,8 @@ export type CreateGenerationResult =
         // Prompt-level IP/likeness check (HQ 2026-08-17, lib/ip-check.ts). detail
         // carries the TEMP block message (제니3 문구 확정 전) shown to the participant.
         | 'ip_flag'
+        // Cosmetic/skincare-application axis guard (HQ 2026-08-19, lib/cosmetic-limits.ts).
+        | 'cosmetic_flag'
       detail?: string
     }
 
@@ -620,6 +623,10 @@ export async function createGeneration(args: {
   // path has no truncation, unlike the multi-shot i2v path.
   const ipCheck = await checkPromptForIp(prompt)
   if (ipCheck.blocked) return { ok: false, reason: 'ip_flag', detail: ipCheck.blockMessage ?? undefined }
+
+  // 4b. Cosmetic/skincare-application axis guard (HQ 2026-08-19).
+  const cosmeticCheck = await checkPromptForCosmetic(prompt)
+  if (cosmeticCheck.blocked) return { ok: false, reason: 'cosmetic_flag', detail: cosmeticCheck.blockMessage ?? undefined }
 
   // 5. Insert the job WITH its CryptoBind (generation-time binding).
   const jobId = randomUUID()
@@ -808,6 +815,10 @@ export async function createImageGeneration(args: {
   // Prompt-level IP/likeness check (HQ 2026-08-17) -- before the credit charge.
   const ipCheck = await checkPromptForIp(userPrompt)
   if (ipCheck.blocked) return { ok: false, reason: 'ip_flag', detail: ipCheck.blockMessage ?? undefined }
+
+  // Cosmetic/skincare-application axis guard (HQ 2026-08-19).
+  const cosmeticCheck = await checkPromptForCosmetic(userPrompt)
+  if (cosmeticCheck.blocked) return { ok: false, reason: 'cosmetic_flag', detail: cosmeticCheck.blockMessage ?? undefined }
 
   const jobId = randomUUID()
   const generatedAt = new Date()
@@ -1052,6 +1063,11 @@ export async function createI2vGeneration(args: {
   const fullShotsPrompt = shots.map((s) => s.prompt).join(' / ')
   const ipCheck = await checkPromptForIp(fullShotsPrompt)
   if (ipCheck.blocked) return { ok: false, reason: 'ip_flag', detail: ipCheck.blockMessage ?? undefined }
+
+  // Cosmetic/skincare-application axis guard (HQ 2026-08-19), on the same
+  // full joined shots text the IP check just ran on.
+  const cosmeticCheck = await checkPromptForCosmetic(fullShotsPrompt)
+  if (cosmeticCheck.blocked) return { ok: false, reason: 'cosmetic_flag', detail: cosmeticCheck.blockMessage ?? undefined }
 
   const jobId = randomUUID()
   const generatedAt = new Date()
