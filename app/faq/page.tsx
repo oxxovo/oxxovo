@@ -11,7 +11,7 @@ import {
 import { getMembershipLandingData } from '@/app/membership/actions';
 import type { MembershipLandingData } from '@/app/membership/types';
 
-type Faq = { q: string; a: string };
+type Faq = { q: string; a: string; qKo?: string; aKo?: string };
 
 function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
   const panelLabel = formatPanelLabel(season.ai_models);
@@ -36,7 +36,7 @@ function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
   return [
     {
       q: 'What is OXXOVO?',
-      a: 'OXXOVO is a platform where AI creators compete in theme-based video tournaments. You are free to use a wide range of AI generation tools, including Runway, Sora, Kling, Veo, Pika, and Luma.',
+      a: 'OXXOVO is a platform where AI creators compete in theme-based video tournaments, using tools built into OXXOVO Studio.',
     },
     {
       q: 'How is this different from a normal AI contest?',
@@ -47,8 +47,10 @@ function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
       a: 'Anyone who meets the entry requirements: a public creator account, an AI-generated video to submit, a verified email, and agreement to the official rules. Note that residents of US OFAC-sanctioned regions are not eligible to participate.',
     },
     {
-      q: 'Which AI tools can I use?',
-      a: 'Most major AI generation tools are allowed, including Runway, OpenAI Sora, Kling, Veo, Pika, Luma, and Hailuo. OXXOVO is not tied to any single tool.',
+      q: 'Can I use other AI tools?',
+      qKo: '다른 AI 도구를 사용할 수 있나요?',
+      a: "No. Every entry is created inside OXXOVO Studio, and externally produced video can't be uploaded. This isn't a limitation — it's what makes the scoring mean something. Everyone starts from the same toolset, so what separates entries is direction, not budget or tool access.",
+      aKo: '아니요. 모든 출품작은 OXXOVO Studio 안에서 만듭니다. 외부에서 제작한 영상은 업로드할 수 없습니다. 이건 제약이 아니라 채점이 성립하기 위한 조건입니다. 모두가 같은 도구에서 출발하기 때문에, 작품을 가르는 것은 예산이나 도구 접근이 아니라 연출입니다.',
     },
     {
       q: 'Is there a limit on how many people can apply?',
@@ -134,9 +136,19 @@ export default async function FAQPage() {
                 <div className="font-bold text-white mb-2 text-lg">
                   {item.q}
                 </div>
+                {item.qKo && (
+                  <div className="font-bold text-white/50 mb-2 text-sm" lang="ko">
+                    {item.qKo}
+                  </div>
+                )}
                 <div className="text-sm text-white/60 leading-relaxed">
                   {item.a}
                 </div>
+                {item.aKo && (
+                  <div className="text-sm text-white/40 leading-relaxed mt-1" lang="ko">
+                    {item.aKo}
+                  </div>
+                )}
               </div>
             ))
           )}

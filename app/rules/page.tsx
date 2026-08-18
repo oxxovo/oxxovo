@@ -279,6 +279,12 @@ export default function RulesPage() {
               <li>
                 <span className="text-red-300/80">&times;</span> Submitting the same video under multiple emails
               </li>
+              <li>
+                <span className="text-red-300/80">&times;</span> Using someone else&rsquo;s copyrighted work, trademark, or a real person&rsquo;s likeness without permission &mdash; including prompting for a named character, logo, brand, or real individual
+                <div className="text-white/40 text-xs mt-0.5" lang="ko">
+                  타인의 저작물이나 상표, 실존 인물의 초상을 권리자의 허락 없이 사용 &mdash; 캐릭터, 로고, 상표, 실존 인물을 지정해 생성한 경우 포함
+                </div>
+              </li>
             </ul>
             <div className="mt-5 rounded-lg border border-[#8b22ff]/25 bg-[#8b22ff]/[.05] px-4 py-3 text-sm">
               <p className="text-[#b66cff] font-bold mb-1">&#8505;&#65039; Patent Notice</p>

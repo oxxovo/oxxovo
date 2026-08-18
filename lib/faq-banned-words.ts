@@ -19,9 +19,11 @@
 // term: an empty banned-word list is a legitimate "nothing banned yet" state,
 // not a missing measurement).
 //
-// Stored as plain comma-separated text (value_type='text'), same shape as
-// promo_publish_weekdays (lib/promo-schedule.ts) -- platform_config has no
-// JSON value_type, and inventing one for a short word list is not worth it.
+// Stored as value_type='text', either a JSON array or a comma/newline-
+// separated list (same flexible parse as text-limits.ts's
+// parseTrademarkBlocklist) -- JSON is REQUIRED for any term that itself
+// contains a comma (e.g. "$250,000"), since plain comma-splitting would
+// break it into "$250" + "000".
 
 import { getPlatformConfigMap } from './partners'
 
@@ -30,8 +32,14 @@ const PERIOD_BLOCK_KEY = 'faq_banned_words_period_block'
 
 function parseList(raw: string | undefined): string[] {
   if (!raw) return []
+  try {
+    const j = JSON.parse(raw)
+    if (Array.isArray(j)) return j.map((x) => String(x)).map((s) => s.trim()).filter(Boolean)
+  } catch {
+    /* not JSON -- fall through to delimiter split */
+  }
   return raw
-    .split(',')
+    .split(/[,\n]/)
     .map((s) => s.trim())
     .filter(Boolean)
 }
