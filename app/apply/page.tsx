@@ -472,9 +472,14 @@ export default function ApplyPage() {
             {isWaitlistMode ? 'Join the Waitlist' : `Apply to ${season?.name ?? 'OXXOVO'}`}
           </h1>
           {isWaitlistMode ? (
-            <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
-              {season?.name} reached its capacity of {season?.max_applicants} applicants. Submit your entry to join the waitlist — you&apos;ll be promoted if a spot opens, or get priority access to the next season.
-            </p>
+            <>
+              <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
+                This season&apos;s field is full. The next season&apos;s schedule will be posted here when it&apos;s set.
+              </p>
+              <p className="text-white/35 text-sm md:text-base max-w-md mx-auto leading-relaxed mt-1" lang="ko">
+                이번 시즌은 정원이 찼습니다. 다음 시즌 일정은 공개되는 대로 이 페이지에 안내됩니다.
+              </p>
+            </>
           ) : (
             <p className="text-white/50 text-sm md:text-base max-w-md mx-auto leading-relaxed">
               Submit your AI-generated video. {season ? formatPanelLabel(season.ai_models) : 'AI'} scoring by
@@ -1120,11 +1125,20 @@ function FunnelScreen({
             <h1 className="text-4xl font-black mb-3">
               {waitlisted ? "You're on the Waitlist" : "You're Registered"}
             </h1>
-            <p className="text-white/55 leading-relaxed">
-              {waitlisted
-                ? `${seasonName} was at capacity when you registered. You'll be promoted if a spot opens.`
-                : 'Your spot is reserved. Create and submit your video in Studio before the submission deadline.'}
-            </p>
+            {waitlisted ? (
+              <>
+                <p className="text-white/55 leading-relaxed">
+                  This season&apos;s field is full. The next season&apos;s schedule will be posted here when it&apos;s set.
+                </p>
+                <p className="text-white/40 leading-relaxed mt-1" lang="ko">
+                  이번 시즌은 정원이 찼습니다. 다음 시즌 일정은 공개되는 대로 이 페이지에 안내됩니다.
+                </p>
+              </>
+            ) : (
+              <p className="text-white/55 leading-relaxed">
+                Your spot is reserved. Create and submit your video in Studio before the submission deadline.
+              </p>
+            )}
           </div>
 
           {submissionDeadline && (

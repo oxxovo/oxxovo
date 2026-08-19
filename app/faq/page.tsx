@@ -19,7 +19,6 @@ function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
   const prize1 = Number(season.prize_first).toLocaleString();
   const prize2 = Number(season.prize_second).toLocaleString();
   const prize3 = Number(season.prize_third).toLocaleString();
-  const capacity = season.max_applicants.toLocaleString();
   const advanceLabel = advanceCountLabel(season);
   const communityPct = formatWeightPercent(season.community_vote_weight);
   const aiPct = formatWeightPercent(season.ai_score_weight);
@@ -53,8 +52,10 @@ function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
       aKo: '아니요. 모든 출품작은 OXXOVO Studio 안에서 만듭니다. 외부에서 제작한 영상은 업로드할 수 없습니다. 이건 제약이 아니라 채점이 성립하기 위한 조건입니다. 모두가 같은 도구에서 출발하기 때문에, 작품을 가르는 것은 예산이나 도구 접근이 아니라 연출입니다.',
     },
     {
-      q: 'Is there a limit on how many people can apply?',
-      a: `Yes. ${season.name} has a capacity of ${capacity} applicants. Once ${capacity} applications are received, further submissions are placed on a waitlist. If a spot opens up or an additional round is added, waitlisted creators are first in line.`,
+      q: 'What happens when the field is full?',
+      qKo: '정원이 차면 어떻게 되나요?',
+      a: "Entries close for this season. The next season's schedule will be posted here when it's set. Spots don't reopen mid-season.",
+      aKo: '이번 시즌 참가 신청은 마감됩니다. 다음 시즌 일정은 공개되는 대로 이 페이지에 안내됩니다. 이번 시즌 자리가 중간에 열리지는 않습니다.',
     },
     {
       q: 'What are the prizes?',
