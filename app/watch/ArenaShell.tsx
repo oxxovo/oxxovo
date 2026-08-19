@@ -16,11 +16,13 @@ import { useT } from '@/lib/admin-i18n'
 // rejected for pushing the video grid off the first screen). The sidebar box
 // does not compete with grid space at all -- this is why TK moved it here.
 
-type Item = { href: string; icon: string; titleKey: 'nav_home' | 'nav_tournament' | 'nav_how' | 'nav_membership' | 'nav_faq' | 'nav_about'; subKey: 'nav_home_sub' | 'nav_tournament_sub' | 'nav_how_sub' | 'nav_membership_sub' | 'nav_faq_sub' | 'nav_about_sub' }
+type Item = { href: string; icon: string; titleKey: 'nav_tournament' | 'nav_how' | 'nav_membership' | 'nav_faq' | 'nav_about'; subKey: 'nav_tournament_sub' | 'nav_how_sub' | 'nav_membership_sub' | 'nav_faq_sub' | 'nav_about_sub' }
 
 // Menu items open in a new tab (the footer tells the user so) -- keeps WATCH open.
+// No separate "Home" entry (HQ 2026-08-19): Watch IS the root now, so a link
+// back to '/' would just reload the page you're already on. "Tournament Info"
+// below already points at the marketing landing (/welcome).
 const NAV: Item[] = [
-  { href: '/', icon: '🏠', titleKey: 'nav_home', subKey: 'nav_home_sub' },
   { href: '/welcome', icon: '🏆', titleKey: 'nav_tournament', subKey: 'nav_tournament_sub' },
   { href: '/welcome#how', icon: '📖', titleKey: 'nav_how', subKey: 'nav_how_sub' },
   { href: '/membership', icon: '💎', titleKey: 'nav_membership', subKey: 'nav_membership_sub' },

@@ -3,9 +3,10 @@ import { isWatchPublic } from '@/lib/watch-gate'
 
 // Robots policy — two independent pre-launch gates, most-restrictive first:
 //
-//  1. Whole-site gate (SITE_PUBLIC_ENABLED=false): until the patent is filed the
-//     ENTIRE site is hidden (proxy.ts rewrites every page to /coming-soon). Ask
-//     crawlers to stay out completely. Single env switch, no date logic.
+//  1. Whole-site gate (SITE_PUBLIC_ENABLED=false): kept here as a backstop
+//     even though the site-wide rewrite-to-/coming-soon branch itself was
+//     removed from proxy.ts (HQ 2026-08-19, public launch) -- if this env var
+//     is ever literally 'false' again, crawlers still get told to stay out.
 //  2. Watch-only gate (isWatchPublic()): the pre-existing narrower policy — the
 //     Watch surface 404s in production before launch (lib/watch-gate), so keep
 //     /watch out of the index even when the rest of the site is public.

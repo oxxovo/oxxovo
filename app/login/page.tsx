@@ -107,8 +107,7 @@ function LoginInner() {
           {/* The wordmark was already here; it just was not a link, so this page
               had no way back to the site at all. Wiring it beats adding a footer:
               the card is vertically centred (main is flex items-center), which a
-              footer would fight. While the site gate is on this leads to
-              /coming-soon -- correct, since home genuinely is not open yet. */}
+              footer would fight. */}
           <Link href="/" className="inline-block">
             <h1 className="text-3xl font-black text-[#8b22ff] mb-2">OXXOVO</h1>
           </Link>
