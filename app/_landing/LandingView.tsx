@@ -511,7 +511,7 @@ export function LandingView() {
             </Faq>
 
             <Faq q={t.landing.faq_q6(season.max_applicants)}>
-              {t.landing.faq_a6(season.name, season.max_applicants)}
+              {t.landing.faq_a6()}
             </Faq>
 
             <Faq q={t.landing.faq_q7}>

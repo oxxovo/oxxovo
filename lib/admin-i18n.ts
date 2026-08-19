@@ -841,7 +841,7 @@ export type Messages = {
     faq_q5: (n: number) => string
     faq_a5: (n: number, panelLabel: string) => string
     faq_q6: (maxApplicants: number) => string
-    faq_a6: (seasonName: string, maxApplicants: number) => string
+    faq_a6: () => string
     faq_q7: string
     faq_a7: (seasonName: string, total: string, first: string, second: string, third: string, advanceLabel: string) => string
     faq_q8: string
@@ -1874,11 +1874,11 @@ const MESSAGES_EN: Messages = {
     faq_subtitle: 'New to OXXOVO?',
     faq_q1: (seasonName) => `Who can participate in ${seasonName}?`,
     faq_a1: (min, max) =>
-      `Anyone, anywhere. There are no nationality, age, or experience requirements. You just need an AI-generated video (${min}–${max} seconds) and a free OXXOVO account.`,
+      `Anyone, anywhere can enter. You just need an AI-generated video (${min}–${max} seconds) and a free OXXOVO account.`,
     faq_q2: 'What does it cost to compete?',
     faq_q3: 'How do I create my video?',
     faq_a3:
-      'Everyone creates in OXXOVO Studio — the same models, the same limits, for everyone. You don’t bring outside tools, and you don’t need a subscription anywhere else. That’s what makes the result comparable.',
+      'Everyone creates in OXXOVO Studio — the same models, the same limits, for everyone. Entering a tournament is free; Studio generation uses credits you purchase separately. That’s what makes the result comparable.',
     faq_q4: 'How exactly are submissions scored?',
     faq_a4_intro: (modelCount) => `Each video is judged by ${modelCount} AI models in parallel:`,
     faq_a4_outro: (intentPct, execPct, origPct) =>
@@ -1887,8 +1887,8 @@ const MESSAGES_EN: Messages = {
     faq_a5: (n, panelLabel) =>
       `Every AI has bias. By using ${n} independent models from ${n} different companies, individual biases cancel out. When the panel agrees, the result is far more trustworthy than any single AI’s verdict. This is what makes OXXOVO scoring ${panelLabel} Verified.`,
     faq_q6: (maxApplicants) => `What if ${maxApplicants} people apply before me?`,
-    faq_a6: (seasonName, maxApplicants) =>
-      `${seasonName} accepts up to ${maxApplicants} applicants. If the limit is reached before you apply, you’ll be automatically added to the ${seasonName} Waitlist with priority access to the next season. We never turn anyone away.`,
+    faq_a6: () =>
+      `Entries close for this season. The next season's schedule will be posted here when it's set. Spots don't reopen mid-season.`,
     faq_q7: 'What are the prizes?',
     faq_a7: (seasonName, total, first, second, third, advanceLabel) =>
       `${seasonName} features a $${total} prize pool ($${first} for 1st, $${second} for 2nd, $${third} for 3rd). The ${advanceLabel} earn the Finalist title.`,
@@ -2907,11 +2907,11 @@ const MESSAGES_KO: Messages = {
     faq_subtitle: 'OXXOVO가 처음이신가요?',
     faq_q1: (seasonName) => `${seasonName}에는 누가 참가할 수 있나요?`,
     faq_a1: (min, max) =>
-      `누구나, 어디서든 참가할 수 있습니다. 국적·나이·경력 제한이 없습니다. AI로 만든 영상(${min}~${max}초)과 무료 OXXOVO 계정만 있으면 됩니다.`,
+      `누구나, 어디서든 참가할 수 있습니다. AI로 만든 영상(${min}~${max}초)과 무료 OXXOVO 계정만 있으면 됩니다.`,
     faq_q2: '참가 비용이 얼마인가요?',
     faq_q3: '어떤 도구로 만드나요?',
     faq_a3:
-      '모두 OXXOVO 스튜디오에서 만듭니다. 같은 모델, 같은 조건으로 전원 동일합니다. 외부 도구를 가져올 필요도, 다른 곳에 구독할 필요도 없습니다. 그래야 결과를 견줄 수 있습니다.',
+      '모두 OXXOVO 스튜디오에서 만듭니다. 같은 모델, 같은 조건으로 전원 동일합니다. 대회 참가 자체는 무료이며, Studio 제작에는 별도로 구매하는 크레딧이 쓰입니다. 그래야 결과를 견줄 수 있습니다.',
     faq_q4: '채점은 정확히 어떻게 이뤄지나요?',
     faq_a4_intro: (modelCount) => `각 영상은 AI 모델 ${modelCount}개가 동시에 심사합니다.`,
     faq_a4_outro: (intentPct, execPct, origPct) =>
@@ -2920,8 +2920,8 @@ const MESSAGES_KO: Messages = {
     faq_a5: (n, panelLabel) =>
       `모든 AI에는 편향이 있습니다. 서로 다른 ${n}개 회사의 독립 모델 ${n}개를 쓰면 개별 편향이 서로 상쇄됩니다. 심사단이 같은 판단을 내렸을 때, 그 결과는 어떤 단일 AI의 판정보다 훨씬 믿을 수 있습니다. OXXOVO 채점이 ${panelLabel} 검증이라 불리는 이유입니다.`,
     faq_q6: (maxApplicants) => `저보다 먼저 ${maxApplicants}명이 신청하면 어떻게 되나요?`,
-    faq_a6: (seasonName, maxApplicants) =>
-      `${seasonName}은 최대 ${maxApplicants}명까지 받습니다. 신청 전에 정원이 차면 자동으로 ${seasonName} 대기자 명단에 오르고, 다음 시즌에 우선 참가하실 수 있습니다. 누구도 돌려보내지 않습니다.`,
+    faq_a6: () =>
+      `이번 시즌 참가 신청은 마감됩니다. 다음 시즌 일정은 공개되는 대로 이 페이지에 안내됩니다. 이번 시즌 자리가 중간에 열리지는 않습니다.`,
     faq_q7: '상금은 어떻게 되나요?',
     faq_a7: (seasonName, total, first, second, third, advanceLabel) =>
       `${seasonName}의 총상금은 $${total}입니다(1등 $${first}, 2등 $${second}, 3등 $${third}). ${advanceLabel}가 본선 진출자 타이틀을 얻습니다.`,
