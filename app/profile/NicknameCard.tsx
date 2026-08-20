@@ -18,6 +18,7 @@ const COPY = {
     errShort: '2자 이상 입력하세요.',
     errLong: '30자 이하로 입력하세요.',
     errChars: '문자, 숫자, 공백, . _ - 만 사용할 수 있습니다.',
+    errBanned: '사용할 수 없는 단어가 포함되어 있습니다.',
     errFail: '저장에 실패했습니다. 다시 시도해 주세요.',
   },
   en: {
@@ -31,6 +32,7 @@ const COPY = {
     errShort: 'Use at least 2 characters.',
     errLong: 'Use 30 characters or fewer.',
     errChars: 'Only letters, numbers, spaces, and . _ - are allowed.',
+    errBanned: 'That nickname contains a word that is not allowed.',
     errFail: 'Save failed. Please try again.',
   },
 }
@@ -74,6 +76,7 @@ export function NicknameCard() {
         too_short: c.errShort,
         too_long: c.errLong,
         invalid_chars: c.errChars,
+        banned_word: c.errBanned,
         failed: c.errFail,
         unauthenticated: c.errFail,
       }

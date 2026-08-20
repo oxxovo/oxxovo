@@ -21,6 +21,7 @@
 import 'server-only'
 import { createSupabaseAdmin } from './supabase-admin'
 import { ensureProfileRow } from './profile-row'
+import { nicknameContainsBannedWord } from './nickname-banned-words'
 
 export const NICKNAME_MIN = 2
 export const NICKNAME_MAX = 30
@@ -45,13 +46,20 @@ export function validateNickname(
   return { ok: true, value: v }
 }
 
-// Returns the SIGNED-IN account's nickname, creating one (and the profiles row
-// itself, if the signup trigger did not) on first use. `email` is required and
-// must be the caller's own session email -- see lib/profile-row.ts.
+// Returns the SIGNED-IN account's nickname. `email` is required and must be
+// the caller's own session email -- see lib/profile-row.ts.
+//
+// ★No longer auto-WRITES a name (TK 2026-08-19): nickname entry is now
+// mandatory at onboarding (see hasDisplayName + the callback redirect / mint
+// backstop that enforce it), so a real gap should surface as "not set", not
+// get silently papered over with a persisted "CreatorXXXX" that then looks
+// like a real choice forever. This still ensures the profiles ROW exists
+// (unrelated to the name itself) and still returns a display-time-only
+// fallback so a caller that predates the gate (or hits this before onboarding
+// redirects) never renders a blank name -- that fallback is computed, not
+// stored, same contract getDisplayNameReadOnly already had.
 export async function getDisplayName(userId: string, email: string): Promise<string> {
   const admin = createSupabaseAdmin()
-  // `id` is selected as well so a MISSING ROW is distinguishable from a present
-  // row with a null display_name -- that difference decides whether we insert.
   const { data } = await admin
     .from('profiles')
     .select('id, display_name')
@@ -61,23 +69,37 @@ export async function getDisplayName(userId: string, email: string): Promise<str
   const existing = (data?.display_name as string | null)?.trim()
   if (existing) return existing
 
-  const auto = autoNickname(userId)
-
   if (!data) {
     // No row at all: the signup trigger did not fire for this account. Loud,
     // because it means the trigger is missing or the account predates it.
     console.error('[nickname] profiles row missing -- creating it app-side', { userId })
-    if (!(await ensureProfileRow(userId, email))) return auto
+    await ensureProfileRow(userId, email)
   }
 
-  const { error } = await admin.from('profiles').update({ display_name: auto }).eq('id', userId)
-  // Non-fatal: the caller still gets a usable name, so rendering never breaks on
-  // this. But it must leave a trace -- a swallowed write is what made the
-  // 2026-07-28 profile outage invisible.
-  if (error) {
-    console.error('[nickname] auto display_name write failed', { userId, message: error.message })
-  }
-  return auto
+  return autoNickname(userId)
+}
+
+// Raw check against the column -- unlike getDisplayName, this never computes
+// a fallback, so it is what the onboarding gate (callback redirect + mint
+// backstop) actually asks. A user with no row at all counts as "not set".
+export async function hasDisplayName(userId: string): Promise<boolean> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin.from('profiles').select('display_name').eq('id', userId).maybeSingle()
+  return !!(data?.display_name as string | null)?.trim()
+}
+
+// Case-insensitive duplicate check for onboarding (no DB unique constraint --
+// this is an application-level check, not race-proof under simultaneous
+// signups, which is an acceptable gap at current signup volume).
+export async function isDisplayNameTaken(value: string, excludeUserId: string): Promise<boolean> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin
+    .from('profiles')
+    .select('id')
+    .ilike('display_name', value)
+    .neq('id', excludeUserId)
+    .limit(1)
+  return !!(data && data.length)
 }
 
 // Read-only nickname for ANOTHER account (public Watch pages, single record).
@@ -132,4 +154,45 @@ export async function setDisplayName(userId: string, email: string, value: strin
   const admin = createSupabaseAdmin()
   const { error } = await admin.from('profiles').update({ display_name: value }).eq('id', userId)
   if (error) throw new Error('setDisplayName: ' + error.message)
+}
+
+// Season lock (TK 2026-08-19): the nickname is set at application time and
+// locks the moment the participant submits. It is NOT permanent -- it reopens
+// when the applicant edits it in a later season's application flow (that UI
+// is not built yet, so nothing clears this today; only lockDisplayNameForSubmission
+// below ever sets it).
+export async function isDisplayNameLocked(userId: string): Promise<boolean> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin.from('profiles').select('display_name_locked_at').eq('id', userId).maybeSingle()
+  return !!(data?.display_name_locked_at as string | null)
+}
+
+// Called EARLY in the prelim submission path (lib/studio.ts), before any row
+// is written -- the last gate before the name locks for the season, on the
+// CURRENT display_name (the banned-word list may have changed since the
+// nickname was last saved). Read-only; refusing here means the submission
+// attempt writes nothing, so there is no partial state to unwind.
+export async function checkNicknameBeforeSubmission(
+  userId: string,
+): Promise<{ ok: true } | { ok: false; reason: 'banned_word' }> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin.from('profiles').select('display_name').eq('id', userId).maybeSingle()
+  const name = (data?.display_name as string | null)?.trim()
+  if (name && (await nicknameContainsBannedWord(name))) return { ok: false, reason: 'banned_word' }
+  return { ok: true }
+}
+
+// Called AFTER the submission row is successfully written. Best-effort: a
+// write failure here must not undo an already-accepted submission -- the lock
+// only matters for the NEXT edit attempt, not this one. The banned-word gate
+// already ran in checkNicknameBeforeSubmission, above.
+export async function lockDisplayNameForSubmission(userId: string): Promise<void> {
+  const admin = createSupabaseAdmin()
+  const { error } = await admin
+    .from('profiles')
+    .update({ display_name_locked_at: new Date().toISOString() })
+    .eq('id', userId)
+  if (error) {
+    console.error('[nickname] lock write failed (non-fatal, submission already accepted)', { userId, error: error.message })
+  }
 }

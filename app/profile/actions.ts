@@ -9,7 +9,8 @@ import { getRevealedTheme } from '@/lib/seasons-theme'
 import { validateVideoUrl } from '@/lib/video-url'
 import { getMembershipState, isMembershipEnabled } from '@/lib/membership'
 import { getStripe } from '@/lib/stripe'
-import { getDisplayName, setDisplayName, validateNickname } from '@/lib/nickname'
+import { getDisplayName, setDisplayName, validateNickname, isDisplayNameLocked } from '@/lib/nickname'
+import { nicknameContainsBannedWord } from '@/lib/nickname-banned-words'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
 import { partnerHostLinkVisible } from '@/lib/partner-host-link'
 import { sendSubmissionReceipts } from '@/lib/email/submission-receipts'
@@ -324,13 +325,24 @@ export async function loadDisplayName(): Promise<string | null> {
 
 export type SaveNicknameResult =
   | { ok: true; value: string }
-  | { ok: false; error: 'unauthenticated' | 'too_short' | 'too_long' | 'invalid_chars' | 'failed' }
+  | {
+      ok: false
+      error: 'unauthenticated' | 'too_short' | 'too_long' | 'invalid_chars' | 'banned_word' | 'locked' | 'failed'
+    }
 
 export async function saveDisplayName(value: string): Promise<SaveNicknameResult> {
   const user = await getUserOrNull()
   if (!user) return { ok: false, error: 'unauthenticated' }
   const v = validateNickname(value)
   if (!v.ok) return { ok: false, error: v.error }
+  // Locked for the season at first submission (lib/nickname.ts
+  // lockDisplayNameForSubmission). No admin-request queue -- a locked-out typo
+  // fix goes through the admin force-override action instead.
+  if (await isDisplayNameLocked(user.id)) return { ok: false, error: 'locked' }
+  // Hard block, not overridable -- this value gets burned into OXXOVO's own
+  // promo videos ("by {nickname}"), unlike faq-banned-words.ts's warning-only
+  // gate which has an admin in the loop to override.
+  if (await nicknameContainsBannedWord(v.value)) return { ok: false, error: 'banned_word' }
   try {
     await setDisplayName(user.id, user.email, v.value)
     return { ok: true, value: v.value }

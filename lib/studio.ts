@@ -10,7 +10,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { getBalance, getStudioPricing, creditsForCostOrNull, isSellableCost } from '@/lib/credits'
 import { moderateSubmission } from '@/lib/moderation'
 import { getCreatorProfile, upsertCreatorProfile } from '@/lib/profile'
-import { getDisplayName } from '@/lib/nickname'
+import { getDisplayName, hasDisplayName } from '@/lib/nickname'
 import {
   buildCryptoBind,
   verifyCryptoBind,
@@ -1151,6 +1151,7 @@ export type SubmitResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'nickname_required'
         | 'membership_required'
         | 'registration_closed'
         | 'application_closed'
@@ -1167,6 +1168,7 @@ export type RegisterForSeasonResult =
       reason:
         | 'no_application'
         | 'membership_required'
+        | 'nickname_required'
         | 'registration_closed'
         | 'already_registered'
         | 'application_info_required'
@@ -1212,6 +1214,11 @@ export async function registerForSeason(args: {
   const cfg = await getSeasonStudioConfig(args.seasonId)
   const effectiveRound = resolveEffectiveRound(cfg)
   if (effectiveRound !== 'application') return { ok: false, reason: 'no_application' }
+
+  // Mandatory nickname (TK 2026-08-19): the callback redirect after login is
+  // the eye-catching half of this gate; this is the half that can't be
+  // bypassed -- no application row can be minted without a real display_name.
+  if (!(await hasDisplayName(args.userId))) return { ok: false, reason: 'nickname_required' }
 
   const gate = await checkApplyGate(args.userId)
   if (!gate.ok) return { ok: false, reason: 'membership_required' }
@@ -1382,6 +1389,8 @@ export async function submitGeneration(args: {
     if (!info.agreedRules || !info.agreedPrivacy || !info.agreedIntegrity) {
       return { ok: false, reason: 'agreements_required' }
     }
+    // Mandatory nickname (TK 2026-08-19) -- same reasoning as registerForSeason.
+    if (!(await hasDisplayName(args.userId))) return { ok: false, reason: 'nickname_required' }
 
     // S-1/S-2: this auto-created row IS an application, so it must obey the same
     // gates as POST /api/apply -- the registration window and the capacity/
@@ -2126,6 +2135,7 @@ export type SubmitRenderResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'nickname_required'
         | 'membership_required'
         | 'registration_closed'
         | 'application_closed'
@@ -2228,6 +2238,8 @@ export async function submitRender(args: {
     if (!info.agreedRules || !info.agreedPrivacy || !info.agreedIntegrity) {
       return { ok: false, reason: 'agreements_required' }
     }
+    // Mandatory nickname (TK 2026-08-19) -- same reasoning as registerForSeason.
+    if (!(await hasDisplayName(args.userId))) return { ok: false, reason: 'nickname_required' }
 
     // Identity is account-level, resolved server-side (the compose form no longer
     // asks for name/country -- profile/work split, option A). A "real" name is a

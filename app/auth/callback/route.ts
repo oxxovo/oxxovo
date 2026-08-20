@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import type { EmailOtpType } from '@supabase/supabase-js'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { recordEmailConsentForUser } from '@/app/login/actions'
+import { hasDisplayName } from '@/lib/nickname'
 
 // Public-site Supabase auth callback — handles magic-link redirects.
 // Mirrors app/admin/auth/callback for general users.
@@ -86,5 +87,16 @@ export async function GET(request: NextRequest) {
     !nextParam.startsWith('/admin')
       ? nextParam
       : '/profile'
+
+  // Mandatory nickname onboarding (TK 2026-08-19: no more auto-generated
+  // names). Every login checks this -- cheap (one indexed lookup) and it is
+  // the "eye-catching" half of the gate; app/welcome/nickname/actions.ts's
+  // mint-time checks are the half that actually can't be bypassed.
+  if (userId && !(await hasDisplayName(userId))) {
+    const url = new URL('/welcome/nickname', origin)
+    url.searchParams.set('next', safeNext)
+    return NextResponse.redirect(url)
+  }
+
   return NextResponse.redirect(new URL(safeNext, origin))
 }
