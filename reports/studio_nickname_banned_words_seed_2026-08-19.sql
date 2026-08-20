@@ -26,6 +26,12 @@
 -- goes in as literal Korean).
 --
 -- Run in Supabase SQL editor. Project = qrnkovokjmimagrwjebs.
+--
+-- CORRECTION (same day, before first run): "장애인" removed from the general
+-- list. TK 2026-08-19: it is the standard, non-slur Korean term for a person
+-- with a disability -- leaving it in would block disabled creators from
+-- naming their own identity, which is itself the discrimination this list is
+-- supposed to prevent. "병신새끼" (an actual slur) stays.
 -- ============================================================================
 
 BEGIN;
@@ -33,7 +39,7 @@ BEGIN;
 INSERT INTO public.platform_config (key, value, value_type, description, description_ko)
 VALUES (
   'nickname_banned_words_general',
-  '["시발","씨발","씨바","ㅅㅂ","좆","존나","병신","ㅂㅅ","지랄","개새끼","새끼","미친놈","미친년","니미","애미","닥쳐","꺼져","fuck","fuk","fck","shit","bitch","bastard","asshole","cunt","dick","pussy","whore","slut","retard","섹스","성인","야동","자지","보지","강간","몰카","노출","sex","sexy","porn","nude","naked","nsfw","hentai","rape","milf","bdsm","orgasm","한남","김치녀","짱깨","쪽바리","흑형","장애인","병신새끼","일베","메갈","nigger","nigga","chink","jap","gook","fag","faggot","tranny","nazi","hitler","kkk"]',
+  '["시발","씨발","씨바","ㅅㅂ","좆","존나","병신","ㅂㅅ","지랄","개새끼","새끼","미친놈","미친년","니미","애미","닥쳐","꺼져","fuck","fuk","fck","shit","bitch","bastard","asshole","cunt","dick","pussy","whore","slut","retard","섹스","성인","야동","자지","보지","강간","몰카","노출","sex","sexy","porn","nude","naked","nsfw","hentai","rape","milf","bdsm","orgasm","한남","김치녀","짱깨","쪽바리","흑형","병신새끼","일베","메갈","nigger","nigga","chink","jap","gook","fag","faggot","tranny","nazi","hitler","kkk"]',
   'text',
   'Nickname banned-word list, WORD-BOUNDARY matched (lib/nickname-banned-words.ts matchesWholeWord). Profanity, sexual terms, hate/discrimination. 제니3 2026-08-19, via 본부.',
   '닉네임 금지어 목록(단어 경계 일치). 욕설·비속어, 성적 표현, 혐오·차별. 제니3 2026-08-19 원문, 본부 경유.'
