@@ -280,7 +280,12 @@ async function handle(request: NextRequest) {
   const belowFloorThisTick = new Set<string>()
   const belowFloorAlerts: SeasonTickReport['belowFloorAlerts'] = []
   for (const s of seasons) {
-    if (!s.application_close_at || nowMs < new Date(s.application_close_at).getTime()) continue
+    // ★HQ 2026-08-20: gate on registration_close_at, not application_close_at
+    // -- defer_season_schedule's own self-gate made the same switch (same
+    // migration, reports/season_defer_gate_registration_close_2026-08-20.sql)
+    // so this outer check must move with it, or the RPC never gets called
+    // early enough for the earlier gate to matter.
+    if (!s.registration_close_at || nowMs < new Date(s.registration_close_at).getTime()) continue
     const { data, error } = await supabase.rpc('defer_season_schedule', { p_season_id: s.id })
     if (error) {
       errors.push(`season-tick: defer ${s.id} failed: ${error.message}`)

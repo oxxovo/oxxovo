@@ -133,6 +133,15 @@ export type Season = {
   // existed. On seasons_public since the same migration that adds the column
   // (base + view together, see reports/season_registration_close_2026-08-12.sql).
   registration_close_at: string | null
+  // ★HQ 2026-08-20: registration_close_at is now a FORMULA, not a hand-typed
+  // literal -- application_close_at minus this many hours. Base-table only
+  // (not on seasons_public -- nothing client-facing needs the parameter
+  // itself, only the already-computed registration_close_at). Recomputed by
+  // defer_season_schedule on every defer (reports/season_defer_gate_
+  // registration_close_2026-08-20.sql); the admin edit form still writes
+  // registration_close_at directly and does NOT yet recompute it from this
+  // column on save -- known gap, not closed by this migration.
+  registration_lock_hours: number
   // ★Declared 2026-08-08. The COLUMN has existed since season0_3stage (it is in
   // the seasons_public select list too) -- what was missing was this line, so
   // nothing downstream could read it and the submission receipt was reported as
