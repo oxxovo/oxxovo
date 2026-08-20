@@ -88,18 +88,27 @@ export async function hasDisplayName(userId: string): Promise<boolean> {
   return !!(data?.display_name as string | null)?.trim()
 }
 
-// Case-insensitive duplicate check for onboarding (no DB unique constraint --
-// this is an application-level check, not race-proof under simultaneous
-// signups, which is an acceptable gap at current signup volume).
+// Collision key: lowercase, then strip every character validateNickname
+// allows besides letters/digits (space, ., _, -). "Kira" / "kira" / "K i r a"
+// / "K.i.r.a" all normalize to the same key -- TK 2026-08-19, same lookalike
+// concern as the OXXOVO-impersonation banned-word entry, just spelled with
+// spacing instead of leetspeak. The DB unique index (below) uses the
+// equivalent SQL expression -- keep the two in sync if this changes.
+export function nicknameCollisionKey(value: string): string {
+  return value.toLowerCase().replace(/[ ._-]/g, '')
+}
+
+// Pre-check for onboarding UX -- the AUTHORITATIVE guarantee is the DB unique
+// index on the same normalized key (profiles_display_name_normalized_unique,
+// reports/studio_nickname_unique_2026-08-19.sql), which is what actually
+// closes the simultaneous-signup race this alone cannot. Full-table scan of
+// one column; fine at hundreds-to-low-thousands of profiles, revisit if that
+// changes.
 export async function isDisplayNameTaken(value: string, excludeUserId: string): Promise<boolean> {
   const admin = createSupabaseAdmin()
-  const { data } = await admin
-    .from('profiles')
-    .select('id')
-    .ilike('display_name', value)
-    .neq('id', excludeUserId)
-    .limit(1)
-  return !!(data && data.length)
+  const { data } = await admin.from('profiles').select('id, display_name').neq('id', excludeUserId)
+  const key = nicknameCollisionKey(value)
+  return (data ?? []).some((r) => r.display_name && nicknameCollisionKey(r.display_name as string) === key)
 }
 
 // Read-only nickname for ANOTHER account (public Watch pages, single record).
