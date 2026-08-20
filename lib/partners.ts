@@ -40,9 +40,23 @@ function parseConfigValue(value: string, valueType: string): ParsedConfigValue {
   }
 }
 
+// 60s TTL, per-warm-instance (HQ 2026-08-20: only the generation-path hot
+// spots -- ip-check + cosmetic guard -- get this; the other ~30 platform_config
+// call sites stay as fresh-every-call reads, untouched). Serverless caveat:
+// this only helps within one warm Vercel instance's lifetime, resets on cold
+// start -- reduces round-trips, doesn't guarantee a single fetch per 60s.
+// A failed fetch is NEVER cached: caching an empty Map for 60s would silently
+// blank the cosmetic guard's 5 lists (empty list = pass, not block) --
+// [[feedback-absent-is-not-zero]].
+let configCache: { map: Map<string, ParsedConfigValue>; expiresAt: number } | null = null
+const CONFIG_CACHE_TTL_MS = 60_000
+
 // Fetch the whole table once and return a key → parsed-value map. Callers that
 // need several keys should use this (one round-trip) instead of N getters.
 export async function getPlatformConfigMap(): Promise<Map<string, ParsedConfigValue>> {
+  const now = Date.now()
+  if (configCache && configCache.expiresAt > now) return configCache.map
+
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('platform_config')
@@ -55,6 +69,7 @@ export async function getPlatformConfigMap(): Promise<Map<string, ParsedConfigVa
   for (const row of (data ?? []) as PlatformConfigRow[]) {
     map.set(row.key, parseConfigValue(row.value, row.value_type))
   }
+  configCache = { map, expiresAt: now + CONFIG_CACHE_TTL_MS }
   return map
 }
 

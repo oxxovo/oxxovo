@@ -19,7 +19,7 @@
 
 import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
-import { createSupabaseAdmin } from './supabase-admin'
+import { getPlatformConfigMap } from './partners'
 
 export type IpCheckConfidence = 'low' | 'medium' | 'high'
 export type IpCheckStatus = 'clear' | 'flagged' | 'unchecked'
@@ -51,15 +51,12 @@ Respond with ONLY this JSON, no other text:
 "evidence" = the exact phrase from the prompt that triggered the flag, or null if not flagged.
 "confidence": "high" = unambiguous, unmistakable reference. "medium" = probable but could be coincidental/generic. "low" = weak or uncertain match.`
 
+// Shares getPlatformConfigMap()'s 60s TTL cache (HQ 2026-08-20) with the
+// cosmetic guard instead of its own direct query -- one cache, two callers.
 async function getBlockThreshold(): Promise<IpCheckConfidence> {
   try {
-    const admin = createSupabaseAdmin()
-    const { data } = await admin
-      .from('platform_config')
-      .select('value')
-      .eq('key', 'ip_check_block_confidence')
-      .maybeSingle()
-    const v = (data?.value as string | undefined)?.trim().toLowerCase()
+    const cfg = await getPlatformConfigMap()
+    const v = (cfg.get('ip_check_block_confidence') as string | undefined)?.trim().toLowerCase()
     if (v === 'low' || v === 'medium' || v === 'high') return v
   } catch {
     // fall through to default

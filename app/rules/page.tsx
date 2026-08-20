@@ -52,7 +52,6 @@ export default function RulesPage() {
     name: string
     desc: string
     weight: number
-    integrity?: boolean
   }[] = [
     {
       name: 'Intent',
@@ -68,12 +67,6 @@ export default function RulesPage() {
       name: 'Originality',
       desc: 'Distinct ideas, fresh framing, not derivative.',
       weight: season.scoring_originality_weight,
-    },
-    {
-      name: 'Integrity',
-      desc: `Authenticity check. Scored by ${integrityName} only.`,
-      weight: season.scoring_integrity_weight,
-      integrity: true,
     },
   ]
 
@@ -178,7 +171,7 @@ export default function RulesPage() {
               ))}
             </div>
             <p>
-              Each judge scores four categories. The weighted average across all {modelCount} judges is your <span className="text-white">AI Score</span>, with outlier scores automatically excluded to prevent manipulation.
+              Each judge scores three categories that determine your score, plus a separate integrity check that does not. The weighted average across all {modelCount} judges is your <span className="text-white">AI Score</span>, with outlier scores automatically excluded to prevent manipulation.
             </p>
 
             <div className="mt-6 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.07] px-4 py-3">
@@ -208,7 +201,7 @@ export default function RulesPage() {
           </RuleSection>
 
           <RuleSection num="④" title="Scoring Categories">
-            <p className="mb-5">Four scoring categories, weighted as follows:</p>
+            <p className="mb-5">Three scoring categories, weighted as follows:</p>
             <div className="rounded-lg border border-white/10 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-white/[.04] text-white/60 text-xs uppercase tracking-wider">
@@ -219,7 +212,7 @@ export default function RulesPage() {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {scoringCategories.map((c) => (
-                    <tr key={c.name} className={c.integrity ? 'bg-[#8b22ff]/[.04]' : ''}>
+                    <tr key={c.name}>
                       <td className="px-4 py-3">
                         <span className="text-white">{c.name}</span>
                         <span className="block text-xs text-white/40 mt-0.5">{c.desc}</span>

@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminLang } from '@/lib/admin-i18n'
-import { validateConfigValue, isRiskKey, type ValidateResult } from '@/lib/settings-validate'
+import { validateConfigValue, isRiskKey, isCachedConfigKey, type ValidateResult } from '@/lib/settings-validate'
 import { updateConfigValueAction, updateConfigDescriptionKoAction } from './actions'
 import { AdminPageHeader } from '../AdminPageHeader'
 
@@ -38,6 +38,8 @@ const DICT = {
     no_desc: '(설명 없음)',
     no_desc_ko: '설명을 적어주세요',
     risk_badge: '위험',
+    cached_badge: '캐시',
+    cached_note: '설정 변경은 최대 60초 후 반영됩니다.',
     err_bool_invalid: (raw: string) => `bool 값은 true/false만 허용됩니다 (받은 값: "${raw}")`,
     err_int_invalid: (raw: string) => `int 값은 정수만 허용됩니다 (받은 값: "${raw}")`,
     err_decimal_invalid: (raw: string) => `decimal 값은 숫자만 허용됩니다 (받은 값: "${raw}")`,
@@ -70,6 +72,8 @@ const DICT = {
     no_desc: '(no description)',
     no_desc_ko: 'Add a description',
     risk_badge: 'risk',
+    cached_badge: 'cached',
+    cached_note: 'Changes take up to 60s to apply.',
     err_bool_invalid: (raw: string) => `bool only accepts true/false (got: "${raw}")`,
     err_int_invalid: (raw: string) => `int only accepts a whole number (got: "${raw}")`,
     err_decimal_invalid: (raw: string) => `decimal only accepts a number (got: "${raw}")`,
@@ -174,6 +178,7 @@ function SettingsRow({ row, t }: { row: ConfigRow; t: Dict }) {
   const [confirming, setConfirming] = useState(false)
 
   const risk = isRiskKey(row.key)
+  const cached = isCachedConfigKey(row.key)
   const validation = validateConfigValue(row.valueType, draft)
   const dirty = draft !== row.value
   const canSave = dirty && validation.ok && !pending
@@ -216,7 +221,13 @@ function SettingsRow({ row, t }: { row: ConfigRow; t: Dict }) {
                 {t.risk_badge}
               </span>
             )}
+            {cached && (
+              <span className="text-[9px] uppercase tracking-wider text-white/50 border border-white/20 rounded px-1.5 py-0.5">
+                {t.cached_badge}
+              </span>
+            )}
           </div>
+          {cached && <p className="mt-1 text-[11px] text-white/40">{t.cached_note}</p>}
         </div>
 
         <div className="shrink-0 flex items-center gap-2">
