@@ -8,10 +8,15 @@ import { completeOnboarding } from './actions'
 // Mandatory first-time nickname setup (TK 2026-08-19). Reached only from
 // app/auth/callback when profiles.display_name is unset -- see that route for
 // the redirect and lib/nickname.ts for why auto-generation was removed.
+// Copy below is 제니3's signed-off text, verbatim (본부 2026-08-19) -- do not
+// paraphrase or re-order. realNameWarning/desc are each an array of
+// paragraphs, rendered as separate <p> tags to preserve 제니3's line breaks
+// (the "fact first, then the irreversible part, then the reassurance" shape
+// for the warning; "you can still change it" before "it locks" for desc).
 const COPY = {
   ko: {
     title: '닉네임을 정해주세요',
-    desc: '작품·댓글·랭킹에 공개로 표시되는 이름입니다. 한 번 출품하면 그 시즌 동안 바꿀 수 없습니다.',
+    desc: ['화면과 랭킹에 표시될 이름입니다.', '지금은 바꿀 수 있고, 첫 작품을 출품하면 잠깁니다.'],
     label: '닉네임',
     placeholder: '2~30자',
     identityLabel: '공개 방식',
@@ -19,9 +24,11 @@ const COPY = {
     asRealName: '실명으로 공개',
     realNameLabel: '실명',
     realNamePlaceholder: '작품·홍보 영상·랭킹에 표시될 이름',
-    // TK 2026-08-19: warning copy pending 제니3 -- placeholder only, do not
-    // ship this exact sentence without their sign-off.
-    realNameWarning: '실명이 작품 화면·홍보 영상·랭킹에 공개됩니다. (문구 확정 대기)',
+    realNameWarning: [
+      '실명이 공개됩니다.',
+      '작품 화면, 홍보 영상, 랭킹에 이 이름이 그대로 나갑니다. 홍보 영상에 들어간 이름은 나중에 지울 수 없습니다.',
+      '실명으로 활동하시는 분들도 많습니다. 다만 첫 작품을 출품하면 바꿀 수 없으니, 지금 정해 주세요.',
+    ],
     submit: '시작하기',
     submitting: '저장 중…',
     errTooShort: '2자 이상 입력하세요.',
@@ -34,7 +41,10 @@ const COPY = {
   },
   en: {
     title: 'Choose your nickname',
-    desc: 'This is your public name on your work, comments, and rankings. Once you submit, it locks for the season.',
+    desc: [
+      'This is the name shown on screen and in the rankings.',
+      "You can change it until you submit your first entry.",
+    ],
     label: 'Nickname',
     placeholder: '2-30 characters',
     identityLabel: 'Show as',
@@ -42,7 +52,11 @@ const COPY = {
     asRealName: 'Real name',
     realNameLabel: 'Real name',
     realNamePlaceholder: 'Shown on your work, promo videos, and rankings',
-    realNameWarning: 'Your real name will be shown on your work, promo videos, and rankings. (copy pending)',
+    realNameWarning: [
+      'Your real name will be public.',
+      "It appears on your entry, in promo videos, and in the rankings. Once a name is in a promo video, it can't be removed.",
+      "Plenty of creators compete under their real name. Just note that it locks when you submit your first entry — so decide now.",
+    ],
     submit: 'Continue',
     submitting: 'Saving…',
     errTooShort: 'Use at least 2 characters.',
@@ -95,7 +109,13 @@ function OnboardingInner() {
     <main className="min-h-screen flex items-center justify-center bg-[#0a0508] px-4">
       <div className="w-full max-w-md border border-white/10 bg-white/[.02] rounded-lg p-6">
         <h1 className="text-lg font-bold text-white mb-1">{c.title}</h1>
-        <p className="text-xs text-white/50 mb-5 leading-relaxed">{c.desc}</p>
+        <div className="mb-5">
+          {c.desc.map((line, i) => (
+            <p key={i} className="text-xs text-white/50 leading-relaxed">
+              {line}
+            </p>
+          ))}
+        </div>
 
         <label className="block text-xs uppercase tracking-[0.2em] font-bold text-[#b66cff] mb-2">{c.label}</label>
         <input
@@ -137,7 +157,13 @@ function OnboardingInner() {
 
         {displayIdentity === 'real_name' && (
           <div className="mb-5">
-            <p className="text-xs text-[#ffb84d] mb-2 leading-relaxed">{c.realNameWarning}</p>
+            <div className="mb-2 space-y-1">
+              {c.realNameWarning.map((line, i) => (
+                <p key={i} className="text-xs text-[#ffb84d] leading-relaxed">
+                  {line}
+                </p>
+              ))}
+            </div>
             <input
               type="text"
               value={realName}
