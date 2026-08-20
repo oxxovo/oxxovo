@@ -6,6 +6,16 @@
 
 ## OPEN
 
+### 9/9 전 필수 (묶음 — 상세는 아래 본문 표, 여기는 색인만)
+
+| # | 한 줄 |
+|---|---|
+| 49 | 채점 레포(oxxovo-scoring) main에 32~33커밋 미반영 — 최우선 |
+| 50 | 3레포 배포 상태 전면 재검증 필요, 오늘 표는 신뢰 불가 — 최우선, **내일 첫 착수** |
+| 51 | #48 약속-기능 전수 감사 계속(이메일 템플릿 20개부터) |
+| 52 | 제작 과정 기록(edit-event 로그) — 견적 완료, 착수 승인만 대기 |
+| 31 | promo 영상 R2 고아 파일(soft delete #32와 같이 판단) |
+
 | # | 요약 | 비용 | 선행조건 | 기한 |
 |---|---|---|---|---|
 | 27 | 스트레이 Vercel 프로젝트 `oxxovo-lane-c` — 배포 직후엔 정리하지 않는다(HQ 2026-08-13 명시 지시), 무엇을 남겼는지/왜 지우면 안 되는지 근거 미확인 상태로 존치만 | $0 | 배포 안정화 관찰 기간 이후 | 미정 |
@@ -45,7 +55,7 @@
 | 51 | **#48 약속-기능 전수 감사 계속 — 이메일 템플릿 20개부터.** `/faq`(완료) · 랜딩FAQ 9항목(3건 확인·수정 완료: 나이제한/구독료/대기자승격) · 멤버십 페이지(완료, 문제없음) 끝. 남음: 이메일 템플릿 20개·`/terms`·`/welcome`·`/apply` 나머지 상태·가입-결제 흐름 전체·Studio 인앱 문구·어드민 수동발송 문안. 방법=문장단위 추출 후 기능대조(grep 금지) | 미측정 | 없음 | **9/9 전 필수** |
 | 52 | **본부 9/9 전 지시 — "제작 과정을 남기고 있나" 실태 조사 완료, 결손 1건 확정(2026-08-19).** 6항목 실측(`generation_jobs`/`render_jobs` 스키마 전수 확인): ①생성기록 있음(`reports/studio_phase1_migration_2026-06.sql:75-123`) ②버린 클립도 있음 — `deleted_at`/`archived_at`이 soft delete라 로우·R2 파일 삭제 없음(`studio_deleted_at_2026-07.sql`/`studio_archived_at_2026-07.sql`), `render_jobs.source_job_ids`와 대조하면 미채택 클립도 재구성 가능(직접 "버림" 플래그는 없음, join으로 도출) ⑤수정횟수 — 저장 카운터는 없지만 로우가 안 지워지므로 언제든 `COUNT(generation_jobs)`로 파생 가능(`lib/studio.ts:398` `countGenerationsForRound`), 결손 아님. **★진짜 결손은 ③④ 하나로 수렴**: `render_jobs.edl`은 렌더 버튼을 누른 순간의 스냅샷 1개만 저장(`reports/studio_compose_phase1_migration_2026-06.sql:26-69`)하고 그 컬럼은 이후 업데이트도 안 됨 — 렌더 누르기 전 에디터에서의 순서 재배치·트림 조정은 DB에 전혀 안 남고 브라우저 localStorage 드래프트에만 존재(`app/studio/actions.ts:703-708`), 세션 종료·기기 변경 시 그 편집 과정 자체가 증발한다. 렌더를 여러 번 누르면 매번 새 행이 생겨(update 아닌 insert, `lib/studio.ts:1881`) 시도별 우연한 이력은 남지만, 한 번만 렌더하고 끝내면 "몇 번 재배열했는지/트림을 몇 번 조정했는지"는 영구 소실. ⑥세션 시간도 전용 로그 없음 — `created_at`/`worker_started_at` 등 점 단위 타임스탬프로만 근사 가능(activity/session 테이블 grep 0건, 128개 마이그 전수). **견적**: 신규 테이블 필요(append-only 편집 이벤트 로그 — reorder/trim-commit/clip add·remove를 지금 저장 안 되는 이벤트로 기록. 기존 두 테이블과 grain이 달라 컬럼 추가로는 안 풀림), 용량은 이벤트 1행 수백 바이트 × 참가자당 라운드당 수십~백여 건으로 잡아도 전체 수만~십만 행(수십MB) 수준이라 무시 가능. 점수 반영 없음(본부 명시), 기록 전용. 작업 규모 자체는 작음(마이그 1개 + insert 서버 액션 1개 + 에디터 핸들러 3~4곳 배선)이나 정확한 소요는 착수 전 단정 안 함 | 설계+코드 소량 (신규 테이블 1개) | 대표님 착수 승인 | **9/9 전(본부 지정)** |
 
-| 53 | **다운로드+워터마크 기능 — 설계 승인 완료, 코드 절반만 진행, 2개 블로커로 멈춤.** 설계(①참가자 다운로드=로고만·②홍보용=로고+닉네임, 게이트=`awards_announcement_at`, 온디맨드+캐시, `render_jobs` 5컬럼+`download_requested_at`/`promo_requested_at` 마이그 완료·Run 완료) 전부 TK 승인. 워커 쪽 ffmpeg 오버레이 함수(`applyDownloadWatermark`/`applyPromoWatermark`, Pretendard "by {닉네임}" 래스터화 포함)는 `oxxovo-studio` 레포에 작성 완료했으나 **★커밋도 안 함**(`git status` 로컬 미커밋 확인, 2026-08-19). ★블로커①: 로고 애셋 크롭 여부 미확정(원본 `oxxovo_logo.png` 그대로 쓰는지, promo 포스터 작업이 쓴 크롭이 정본인지 제니3 미답). ★블로커②: 워커 폴링 lane(`watermarkLane`, `claimNextWatermarkJob` 등) 자체를 아직 안 짬 — render.ts 함수만 있고 이걸 부르는 자리가 없음. `/profile` 다운로드 버튼도 미착수 | 코드 중간 규모(워커 lane+website 버튼) | 로고 크롭 확정(제니3) | 미정 |
+| 53 | **다운로드+워터마크 기능 — 설계 승인 완료, 코드 절반만 진행, 2개 블로커로 멈춤.** 설계(①참가자 다운로드=로고만·②홍보용=로고+닉네임, 게이트=`awards_announcement_at`, 온디맨드+캐시, `render_jobs` 5컬럼+`download_requested_at`/`promo_requested_at` 마이그 완료·Run 완료) 전부 TK 승인. 워커 쪽 ffmpeg 오버레이 함수(`applyDownloadWatermark`/`applyPromoWatermark`, Pretendard "by {닉네임}" 래스터화 포함)는 `oxxovo-studio`에 작성·커밋·push 완료(`e6c3fab`, 2026-08-19) — 단 worker.ts 어디서도 안 부르는 미사용 함수라 이 push는 워커 동작에 영향 없음(Railway push=배포 규칙상 배포는 됐지만 no-op). ★블로커①: 로고 애셋 크롭 여부 미확정(원본 `oxxovo_logo.png` 그대로 쓰는지, promo 포스터 작업이 쓴 크롭이 정본인지 제니3 미답). ★블로커②: 워커 폴링 lane(`watermarkLane`, `claimNextWatermarkJob` 등) 자체를 아직 안 짬 — render.ts 함수만 있고 이걸 부르는 자리가 없음. `/profile` 다운로드 버튼도 미착수 | 코드 중간 규모(워커 lane+website 버튼) | 로고 크롭 확정(제니3) | 미정 |
 | 54 | **어드민 강제 닉네임 수정 — 설계만, 코드 없음.** 출품 시 `display_name_locked_at`로 잠기는데, 잠긴 뒤 오타 등을 고칠 관리자 액션이 없음(2026-08-19 확인, "다음 라운드로"로 합의 — 잠기기 전엔 온보딩 게이트가 막아주므로 급한 구멍은 아님) | 코드 소량(어드민 액션 1개) | 없음 | 다음 라운드 |
 | 55 | **닉네임 전용 신고 경로 — 없음.** `VideoReportButton`(`app/watch/SaveReportButtons.tsx`)이 영상 신고는 되지만 사유 분류·닉네임 전용 경로가 없음 — 금지어 목록이 완전할 수 없어 새어나간 이름을 참가자/관객이 신고할 방법이 현재 0개(2026-08-19 확인) | 설계 필요 | 없음 | 미정 |
 
@@ -94,3 +104,7 @@
 | c-cosmeticguard | b2670a9 화장품 축/조합 프롬프트 가드 배포 + platform_config 5키 Run | 2026-08-19 배포+검증 완료(`59bf30e`, 14/14 pass) |
 | c-launch | COMING SOON 게이트 코드 삭제 + Watch=홈 전환 + SITE_PUBLIC_ENABLED 명시 | 2026-08-19 배포 확인(`59bf30e`=로컬HEAD 일치). oxxovo.ai가 Watch로 뜸, X-Robots-Tag 제거, `/coming-soon` 404 확인 |
 | c-waitlistpromise | `/faq` Q5 + `/apply` 2곳 + 랜딩FAQ(나이제한/구독료/대기자승격 3건) 허위-약속 문구 제거 | 2026-08-19 배포 확인(`59bf30e`). 미구현 기능(대기자 자동승격) 약속 전부 제거, 동일 문장 재사용으로 정본 통일 |
+| c-nicknamegate | **닉네임 온보딩 게이트 — 자동생성 제거+콜백 리다이렉트+mint 백스톱+온보딩 화면+3규칙 금지어 엔진(단어경계/포함/leetspeak정규화)+정규화 unique 인덱스, 전부 배포·검증 완료** | 2026-08-19 배포 확인(`6591c85`=prod sha 일치, `merge-base --is-ancestor` 확인). tsc clean·564/564. 라이브 금지어 실측 4/4("시발"거부·"안성재"통과·"OXXOVO_KIRA"거부·"0xx0v0"거부), collision-key SQL/JS 패리티 13/13. ★브라우저로 실제 화면(리다이렉트 탈출 불가·중복거부·실명토글 경고·제출 후 이동)까지는 미확인 — 다음 세션 첫 줄 후보 |
+| c-bannedseed | 닉네임 금지어 `platform_config` 시딩 — general 68 · impersonation 37(장애인 제외 확정) | 2026-08-19 Run 완료 |
+| c-creatorxxxx | CreatorXXXX 자동생성 닉네임 3행(TK 계정 포함) `display_name` NULL 처리 | 2026-08-19 Run 완료, BLOCK 0 미리보기 일치 확인 후 BLOCK 1 실행 |
+| c-watermarkcols | 다운로드/홍보 워터마크용 컬럼 마이그(profiles 5 + render_jobs 5+2) | 2026-08-19 Run 완료 전부 |
