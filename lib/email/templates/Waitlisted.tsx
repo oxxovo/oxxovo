@@ -38,12 +38,8 @@ function Korean(p: WaitlistedProps) {
         대기자 명단으로 접수했습니다.
       </Text>
       <Text style={paragraph}>
-        본선 진출자 선정 이전에 자리가 비면 자동으로 본 신청이 활성화되며,
-        별도의 추가 신청 없이 그대로 진행됩니다.
-      </Text>
-      <Text style={muted}>
-        대기자 자리가 활성화되는 경우에만 별도 안내 메일을 보내드립니다. 그
-        외에는 별도의 회신 없이 시즌이 마감됩니다.
+        이번 시즌은 정원이 찼습니다. 다음 시즌 일정은 공개되는 대로
+        안내해 드리겠습니다.
       </Text>
       <Text style={signoff}>OXXOVO Genesis 운영팀 드림</Text>
     </Layout>
@@ -62,12 +58,8 @@ function English(p: WaitlistedProps) {
         been filed on the waitlist.
       </Text>
       <Text style={paragraph}>
-        If a spot opens before selection, your entry is automatically activated
-        — no need to re-submit anything.
-      </Text>
-      <Text style={muted}>
-        We&rsquo;ll only email you again if a spot opens. Otherwise the season
-        will close without further notice.
+        This season&rsquo;s field is full. The next season&rsquo;s schedule
+        will be announced when it&rsquo;s set.
       </Text>
       <Text style={signoff}>— The OXXOVO Genesis team</Text>
     </Layout>
