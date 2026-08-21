@@ -123,17 +123,73 @@ for (const file of walk(SCOPE)) {
   })
 }
 
+let failed = false
+
 console.log(`\n═══ theme leak check | scope=app/studio/** | ${BANNED.length} terms ═══`)
 if (findings.length === 0) {
   console.log('  PASS  no product-category / industry / ad-format word in a participant-facing string\n')
-  process.exit(0)
+} else {
+  failed = true
+  for (const f of findings) {
+    console.log(`  FAIL  ${f.file}:${f.line}  ★"${f.term}"\n        ${f.text}`)
+  }
+  console.log(
+    `\n  ${findings.length} leak(s). The main-round theme must not be inferable from Studio, which\n` +
+      '  participants use BEFORE any reveal. Use a genre, a mood, or a camera behaviour\n' +
+      '  instead of a product type, an industry, or an ad format.\n',
+  )
 }
-for (const f of findings) {
-  console.log(`  FAIL  ${f.file}:${f.line}  ★"${f.term}"\n        ${f.text}`)
+
+// ★PART 2 (added 2026-08-21, HQ). Everything above is a static grep over app/studio/**
+// SOURCE. It cannot see a leak that lives in DATA, not code -- which is exactly how the
+// real one got past it: seasons_public.main_round_theme_label ("Cosmetic Commercial
+// Film") sat on the anon-readable view and was fetchable via a plain PostgREST call,
+// with zero source-code string anywhere to grep for. This part hits the SAME public
+// REST endpoint any visitor's browser can reach (the anon key is NEXT_PUBLIC_* -- it
+// ships to every client bundle already, so querying it here is not a new exposure) and
+// scans the actual response for the same banned vocabulary. Network/env failures WARN
+// instead of failing the build: this check is only meaningful against the real deployed
+// view, and an offline/local run without prod env has nothing to say about that.
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+console.log(`\n═══ theme leak check | PART 2: public API response (seasons_public) ═══`)
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.log('  WARN  NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY not set -- skipped\n')
+} else {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/seasons_public?select=*`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    })
+    if (!res.ok) {
+      console.log(`  WARN  fetch failed (${res.status}) -- skipped\n`)
+    } else {
+      const rows = await res.json()
+      const apiFindings = []
+      for (const row of rows) {
+        for (const [col, val] of Object.entries(row)) {
+          const s = typeof val === 'string' ? val : JSON.stringify(val ?? '')
+          for (const term of BANNED) {
+            const hit = /^[A-Za-z-]+$/.test(term)
+              ? new RegExp(`\\b${term.replace(/-/g, '\\-')}\\b`, 'i').test(s)
+              : s.includes(term)
+            if (hit) apiFindings.push({ id: row.id, col, term, text: s.slice(0, 120) })
+          }
+        }
+      }
+      if (apiFindings.length === 0) {
+        console.log('  PASS  no banned term in any seasons_public column, any row\n')
+      } else {
+        for (const f of apiFindings) console.log(`  FAIL  seasons_public row=${f.id} column="${f.col}"  ★"${f.term}"\n        ${f.text}`)
+        console.log(`\n  ${apiFindings.length} live API leak(s). Remove the column from seasons_public (or null the\n  value) -- see reports/seasons_public_main_round_theme_removal_2026-08-17.sql for the pattern.\n`)
+        failed = true
+      }
+    }
+  } catch (e) {
+    console.log(`  WARN  ${e.message} -- skipped\n`)
+  }
 }
-console.log(
-  `\n  ${findings.length} leak(s). The main-round theme must not be inferable from Studio, which\n` +
-    '  participants use BEFORE any reveal. Use a genre, a mood, or a camera behaviour\n' +
-    '  instead of a product type, an industry, or an ad format.\n',
-)
-process.exit(1)
+
+// process.exitCode (not process.exit()) -- a forced exit() right after an
+// undici fetch() can race the socket handle's close and crash on Windows
+// (libuv assertion in async.c). Setting exitCode lets Node drain naturally.
+process.exitCode = failed ? 1 : 0
