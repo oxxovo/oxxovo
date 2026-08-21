@@ -14,7 +14,6 @@
 | 52 | 제작 과정 기록(edit-event 로그) — 견적 완료, 착수 승인만 대기 |
 | 56 | 본선 커뮤니티 투표 — 코드는 정상, 실사용 검증 사실상 0(리허설에서 반드시 태울 것) |
 | 59 | 투표 시작 이메일 신설 — 관객·회원용 0개, 배선 설계 완료·제니3 문안 대기 |
-| 60 | VideoLiveMain 발송 타이밍이 투표 시작 시각을 안 봄 — 확인 필요 |
 | 31 | promo 영상 R2 고아 파일(soft delete #32와 같이 판단) |
 
 | # | 요약 | 비용 | 선행조건 | 기한 |
@@ -61,13 +60,13 @@
 | 56 | **본선 커뮤니티 투표 — 코드는 정상(라이브 가중치·날짜게이트·집계·UI 전부 배선 확인, 2026-08-20 실측), 실사용 검증은 사실상 0.** `watch_votes` 총 1행(round=main) — 배포 이후 실참가자 경로로 끝까지 도는 것을 본 적이 없다. `lib/scoring.ts`의 computeFinalScore는 weight>0이면 커뮤니티 집계가 실존해야 final_score가 나오고, 없으면 null(랭킹 제외) — 아무도 안 투표하면 본선 랭킹 전체가 빈다(코드 주석에 이미 경고됨, 2026-08-06). **전체 리허설(#12)에서 반드시 투표 캐스팅→집계→final_score 산출까지 실사용 경로로 태워야 한다** — HQ 2026-08-20 지시 | $0(리허설 항목 추가만) | 리허설 착수(#12) | **리허설 시 필수, 9/9 전** |
 | 57 | **`ResultsAnnounced.tsx` "프로필에서 최종 순위 확인 가능"이 과장 — `/profile`엔 순위 UI가 없다.** `ScoringCard.tsx`는 점수·세부항목만 노출, top-3 `award_rank` 배지 외에는 "500명 중 N위" 같은 순위 표시가 없음(2026-08-20 #48 이메일 템플릿 감사에서 발견). `NotSelected.tsx`는 발송 시점에 순위를 직접 계산해 이메일 본문에 박아 넣는 걸 보면 데이터 자체는 있음 — 프로필에 노출만 안 함. 문안을 낮출지(순위 언급 삭제) `/profile`에 순위 UI를 새로 만들지는 대표님 판정 | 문안이면 $0, 기능이면 코드 소량(프로필 순위 UI) | 대표님 판정 | 판정 필요 |
 | 59 | **투표 시작 이메일 신설 — 관객·회원용 없음.** 참가자용은 `VideoLiveMain.tsx`가 이미 커버(단 #60 타이밍 결함 있음). 관객·회원용은 0개 — 투표가 점수의 절반인데 투표하라는 안내가 나가는 곳이 없음. 배선 자리 설계 완료(`app/api/cron/email-tick/route.ts`에 `fireResultsAnnounced`와 같은 모양으로 `community_vote_start_at` 게이트 신설, 수신자=`profiles.email_opt_in=true AND email_opt_out_at IS NULL`, 기존 발송 콘솔 동의 기준 재사용) | 코드 소량(배선) + 신규 이메일 템플릿 | 제니3 문안 | **9/9 전 필수** |
-| 60 | **`VideoLiveMain.tsx` 발송 타이밍이 `community_vote_start_at`을 안 본다.** 트리거가 영상 공개 여부(`isRowPublic`)라, 투표가 실제로 열리기 전에 "투표하세요" 메일이 나갈 수 있는 구조(2026-08-20 발견, 미확정 — 실제로 그 순서로 도는지는 미검증) | 확인 필요 + 코드 소량 | 없음 | **9/9 전 필수** |
 | 61 | **투표 종료(11/16 00:00 PT) → 시상 발표(11/16 20:00 PT) 20시간 — 늘릴지 대표님 판정.** 그 안에 투표 집계+Layer-2 합산(computeFinalScore)+공지 준비가 끝나야 함. 늘리면 시상이 하루 밀림(2026-08-20 일정 감사) | $0(날짜만) | 대표님 판정 | 판정 필요 |
 
 ## CLOSED (기록 보존)
 
 | # | 요약 | 종결 근거 |
 |---|---|---|
+| c-videolivetiming | "VideoLiveMain 타이밍이 community_vote_start_at을 안 본다"(#60) — **정정: 틀린 항목이었다.** | `lib/video-live.ts:36-51` `videoLiveRounds()`가 main 라운드를 `isVotingOpen()`(community_vote_start_at/_end_at 직접 검사)으로 이미 게이트 — 주석에 이유까지 이미 적혀 있었음. #48 배치4 감사와 그걸 이어받은 판단 둘 다 `fireVideoLive` 상단 주석(prelim 공개판정 얘기)만 읽고 `videoLiveRounds()` 내부 분기는 안 열어본 채 단정한 오류. 코드 변경 없음, 배포 없음 |
 | c49-50 | 49/50. 3레포 배포 재검증 + 채점 레포 "33커밋" | **2026-08-20 실측으로 완결.** 전부 새로 fetch + Railway CLI: 프로덕션이 이미 origin/main과 일치(`f3eec3d`/`e6c3fab`), "33커밋 미반영"은 로컬-vs-origin 오독이었고 실제 미반영은 `feat/main-round-worker` 2커밋(`6c293da` 배점 프롬프트 동기화)뿐 — merge-tree 드라이런 충돌 0, 병합·push·배포(`47c3941`) 완료 |
 | c-scoreweight | 배점 배포 — DB 30/45/25/0인데 프롬프트가 25/45/20/10 하드코딩이던 어긋남 | `6c293da` 병합·배포. `buildScoringPrompt()`를 실제 season 행으로 직접 호출하는 읽기전용 프로브(`_verify_prompt_weights_2026-08-20.ts`, 커밋 `472e519`)로 프롬프트 문자열 자체가 30/45/25를 찍는 것까지 실측 확인(LLM 호출 0회) |
 | c-configcache | 설정값 캐시 60초 TTL — ip-check·cosmetic guard 핫패스만 | `getPlatformConfigMap()`(`lib/partners.ts`)에 60초 TTL, 에러는 캐시 안 함. `/admin/settings`에 해당 6키만 "캐시" 뱃지+안내. tsc clean·564/564, 배포(`0979d0a`) |
