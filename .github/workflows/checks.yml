@@ -59,3 +59,16 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
           SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
+
+      # ★2026-08-21 (HQ). This one needs REAL values, not placeholders -- Part 2 of
+      # theme-leak-check queries the LIVE seasons_public REST endpoint, so it is
+      # useless against the Build step's fake ones (it would just WARN and skip,
+      # which is exactly how "Cosmetic Commercial Film" sat undetected on the live
+      # view for days: the guard existed but was never run against production data).
+      # The URL/anon key below are not secrets -- NEXT_PUBLIC_* ships in every
+      # client bundle already, querying it here exposes nothing new.
+      - name: Theme leak check (live seasons_public)
+        run: npm run test:theme-leak
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://qrnkovokjmimagrwjebs.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFybmtvdm9ram1pbWFncndqZWJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNTc1NzQsImV4cCI6MjA5MzgzMzU3NH0.9Hsq-_6DD9zwrYqj7Fqu5Ji48B1YzIEk2M3J9T6wHWQ
