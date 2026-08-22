@@ -28,7 +28,7 @@ import {
   sendNotSelected,
   sendMainRoundStart,
   sendSubmissionDeadline,
-  sendRegistrationCount,
+  sendApplicationDeadline,
   sendDeferralNotice,
   sendResultsAnnounced,
   sendMembershipRenewal,
@@ -52,10 +52,9 @@ import { loadScoredRanks, loadNextSeason } from '@/lib/email/finalist-report'
 import { isMembershipEnabled } from '@/lib/membership'
 import { getPlatformConfigMap } from '@/lib/partners'
 import {
-  getActiveApplicationCount,
   computeSubmissionCloseAt,
   deadlineReminderFireTimes,
-  registrationReminderFireTimes,
+  applicationDeadlineReminderFireTimes,
   type Season,
 } from '@/lib/seasons'
 
@@ -94,9 +93,12 @@ type TickReport = {
   // a failure wants investigating, a deferral wants the next tick.
   mainRoundStart: ({ season: string } & BatchTally)[]
   submissionDeadline: ({ season: string; reminderHour: number } & BatchTally)[]
-  // HQ 2026-08-12: D-14/7/3/1 before registration_close_at, to everyone
-  // currently registered (not pre-registered) for the season.
-  registrationCount: ({ season: string; reminderDay: number } & BatchTally)[]
+  // HQ 2026-08-22: D-7/3/1/6h before application_close_at (the VIDEO
+  // submission hard-cut), to registrants who have not yet submitted their
+  // prelim video. Replaces the old registrationCount notice (D-14/7/3/1
+  // before registration_close_at, retired -- the registration cutoff itself
+  // is not announced by email any more, the Watch countdown covers it).
+  applicationDeadline: ({ season: string; reminderHour: number } & BatchTally)[]
   // HQ 2026-08-12: fired once per application_defer_count value when
   // defer_season_schedule has actually shifted the calendar -- detected here
   // (not signaled by season-tick) by simply re-checking every season's
@@ -180,7 +182,7 @@ async function handle(request: NextRequest) {
     ranAt: now.toISOString(),
     mainRoundStart: [],
     submissionDeadline: [],
-    registrationCount: [],
+    applicationDeadline: [],
     deferralNotice: [],
     resultsAnnounced: [],
     finalistResults: [],
@@ -226,30 +228,36 @@ async function handle(request: NextRequest) {
       }
     }
 
-    // Registration-count notice (HQ 2026-08-12): D-14/7/3/1 before
-    // registration_close_at (NOT application_close_at -- a different clock
-    // from submissionDeadline above, on purpose). Recomputed from
-    // registration_close_at fresh every tick, the same way submissionDeadline
-    // is recomputed from main_round_end_at above -- if defer_season_schedule
-    // pushes registration_close_at out, the D-14/7/3/1 fire times move with
-    // it automatically (they are back-calculated, not stored absolute
-    // instants). What does NOT automatically move: the per-(application,
-    // reminder_day) dedup. If D-14 already fired against the ORIGINAL close
-    // date and a defer later pushes the date out, D-14 will not re-fire for
-    // the new date -- canSend only knows "reminder_day=14 already sent for
-    // this applicant", not which close-date version it was sent against.
-    // Flagged as a known gap (backlog), not solved here.
-    if (season.registration_close_at && !isFixtureSeason(season)) {
-      const registrationCloseAt = new Date(season.registration_close_at)
-      const reminderDays = Array.isArray(season.registration_reminder_days)
-        ? (season.registration_reminder_days as number[])
+    // Application (prelim video) deadline notice (HQ 2026-08-22): D-7/3/1/6h
+    // before application_close_at -- the VIDEO submission hard-cut, not
+    // registration_close_at (that clock is retired, see below). Recomputed
+    // from application_close_at fresh every tick, same pattern as
+    // submissionDeadline above -- if defer_season_schedule pushes
+    // application_close_at out, these fire times move with it automatically
+    // (back-calculated, not stored absolute instants). Recipients = only
+    // people who registered for this season (HQ: "신청한 사람만") and have
+    // not yet submitted their prelim video.
+    //
+    // Retired the same tick this replaced (HQ 2026-08-12 registration_count,
+    // D-14/7/3/1 before registration_close_at): TK's call, 2026-08-22 -- the
+    // registration deadline itself is never announced by email, the Watch
+    // countdown covers it. fireRegistrationCount/sendRegistrationCount stay
+    // defined (lib/email/send.tsx, RegistrationCount.tsx) but nothing calls
+    // them any more.
+    if (season.application_close_at && !isFixtureSeason(season)) {
+      const applicationCloseAt = new Date(season.application_close_at)
+      const reminderHours = Array.isArray(season.application_deadline_reminder_hours)
+        ? (season.application_deadline_reminder_hours as number[])
         : []
-      for (const { n: reminderDay, fireAt } of registrationReminderFireTimes(season.registration_close_at, reminderDays)) {
-        if (fireAt && fireAt <= now && now < registrationCloseAt) {
-          const result = await fireRegistrationCount(season, reminderDay, budget)
-          report.registrationCount.push({
+      for (const { n: reminderHour, fireAt } of applicationDeadlineReminderFireTimes(
+        season.application_close_at,
+        reminderHours,
+      )) {
+        if (fireAt && fireAt <= now && now < applicationCloseAt) {
+          const result = await fireApplicationDeadline(season, reminderHour, budget)
+          report.applicationDeadline.push({
             season: season.id,
-            reminderDay,
+            reminderHour,
             ...result,
           })
         }
@@ -736,56 +744,51 @@ async function fireSubmissionDeadline(
   )
 }
 
-// ── registration_count ────────────────────────────────────────────────────
-
-async function fireRegistrationCount(
+// ── application_deadline ──────────────────────────────────────────────────
+// HQ 2026-08-22, replaces the old registration_count notice below it in
+// history. Recipients = registrants for this season (genesis_applications
+// row exists) who have NOT yet submitted their prelim video -- mirrors
+// fireSubmissionDeadline's `.is('main_round_submitted_at', null)' one round
+// earlier. The status filter (same list registration_count used) excludes
+// rows already past the prelim phase (selected/rejected/etc.) -- a "finish
+// your video" nudge makes no sense once the season has moved the applicant
+// on. studio_application_submitted_at is the second, belt-and-suspenders
+// guard: none of those statuses should already have a submission, but
+// checking directly costs nothing and a nag-after-submit email is exactly
+// the failure this function exists to avoid causing.
+async function fireApplicationDeadline(
   season: Season,
-  reminderDay: number,
+  reminderHour: number,
   budget: TickBudget,
 ): Promise<BatchTally> {
   const supabase = createSupabaseAdmin()
-  // Recipients = everyone REGISTERED for this season (HQ 2026-08-12: "the
-  // people who registered, not pre-registrants"). Broader than the "active"
-  // status set the count itself uses below -- waitlisted registrants are
-  // still registrants and should hear the same number, even though they are
-  // not part of it. Excludes rows already past the application phase
-  // (mirrors defer_season_schedule's already_advanced check) -- a shortfall
-  // notice makes no sense once the season has moved on.
   const { data: rows, error } = await supabase
     .from('genesis_applications')
     .select('id, email, creator_name, country, main_round_submitted_at')
     .eq('season_id', season.id)
     .in('status', ['pending', 'waitlist', 'verifying', 'flagged', 'eligible'])
+    .is('studio_application_submitted_at', null)
   if (error) {
-    console.error('[cron] registration_count applicant load failed:', error.message)
+    console.error('[cron] application_deadline applicant load failed:', error.message)
     return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
   }
 
-  // ★The number in the email MUST be the same number defer_season_schedule
-  // decides on, or the participant sees one count and the automated decision
-  // uses another (HQ 2026-08-12, "가장 중요한 것"). getActiveApplicationCount
-  // calls count_active_registrations, the same SQL function defer_season_
-  // schedule now calls for its own v_active -- one definition, both callers.
-  const currentCount = await getActiveApplicationCount(season.id)
-
   return await dispatchBatch(
     (rows ?? []) as ApplicantRow[],
-    'registration_count',
+    'application_deadline',
     async (row) =>
-      sendRegistrationCount({
+      sendApplicationDeadline({
         toEmail: row.email,
         country: row.country,
         creatorName: row.creator_name,
         seasonName: season.display_name,
-        currentCount,
-        minParticipants: season.min_participants,
-        registrationCloseAt: season.registration_close_at,
-        reminderDay,
+        hoursRemaining: reminderHour,
+        reminderHour,
         applicationId: row.id,
         seasonId: season.id,
       }),
     budget,
-    reminderDay,
+    reminderHour,
   )
 }
 
@@ -959,7 +962,7 @@ type TemplateName =
   | 'not_selected'
   | 'main_round_start'
   | 'submission_deadline'
-  | 'registration_count'
+  | 'application_deadline'
   | 'deferral_notice'
   | 'results_announced'
 

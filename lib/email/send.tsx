@@ -59,6 +59,11 @@ import {
   type RegistrationCountProps,
 } from './templates/RegistrationCount'
 import {
+  ApplicationDeadline,
+  subjectFor as applicationDeadlineSubject,
+  type ApplicationDeadlineProps,
+} from './templates/ApplicationDeadline'
+import {
   DeferralNotice,
   subjectFor as deferralNoticeSubject,
   type DeferralNoticeProps,
@@ -581,6 +586,50 @@ export async function sendSubmissionDeadline(
     language: lang,
     subject: submissionDeadlineSubject(props),
     element: <SubmissionDeadline {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+    reminderHour: input.reminderHour,
+  })
+}
+
+// HQ 2026-08-22: same shape as sendSubmissionDeadline, one round earlier --
+// off application_close_at (the PRELIM video hard-cut) instead of the main-
+// round close. Replaces sendRegistrationCount as the participant-facing
+// deadline reminder (that one counted down to the REGISTRATION cutoff, which
+// is no longer announced by email at all -- the Watch countdown covers it).
+type SendApplicationDeadlineInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  hoursRemaining: number
+  // The reminder slot from seasons.application_deadline_reminder_hours that
+  // triggered this send (e.g. 168/72/24/6). Shares the 'reminder_hour' dedup
+  // key with submission_deadline (see lib/email/log.ts) -- safe because the
+  // two templateKeys are distinct, so the same numeric value never collides
+  // across them.
+  reminderHour: number
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendApplicationDeadline(
+  input: SendApplicationDeadlineInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const props: ApplicationDeadlineProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    hoursRemaining: input.hoursRemaining,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'application_deadline',
+    language: lang,
+    subject: applicationDeadlineSubject(props),
+    element: <ApplicationDeadline {...props} />,
     applicationId: input.applicationId,
     seasonId: input.seasonId,
     reminderHour: input.reminderHour,

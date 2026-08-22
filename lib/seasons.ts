@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { DateTime } from 'luxon'
 import type { Lang } from './admin-i18n'
 
 export type AIModel = {
@@ -91,12 +92,23 @@ export type Season = {
   // Cron fires the deadline-reminder email once per entry in this array,
   // e.g. [24, 6] → reminder at 24h-remaining and again at 6h-remaining.
   deadline_reminder_hours: number[]
-  // Same pattern, different clock: fires the registration-count notice once
-  // per entry, counted back from registration_close_at (not
-  // application_close_at). HQ 2026-08-12: [14, 7, 3, 1] for season_0.
-  // Nullable -- a season with no rows configured sends nothing (no default
-  // invented client-side).
+  // ★HQ 2026-08-12: [14, 7, 3, 1] for season_0, counted back from
+  // registration_close_at -- the "registration count" notice this drove
+  // (fireRegistrationCount/sendRegistrationCount) was RETIRED 2026-08-22 (HQ:
+  // "the registration deadline itself is not announced by email -- the Watch
+  // countdown covers it" -- see application_deadline_reminder_hours below,
+  // its replacement). Column/type/underlying send fn kept, not deleted
+  // (nothing calls fireRegistrationCount any more, per [[feedback-policy-
+  // obsolete-code-stays-inactive]]); the value itself was left as-is in the
+  // DB (not nulled) since nothing reads it now regardless.
   registration_reminder_days: number[] | null
+  // ★HQ 2026-08-22: replaces registration_reminder_days above -- counted back
+  // from application_close_at (the VIDEO submission hard-cut, not the
+  // registration cutoff) instead, and sent only to registrants who have not
+  // yet submitted their prelim video (mirrors deadline_reminder_hours'
+  // main-round pattern, one round earlier). season_0: [168, 72, 24, 6] (7d /
+  // 3d / 1d / 6h). Nullable -- no rows configured sends nothing.
+  application_deadline_reminder_hours: number[] | null
   community_vote_weight: number
   ai_score_weight: number
 
@@ -653,12 +665,43 @@ export function deadlineReminderFireTimes(
 
 // registration_reminder_days -> fire instants, counted back from
 // registration_close_at. Same math as email-tick's per-tick loop.
+// ★Retired 2026-08-22 (see registration_reminder_days on Season) -- kept as a
+// pure, tested utility; nothing currently calls it.
 export function registrationReminderFireTimes(
   registrationCloseAt: string | null,
   days: number[],
 ): ReminderFireTime[] {
   const closeAt = registrationCloseAt ? new Date(registrationCloseAt) : null
   return days.map((n) => ({ n, fireAt: closeAt ? new Date(closeAt.getTime() - n * 86_400_000) : null }))
+}
+
+// application_deadline_reminder_hours -> fire instants, counted back from
+// application_close_at (the VIDEO submission hard-cut). HQ 2026-08-22,
+// replaces registration_reminder_days above -- same shape as
+// deadlineReminderFireTimes (hours, not days), applied one round earlier.
+//
+// ★DST-safe on purpose: season_0's D-7 entry (168h) spans the Nov 1 DST
+// boundary (application_close_at itself is already PST; 7 days earlier is
+// still PDT). Plain millisecond subtraction (`closeAt - n*3_600_000`, what
+// deadlineReminderFireTimes/registrationReminderFireTimes above do) would
+// land D-7 one hour off the intended 17:00 PT wall-clock time -- exactly the
+// class of bug [[project-season0-schedule-stale]] flagged for the schedule
+// columns themselves. Entries that are an exact multiple of 24h and >=24h
+// are treated as N CALENDAR DAYS earlier in America/Los_Angeles wall-clock
+// time via Luxon (`.minus({days})`, same technique lib/season-schedule.ts
+// uses) instead of N*24 elapsed hours; the final same-day entry (6h) is
+// plain elapsed time, correct as-is since no calendar day boundary is
+// crossed by a same-day offset.
+export function applicationDeadlineReminderFireTimes(
+  applicationCloseAt: string | null,
+  hours: number[],
+): ReminderFireTime[] {
+  if (!applicationCloseAt) return hours.map((n) => ({ n, fireAt: null }))
+  const closeAtPT = DateTime.fromISO(applicationCloseAt).setZone('America/Los_Angeles')
+  return hours.map((n) => {
+    const fireAtPT = n >= 24 && n % 24 === 0 ? closeAtPT.minus({ days: n / 24 }) : closeAtPT.minus({ hours: n })
+    return { n, fireAt: fireAtPT.toJSDate() }
+  })
 }
 
 export function isMainRoundThemeRevealed(
