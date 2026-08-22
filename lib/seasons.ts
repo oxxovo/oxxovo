@@ -153,12 +153,18 @@ export type Season = {
   main_round_end_at: string | null
   awards_announcement_at: string | null
   // ★HQ 2026-08-22: ops target dates for the physical/cash follow-through after
-  // awards_announcement_at, GENERATED ALWAYS AS STORED (awards_announcement_at
-  // + 10 / 30 days) -- same pattern as prize_first/second/third above, so a
-  // schedule defer carries these forward automatically instead of needing a
-  // defer_season_schedule edit. Read-only at the application layer.
-  // Base-table only (not on seasons_public -- internal ops tracking, not
-  // client-facing yet).
+  // awards_announcement_at (+10 / +30 days). NOT a native GENERATED column --
+  // `timestamptz + interval` routes through timestamptz_pl_interval, which
+  // Postgres declares STABLE (calendar/DST-aware), not IMMUTABLE, so
+  // `GENERATED ALWAYS AS (...) STORED` was rejected ("generation expression is
+  // not immutable") -- confirmed 2026-08-22 trying to run it, unlike
+  // prize_first/second/third above (pure numeric multiply, genuinely
+  // immutable). Kept forward-automatically instead via a BEFORE INSERT OR
+  // UPDATE OF awards_announcement_at trigger (set_season_delivery_dates) --
+  // same guarantee, different mechanism. Plain writable columns at the SQL
+  // level; treat as read-only at the application layer (the trigger owns
+  // them). Base-table only (not on seasons_public -- internal ops tracking,
+  // not client-facing yet).
   prize_delivery_at: string | null
   trophy_delivery_at: string | null
   // ★When the preliminary result mail goes out. A SCHEDULE, not a marker --

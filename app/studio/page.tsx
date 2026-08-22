@@ -472,7 +472,13 @@ export default function StudioPage() {
   if (loadError === 'no_application' || loadError === 'membership_required') {
     const gateMsg = loadError === 'no_application' ? t.studio_gate_no_application : t.studio_gate_membership_required
     const gateCta = loadError === 'no_application' ? t.studio_gate_no_application_cta : t.studio_gate_membership_required_cta
-    const gateHref = loadError === 'no_application' ? '/apply' : '/membership'
+    // ★HQ 2026-08-22: both reasons land on /apply, not /membership. /membership
+    // is a comparison page whose own CTA just links to /apply -- /apply is
+    // where the actual Stripe checkout button lives (MembershipGateScreen,
+    // shown whenever gateActive && !isActiveCreator, ahead of the form).
+    // Sending a payment-blocked participant to /membership first would cost
+    // them an extra click before reaching the real "pay" screen.
+    const gateHref = '/apply'
     return (
       <Shell t={t} onLogout={() => { clearLocalUser(); router.push('/') }}>
         <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-24 text-center">

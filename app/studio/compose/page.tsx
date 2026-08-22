@@ -116,8 +116,11 @@ export default function ComposePage() {
         ) : err === 'no_application' || err === 'membership_required' ? (
           <div className="px-6 py-24 text-center">
             <p className="text-[#ff8888]">{err === 'no_application' ? t.no_application : t.membership_required}</p>
+            {/* Both reasons go to /apply -- it holds the real Stripe checkout
+                button (MembershipGateScreen) when the gate is active, not
+                /membership (a comparison page one extra click away). */}
             <Link
-              href={err === 'no_application' ? '/apply' : '/membership'}
+              href="/apply"
               className="mt-4 inline-block rounded-lg border border-[#8b22ff]/60 px-5 py-2.5 text-sm font-bold text-[#b66cff] transition hover:bg-[#8b22ff]/10"
             >
               {err === 'no_application' ? t.no_application_cta : t.membership_required_cta}
