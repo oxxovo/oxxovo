@@ -31,6 +31,7 @@ import {
   submitRender,
   deleteClip,
   deleteRender,
+  checkStudioAccess,
   STATEMENT_MIN,
   STATEMENT_MAX,
   type StudioModel,
@@ -145,7 +146,11 @@ export type StudioState = {
 
 export type LoadStudioResult =
   | { ok: true; data: StudioState }
-  | { ok: false; error: 'invalid_token' | 'no_season' | 'load_failed' | 'disabled'; detail?: string }
+  | {
+      ok: false
+      error: 'invalid_token' | 'no_season' | 'load_failed' | 'disabled' | 'no_application' | 'membership_required'
+      detail?: string
+    }
 
 export async function loadStudioState(token: string): Promise<LoadStudioResult> {
   if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
@@ -155,6 +160,9 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
   try {
     const season = await getCurrentSeason()
     if (!season) return { ok: false, error: 'no_season' }
+
+    const access = await checkStudioAccess({ userId: auth.userId, email: auth.email, seasonId: season.id })
+    if (!access.ok) return { ok: false, error: access.reason }
 
     const [cfg, models, imageModels, presets, modelEtas, balance, jobs, theme, pricing, creatorProfile] = await Promise.all([
       getSeasonStudioConfig(season.id),
@@ -247,7 +255,7 @@ export type CreateGenResult =
   | { ok: true; jobId: string; credits: number }
   | {
       ok: false
-      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'unknown_preset' | 'invalid_param' | 'disabled' | 'failed' | 'not_image_model' | 'not_video_model' | 'not_i2v_model' | 'character_not_found' | 'character_no_reference' | 'parent_not_found' | 'parent_not_ready' | 'parent_not_image' | 'bad_shots' | 'ip_flag' | 'cosmetic_flag'
+      error: 'invalid_token' | 'no_season' | 'unknown_model' | 'bad_duration' | 'prompt_too_long' | 'cap_reached' | 'insufficient_credits' | 'unknown_preset' | 'invalid_param' | 'disabled' | 'failed' | 'not_image_model' | 'not_video_model' | 'not_i2v_model' | 'character_not_found' | 'character_no_reference' | 'parent_not_found' | 'parent_not_ready' | 'parent_not_image' | 'bad_shots' | 'ip_flag' | 'cosmetic_flag' | 'no_application' | 'membership_required'
       detail?: string
     }
 
@@ -267,6 +275,8 @@ export async function createGenerationAction(
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
+  const access = await checkStudioAccess({ userId: auth.userId, email: auth.email, seasonId: season.id })
+  if (!access.ok) return { ok: false, error: access.reason }
 
   const res = await createGeneration({
     userId: auth.userId,
@@ -285,7 +295,11 @@ export async function createGenerationAction(
 
 export type CreateMusicGenResult =
   | { ok: true; assetId: string; credits: number }
-  | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | MusicReason; detail?: string }
+  | {
+      ok: false
+      error: 'invalid_token' | 'no_season' | 'disabled' | 'no_application' | 'membership_required' | MusicReason
+      detail?: string
+    }
 
 // Enqueue an AI music bed. Gate + prompt guard + imitation block + moderation +
 // credit charge all live in createMusicGeneration; the worker (oxxovo-studio)
@@ -302,6 +316,8 @@ export async function generateMusicAction(
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
+  const access = await checkStudioAccess({ userId: auth.userId, email: auth.email, seasonId: season.id })
+  if (!access.ok) return { ok: false, error: access.reason }
   // The cap axis is season+round, so the round has to be resolved server-side
   // (never taken from the client) exactly as the clip path does.
   const mcfg = await getSeasonStudioConfig(season.id)
@@ -327,6 +343,8 @@ export async function createImageGenerationAction(
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
+  const access = await checkStudioAccess({ userId: auth.userId, email: auth.email, seasonId: season.id })
+  if (!access.ok) return { ok: false, error: access.reason }
   const res = await createImageGeneration({
     userId: auth.userId,
     seasonId: season.id,
@@ -348,6 +366,8 @@ export async function createI2vGenerationAction(
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
+  const access = await checkStudioAccess({ userId: auth.userId, email: auth.email, seasonId: season.id })
+  if (!access.ok) return { ok: false, error: access.reason }
   const res = await createI2vGeneration({
     userId: auth.userId,
     seasonId: season.id,
@@ -385,6 +405,8 @@ export async function createCharacterAction(
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
+  const access = await checkStudioAccess({ userId: auth.userId, email: auth.email, seasonId: season.id })
+  if (!access.ok) return { ok: false, error: access.reason }
   const res = await createCharacter({
     userId: auth.userId,
     seasonId: season.id,
@@ -634,7 +656,11 @@ export type LoadComposeResult =
         musicUsed: number
       }
     }
-  | { ok: false; error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed'; detail?: string }
+  | {
+      ok: false
+      error: 'invalid_token' | 'no_season' | 'disabled' | 'load_failed' | 'no_application' | 'membership_required'
+      detail?: string
+    }
 
 export async function loadComposeState(token: string): Promise<LoadComposeResult> {
   if (!(await isSession6Enabled())) return { ok: false, error: 'disabled' }
@@ -642,6 +668,8 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
+  const access = await checkStudioAccess({ userId: auth.userId, email: auth.email, seasonId: season.id })
+  if (!access.ok) return { ok: false, error: access.reason }
   try {
     // Compose picks clips for the CURRENT round only -- a 'both' season splits
     // application vs main clips at main_round_start_at, so main-round compose
@@ -863,6 +891,8 @@ export async function createRenderAction(token: string, edl: EdlSegment[] | Comp
   if (!auth) return { ok: false, error: 'invalid_token' }
   const season = await getCurrentSeason()
   if (!season) return { ok: false, error: 'no_season' }
+  const access = await checkStudioAccess({ userId: auth.userId, email: auth.email, seasonId: season.id })
+  if (!access.ok) return { ok: false, error: access.reason }
   const res = await createRender({ userId: auth.userId, seasonId: season.id, edl })
   if (!res.ok) return { ok: false, error: res.reason }
   return { ok: true, renderId: res.renderId }

@@ -26,8 +26,22 @@ import {
 import type { EdlSegment } from '@/lib/studio'
 
 const T = {
-  ko: { auth: 'Studio를 사용하려면 로그인이 필요합니다.', login: '로그인하기', loading: '불러오는 중…', back: '← Studio', disabled: '현재 Studio가 비활성화되어 있습니다.' },
-  en: { auth: 'Log in to use Studio.', login: 'Log in', loading: 'Loading…', back: '← Studio', disabled: 'Studio is currently disabled.' },
+  ko: {
+    auth: 'Studio를 사용하려면 로그인이 필요합니다.', login: '로그인하기', loading: '불러오는 중…', back: '← Studio',
+    disabled: '현재 Studio가 비활성화되어 있습니다.',
+    no_application: '이 시즌에 등록되어 있지 않습니다. 먼저 신청해야 Studio를 사용할 수 있습니다.',
+    no_application_cta: '신청하기',
+    membership_required: '크리에이터 멤버십이 만료되었거나 없습니다. 멤버십을 갱신하면 다시 사용할 수 있습니다.',
+    membership_required_cta: '멤버십 확인/갱신',
+  },
+  en: {
+    auth: 'Log in to use Studio.', login: 'Log in', loading: 'Loading…', back: '← Studio',
+    disabled: 'Studio is currently disabled.',
+    no_application: 'You are not registered for this season. Apply first to use Studio.',
+    no_application_cta: 'Apply',
+    membership_required: 'Your creator membership is expired or missing. Renew it to use Studio again.',
+    membership_required_cta: 'Check / renew membership',
+  },
 }
 
 export default function ComposePage() {
@@ -99,6 +113,16 @@ export default function ComposePage() {
           </div>
         ) : err === 'disabled' ? (
           <p className="px-6 py-24 text-center text-white/40">{t.disabled}</p>
+        ) : err === 'no_application' || err === 'membership_required' ? (
+          <div className="px-6 py-24 text-center">
+            <p className="text-[#ff8888]">{err === 'no_application' ? t.no_application : t.membership_required}</p>
+            <Link
+              href={err === 'no_application' ? '/apply' : '/membership'}
+              className="mt-4 inline-block rounded-lg border border-[#8b22ff]/60 px-5 py-2.5 text-sm font-bold text-[#b66cff] transition hover:bg-[#8b22ff]/10"
+            >
+              {err === 'no_application' ? t.no_application_cta : t.membership_required_cta}
+            </Link>
+          </div>
         ) : err || !data ? (
           <p className="px-6 py-24 text-center text-[#ff8888]">{err ?? 'load failed'}</p>
         ) : (

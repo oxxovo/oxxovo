@@ -115,6 +115,8 @@ const DICT = {
     err_no_reference: '이 배우에는 참조 컷이 없어 샷 촬영을 할 수 없습니다. ② 내 배우에서 참조 컷을 1장 이상 추가해 주세요. (크레딧은 차감되지 않았습니다.)',
     err_insufficient: '크레딧이 부족합니다.',
     err_generic: '생성 실패',
+    studio_gate_no_application: '이 시즌에 등록되어 있지 않습니다. 먼저 신청해야 Studio를 사용할 수 있습니다.',
+    studio_gate_membership_required: '크리에이터 멤버십이 만료되었거나 없습니다. 멤버십을 갱신하면 다시 사용할 수 있습니다.',
     // status
     st_queued: '대기 중', st_generating: '생성 중', st_uploading: '업로드 중', st_ready: '준비됨', st_failed: '실패',
   },
@@ -191,6 +193,8 @@ const DICT = {
     err_no_reference: 'This actor has no reference cut, so shots cannot be shot from it. Add at least one reference cut in ② My actors. (You have not been charged.)',
     err_insufficient: 'Not enough credits.',
     err_generic: 'Generation failed',
+    studio_gate_no_application: 'You are not registered for this season. Apply first to use Studio.',
+    studio_gate_membership_required: 'Your creator membership is expired or missing. Renew it to use Studio again.',
     st_queued: 'Queued', st_generating: 'Generating', st_uploading: 'Uploading', st_ready: 'Ready', st_failed: 'Failed',
   },
 }
@@ -305,6 +309,8 @@ function MakeActor({
       case 'parent_not_found':
       case 'parent_not_ready':
       case 'parent_not_image': return t.err_generic
+      case 'no_application': return t.studio_gate_no_application
+      case 'membership_required': return t.studio_gate_membership_required
       default: return t.err_generic
     }
   }
@@ -673,6 +679,8 @@ function Shots({
       // Refused before any charge (fal would 422 on an empty reference list), so
       // this must not fall through to "generation failed".
       case 'character_no_reference': return t.err_no_reference
+      case 'no_application': return t.studio_gate_no_application
+      case 'membership_required': return t.studio_gate_membership_required
       default: return t.err_i2v
     }
   }

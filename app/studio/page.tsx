@@ -52,6 +52,12 @@ const DICT = {
     loading: '불러오는 중…',
     load_failed: '데이터를 불러오지 못했습니다.',
     no_season: '현재 진행 중인 시즌이 없습니다.',
+    // ★HQ 2026-08-22: Studio 접근 게이트(등록+멤버십) 거부 사유 -- 이유와 다음
+    // 행동이 같이 보여야 한다는 지시. 문안은 제니3 확정 대기, 자리만 잡아둠.
+    studio_gate_no_application: '이 시즌에 등록되어 있지 않습니다. 먼저 신청해야 Studio를 사용할 수 있습니다.',
+    studio_gate_no_application_cta: '신청하기',
+    studio_gate_membership_required: '크리에이터 멤버십이 만료되었거나 없습니다. 멤버십을 갱신하면 다시 사용할 수 있습니다.',
+    studio_gate_membership_required_cta: '멤버십 확인/갱신',
     title: 'Studio',
     subtitle: '외부 도구 없이 OXXOVO 안에서 영상을 생성하고 제출하세요.',
     mode_clip: '클립 생성',
@@ -191,6 +197,10 @@ const DICT = {
     loading: 'Loading…',
     load_failed: 'Could not load data.',
     no_season: 'No active season right now.',
+    studio_gate_no_application: 'You are not registered for this season. Apply first to use Studio.',
+    studio_gate_no_application_cta: 'Apply',
+    studio_gate_membership_required: 'Your creator membership is expired or missing. Renew it to use Studio again.',
+    studio_gate_membership_required_cta: 'Check / renew membership',
     title: 'Studio',
     subtitle: 'Generate and submit your video inside OXXOVO — no external tools.',
     mode_clip: 'Clip generator',
@@ -453,6 +463,25 @@ export default function StudioPage() {
             className="rounded-lg border border-[#8b22ff]/60 px-5 py-2.5 text-sm font-bold text-[#b66cff] hover:bg-[#8b22ff]/10 transition"
           >
             {t.go_login}
+          </Link>
+        </div>
+      </Shell>
+    )
+  }
+
+  if (loadError === 'no_application' || loadError === 'membership_required') {
+    const gateMsg = loadError === 'no_application' ? t.studio_gate_no_application : t.studio_gate_membership_required
+    const gateCta = loadError === 'no_application' ? t.studio_gate_no_application_cta : t.studio_gate_membership_required_cta
+    const gateHref = loadError === 'no_application' ? '/apply' : '/membership'
+    return (
+      <Shell t={t} onLogout={() => { clearLocalUser(); router.push('/') }}>
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-24 text-center">
+          <p className="text-[#ff8888]">{gateMsg}</p>
+          <Link
+            href={gateHref}
+            className="rounded-lg border border-[#8b22ff]/60 px-5 py-2.5 text-sm font-bold text-[#b66cff] hover:bg-[#8b22ff]/10 transition"
+          >
+            {gateCta}
           </Link>
         </div>
       </Shell>
@@ -832,6 +861,8 @@ function Generator({
       case 'prompt_too_long': return t.err_prompt_too_long(detail ?? '')
       case 'unknown_preset': return t.err_unknown_preset
       case 'invalid_param': return t.err_invalid_param(detail ?? '')
+      case 'no_application': return t.studio_gate_no_application
+      case 'membership_required': return t.studio_gate_membership_required
       default: return t.err_generic
     }
   }
@@ -1414,6 +1445,7 @@ function JobCard({
   const submitErr = (e: string): string => {
     switch (e) {
       case 'no_application': return t.submit_err_no_application
+      case 'membership_required': return t.studio_gate_membership_required
       case 'already_submitted': return t.submit_err_already
       case 'cryptobind_failed': return t.submit_err_cryptobind
       case 'application_info_required': return t.submit_err_app_info

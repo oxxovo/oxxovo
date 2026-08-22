@@ -34,7 +34,7 @@ import { musicPickerOrFilter, musicPickerPathOk, isUuid, type MusicScopeRow } fr
 import { isOwnedBy } from '@/lib/studio-sweep-scope'
 import { isMusicEnabled } from '@/lib/music-gate'
 import { shouldHoldPrelim } from '@/lib/watch-hold'
-import { checkApplyGate } from '@/lib/membership'
+import { checkApplyGate, getMembershipState } from '@/lib/membership'
 import { checkPromptForIp } from '@/lib/ip-check'
 import { checkPromptForCosmetic } from '@/lib/cosmetic-limits'
 
@@ -223,6 +223,55 @@ export function isInEffectiveRound(
   const boundary = new Date(cfg.mainRoundStartAt).getTime()
   const t = new Date(createdAtISO).getTime()
   return effectiveRound === 'main' ? t >= boundary : t < boundary
+}
+
+// ─── Studio access gate (HQ 2026-08-22) ─────────────────────────────────────
+// The second gate layer for /studio. Callers check isSession6Enabled() FIRST
+// (the kill switch -- all-or-nothing, admin included, so it stays a real kill
+// switch); this decides who gets through once the switch is on.
+//   1. STUDIO_DEV_UNLOCK bypasses this entirely -- the isolated demo account
+//      (app/api/demo-login/route.ts) it exists for is never reachable in
+//      Production, so this is unchanged from today's behavior there.
+//   2. admin (profiles.role -- the same flag requireAdmin gates /admin with;
+//      no separate flag invented) bypasses the AND below, so TK can always
+//      test regardless of registration/membership state.
+//   3. everyone else needs BOTH a registration for this season AND an active
+//      creator membership -- the SAME bar checkApplyGate uses (not gated
+//      behind membership_enabled/membership_required_for_apply; those flags
+//      control whether /apply itself dark-launches, not who Studio lets in
+//      once registered). AND, not OR: a season change must never leave
+//      someone registered but unable to produce.
+export type StudioAccessDenyReason = 'no_application' | 'membership_required'
+export type StudioAccessResult = { ok: true } | { ok: false; reason: StudioAccessDenyReason }
+
+export async function checkStudioAccess(params: {
+  userId: string
+  email: string
+  seasonId: string
+}): Promise<StudioAccessResult> {
+  if (process.env.STUDIO_DEV_UNLOCK === 'true') return { ok: true }
+
+  const admin = createSupabaseAdmin()
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('role')
+    .eq('id', params.userId)
+    .maybeSingle()
+  if (profile?.role === 'admin') return { ok: true }
+
+  const [{ data: appRow }, membership] = await Promise.all([
+    admin
+      .from('genesis_applications')
+      .select('id')
+      .eq('season_id', params.seasonId)
+      .ilike('email', params.email)
+      .limit(1)
+      .maybeSingle(),
+    getMembershipState(params.userId),
+  ])
+  if (!appRow) return { ok: false, reason: 'no_application' }
+  if (!membership.isActiveCreator) return { ok: false, reason: 'membership_required' }
+  return { ok: true }
 }
 
 const MODEL_COLS = 'id, tier, display_name, cost_per_second_usd, min_duration_seconds, max_duration_seconds, metadata'
