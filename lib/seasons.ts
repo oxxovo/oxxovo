@@ -152,6 +152,15 @@ export type Season = {
   main_round_start_at: string | null
   main_round_end_at: string | null
   awards_announcement_at: string | null
+  // ★HQ 2026-08-22: ops target dates for the physical/cash follow-through after
+  // awards_announcement_at, GENERATED ALWAYS AS STORED (awards_announcement_at
+  // + 10 / 30 days) -- same pattern as prize_first/second/third above, so a
+  // schedule defer carries these forward automatically instead of needing a
+  // defer_season_schedule edit. Read-only at the application layer.
+  // Base-table only (not on seasons_public -- internal ops tracking, not
+  // client-facing yet).
+  prize_delivery_at: string | null
+  trophy_delivery_at: string | null
   // ★When the preliminary result mail goes out. A SCHEDULE, not a marker --
   // prelim_released_at (already on the base table) is the marker that says the
   // hold was actually lifted. Keeping the two apart is the scoring_complete_at
