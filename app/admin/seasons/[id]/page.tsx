@@ -7,6 +7,7 @@ import { filterKnownVideoPlatforms } from '@/lib/video-url'
 import { SeasonForm } from '../SeasonForm'
 import { DeleteSeasonButton } from '../DeleteSeasonButton'
 import { EditSeasonHeader, DangerZoneHeading } from '../SeasonPageHeader'
+import { StudioTestAccess } from '../StudioTestAccess'
 
 export default async function SeasonEditPage({
   params,
@@ -117,6 +118,8 @@ export default async function SeasonEditPage({
       />
 
       <SeasonForm id={id} initial={initial} />
+
+      <StudioTestAccess seasonId={id} />
 
       <section className="mt-16 pt-8 border-t border-white/10">
         <DangerZoneHeading />

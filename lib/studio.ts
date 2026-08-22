@@ -35,6 +35,7 @@ import { isOwnedBy } from '@/lib/studio-sweep-scope'
 import { isMusicEnabled } from '@/lib/music-gate'
 import { shouldHoldPrelim } from '@/lib/watch-hold'
 import { checkApplyGate, getMembershipState } from '@/lib/membership'
+import { hasActiveStudioTestAccess } from '@/lib/studio-test-access'
 import { checkPromptForIp } from '@/lib/ip-check'
 import { checkPromptForCosmetic } from '@/lib/cosmetic-limits'
 
@@ -235,7 +236,14 @@ export function isInEffectiveRound(
 //   2. admin (profiles.role -- the same flag requireAdmin gates /admin with;
 //      no separate flag invented) bypasses the AND below, so TK can always
 //      test regardless of registration/membership state.
-//   3. everyone else needs BOTH a registration for this season AND an active
+//   3. an admin-granted, season-scoped, expiry-REQUIRED test-access row
+//      (studio_test_access, lib/studio-test-access.ts) bypasses the AND too
+//      -- lets a non-admin account test as a normal participant before real
+//      registration opens (watermark/E2E/subtitle/parity work needs that
+//      view, not the admin bypass's). expires_at is NOT NULL at the DB level
+//      -- a grant with no end date cannot exist, so this cannot repeat the
+//      2026-08-13 incident (a test-only switch left on).
+//   4. everyone else needs BOTH a registration for this season AND an active
 //      creator membership -- the SAME bar checkApplyGate uses (not gated
 //      behind membership_enabled/membership_required_for_apply; those flags
 //      control whether /apply itself dark-launches, not who Studio lets in
@@ -258,6 +266,8 @@ export async function checkStudioAccess(params: {
     .eq('id', params.userId)
     .maybeSingle()
   if (profile?.role === 'admin') return { ok: true }
+
+  if (await hasActiveStudioTestAccess(params.userId, params.seasonId)) return { ok: true }
 
   const [{ data: appRow }, membership] = await Promise.all([
     admin

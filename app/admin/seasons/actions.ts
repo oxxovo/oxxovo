@@ -5,6 +5,13 @@ import { redirect } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { seasonSchema, type SeasonInput } from '@/lib/season-schema'
+import {
+  grantStudioTestAccess,
+  revokeStudioTestAccess,
+  listStudioTestAccess,
+  type StudioTestAccessListRow,
+  type GrantResult,
+} from '@/lib/studio-test-access'
 
 export type SeasonFormState = {
   ok: boolean
@@ -139,4 +146,43 @@ export async function saveSeason(
     const msg = e instanceof Error ? e.message : 'Unknown error'
     return { ok: false, errorMessage: msg }
   }
+}
+
+// ─── Studio test access (HQ 2026-08-22) ─────────────────────────────────────
+// Admin-granted, season-scoped, expiry-required bypass of the registration+
+// membership gate -- see lib/studio-test-access.ts / lib/studio.ts
+// checkStudioAccess for why. All three actions require admin (requireAdmin
+// throws/redirects otherwise, same as every other action in this file).
+
+export async function listStudioTestAccessAction(seasonId: string): Promise<StudioTestAccessListRow[]> {
+  await requireAdmin()
+  return listStudioTestAccess(seasonId)
+}
+
+export async function grantStudioTestAccessAction(input: {
+  seasonId: string
+  email: string
+  expiresAt: string
+  note?: string
+}): Promise<GrantResult> {
+  const admin = await requireAdmin()
+  const res = await grantStudioTestAccess({
+    email: input.email,
+    seasonId: input.seasonId,
+    grantedBy: admin.id,
+    expiresAt: input.expiresAt,
+    note: input.note,
+  })
+  if (res.ok) revalidatePath(`/admin/seasons/${input.seasonId}`)
+  return res
+}
+
+export async function revokeStudioTestAccessAction(
+  id: string,
+  seasonId: string,
+): Promise<{ ok: boolean }> {
+  await requireAdmin()
+  const res = await revokeStudioTestAccess(id)
+  if (res.ok) revalidatePath(`/admin/seasons/${seasonId}`)
+  return res
 }
