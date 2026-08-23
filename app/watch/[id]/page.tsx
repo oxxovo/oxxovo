@@ -26,6 +26,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ChatWidget } from '@/app/_components/ChatWidget'
 import { WatchShell, type SidebarSeason, type SidebarSubscription } from '../WatchShell'
 import { WatchPlayer } from '../WatchPlayer'
+import { AspectThumb } from '../Arena'
 import { FollowButton } from '../FollowButton'
 import { ViewTracker } from '../ViewTracker'
 import { LikeButton } from '../LikeButton'
@@ -292,16 +293,7 @@ function RelatedCard({ v }: { v: WatchVideo }) {
       href={`/watch/${v.applicationId}?round=${v.round}`}
       className="group flex gap-3 rounded-lg p-1.5 transition hover:bg-white/5"
     >
-      <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded bg-[#0c0a14]">
-        {v.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={v.thumbnailUrl} alt={v.creatorName} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2a0e52] to-[#1a0633] p-1 text-center">
-            <span className="text-[10px] font-bold uppercase text-white/80">{v.creatorName}</span>
-          </div>
-        )}
-      </div>
+      <AspectThumb url={v.thumbnailUrl} label={v.creatorName} className="w-32 shrink-0 rounded bg-[#0c0a14]" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-white">{v.creatorName}</p>
         <p className="mt-0.5 text-[11px] text-white/45">

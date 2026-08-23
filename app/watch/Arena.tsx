@@ -14,6 +14,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress, Finalist, BannerContent } from '@/lib/watch'
 import { LiveStatusBar } from './LiveStatusBar'
 import { useT, useAdminLang, type Messages } from '@/lib/admin-i18n'
@@ -220,15 +221,7 @@ export function FinalistSection({ finalists }: { finalists: Finalist[] }) {
             rel="noopener noreferrer"
             className="group block overflow-hidden rounded-xl border border-[#8b22ff]/30 bg-[#110d1c] transition hover:border-[#8b22ff]/60 hover:shadow-[0_0_22px_rgba(139,34,255,.25)]"
           >
-            <div className="relative aspect-video w-full overflow-hidden">
-              {f.thumbnailUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={f.thumbnailUrl} alt={f.videoTitle || f.creatorName} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2a0e52] via-[#3d1580] to-[#1a0633] p-4 text-center">
-                  <span className="text-sm font-black uppercase tracking-wide text-white/85">{f.creatorName}</span>
-                </div>
-              )}
+            <AspectThumb url={f.thumbnailUrl} label={f.videoTitle || f.creatorName} className="w-full">
               <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-[#8b22ff]/90 px-2 py-1 text-[11px] font-black text-white backdrop-blur">
                 🏆 {f.awardRank ? `#${f.awardRank}` : t.watch.finalist_badge}
               </span>
@@ -237,7 +230,7 @@ export function FinalistSection({ finalists }: { finalists: Finalist[] }) {
                   <span className="text-xs font-bold text-white/90">{t.watch.finalist_pending_note}</span>
                 </div>
               )}
-            </div>
+            </AspectThumb>
             <div className="p-3.5">
               <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{f.videoTitle || f.creatorName}</h3>
               <p className="mt-1 truncate text-xs text-[#7a7299]">
@@ -276,8 +269,7 @@ function WatchCard({
       rel="noopener noreferrer"
       className="group block overflow-hidden rounded-xl border border-white/8 bg-[#110d1c] transition hover:border-[#8b22ff]/50 hover:shadow-[0_0_22px_rgba(139,34,255,.2)]"
     >
-      <div className="relative aspect-video w-full overflow-hidden">
-        <Thumb v={v} />
+      <AspectThumb url={v.thumbnailUrl} label={v.videoTitle || v.creatorName} className="w-full">
         <CardBadge v={v} showJudging={showJudging} voteOpen={voteOpen} />
         <CardCenter v={v} showJudging={showJudging} voteOpen={voteOpen} />
         {tag && (
@@ -285,7 +277,7 @@ function WatchCard({
             🏆 {tag}
           </span>
         )}
-      </div>
+      </AspectThumb>
       <div className="p-3.5">
         <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</h3>
         <p className="mt-1 truncate text-xs text-[#7a7299]">
@@ -385,6 +377,67 @@ function Thumb({ v }: { v: WatchVideo }) {
   )
 }
 
+// ── Aspect-neutral thumbnail box (TK 2026-08-22) ────────────────────────────
+// A hardcoded `aspect-video` (16:9) box + object-cover crops a 9:16 thumbnail
+// down to a thin center strip (confirmed on live /watch -- 92/93 promo videos
+// are 9:16, the grid box was 16:9). Fixing it to `aspect-[9/16]` would just
+// reverse the bug the day a 16:9 season opens, and nothing here filters a
+// list to one season, so two ratios can sit in the same grid at once.
+// Matches WatchPlayer.tsx:32's approach instead: read the REAL image
+// dimensions via onLoad (naturalWidth/naturalHeight) and size the box to
+// match -- no crop needed because the box always equals the content's ratio.
+// Works today with zero DB migration; `fallback` is only the placeholder
+// ratio shown before the image loads (prevents a layout jump). Participant
+// entries have no resolution column yet (generation_jobs carries no
+// aspect/width/height), so this reads it from the pixels every time rather
+// than waiting on that schema work.
+export function AspectThumb({
+  url,
+  label,
+  className = '',
+  fallback = '9 / 16',
+  children,
+}: {
+  url: string | null
+  label: string
+  className?: string
+  fallback?: string
+  children?: React.ReactNode
+}) {
+  const [ratio, setRatio] = useState(fallback)
+  // If the browser already has `url` cached (repeat view, HMR reload), the
+  // image can finish decoding before this onLoad listener attaches -- the
+  // event never fires and the box is stuck on `fallback` forever, silently
+  // wrong for a real 16:9 asset. Caught by screenshot-testing this against a
+  // real cached image before shipping. `ref` callback runs on mount/update,
+  // so it catches the already-complete case that onLoad misses; onLoad still
+  // covers the normal (not yet cached) load.
+  const applyRatio = (img: HTMLImageElement | null) => {
+    if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setRatio(`${img.naturalWidth} / ${img.naturalHeight}`)
+    }
+  }
+  return (
+    <div className={`relative overflow-hidden ${className}`} style={{ aspectRatio: ratio }}>
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt={label}
+          className="h-full w-full object-cover"
+          ref={applyRatio}
+          onLoad={(e) => applyRatio(e.currentTarget)}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2a0e52] via-[#3d1580] to-[#1a0633] p-4 text-center">
+          <span className="text-sm font-black uppercase tracking-wide text-white/85">{label}</span>
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
+
 function RoundBadge({ round }: { round: WatchVideo['round'] }) {
   const t = useT()
   return (
@@ -420,11 +473,10 @@ export function FeaturedCompetitors({ items, seasonNames }: { items: ScoredMain[
             rel="noopener noreferrer"
             className="group w-[300px] shrink-0 overflow-hidden rounded-xl border border-[#8b22ff]/25 bg-[#110d1c] transition hover:border-[#8b22ff]/60 hover:shadow-[0_0_24px_rgba(139,34,255,.25)]"
           >
-            <div className="relative aspect-video w-full overflow-hidden">
-              <Thumb v={v} />
+            <AspectThumb url={v.thumbnailUrl} label={v.videoTitle || v.creatorName} className="w-full">
               <RoundBadge round={v.round} />
               <ScoreBadge score={score} />
-            </div>
+            </AspectThumb>
             <div className="p-3.5">
               <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</h3>
               <p className="mt-1 truncate text-xs text-[#7a7299]">
@@ -514,15 +566,14 @@ export function LatestEntries({
               rel="noopener noreferrer"
               className="group block overflow-hidden rounded-xl border border-white/8 bg-[#110d1c] transition hover:border-[#8b22ff]/50 hover:shadow-[0_0_22px_rgba(139,34,255,.2)]"
             >
-              <div className="relative aspect-video w-full overflow-hidden">
-                <Thumb v={v} />
+              <AspectThumb url={v.thumbnailUrl} label={v.videoTitle || v.creatorName} className="w-full">
                 {/* Status badge (top-left) + centerpiece: the MAIN ROUND label
                     while voting, or a pending ring while awaiting Triple-AI.
                     Verified cards keep the poster clean (score in badge + footer).
                     No Staff Pick / Featured badges (never promotes entries). */}
                 <CardBadge v={v} showJudging={showJudging} voteOpen={voteOpen} />
                 <CardCenter v={v} showJudging={showJudging} voteOpen={voteOpen} />
-              </div>
+              </AspectThumb>
               <div className="p-3.5">
                 <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</h3>
                 <p className="mt-1 truncate text-xs text-[#7a7299]">
