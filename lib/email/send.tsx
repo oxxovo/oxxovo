@@ -71,6 +71,16 @@ import {
 } from './templates/VoteDeadline'
 export type { VoteDeadlineAudience } from './templates/VoteDeadline'
 import {
+  SeasonWinnerAnnounced,
+  subjectFor as seasonWinnerAnnouncedSubject,
+  type SeasonWinnerAnnouncedProps,
+} from './templates/SeasonWinnerAnnounced'
+import {
+  SeasonInvite,
+  subjectFor as seasonInviteSubject,
+  type SeasonInviteProps,
+} from './templates/SeasonInvite'
+import {
   DeferralNotice,
   subjectFor as deferralNoticeSubject,
   type DeferralNoticeProps,
@@ -704,6 +714,83 @@ export async function sendVoteDeadline(input: SendVoteDeadlineInput): Promise<Se
     applicationId: input.applicationId,
     seasonId: input.seasonId,
     metadata: { audience: input.audience },
+  })
+}
+
+// HQ 2026-08-22 (new email 1 of 2): "the winner is out", to prelim
+// non-advancers. Own templateKey ('season_winner_announced') -- never
+// results_announced, see that template's header comment.
+type SendSeasonWinnerAnnouncedInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  seasonName: string
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendSeasonWinnerAnnounced(
+  input: SendSeasonWinnerAnnouncedInput,
+): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
+  const props: SeasonWinnerAnnouncedProps = {
+    lang,
+    creatorName: input.creatorName,
+    seasonName: input.seasonName,
+    watchUrl: `${base}/watch`,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'season_winner_announced',
+    language: lang,
+    subject: seasonWinnerAnnouncedSubject(props),
+    element: <SeasonWinnerAnnounced {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+  })
+}
+
+// HQ 2026-08-22 (new email 2 of 2): next-season invite. See SeasonInvite.tsx
+// and fireSeasonInviteIfConfirmed (app/admin/seasons/actions.ts) for why
+// this fires as a season-save side effect, not a date/cron trigger.
+type SendSeasonInviteInput = {
+  toEmail: string
+  country: string | null | undefined
+  creatorName: string
+  priorSeasonName: string
+  nextSeasonName: string
+  nextSeasonOpenAt: string | null
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendSeasonInvite(input: SendSeasonInviteInput): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
+  const nextSeasonOpenAt = input.nextSeasonOpenAt
+    ? new Date(input.nextSeasonOpenAt).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
+        dateStyle: 'long',
+      })
+    : ''
+  const props: SeasonInviteProps = {
+    lang,
+    creatorName: input.creatorName,
+    priorSeasonName: input.priorSeasonName,
+    nextSeasonName: input.nextSeasonName,
+    nextSeasonOpenAt,
+    applyUrl: `${base}/apply`,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'season_invite',
+    language: lang,
+    subject: seasonInviteSubject(props),
+    element: <SeasonInvite {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
   })
 }
 

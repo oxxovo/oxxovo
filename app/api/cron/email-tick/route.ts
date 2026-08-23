@@ -30,6 +30,7 @@ import {
   sendSubmissionDeadline,
   sendApplicationDeadline,
   sendVoteDeadline,
+  sendSeasonWinnerAnnounced,
   sendDeferralNotice,
   sendResultsAnnounced,
   type ResultsPlacement,
@@ -117,6 +118,10 @@ type TickReport = {
   // defer_count naturally fires again.
   deferralNotice: ({ season: string; deferCount: number } & BatchTally)[]
   resultsAnnounced: ({ season: string } & BatchTally)[]
+  // HQ 2026-08-22 (new email 1 of 2): same trigger instant as
+  // resultsAnnounced, opposite cohort (prelim non-advancers). See
+  // fireSeasonWinnerAnnounced.
+  seasonWinnerAnnounced: ({ season: string } & BatchTally)[]
   // Finalist advancement notices (SelectedTop50 + NotSelected), fired once a
   // season's scoring window has completed and season-tick has set the
   // selected/rejected statuses. Dedup-safe (canSend + executeSend).
@@ -197,6 +202,7 @@ async function handle(request: NextRequest) {
     voteDeadline: [],
     deferralNotice: [],
     resultsAnnounced: [],
+    seasonWinnerAnnounced: [],
     finalistResults: [],
     videoLive: [],
     submissionReceipts: [],
@@ -331,6 +337,14 @@ async function handle(request: NextRequest) {
     ) {
       const result = await fireResultsAnnounced(season, budget)
       report.resultsAnnounced.push({ season: season.id, ...result })
+
+      // HQ 2026-08-22 (new email 1 of 2): same instant, OPPOSITE cohort --
+      // prelim non-advancers, who fireResultsAnnounced's query never
+      // includes (main-round-only, unchanged). Own tally, own dedup key
+      // (season_winner_announced), so it can never be confused with or
+      // double-count against results_announced.
+      const winnerResult = await fireSeasonWinnerAnnounced(season, budget)
+      report.seasonWinnerAnnounced.push({ season: season.id, ...winnerResult })
     }
 
     // ⑥F. ★Rehearsal fixtures are excluded by the SAME predicate the lobby uses
@@ -1040,6 +1054,40 @@ async function fireResultsAnnounced(season: Season, budget: TickBudget): Promise
   )
 }
 
+// ── season_winner_announced ────────────────────────────────────────────────
+// HQ 2026-08-22 (new email 1 of 2): "the winner is out" -- same trigger
+// instant as results_announced (awards_announcement_at), OPPOSITE cohort.
+// status='rejected' = prelim non-advancers, the same status fireFinalistResults
+// below already uses for NotSelected -- this is NOT that email again, it is
+// a season-closing FYI weeks later (see SeasonWinnerAnnounced.tsx header).
+async function fireSeasonWinnerAnnounced(season: Season, budget: TickBudget): Promise<BatchTally> {
+  const supabase = createSupabaseAdmin()
+  const { data: rows, error } = await supabase
+    .from('genesis_applications')
+    .select('id, email, creator_name, country, main_round_submitted_at')
+    .eq('season_id', season.id)
+    .eq('status', 'rejected')
+  if (error) {
+    console.error('[cron] season_winner_announced applicant load failed:', error.message)
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
+  }
+
+  return await dispatchBatch(
+    (rows ?? []) as ApplicantRow[],
+    'season_winner_announced',
+    async (row) =>
+      sendSeasonWinnerAnnounced({
+        toEmail: row.email,
+        country: row.country,
+        creatorName: row.creator_name,
+        seasonName: season.display_name,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
+    budget,
+  )
+}
+
 // ── finalist results (SelectedTop50 + NotSelected) ────────────────────────
 // Fired after season-tick advancement has set selected/rejected statuses.
 // SelectedTop50 -> Finalists; NotSelected -> the rest of the scored pool.
@@ -1148,6 +1196,8 @@ type TemplateName =
   | 'vote_deadline'
   | 'deferral_notice'
   | 'results_announced'
+  | 'season_winner_announced'
+  | 'season_invite'
 
 async function dispatchBatch(
   rows: ApplicantRow[],

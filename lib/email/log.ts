@@ -70,6 +70,17 @@ export type TemplateKey =
   // metadata->>audience='member'), the same shape admin_broadcast's
   // campaign-id dedup uses for the same reason (no application to key off).
   | 'vote_deadline'
+  // HQ 2026-08-22 (new email 1 of 2): "the winner is out", fired at
+  // awards_announcement_at to prelim non-advancers (status='rejected') --
+  // NOT a variant of results_announced (that stays main-round-only). Own
+  // key on purpose so the two can never be confused or double-counted.
+  | 'season_winner_announced'
+  // HQ 2026-08-22 (new email 2 of 2): next-season invite, sent to every
+  // participant of the season just concluded (any status) when the NEXT
+  // season's schedule is confirmed -- not date-based, see
+  // fireSeasonInviteIfConfirmed's own comment (app/admin/seasons/actions.ts)
+  // for why this is a save-action side effect, not an admin "Send" button.
+  | 'season_invite'
 
 export type LogStatus = 'sent' | 'failed' | 'queued' | 'skipped'
 

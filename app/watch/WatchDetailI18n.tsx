@@ -51,9 +51,19 @@ export function MainRoundPendingNote() {
 // getRevealedTheme()) -- the same single source every other surface reads
 // the twist through. Never pass an unrevealed twist in here "to be shown
 // later"; there is no client-side hold-back.
+//
+// ★HQ 2026-08-22 (follow-up): two lines -- label+value, then a prompt
+// pointing the audience at WHY it matters for voting ("compare how each
+// entry solved the same constraint"). Gating unchanged from above.
 export function TwistLabel({ twist }: { twist: string }) {
   const t = useT()
-  return <>{t.watch.detail_twist_label(twist)}</>
+  return (
+    <>
+      {t.watch.detail_twist_label(twist)}
+      <br />
+      {t.watch.detail_twist_prompt}
+    </>
+  )
 }
 
 export function ViewsCommentsLine({
