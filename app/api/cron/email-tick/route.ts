@@ -31,6 +31,7 @@ import {
   sendApplicationDeadline,
   sendDeferralNotice,
   sendResultsAnnounced,
+  type ResultsPlacement,
   sendMembershipRenewal,
   sendMembershipFoundingExpiry,
   sendVideoLivePrelim,
@@ -80,6 +81,9 @@ type ApplicantRow = {
   creator_name: string
   country: string | null
   main_round_submitted_at: string | null
+  // Optional -- only fireResultsAnnounced selects/reads this (item 2, #15
+  // placement split). Every other caller leaves it undefined.
+  award_rank?: number | null
 }
 
 type BatchTally = { sent: number; skipped: number; failed: number; deferred: number }
@@ -836,15 +840,32 @@ async function fireDeferralNotice(
 
 // ── results_announced ─────────────────────────────────────────────────────
 
+// HQ 2026-08-22, item 2 (#15): which of the 4 email variants a main-round
+// finisher gets. Pure so it's independently testable -- award_rank is the
+// only input that matters (1/2/3 -> that rank; anything else, including
+// null or an out-of-range value, folds into 'main_no_award' rather than
+// throwing, since a stray rank value must never crash the whole tick).
+function resultsPlacementFor(awardRank: number | null | undefined): ResultsPlacement {
+  if (awardRank === 1) return 'rank1'
+  if (awardRank === 2) return 'rank2'
+  if (awardRank === 3) return 'rank3'
+  return 'main_no_award'
+}
+
 async function fireResultsAnnounced(season: Season, budget: TickBudget): Promise<BatchTally> {
   const supabase = createSupabaseAdmin()
   // Results go to the main-round cohort only: Finalists (selected /
   // main_round_submitted) and winners (awarded). Preliminary-round rejects
   // already received NotSelected at finalist advancement (step 5), so they are
-  // intentionally excluded here -- no second, mismatched notice.
+  // intentionally excluded here -- no second, mismatched notice. That is
+  // deliberately UNCHANGED by the item-2 placement split below: HQ named
+  // "예선 미진출" as one of 5 outcome categories, but a second "results are
+  // live" email to someone who was told they didn't advance weeks earlier
+  // would contradict, not complete, that earlier notice -- flagged back to
+  // HQ rather than silently added.
   const { data: rows, error } = await supabase
     .from('genesis_applications')
-    .select('id, email, creator_name, country, main_round_submitted_at')
+    .select('id, email, creator_name, country, main_round_submitted_at, award_rank')
     .eq('season_id', season.id)
     .in('status', ['selected', 'main_round_submitted', 'awarded'])
   if (error) {
@@ -861,6 +882,7 @@ async function fireResultsAnnounced(season: Season, budget: TickBudget): Promise
         country: row.country,
         creatorName: row.creator_name,
         seasonName: season.display_name,
+        placement: resultsPlacementFor(row.award_rank),
         applicationId: row.id,
         seasonId: season.id,
       }),

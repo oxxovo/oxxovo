@@ -72,7 +72,9 @@ import {
   ResultsAnnounced,
   subjectFor as resultsAnnouncedSubject,
   type ResultsAnnouncedProps,
+  type ResultsPlacement,
 } from './templates/ResultsAnnounced'
+export type { ResultsPlacement } from './templates/ResultsAnnounced'
 import {
   AwardedContactRequest,
   subjectFor as awardedContactRequestSubject,
@@ -722,6 +724,9 @@ type SendResultsAnnouncedInput = {
   country: string | null | undefined
   creatorName: string
   seasonName: string
+  // HQ 2026-08-22, item 2 (#15): which of the 4 variants this recipient gets
+  // -- computed by the caller from award_rank (fireResultsAnnounced).
+  placement: ResultsPlacement
   applicationId?: string | null
   seasonId?: string | null
   forceLang?: EmailLang
@@ -735,6 +740,7 @@ export async function sendResultsAnnounced(
     lang,
     creatorName: input.creatorName,
     seasonName: input.seasonName,
+    placement: input.placement,
   }
   return executeSend({
     toEmail: input.toEmail,
