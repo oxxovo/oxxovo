@@ -44,6 +44,18 @@ export function MainRoundPendingNote() {
   return <>{t.watch.detail_main_round_pending}</>
 }
 
+// HQ 2026-08-22, item 3: the required element (Twist/필수조건), main-round
+// only, rendered ONLY when the caller already confirmed it is revealed --
+// this component trusts its prop and does no gating of its own. The gate
+// lives server-side in app/watch/[id]/page.tsx (isTwistRevealed(), via
+// getRevealedTheme()) -- the same single source every other surface reads
+// the twist through. Never pass an unrevealed twist in here "to be shown
+// later"; there is no client-side hold-back.
+export function TwistLabel({ twist }: { twist: string }) {
+  const t = useT()
+  return <>{t.watch.detail_twist_label(twist)}</>
+}
+
 export function ViewsCommentsLine({
   views,
   comments,

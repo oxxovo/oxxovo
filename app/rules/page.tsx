@@ -198,6 +198,17 @@ export default function RulesPage() {
                 )}
               </p>
             </div>
+
+            {/* HQ 2026-08-22, item 3: slot reserved, final wording pending
+                제니3. Mechanism-only -- states that a required element
+                exists and when it's revealed, never a season's actual
+                secret value (isTwistRevealed() gates that everywhere). */}
+            <p className="mt-4 text-white/60 text-sm">
+              Every Main Round theme includes one required element (Twist) that every entry must include. It is revealed to Finalists, and to the audience on Watch, at the start of the Main Round.
+            </p>
+            <p className="mt-1 text-white/50 text-xs" lang="ko">
+              모든 본선 주제에는 모든 출품작이 반드시 포함해야 하는 필수조건(Twist)이 있습니다. 본선 시작 시각에 진출자와 Watch 관객 모두에게 공개됩니다.
+            </p>
           </RuleSection>
 
           <RuleSection num="④" title="Scoring Categories">

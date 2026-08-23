@@ -19,6 +19,7 @@ import {
   type WatchVideo,
 } from '@/lib/watch'
 import { isWatchPublic } from '@/lib/watch-gate'
+import { getRevealedTheme } from '@/lib/seasons-theme'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -45,6 +46,7 @@ import {
   RelatedTitle,
   RelatedEmpty,
   RelatedCardMeta,
+  TwistLabel,
 } from '../WatchDetailI18n'
 
 export const dynamic = 'force-dynamic'
@@ -96,7 +98,7 @@ export default async function WatchDetailPage({
   // Public Triple-AI score is shown for BOTH rounds (scores are public -- TK
   // 2026-07-10); null until THIS round is judged. The community vote is still
   // main-round only (windowed).
-  const [comments, voteCtx, related, publicScore, mainRoundPending] = await Promise.all([
+  const [comments, voteCtx, related, publicScore, mainRoundPending, revealedTheme] = await Promise.all([
     getWatchComments(id, round),
     round === 'main'
       ? getVoteContext(video.applicationId, video.seasonId, user?.id ?? null)
@@ -108,6 +110,14 @@ export default async function WatchDetailPage({
     round === 'application'
       ? isMainRoundPending(video.applicationId)
       : Promise.resolve(false),
+    // HQ 2026-08-22, item 3: the required element (Twist/필수조건) so voters
+    // can judge how well an entry solved it -- community vote is half the
+    // main-round score. main-round only (the twist doesn't apply to prelim).
+    // getRevealedTheme() is the SAME gate every other surface reads the
+    // twist through (isTwistRevealed()) -- never revealed before that.
+    round === 'main'
+      ? getRevealedTheme(video.seasonId)
+      : Promise.resolve(null),
   ])
 
   // Whether the signed-in member already liked this video (initial button state).
@@ -156,6 +166,11 @@ export default async function WatchDetailPage({
           <div className="mt-1">
             <WatchPlayer url={video.videoUrl} />
           </div>
+          {revealedTheme?.twistRevealed && revealedTheme.twist && (
+            <p className="mt-2 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/10 px-3 py-2 text-[13px] font-medium text-[#d9c2ff]">
+              <TwistLabel twist={revealedTheme.twist} />
+            </p>
+          )}
           <ViewTracker applicationId={video.applicationId} round={video.round} />
 
           <div className="mt-6 flex flex-wrap items-center gap-2">

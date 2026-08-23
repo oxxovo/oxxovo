@@ -984,6 +984,13 @@ export type Messages = {
     detail_related_empty: string
     detail_related_views_likes: (views: number, likes: number) => string
     detail_main_round_pending: string
+    // HQ 2026-08-22, item 3: audience needs to know the required element
+    // (main_round_twist, EN "Twist" / KO "필수조건") to judge how well an
+    // entry solved it -- community vote is half the main-round score.
+    // Gated on isTwistRevealed() server-side (never rendered before reveal
+    // -- see app/watch/[id]/page.tsx). Copy is a placeholder using the
+    // confirmed term pending 제니3's final line.
+    detail_twist_label: (twist: string) => string
     // social actions (doc-covered)
     comments_count: (n: number) => string
     comments_guidelines: string
@@ -2021,6 +2028,7 @@ const MESSAGES_EN: Messages = {
     detail_related_empty: 'Nothing else here yet.',
     detail_related_views_likes: (views, likes) => `${views.toLocaleString()} views · ${likes.toLocaleString()} likes`,
     detail_main_round_pending: '🏆 Finalist entry · Main round video coming soon.',
+    detail_twist_label: (twist) => `Required Element: ${twist}`,
     comments_count: (n) => `${n} comments`,
     comments_guidelines: 'Community Guidelines',
     comment_placeholder: 'Add a comment…',
@@ -3052,6 +3060,7 @@ const MESSAGES_KO: Messages = {
     detail_related_empty: '아직 다른 작품이 없습니다.',
     detail_related_views_likes: (views, likes) => `조회 ${views.toLocaleString()}회 · 좋아요 ${likes.toLocaleString()}개`,
     detail_main_round_pending: '🏆 본선 진출작입니다 · 본선 영상은 준비 중입니다.',
+    detail_twist_label: (twist) => `필수조건: ${twist}`,
     comments_count: (n) => `댓글 ${n}개`,
     comments_guidelines: '커뮤니티 가이드',
     comment_placeholder: '댓글을 남겨보세요…',

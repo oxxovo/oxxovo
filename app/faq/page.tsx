@@ -78,6 +78,16 @@ function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
       a: `Applicants who place in the ${advanceLabel} advance to the ${season.name} Main Round as Finalists, where they create their competition video in OXXOVO Studio.`,
     },
     {
+      // HQ 2026-08-22, item 3: slot reserved, final wording pending 제니3.
+      // Mechanism-only on purpose -- states THAT a required element exists
+      // and WHEN it's revealed, never the season's actual secret value
+      // (that stays behind isTwistRevealed() everywhere it's shown).
+      q: 'Is there a required element (Twist) in the Main Round?',
+      qKo: '본선에 필수조건(Twist)이 있나요?',
+      a: 'Yes. Every Main Round theme includes one required element (Twist) that every entry must include. It is revealed to Finalists at the start of the Main Round, and to the audience on Watch as soon as it is revealed.',
+      aKo: '네. 모든 본선 주제에는 모든 출품작이 반드시 포함해야 하는 필수조건(Twist)이 있습니다. 본선 시작 시각에 진출자에게 공개되고, 공개되는 즉시 Watch에서도 관객이 볼 수 있습니다.',
+    },
+    {
       q: 'Why does OXXOVO emphasize verification?',
       a: 'As AI-generated content grows rapidly, authenticity and trust in the creation process matter more and more. OXXOVO is building systems for creation integrity, fair competition, and AI creation verification.',
     },
