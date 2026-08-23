@@ -1328,7 +1328,7 @@ const MESSAGES_EN: Messages = {
     reveal_time_label: (kst, pt) => `Reveal time: ${kst} KST · ${pt} PT`,
     reveal_time_unset: 'Reveal time unknown -- set Main round start above first.',
     reveal_time_hint:
-      'From getThemeRevealTime() (main round start minus theme reveal lead time). This is the email-announcement lead time, not necessarily the live Studio/Watch reveal moment -- that gate is finalist-selection based (lib/season-stage.ts) and can fire earlier.',
+      'From getThemeRevealTime() (main round start minus theme reveal lead time). This is the SAME instant Studio/Watch/profile use to reveal the twist (isTwistRevealed(), via getRevealedTheme()) -- one gate, not two. Corrected 2026-08-22: this hint used to describe a separate, earlier finalist-selection-based gate that was removed 2026-08-17 (see lib/theme-reveal.ts) -- it no longer exists, do not rely on the old wording.',
     char_count: (n) => `${n} characters`,
     hint_poster_url: 'Optional. Empty = purple gradient + theme fallback.',
   },
@@ -2368,7 +2368,7 @@ const MESSAGES_KO: Messages = {
     reveal_time_label: (kst, pt) => `공개 시점: 한국시간 ${kst} · 태평양시간 ${pt}`,
     reveal_time_unset: '공개 시점 미확정 — 위의 본선 시작일을 먼저 입력하세요.',
     reveal_time_hint:
-      'getThemeRevealTime() 기준(본선 시작 - 주제 공개 리드타임). 이메일 발표 시점이며, 실제 Studio/Watch 화면 공개와는 다른 게이트일 수 있습니다 — 그건 파이널리스트 선정 시점 기준(lib/season-stage.ts)이라 이보다 먼저 열릴 수 있습니다.',
+      'getThemeRevealTime() 기준(본선 시작 - 주제 공개 리드타임). Studio/Watch/profile이 트위스트를 공개하는 것과 같은 시각입니다(isTwistRevealed(), getRevealedTheme() 경유) — 게이트가 둘이 아니라 하나입니다. 2026-08-22 정정: 이 문구는 원래 더 일찍 열리는 별도의 파이널리스트 선정 기준 게이트를 설명했지만, 그 게이트는 2026-08-17에 제거됐습니다(lib/theme-reveal.ts) — 더 이상 존재하지 않으니 옛 문구를 근거로 삼지 마세요.',
     char_count: (n) => `${n}자`,
   },
   delete: {
