@@ -1324,7 +1324,7 @@ const MESSAGES_EN: Messages = {
     registration_reminder_preview_unset: (day) => `D-${day}: unknown -- set Registration close above`,
     group_secret: 'Secret content',
     secret_banner: 'SECRET — not visible to participants until reveal time.',
-    field_twist: 'Main round required element (twist)',
+    field_twist: 'Main round required element (Twist)',
     reveal_time_label: (kst, pt) => `Reveal time: ${kst} KST · ${pt} PT`,
     reveal_time_unset: 'Reveal time unknown -- set Main round start above first.',
     reveal_time_hint:
@@ -2364,7 +2364,7 @@ const MESSAGES_KO: Messages = {
     registration_reminder_preview_unset: (day) => `D-${day}: 미확정 — 위에서 신청 마감을 먼저 입력하세요`,
     group_secret: '비밀 콘텐츠',
     secret_banner: '비밀 — 공개 시점까지 참가자에게 안 보입니다.',
-    field_twist: '본선 필수 요소 (트위스트)',
+    field_twist: '본선 필수조건',
     reveal_time_label: (kst, pt) => `공개 시점: 한국시간 ${kst} · 태평양시간 ${pt}`,
     reveal_time_unset: '공개 시점 미확정 — 위의 본선 시작일을 먼저 입력하세요.',
     reveal_time_hint:

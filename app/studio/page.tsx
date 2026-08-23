@@ -73,7 +73,15 @@ const DICT = {
     // ★2026-08-13 (제니3 확정): "트위스트"는 반전/의외성 뉘앙스라 로션 도포
     // 같은 확정 의무 요건을 "안 넣어도 되는 것"처럼 약하게 읽히게 만든다.
     // 내부 컬럼명(main_round_twist)은 그대로 -- 화면 라벨만 분리.
-    twist_label: '필수 조건',
+    // ★HQ 2026-08-22: "필수조건" confirmed as the exact KO term (no space) --
+    // matches what this already was in substance (제니3, 2026-08-13, see
+    // comment above). EN screen label deliberately left as "Required
+    // Element", NOT changed to "Twist" -- that is exactly the word Jenny3's
+    // 2026-08-13 call rejected for this label (reads as optional/surprise,
+    // not mandatory). "Twist" is the confirmed EN TERM for internal use
+    // (code/docs/comments, disambiguating from Theme) -- flagged for TK
+    // before applying it to the participant-facing screen text too.
+    twist_label: '필수조건',
     no_theme: '자유 주제 — 당신의 실력을 보여주세요',
     balance: '크레딧 잔액',
     used_label: (u: number, m: number) => `생성 ${u}/${m}회 사용`,
