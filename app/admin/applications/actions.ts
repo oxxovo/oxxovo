@@ -109,6 +109,10 @@ export async function saveStatus(id: string, status: string): Promise<AdminActio
         console.error('[saveStatus] season missing — skipping email', row.season_id)
       } else if (status === 'selected') {
         const ranks = await loadScoredRanks(supabase, season.id)
+        // HQ 2026-08-22, item 1 (#7): same fields email-tick's fireFinalistResults
+        // passes on the automatic path -- this admin manual-save path must not
+        // silently diverge into a thinner email.
+        const m = ranks.get(row.id)
         await sendSelectedTop50({
           toEmail: row.email,
           country: row.country,
@@ -117,6 +121,11 @@ export async function saveStatus(id: string, status: string): Promise<AdminActio
           topNAdvance: season.top_n_advance,
           totalParticipants: ranks.size,
           mainRoundStartAt: season.main_round_start_at,
+          score: m?.score ?? 0,
+          rank: m?.rank ?? ranks.size,
+          percentile: m?.percentile ?? 0,
+          strength: m?.strength ?? '',
+          improvement: m?.improvement ?? '',
           applicationId: row.id,
           seasonId: season.id,
         })
@@ -320,8 +329,12 @@ export async function applyRecommendation(
   const ranks = await loadScoredRanks(admin, input.seasonId)
   const next = await loadNextSeason(admin)
   const emailPromises = [
-    ...selectedApps.map((a) =>
-      sendSelectedTop50({
+    ...selectedApps.map((a) => {
+      // HQ 2026-08-22, item 1 (#7): same fields as the other two
+      // sendSelectedTop50 call sites -- this bulk-advance path must not
+      // silently diverge into a thinner email either.
+      const m = ranks.get(a.id)
+      return sendSelectedTop50({
         toEmail: a.email,
         country: a.country,
         creatorName: a.creator_name,
@@ -329,10 +342,15 @@ export async function applyRecommendation(
         topNAdvance: season.top_n_advance,
         totalParticipants: ranks.size,
         mainRoundStartAt: season.main_round_start_at,
+        score: m?.score ?? 0,
+        rank: m?.rank ?? ranks.size,
+        percentile: m?.percentile ?? 0,
+        strength: m?.strength ?? '',
+        improvement: m?.improvement ?? '',
         applicationId: a.id,
         seasonId: season.id,
-      }),
-    ),
+      })
+    }),
     ...rejectedApps.map((a) => {
       const m = ranks.get(a.id)
       return sendNotSelected({

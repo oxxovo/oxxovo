@@ -64,6 +64,13 @@ import {
   type ApplicationDeadlineProps,
 } from './templates/ApplicationDeadline'
 import {
+  VoteDeadline,
+  subjectFor as voteDeadlineSubject,
+  type VoteDeadlineProps,
+  type VoteDeadlineAudience,
+} from './templates/VoteDeadline'
+export type { VoteDeadlineAudience } from './templates/VoteDeadline'
+import {
   DeferralNotice,
   subjectFor as deferralNoticeSubject,
   type DeferralNoticeProps,
@@ -435,6 +442,14 @@ type SendSelectedTop50Input = {
   topNAdvance: number
   totalParticipants: number
   mainRoundStartAt: string | null
+  // HQ 2026-08-22, item 1 (#7): same prelim Season Report fields
+  // NotSelected carries, derived from the same rankMap (scoring_results.
+  // ai_outputs) -- advancing doesn't make the AI's reasoning uninteresting.
+  score: number
+  rank: number
+  percentile: number
+  strength: string
+  improvement: string
   applicationId?: string | null
   seasonId?: string | null
   forceLang?: EmailLang
@@ -444,6 +459,7 @@ export async function sendSelectedTop50(
   input: SendSelectedTop50Input,
 ): Promise<SendResult> {
   const lang = input.forceLang ?? detectEmailLang(input.country)
+  const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
   const props: SelectedTop50Props = {
     lang,
     creatorName: input.creatorName,
@@ -451,6 +467,16 @@ export async function sendSelectedTop50(
     topNAdvance: input.topNAdvance,
     totalParticipants: input.totalParticipants,
     mainRoundStartAt: input.mainRoundStartAt,
+    score: input.score,
+    rank: input.rank,
+    percentile: input.percentile,
+    strength: input.strength,
+    improvement: input.improvement,
+    // Points at the PRELIM entry (round=application, default) -- the
+    // main-round video doesn't exist yet at advancement time, same
+    // reasoning as sendNotSelected's videoUrl just below.
+    videoUrl: input.applicationId ? `${base}/watch/${input.applicationId}` : `${base}/watch`,
+    profileUrl: `${base}/profile`,
   }
   return executeSend({
     toEmail: input.toEmail,
@@ -635,6 +661,49 @@ export async function sendApplicationDeadline(
     applicationId: input.applicationId,
     seasonId: input.seasonId,
     reminderHour: input.reminderHour,
+  })
+}
+
+// HQ 2026-08-22, item 3 (#13): community vote deadline, ONE fire, 24h before
+// community_vote_end_at. applicationId is present for the participant
+// audience (normal per-application dedup applies) and OMITTED for the
+// member audience -- executeSend's alreadySent() check only runs when
+// applicationId is set, so a member send skips that path entirely and
+// fireVoteDeadlineMembers (email-tick route.ts) does its own dedup instead.
+// Passing a member through with no applicationId is deliberate, not an
+// oversight -- see the log.ts comment on 'vote_deadline'.
+type SendVoteDeadlineInput = {
+  toEmail: string
+  country: string | null | undefined
+  name: string
+  seasonName: string
+  audience: VoteDeadlineAudience
+  videoUrl: string | null
+  applicationId?: string | null
+  seasonId?: string | null
+  forceLang?: EmailLang
+}
+
+export async function sendVoteDeadline(input: SendVoteDeadlineInput): Promise<SendResult> {
+  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
+  const props: VoteDeadlineProps = {
+    lang,
+    name: input.name,
+    seasonName: input.seasonName,
+    audience: input.audience,
+    voteUrl: `${base}/watch`,
+    videoUrl: input.videoUrl,
+  }
+  return executeSend({
+    toEmail: input.toEmail,
+    templateKey: 'vote_deadline',
+    language: lang,
+    subject: voteDeadlineSubject(props),
+    element: <VoteDeadline {...props} />,
+    applicationId: input.applicationId,
+    seasonId: input.seasonId,
+    metadata: { audience: input.audience },
   })
 }
 

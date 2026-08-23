@@ -29,6 +29,7 @@ import {
   sendMainRoundStart,
   sendSubmissionDeadline,
   sendApplicationDeadline,
+  sendVoteDeadline,
   sendDeferralNotice,
   sendResultsAnnounced,
   type ResultsPlacement,
@@ -39,6 +40,7 @@ import {
   type SendResult,
 } from '@/lib/email/send'
 import { detectEmailLang } from '@/lib/email/lang'
+import { canSendMarketingEmail } from '@/lib/email/consent'
 import {
   videoLiveRounds,
   videoLiveTemplateKey,
@@ -103,6 +105,11 @@ type TickReport = {
   // before registration_close_at, retired -- the registration cutoff itself
   // is not announced by email any more, the Watch countdown covers it).
   applicationDeadline: ({ season: string; reminderHour: number } & BatchTally)[]
+  // HQ 2026-08-22, item 3 (#13): ONE fire, 24h before community_vote_end_at.
+  // Two independent tallies -- participant (application-scoped dedup) and
+  // member (email_logs-scoped dedup, no applicationId) -- see
+  // fireVoteDeadlineParticipants/fireVoteDeadlineMembers.
+  voteDeadline: ({ season: string; audience: string } & BatchTally)[]
   // HQ 2026-08-12: fired once per application_defer_count value when
   // defer_season_schedule has actually shifted the calendar -- detected here
   // (not signaled by season-tick) by simply re-checking every season's
@@ -187,6 +194,7 @@ async function handle(request: NextRequest) {
     mainRoundStart: [],
     submissionDeadline: [],
     applicationDeadline: [],
+    voteDeadline: [],
     deferralNotice: [],
     resultsAnnounced: [],
     finalistResults: [],
@@ -265,6 +273,24 @@ async function handle(request: NextRequest) {
             ...result,
           })
         }
+      }
+    }
+
+    // Vote deadline (HQ 2026-08-22, item 3 / #13): ONE fire, 24h before
+    // community_vote_end_at -- HQ's canonical spec, not a season-configurable
+    // hours array like deadline_reminder_hours/application_deadline_reminder_
+    // hours above (those are genuinely per-season tunable; this offset is
+    // fixed by the spec itself). Plain elapsed-time subtraction is correct
+    // here (unlike the day-scale application_deadline case) -- 24h never
+    // crosses a DST calendar-day boundary the way N*24h-as-days does.
+    if (season.community_vote_end_at && !isFixtureSeason(season)) {
+      const voteEndAt = new Date(season.community_vote_end_at)
+      const voteDeadlineAt = new Date(voteEndAt.getTime() - 24 * 3_600_000)
+      if (voteDeadlineAt <= now && now < voteEndAt) {
+        const participantResult = await fireVoteDeadlineParticipants(season, budget)
+        report.voteDeadline.push({ season: season.id, audience: 'participant', ...participantResult })
+        const memberResult = await fireVoteDeadlineMembers(season, budget)
+        report.voteDeadline.push({ season: season.id, audience: 'member', ...memberResult })
       }
     }
 
@@ -796,6 +822,130 @@ async function fireApplicationDeadline(
   )
 }
 
+// ── vote_deadline ─────────────────────────────────────────────────────────
+// HQ 2026-08-22, item 3 (#13). Two audiences, two functions -- they need
+// different recipient sources AND different dedup strategies (see the
+// log.ts comment on 'vote_deadline' and sendVoteDeadline's header comment).
+
+// Participant = main-round entrants ("마지막 동원 기회", HQ) -- application-
+// scoped, so this reuses dispatchBatch's normal per-applicationId dedup
+// exactly like every other multi-recipient sender in this file.
+async function fireVoteDeadlineParticipants(
+  season: Season,
+  budget: TickBudget,
+): Promise<BatchTally> {
+  const supabase = createSupabaseAdmin()
+  const { data: rows, error } = await supabase
+    .from('genesis_applications')
+    .select('id, email, creator_name, country, main_round_submitted_at')
+    .eq('season_id', season.id)
+    .in('status', ['selected', 'main_round_submitted', 'awarded'])
+  if (error) {
+    console.error('[cron] vote_deadline (participant) applicant load failed:', error.message)
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
+  }
+
+  return await dispatchBatch(
+    (rows ?? []) as ApplicantRow[],
+    'vote_deadline',
+    async (row) =>
+      sendVoteDeadline({
+        toEmail: row.email,
+        country: row.country,
+        name: row.creator_name,
+        seasonName: season.display_name,
+        audience: 'participant',
+        videoUrl: `${APP_URL}/watch/${row.id}?round=main`,
+        applicationId: row.id,
+        seasonId: season.id,
+      }),
+    budget,
+  )
+}
+
+// Member = any opted-in site member ("아직 안 했으면 지금", HQ) -- NOT
+// application-scoped, so dispatchBatch's canSend(applicationId, ...) path
+// cannot dedup it (no applicationId to key off). Same shape admin_broadcast
+// uses (lib/email/broadcast-tick.ts) for the identical reason: query
+// email_logs directly by (season_id, template_key, metadata->>audience,
+// to_email) to build the "already got this" set, then filter candidates
+// against it by hand. Consent gate: canSendMarketingEmail() (lib/email/
+// consent.ts) -- its own header comment requires every future broadcast-
+// style sender to filter through it, this is that.
+async function fireVoteDeadlineMembers(season: Season, budget: TickBudget): Promise<BatchTally> {
+  const supabase = createSupabaseAdmin()
+  const { data: profileRows, error } = await supabase
+    .from('profiles')
+    .select('email, display_name, country, email_opt_in, email_opt_out_at')
+    .eq('email_opt_in', true)
+    .is('email_opt_out_at', null)
+  if (error) {
+    console.error('[cron] vote_deadline (member) profile load failed:', error.message)
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
+  }
+
+  const { data: doneRows, error: doneErr } = await supabase
+    .from('email_logs')
+    .select('to_email')
+    .eq('season_id', season.id)
+    .eq('template_key', 'vote_deadline')
+    .eq('metadata->>audience', 'member')
+    .eq('status', 'sent')
+  if (doneErr) {
+    console.error('[cron] vote_deadline (member) dedup load failed:', doneErr.message)
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
+  }
+  const alreadySent = new Set(
+    ((doneRows ?? []) as { to_email: string }[]).map((r) => r.to_email.trim().toLowerCase()),
+  )
+
+  type MemberRow = {
+    email: string
+    display_name: string | null
+    country: string | null
+    email_opt_in: boolean | null
+    email_opt_out_at: string | null
+  }
+  const candidates = ((profileRows ?? []) as MemberRow[])
+    .filter((p) => canSendMarketingEmail(p))
+    .filter((p) => !alreadySent.has(p.email.trim().toLowerCase()))
+
+  let sent = 0
+  // Consent/dedup filtering already happened above via .filter() -- nothing
+  // in this loop produces a 'skipped' outcome, unlike dispatchBatch's
+  // canSend() path (which does). Always 0, kept in the tally shape for
+  // symmetry with the participant side.
+  const skipped = 0
+  let failed = 0
+  let deferred = 0
+  for (const [i, p] of candidates.entries()) {
+    if (!budgetAllows(budget)) {
+      deferred = candidates.length - i
+      console.warn(
+        `[cron] vote_deadline (member): tick budget spent — ${sent} sent, ${deferred} deferred to the next tick`,
+      )
+      break
+    }
+    const t0 = Date.now()
+    const result = await sendVoteDeadline({
+      toEmail: p.email,
+      country: p.country,
+      // Placeholder fallback -- real copy (and whether a blank/generic name
+      // is even acceptable here) is 제니3's call, not decided by this wiring.
+      name: p.display_name ?? '',
+      seasonName: season.display_name,
+      audience: 'member',
+      videoUrl: null,
+      seasonId: season.id,
+    })
+    budgetRecord(budget, Date.now() - t0)
+    if (result.ok) sent++
+    else if (result.deferred) deferred++
+    else failed++
+  }
+  return { sent, skipped, failed, deferred }
+}
+
 // ── deferral_notice ───────────────────────────────────────────────────────
 
 async function fireDeferralNotice(
@@ -954,8 +1104,12 @@ async function fireFinalistResults(season: Season, budget: TickBudget): Promise<
   const selected = await dispatchBatch(
     (selRes.data ?? []) as ApplicantRow[],
     'selected_top50',
-    async (row) =>
-      sendSelectedTop50({
+    async (row) => {
+      // HQ 2026-08-22, item 1 (#7): same rankMap lookup the rejected branch
+      // above already used -- every scored applicant is in it regardless of
+      // outcome, so this was always available and simply wasn't read here.
+      const m = rankMap.get(row.id)
+      return sendSelectedTop50({
         toEmail: row.email,
         country: row.country,
         creatorName: row.creator_name,
@@ -963,9 +1117,15 @@ async function fireFinalistResults(season: Season, budget: TickBudget): Promise<
         topNAdvance: season.top_n_advance,
         totalParticipants: total,
         mainRoundStartAt: season.main_round_start_at,
+        score: m?.score ?? 0,
+        rank: m?.rank ?? total,
+        percentile: m?.percentile ?? 0,
+        strength: m?.strength ?? '',
+        improvement: m?.improvement ?? '',
         applicationId: row.id,
         seasonId: season.id,
-      }),
+      })
+    },
     budget,
   )
 
@@ -985,6 +1145,7 @@ type TemplateName =
   | 'main_round_start'
   | 'submission_deadline'
   | 'application_deadline'
+  | 'vote_deadline'
   | 'deferral_notice'
   | 'results_announced'
 

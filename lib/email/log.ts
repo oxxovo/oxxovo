@@ -60,6 +60,16 @@ export type TemplateKey =
   // path. A 'skipped' row here means "no marketing consent at send time",
   // never "already sent" -- see lib/email/broadcast.ts.
   | 'admin_broadcast'
+  // HQ 2026-08-22, item 3 (#13): community vote deadline, ONE fire per
+  // season at a fixed 24h before community_vote_end_at. TWO audiences
+  // (participant/member) sharing this one key -- participant sends are
+  // application-scoped (normal applicationId dedup below); member sends have
+  // no applicationId (a member is not necessarily an entrant), so
+  // fireVoteDeadlineMembers (email-tick route.ts) does its own dedup check
+  // directly against email_logs (season_id + template_key + to_email +
+  // metadata->>audience='member'), the same shape admin_broadcast's
+  // campaign-id dedup uses for the same reason (no application to key off).
+  | 'vote_deadline'
 
 export type LogStatus = 'sent' | 'failed' | 'queued' | 'skipped'
 
