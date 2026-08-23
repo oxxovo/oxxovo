@@ -890,7 +890,7 @@ async function fireVoteDeadlineMembers(season: Season, budget: TickBudget): Prom
   const supabase = createSupabaseAdmin()
   const { data: profileRows, error } = await supabase
     .from('profiles')
-    .select('email, display_name, country, email_opt_in, email_opt_out_at')
+    .select('id, email, display_name, country, email_opt_in, email_opt_out_at')
     .eq('email_opt_in', true)
     .is('email_opt_out_at', null)
   if (error) {
@@ -913,7 +913,27 @@ async function fireVoteDeadlineMembers(season: Season, budget: TickBudget): Prom
     ((doneRows ?? []) as { to_email: string }[]).map((r) => r.to_email.trim().toLowerCase()),
   )
 
+  // HQ 2026-08-22 (follow-up): "회원 = 아직 안 했으면 지금" is a targeting
+  // condition, not just subject-line copy -- watch_votes.user_id is a real,
+  // always-populated identifier (toggleWatchVote, app/watch/actions.ts,
+  // refuses to insert a vote row without an authenticated user; live DB has
+  // 0 rows with user_id IS NULL, confirmed by direct query). So this can
+  // filter to genuinely accurate "haven't voted yet" recipients instead of
+  // sending a generic reminder that might falsely nag someone who already
+  // voted -- exclude anyone with a vote row for this season outright, rather
+  // than send them a differently-worded email they don't need at all.
+  const { data: votedRows, error: votedErr } = await supabase
+    .from('watch_votes')
+    .select('user_id')
+    .eq('season_id', season.id)
+  if (votedErr) {
+    console.error('[cron] vote_deadline (member) voted-lookup failed:', votedErr.message)
+    return { sent: 0, skipped: 0, failed: 1, deferred: 0 }
+  }
+  const alreadyVoted = new Set(((votedRows ?? []) as { user_id: string }[]).map((r) => r.user_id))
+
   type MemberRow = {
+    id: string
     email: string
     display_name: string | null
     country: string | null
@@ -923,6 +943,7 @@ async function fireVoteDeadlineMembers(season: Season, budget: TickBudget): Prom
   const candidates = ((profileRows ?? []) as MemberRow[])
     .filter((p) => canSendMarketingEmail(p))
     .filter((p) => !alreadySent.has(p.email.trim().toLowerCase()))
+    .filter((p) => !alreadyVoted.has(p.id))
 
   let sent = 0
   // Consent/dedup filtering already happened above via .filter() -- nothing

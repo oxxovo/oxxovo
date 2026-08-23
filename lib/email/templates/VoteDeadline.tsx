@@ -9,6 +9,12 @@
 //   member      -- any opted-in site member, not necessarily entered this
 //                   season. "Vote now if you haven't" -- no personal stake,
 //                   just a nudge to go cast a vote before it closes.
+// ★HQ 2026-08-22 (follow-up): "아직 안 했으면 지금" is a TARGETING filter,
+// not just copy -- fireVoteDeadlineMembers (email-tick route.ts) excludes
+// anyone with a watch_votes row for this season before this template ever
+// renders for them, so the member copy can flatly say "you haven't voted"
+// without it ever being a false claim (watch_votes.user_id is always a real
+// authenticated id -- voting has no anonymous path, confirmed 2026-08-22).
 // Placeholder copy pending 제니3 -- wiring/branching only, per HQ instruction.
 
 import { Heading, Text, Section, Button } from '@react-email/components'
@@ -32,15 +38,21 @@ export function VoteDeadline(p: VoteDeadlineProps) {
   return p.lang === 'ko' ? <Korean {...p} /> : <English {...p} />
 }
 
+// ★HQ 2026-08-22 (follow-up): the member subject can safely claim "you
+// haven't voted" -- fireVoteDeadlineMembers filters recipients through
+// watch_votes before this ever renders, so every member audience send here
+// is genuinely accurate, not a generic guess. See that function's comment
+// for the evidence (watch_votes.user_id is never null; voting is
+// login-gated with no anonymous path).
 export function subjectFor(p: VoteDeadlineProps): string {
   if (p.lang === 'ko') {
     return p.audience === 'participant'
       ? `[OXXOVO] 투표 마감 24시간 전 — 팬들에게 지금 알리세요`
-      : `[OXXOVO] ${p.seasonName} 투표 마감 24시간 전입니다`
+      : `[OXXOVO] 아직 투표하지 않으셨습니다 — 24시간 남았습니다`
   }
   return p.audience === 'participant'
     ? `[OXXOVO] 24 hours left to vote — rally your fans now`
-    : `[OXXOVO] ${p.seasonName} voting closes in 24 hours`
+    : `[OXXOVO] You haven't voted yet — 24 hours left`
 }
 
 function Korean(p: VoteDeadlineProps) {
@@ -64,10 +76,10 @@ function Korean(p: VoteDeadlineProps) {
         </>
       ) : (
         <>
-          <Heading style={headingStyle}>{p.name}님, 투표 마감까지 24시간 남았습니다.</Heading>
+          <Heading style={headingStyle}>{p.name}님, 아직 투표하지 않으셨습니다.</Heading>
           <Text style={paragraph}>
             <strong>{p.seasonName}</strong> 관객 투표가 <strong>24시간 후</strong> 마감됩니다.
-            아직 투표하지 않으셨다면, 지금이 마지막 기회입니다.
+            지금이 마지막 기회입니다.
           </Text>
           <Section style={{ textAlign: 'center', margin: '20px 0' }}>
             <Button href={p.voteUrl} style={ctaButton}>
@@ -102,11 +114,10 @@ function English(p: VoteDeadlineProps) {
         </>
       ) : (
         <>
-          <Heading style={headingStyle}>Hi {p.name} — 24 hours left to vote.</Heading>
+          <Heading style={headingStyle}>Hi {p.name} — you haven&rsquo;t voted yet.</Heading>
           <Text style={paragraph}>
             <strong>{p.seasonName}</strong>&rsquo;s community vote closes in{' '}
-            <strong>24 hours</strong>. If you haven&rsquo;t voted yet, this is your last
-            chance.
+            <strong>24 hours</strong>. This is your last chance.
           </Text>
           <Section style={{ textAlign: 'center', margin: '20px 0' }}>
             <Button href={p.voteUrl} style={ctaButton}>
