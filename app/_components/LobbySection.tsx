@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { loadLobbyTournaments } from './lobby-actions'
 import { type LobbyCard, type LobbyMode } from '@/lib/lobby'
+import { AspectThumb } from '@/app/_components/AspectThumb'
 
 // TOURNAMENTS section for the home page (below the hero). Cards come from a
 // server action (mode is server-authoritative); the client only renders and
@@ -69,18 +70,8 @@ export function LobbyCardView({ card }: { card: LobbyCard }) {
         ended ? 'opacity-60' : ''
       }`}
     >
-      {/* Poster or themed gradient fallback */}
-      <div className="relative aspect-video w-full overflow-hidden">
-        {card.posterUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={card.posterUrl} alt={card.displayName} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2a0e52] via-[#3d1580] to-[#1a0633] p-5 text-center">
-            <span className="text-lg font-black uppercase tracking-wide text-white/90 drop-shadow-[0_0_18px_rgba(139,34,255,.6)]">
-              {card.theme || card.displayName}
-            </span>
-          </div>
-        )}
+      {/* Poster or themed gradient fallback -- aspect-neutral (see AspectThumb) */}
+      <AspectThumb url={card.posterUrl} label={card.theme || card.displayName} className="w-full">
         {badge && (
           <span
             className={`absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${badge.cls}`}
@@ -91,7 +82,7 @@ export function LobbyCardView({ card }: { card: LobbyCard }) {
             {badge.label}
           </span>
         )}
-      </div>
+      </AspectThumb>
 
       {/* When a poster is present it already carries the title, prize, and
           timeline, so the body shows only the live countdown + CTA to avoid

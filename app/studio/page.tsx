@@ -1446,6 +1446,16 @@ function JobCard({
 }) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  // Aspect-neutral media box (TK 2026-08-22, same mechanism as
+  // app/_components/AspectThumb) -- this box has 3 states (video/failed/
+  // in-flight), so it can't just drop in AspectVideoThumb's url/placeholder
+  // shape; tracks the ratio locally instead of forcing a mismatched API.
+  const [mediaRatio, setMediaRatio] = useState('9 / 16')
+  const applyVideoRatio = (v: HTMLVideoElement | null) => {
+    if (v && v.readyState >= 1 && v.videoWidth > 0 && v.videoHeight > 0) {
+      setMediaRatio(`${v.videoWidth} / ${v.videoHeight}`)
+    }
+  }
 
   const statusLabel: Record<string, string> = {
     queued: t.status_queued,
@@ -1515,13 +1525,23 @@ function JobCard({
 
   return (
     <div className={`flex flex-col overflow-hidden rounded-lg border ${isDraft ? 'border-dashed border-[#8b22ff]/30 bg-[#8b22ff]/[.03]' : 'border-white/10 bg-white/[.02]'}`}>
-      {/* Media / status area (16:9). Thumbnails preload metadata only (first frame,
-          no controls) so a grid of clips stays light; the full player opens in a
-          single modal on click. */}
-      <div className="relative aspect-video w-full bg-black">
+      {/* Media / status area, aspect-neutral (box matches the clip's real
+          dimensions -- was hardcoded 16:9, cropping a 9:16 clip to a strip).
+          Thumbnails preload metadata only (first frame, no controls) so a
+          grid of clips stays light; the full player opens in a single modal
+          on click. */}
+      <div className="relative w-full bg-black" style={{ aspectRatio: mediaRatio }}>
         {hasVideo ? (
           <button type="button" onClick={() => onPreview(job)} title={job.prompt} className="group block h-full w-full">
-            <video src={job.video_url!} preload="metadata" muted playsInline className="h-full w-full object-cover" />
+            <video
+              src={job.video_url!}
+              preload="metadata"
+              muted
+              playsInline
+              className="h-full w-full object-cover"
+              ref={applyVideoRatio}
+              onLoadedMetadata={(e) => applyVideoRatio(e.currentTarget)}
+            />
             <span className="absolute inset-0 flex items-center justify-center text-4xl text-white/0 transition group-hover:bg-black/30 group-hover:text-white/90">▶</span>
           </button>
         ) : job.status === 'failed' ? (

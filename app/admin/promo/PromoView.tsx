@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAdminLang } from '@/lib/admin-i18n'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { AdminPageHeader } from '../AdminPageHeader'
+import { AspectVideoThumb } from '@/app/_components/AspectThumb'
 import { PROMO_TIMEZONES, normalizePromoTime, nextPublishSlot, type PromoCadence } from '@/lib/promo-schedule'
 import {
   createUploadUrlAction,
@@ -669,13 +670,14 @@ function PromoCard({
     <div className="border border-white/10 rounded bg-white/[.02] overflow-hidden">
       <div className="flex gap-4 p-4">
         <div className="w-40 shrink-0">
-          {row.videoUrl ? (
-            <video src={row.videoUrl} controls className="w-full rounded bg-black aspect-[9/16] object-contain" />
-          ) : (
-            <div className="w-full aspect-[9/16] rounded bg-black/40 grid place-items-center text-white/30 text-[10px]">
-              no video
-            </div>
-          )}
+          <AspectVideoThumb
+            url={row.videoUrl}
+            label="no video"
+            fallback="9 / 16"
+            fit="contain"
+            className="w-full rounded bg-black"
+            videoProps={{ controls: true }}
+          />
         </div>
 
         <div className="flex-1 min-w-0">
@@ -803,11 +805,7 @@ function TrashCard({ t, row }: { t: Dict; row: TrashRow }) {
     <div className="border border-white/10 rounded bg-white/[.02] overflow-hidden">
       <div className="flex gap-4 p-4">
         <div className="w-24 shrink-0">
-          {row.videoUrl ? (
-            <video src={row.videoUrl} muted className="w-full rounded bg-black aspect-[9/16] object-contain" />
-          ) : (
-            <div className="w-full aspect-[9/16] rounded bg-black/40" />
-          )}
+          <AspectVideoThumb url={row.videoUrl} label="" fallback="9 / 16" fit="contain" className="w-full rounded bg-black" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-white truncate">{row.label || row.id}</p>

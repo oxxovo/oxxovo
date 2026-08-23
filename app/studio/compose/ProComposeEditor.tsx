@@ -1664,8 +1664,14 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
                               crossOrigin: the GL preview textures this SAME url, and a
                               no-cors thumbnail fetch would leave an opaque response in
                               that cache slot which can never serve the CORS request ->
-                              tainted texture. One mode per url. See preview-gl.ts. */}
-                          <video src={c.url} crossOrigin="anonymous" preload="metadata" muted playsInline className="h-full w-full object-cover" />
+                              tainted texture. One mode per url. See preview-gl.ts.
+                              object-contain not -cover (TK 2026-08-22 sweep): this tile
+                              sits in a virtualized absolute-position grid (top: row *
+                              POOL_ROW_H), so per-item variable height isn't a drop-in fix
+                              here like AspectThumb elsewhere -- would need the row-height
+                              math reworked too. contain is the low-risk partial mitigation
+                              (whole frame visible, letterboxed) until that's prioritized. */}
+                          <video src={c.url} crossOrigin="anonymous" preload="metadata" muted playsInline className="h-full w-full object-contain" />
                           <span className="absolute inset-0 flex items-center justify-center bg-[#8b22ff]/0 text-[16px] font-black text-white opacity-0 transition group-hover:bg-[#8b22ff]/25 group-hover:opacity-100">＋</span>
                         </div>
                         <div className="flex items-center justify-between px-1.5 py-1 text-[9px] text-white/45">

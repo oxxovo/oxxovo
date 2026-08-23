@@ -5,6 +5,7 @@ import { useAdminLang } from '@/lib/admin-i18n'
 import { GRADE_BADGE_CLASS, GRADE_LABEL_KO, GRADE_LABEL_EN, type Grade } from '@/lib/grades'
 import { AdminExternalLink } from '../AdminExternalLink'
 import { AdminPageHeader } from '../AdminPageHeader'
+import { AspectThumb } from '@/app/_components/AspectThumb'
 
 export type WinnerCard = {
   id: string
@@ -113,22 +114,14 @@ function WinnerTile({
 }) {
   return (
     <div className="border border-white/10 rounded bg-white/[.02] overflow-hidden">
-      <div className="aspect-video bg-black/40 relative">
-        {w.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={w.thumbnailUrl} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full grid place-items-center text-white/20 text-[11px]">
-            {t.no_video}
-          </div>
-        )}
+      <AspectThumb url={w.thumbnailUrl} label={t.no_video} className="w-full bg-black/40">
         <span className="absolute top-2 left-2 text-2xl drop-shadow">
           {MEDAL[w.awardRank] ?? `#${w.awardRank}`}
         </span>
         <span className="absolute top-2 right-2 text-[10px] uppercase tracking-wider bg-black/60 text-white/70 px-2 py-1 rounded">
           {w.seasonLabel}
         </span>
-      </div>
+      </AspectThumb>
 
       <div className="p-3">
         <div className="text-sm text-white/90 truncate font-bold">

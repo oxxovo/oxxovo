@@ -14,10 +14,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
 import type { WatchVideo, PublicScore, CompetitionStats, JudgingProgress, Finalist, BannerContent } from '@/lib/watch'
 import { LiveStatusBar } from './LiveStatusBar'
 import { useT, useAdminLang, type Messages } from '@/lib/admin-i18n'
+import { AspectThumb } from '@/app/_components/AspectThumb'
 
 // ── colors (TK arena palette) ──────────────────────────────────────────────
 const ACCENT = '#8b22ff'
@@ -366,78 +366,6 @@ function Heading({ kicker, title }: { kicker: string; title: string }) {
   )
 }
 
-function Thumb({ v }: { v: WatchVideo }) {
-  return v.thumbnailUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={v.thumbnailUrl} alt={v.videoTitle || v.creatorName} className="h-full w-full object-cover" />
-  ) : (
-    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2a0e52] via-[#3d1580] to-[#1a0633] p-4 text-center">
-      <span className="text-sm font-black uppercase tracking-wide text-white/85">{v.creatorName}</span>
-    </div>
-  )
-}
-
-// ── Aspect-neutral thumbnail box (TK 2026-08-22) ────────────────────────────
-// A hardcoded `aspect-video` (16:9) box + object-cover crops a 9:16 thumbnail
-// down to a thin center strip (confirmed on live /watch -- 92/93 promo videos
-// are 9:16, the grid box was 16:9). Fixing it to `aspect-[9/16]` would just
-// reverse the bug the day a 16:9 season opens, and nothing here filters a
-// list to one season, so two ratios can sit in the same grid at once.
-// Matches WatchPlayer.tsx:32's approach instead: read the REAL image
-// dimensions via onLoad (naturalWidth/naturalHeight) and size the box to
-// match -- no crop needed because the box always equals the content's ratio.
-// Works today with zero DB migration; `fallback` is only the placeholder
-// ratio shown before the image loads (prevents a layout jump). Participant
-// entries have no resolution column yet (generation_jobs carries no
-// aspect/width/height), so this reads it from the pixels every time rather
-// than waiting on that schema work.
-export function AspectThumb({
-  url,
-  label,
-  className = '',
-  fallback = '9 / 16',
-  children,
-}: {
-  url: string | null
-  label: string
-  className?: string
-  fallback?: string
-  children?: React.ReactNode
-}) {
-  const [ratio, setRatio] = useState(fallback)
-  // If the browser already has `url` cached (repeat view, HMR reload), the
-  // image can finish decoding before this onLoad listener attaches -- the
-  // event never fires and the box is stuck on `fallback` forever, silently
-  // wrong for a real 16:9 asset. Caught by screenshot-testing this against a
-  // real cached image before shipping. `ref` callback runs on mount/update,
-  // so it catches the already-complete case that onLoad misses; onLoad still
-  // covers the normal (not yet cached) load.
-  const applyRatio = (img: HTMLImageElement | null) => {
-    if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-      setRatio(`${img.naturalWidth} / ${img.naturalHeight}`)
-    }
-  }
-  return (
-    <div className={`relative overflow-hidden ${className}`} style={{ aspectRatio: ratio }}>
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={url}
-          alt={label}
-          className="h-full w-full object-cover"
-          ref={applyRatio}
-          onLoad={(e) => applyRatio(e.currentTarget)}
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2a0e52] via-[#3d1580] to-[#1a0633] p-4 text-center">
-          <span className="text-sm font-black uppercase tracking-wide text-white/85">{label}</span>
-        </div>
-      )}
-      {children}
-    </div>
-  )
-}
-
 function RoundBadge({ round }: { round: WatchVideo['round'] }) {
   const t = useT()
   return (
@@ -511,9 +439,7 @@ export function Leaderboard({ items, seasonNames }: { items: ScoredMain[]; seaso
             className="group flex items-center gap-3 rounded-xl border border-[#8b22ff]/25 bg-[#110d1c] p-3 transition hover:border-[#8b22ff]/60 hover:shadow-[0_0_24px_rgba(139,34,255,.22)]"
           >
             <div className="text-2xl">{medals[i] ?? `#${i + 1}`}</div>
-            <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded">
-              <Thumb v={v} />
-            </div>
+            <AspectThumb url={v.thumbnailUrl} label={v.videoTitle || v.creatorName} className="w-24 shrink-0 rounded" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</p>
               <p className="truncate text-[11px] text-[#7a7299]">{v.creatorName}</p>
