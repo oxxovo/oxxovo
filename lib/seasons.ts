@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { DateTime } from 'luxon'
 import type { Lang } from './admin-i18n'
+import { isFixtureSeason } from './lobby'
 
 export type AIModel = {
   name: string
@@ -414,59 +415,72 @@ export async function getSeasonById(id: string): Promise<Season | null> {
 // the next season's application window is already open, several seasons are
 // in-flight at once; the newest-opened one is the correct application target.
 //
-// ★STANDING RISK, measured 2026-08-10, not fixed here — a scheduling fact, not
-// a code bug: season_0.application_open_at is 2026-09-09 (still future), so
-// today this function resolves season_0 only through the "soonest upcoming"
-// fallback below, not the "opened" branch. That fallback has no is_fixture
-// filter. Until 2026-09-09 00:00 PT, ANY row (including a rehearsal fixture
-// like season_test) that gets a past application_open_at instantly wins the
-// "opened" branch and hijacks the pick — exactly what happened on 2026-08-08
-// when season_test's leftover open date (2026-07-06) took over after
-// season_0's own open moved to 9/9. EXIT CONDITION: this risk disappears on
-// its own once season_0's application_open_at passes (2026-09-09 00:00 PT) --
-// its own row then wins the "opened" branch and nothing else can outrank it
-// on recency without also being in the future.
+// ★FIXED 2026-08-23 (HQ, launch blocker) -- this used to have no is_fixture
+// filter at all, so a rehearsal fixture with a past application_open_at (e.g.
+// season_test mid-rehearsal) would win the "opened" branch outright: "now"
+// always outranks any real season's already-past open date. Not hypothetical
+// -- it already happened once, 2026-08-08 (season_test's leftover 2026-07-06
+// open date took over after season_0's own open moved to 9/9). The
+// 2026-08-10 response only nulled season_test's date back out -- a data
+// patch, not a code fix -- and the comment that used to sit here said so
+// explicitly ("not fixed here, standing risk"). This is that fix. Same
+// helper season-tick's create-ahead already uses for the identical reason
+// (route.ts:175, "Fixtures are excluded before latest is picked") --
+// isFixtureSeason(), not a bespoke filter, so the two never drift into
+// different definitions of "fixture".
+//
+// Client-side filter, not `.eq('is_fixture', false)`: isFixtureSeason() also
+// carries a name/number heuristic fallback for a read that cannot see the
+// column at all, and a plain DB filter would drop that fallback silently.
+// CANDIDATE_LIMIT trades a slightly wider fetch for keeping that heuristic
+// alive -- the table has a handful of real seasons plus roughly nine known
+// fixture rows (2026-08-08 measurement), so 20 has wide headroom without
+// scanning the whole table.
+const CURRENT_SEASON_CANDIDATE_LIMIT = 20
+
 export async function getCurrentSeason(): Promise<Season | null> {
   const nowIso = new Date().toISOString()
 
-  // Primary: the most recently opened season (application_open_at <= now).
-  // `.lte` excludes NULL application_open_at automatically. During a normal
-  // application week this resolves to that week's season; in the brief gap
-  // before the next Monday it stays on the latest opened season.
+  // Primary: the most recently opened season (application_open_at <= now),
+  // fixtures excluded. `.lte` excludes NULL application_open_at automatically.
+  // During a normal application week this resolves to that week's season; in
+  // the brief gap before the next Monday it stays on the latest opened season.
   //
   // Reads seasons_public (NOT the base table): this runs through the fixed-anon
   // browser client, and anon's SELECT on public.seasons was revoked by the
   // theme-hybrid migration. The view is granted to anon/authenticated and
-  // exposes application_open_at/close_at; the secret twist/theme columns stay
-  // out of it. (getSeasonById already reads the view -- keep them consistent.)
-  const { data: opened, error: openedErr } = await supabase
+  // exposes application_open_at/close_at/is_fixture; the secret twist/theme
+  // columns stay out of it. (getSeasonById already reads the view -- keep them
+  // consistent.)
+  const { data: openedCandidates, error: openedErr } = await supabase
     .from('seasons_public')
     .select('*')
     .lte('application_open_at', nowIso)
     .order('application_open_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .limit(CURRENT_SEASON_CANDIDATE_LIMIT)
 
   if (openedErr) {
     console.error('[seasons] current-season (opened) query failed:', openedErr.message)
     return null
   }
-  if (opened) return opened as Season
+  const opened = (openedCandidates as Season[] | null)?.find((s) => !isFixtureSeason(s))
+  if (opened) return opened
 
-  // Fallback (pre-launch): nothing has opened yet — surface the soonest
-  // upcoming season so the site can render an "applications open soon" state.
-  const { data: upcoming, error: upcomingErr } = await supabase
+  // Fallback (pre-launch): nothing real has opened yet -- surface the soonest
+  // upcoming REAL season so the site can render an "applications open soon"
+  // state. Fixtures excluded the same way, for the same reason.
+  const { data: upcomingCandidates, error: upcomingErr } = await supabase
     .from('seasons_public')
     .select('*')
     .order('application_open_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
+    .limit(CURRENT_SEASON_CANDIDATE_LIMIT)
 
   if (upcomingErr) {
     console.error('[seasons] current-season (upcoming) query failed:', upcomingErr.message)
     return null
   }
-  return (upcoming as Season) ?? null
+  const upcoming = (upcomingCandidates as Season[] | null)?.find((s) => !isFixtureSeason(s))
+  return upcoming ?? null
 }
 
 // ★Single source of the "active registration" count (HQ 2026-08-12): the SQL
