@@ -289,6 +289,20 @@ function SubmitFormCard({
         )}
       </div>
 
+      {/* 필수조건(Twist) — SubmitFormCard는 canSubmitMainRound가 이미
+          now >= main_round_start_at를 보장하므로, twist reveal instant가
+          main_round_start_at와 정확히 같은 지금(theme_announcement_minutes_
+          before=0) 여기 도달했다는 것 자체가 twistRevealed=true를 함의한다.
+          그래도 방어적으로 둘 다 확인. */}
+      {revealedTheme.twistRevealed && revealedTheme.twist && (
+        <div className="mb-5 rounded-lg border border-[#8b22ff]/40 bg-[#8b22ff]/[.08] px-4 py-3">
+          <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">
+            {t.profile.main_round_twist_label}
+          </div>
+          <p className="text-sm font-semibold text-[#d9b8ff]">{revealedTheme.twist}</p>
+        </div>
+      )}
+
       {/* 사전 경고 */}
       <div className="mb-5 rounded-lg border border-[#ff8844]/40 bg-[#ff8844]/[.08] px-4 py-3">
         <p className="text-sm text-[#ffb088] leading-relaxed">
