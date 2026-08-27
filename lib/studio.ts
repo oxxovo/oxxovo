@@ -1208,6 +1208,10 @@ export type ApplicantInfo = {
   creatorStatement: string
   country?: string
   channelUrl?: string
+  // ★HQ 2026-08-23 (C-7): field only, no gate yet -- the minimum-age cutoff
+  // itself is still TK's call (HQ recommends 18). Collected now so enforcing
+  // it later is a value check, not a schema change + backfill.
+  age?: number
   agreedRules: boolean
   agreedPrivacy: boolean
   agreedIntegrity: boolean
@@ -1348,6 +1352,7 @@ export async function registerForSeason(args: {
     creator_statement: statement,
     country,
     channel_url: info.channelUrl?.trim() || null,
+    age: info.age ?? null,
     ai_service: 'OXXOVO Studio',
     agreed_to_rules: true,
     agreed_to_privacy: true,
