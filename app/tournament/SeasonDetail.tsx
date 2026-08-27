@@ -89,7 +89,7 @@ export function SeasonDetail({ season, mem }: { season: Season; mem: MembershipL
             </h1>
 
             <p className="mt-5 max-w-xl text-lg text-white/70 leading-relaxed">
-              The AI video tournament where creators compete — and AI decides.
+              The AI video tournament where creators compete — and skill decides.
             </p>
 
             <div className="mt-7 flex flex-wrap items-center gap-4">
