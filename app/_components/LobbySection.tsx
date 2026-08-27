@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { loadLobbyTournaments } from './lobby-actions'
-import { type LobbyCard, type LobbyMode } from '@/lib/lobby'
+import { MODE_BADGE, PHASE_BADGE, type LobbyCard, type LobbyMode } from '@/lib/lobby'
 import { AspectThumb } from '@/app/_components/AspectThumb'
 
 // TOURNAMENTS section for the home page (below the hero). Cards come from a
@@ -41,23 +41,6 @@ export function LobbySection() {
       </div>
     </section>
   )
-}
-
-const MODE_BADGE: Record<LobbyMode, { label: string; cls: string } | null> = {
-  upcoming: { label: 'COMING SOON', cls: 'bg-white/10 text-white/70 border-white/20' },
-  accepting: { label: 'OPEN', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
-  live: { label: 'LIVE', cls: 'bg-[#ff4444]/20 text-[#ff8888] border-[#ff4444]/50' },
-  ended: { label: 'ENDED', cls: 'bg-white/5 text-white/40 border-white/10' },
-}
-
-// ★C-4 (Jenny3, 2026-08-10). `mode` still collapses main_live / voting /
-// awaiting_results into one 'live' -- this only overrides the badge for the
-// two sub-phases that have their own copy; every other 'live' phase falls
-// through to the generic LIVE badge above. `mode==='live'` already covers
-// both phases too, so the pulse dot below needs no separate check.
-const PHASE_BADGE: Partial<Record<LobbyCard['phase'], { label: string; cls: string }>> = {
-  voting: { label: 'VOTING OPEN', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
-  awaiting_results: { label: 'TALLYING', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
 }
 
 export function LobbyCardView({ card }: { card: LobbyCard }) {
@@ -165,8 +148,8 @@ const CD_LABEL: Record<LobbyMode, string> = {
 
 // ★C-4: same two sub-phases as PHASE_BADGE, same fallback shape.
 const PHASE_CD_LABEL: Partial<Record<LobbyCard['phase'], string>> = {
-  voting: 'Voting closes in',
-  awaiting_results: 'Winners in',
+  voting: '투표 마감까지',
+  awaiting_results: '우승작 공개까지',
 }
 
 function Countdown({
