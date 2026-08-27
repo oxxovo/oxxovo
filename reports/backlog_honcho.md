@@ -125,3 +125,4 @@
 | c-bannedseed | 닉네임 금지어 `platform_config` 시딩 — general 68 · impersonation 37(장애인 제외 확정) | 2026-08-19 Run 완료 |
 | c-creatorxxxx | CreatorXXXX 자동생성 닉네임 3행(TK 계정 포함) `display_name` NULL 처리 | 2026-08-19 Run 완료, BLOCK 0 미리보기 일치 확인 후 BLOCK 1 실행 |
 | c-watermarkcols | 다운로드/홍보 워터마크용 컬럼 마이그(profiles 5 + render_jobs 5+2) | 2026-08-19 Run 완료 전부 |
+| c-submitgatehardening | **발사 후.** `submitGenerationAction`/`submitRenderAction`(`app/studio/actions.ts`)이 로그인 토큰만 확인하고 `checkStudioAccess`를 직접 부르지 않음 — 2026-08-27 추적 결과 일반 참가자에겐 도달 불가(job/render를 만드는 모든 create* 경로가 이미 checkStudioAccess로 막힘), admin/`STUDIO_DEV_UNLOCK`/`studio_test_access` 우회 계정에만 열려 있음(공개 구멍 아님). `submitGeneration`/`submitRender`(lib/studio.ts) 초입에 `checkStudioAccess` 방어적 재호출 추가 — TK 승인된 원칙(이중검증≠이중진실, 같은 함수 재호출은 방어이지 값 중복 아님)이지만 9/9 발사 17일 전에 제출 경로를 건드리는 위험이 커서 지금은 보류 | open |
