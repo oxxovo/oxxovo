@@ -30,6 +30,8 @@ export const FAQ_TOKENS = [
   'prize_third',
   'max_applicants',
   'video_length_range',
+  'main_round_video_length_range',
+  'aspect_ratio',
   'advance_label',
   'membership_access',
   'application_close',
@@ -62,12 +64,38 @@ function resolveToken(token: FaqToken, ctx: FaqTokenContext): string | null {
       return usd(season.prize_third)
     case 'max_applicants':
       return Number.isFinite(season.max_applicants) ? String(season.max_applicants) : null
+    // ★Preliminary round ONLY. TK 2026-08-27: a token naming just "video
+    // length" invites writing one number when the platform promises two
+    // (prelim 15-30s, main 35-40s) -- see main_round_video_length_range
+    // below for the other one. Do not merge these into one token: the two
+    // rounds' bounds are independent season columns (application_video_*
+    // vs main_round_video_*) and always will be (lib/studio.ts
+    // videoBoundsForRound).
     case 'video_length_range': {
       const min = season.application_video_min_seconds
       const max = season.application_video_max_seconds
       if (!Number.isFinite(min) || !Number.isFinite(max)) return null
       return lang === 'ko' ? `${min}~${max}초` : `${min}–${max} seconds`
     }
+    case 'main_round_video_length_range': {
+      const min = season.main_round_video_min_seconds
+      const max = season.main_round_video_max_seconds
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return null
+      return lang === 'ko' ? `${min}~${max}초` : `${min}–${max} seconds`
+    }
+    // ★TK 2026-08-27. NULL (no season lock, participant picks freely) is not
+    // a token failure by accident -- there is no sensible single-value text
+    // for "either aspect" that would not misstate a real constraint, so an
+    // unlocked season simply cannot resolve this token (write copy that
+    // doesn't need it, or lock the season first). ★BLOCKED ON A SEPARATE
+    // MIGRATION: seasons_public (the anon-readable view LandingView.tsx
+    // actually reads through) does not carry aspect_ratio yet -- until that
+    // view is updated, this resolves to null (safe: "missing", same as any
+    // other unresolvable token) even on a locked season. See the
+    // reports/*seasons_public* migration note for why this is a
+    // pg_get_viewdef-probe-first change, not a guessed rewrite.
+    case 'aspect_ratio':
+      return season.aspect_ratio ?? null
     // ★English text regardless of `lang` -- same known limitation as the
     // hardcoded FAQ #7 answer (LandingView.tsx), which already passes this
     // exact helper's output straight into the KR answer variant. Not solved

@@ -6,8 +6,10 @@
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { getThemeRevealTime } from '@/lib/seasons'
+import { getThemeRevealTime, getCurrentSeason } from '@/lib/seasons'
 import { loadFaqBannedWordLists, findBannedWords } from '@/lib/faq-banned-words'
+import { resolveFaqText } from '@/lib/faq-tokens'
+import { getMembershipLandingData } from '@/app/membership/actions'
 
 const SURFACE = 'landing_home' // 1차 범위 (§6). faq_items.surface 컬럼은 2차('faq_page') 대비.
 
@@ -24,6 +26,7 @@ export type SaveFaqItemState =
   | { ok: true; id: string }
   | { ok: false; error: string }
   | { ok: false; warning: true; words: string[] } // ③ 확인 필요, 저장 안 됨 -- confirm=true로 재호출
+  | { ok: false; unresolvedTokens: string[] } // ★HARD block, no confirm override -- see below
 
 function validate(input: FaqItemInput): string | null {
   if (!input.questionEn.trim()) return 'question (EN) is required'
@@ -43,6 +46,30 @@ export async function saveFaqItemAction(
   const admin_profile = await requireAdmin()
   const err = validate(input)
   if (err) return { ok: false, error: err }
+
+  // ★HARD BLOCK, no confirm override (TK 2026-08-27): unlike the banned-word
+  // warning below, an unresolved {{token}} has no legitimate reason to save
+  // anyway -- resolveFaqText's contract is that ANY missing token drops the
+  // WHOLE item from the live page, silently (LandingView.tsx's `if
+  // (!resolved.ok) return null`). The admin-panel preview already shows this
+  // per-keystroke, but nothing stopped saving past it -- an admin who does
+  // not notice the preview line ships an item that will never be seen and
+  // has no error anywhere to find out why. A typo'd or not-yet-implemented
+  // token is exactly the failure this session kept finding today ("looks
+  // broken" beats "silently absent" every time), so this refuses at save,
+  // not just at render.
+  const season = await getCurrentSeason()
+  if (season) {
+    const membership = await getMembershipLandingData()
+    const checks = [
+      resolveFaqText(input.questionEn, { season, membership, lang: 'en' }),
+      resolveFaqText(input.answerEn, { season, membership, lang: 'en' }),
+      resolveFaqText(input.questionKo, { season, membership, lang: 'ko' }),
+      resolveFaqText(input.answerKo, { season, membership, lang: 'ko' }),
+    ]
+    const unresolvedTokens = [...new Set(checks.flatMap((c) => (c.ok ? [] : c.missingTokens)))]
+    if (unresolvedTokens.length > 0) return { ok: false, unresolvedTokens }
+  }
 
   // ③ 금지어 경고 -- 차단 아님, confirm=true면 통과.
   const lists = await loadFaqBannedWordLists()

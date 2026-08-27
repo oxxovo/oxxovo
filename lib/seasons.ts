@@ -75,6 +75,14 @@ export type Season = {
 
   application_video_min_seconds: number
   application_video_max_seconds: number
+  // ★TK 2026-08-27: locked output aspect for this season, or null = no lock
+  // (participant picks freely). Mirrors lib/studio.ts SeasonStudioConfig.
+  // aspectRatio -- same column, read here too because it's public-facing
+  // copy (FAQ tokens, lib/faq-tokens.ts), not Studio-internal. ★NOT YET on
+  // seasons_public (the anon view getCurrentSeason() actually reads) --
+  // resolves to undefined there until that view is migrated; treat exactly
+  // like any other absent field, never as "16:9" or any other default.
+  aspect_ratio: '16:9' | '9:16' | null
 
   // prize_first/second/third are GENERATED ALWAYS AS STORED in Postgres
   // (computed from total_prize_pool * prize_*_pct / 100). Read-only at the

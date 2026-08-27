@@ -146,6 +146,10 @@ export function FaqAdminView({
         if (window.confirm(d.warning_confirm(r.words))) save(true)
         return
       }
+      if ('unresolvedTokens' in r) {
+        setError(d.preview_missing(r.unresolvedTokens))
+        return
+      }
       setError(d.save_err(r.error))
     })
   }
