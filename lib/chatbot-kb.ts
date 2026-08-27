@@ -75,8 +75,8 @@ const KNOWLEDGE_BASE = `# KNOWLEDGE BASE
 
 ## A. About
 Q. What is OXXOVO?
-- KR: OXXOVO는 AI 영상 창작 토너먼트 플랫폼입니다. 크리에이터들이 짧은 AI 영상을 만들어 겨루고, 공정한 AI 심사로 순위를 가립니다. (본선은 관객 투표가 함께 반영됩니다.)
-- EN: OXXOVO is an AI video creation tournament platform. Creators make short AI videos to compete, with rankings decided by fair AI judging. (The main round also factors in an audience vote.)
+- KR: OXXOVO는 AI 영상 창작 토너먼트 플랫폼입니다. 크리에이터들이 짧은 AI 영상을 만들어 겨룹니다. 본선 순위는 AI 심사와 관객 투표를 절반씩 합산해 정합니다.
+- EN: OXXOVO is an AI video creation tournament platform. Creators make short AI videos to compete. Finals rankings are decided by combining AI judging and audience votes equally.
 Q. Who can join?
 - KR: AI 영상 창작에 관심 있는 누구나 참가할 수 있습니다. 자세한 신청 안내는 신청 페이지(https://www.oxxovo.ai/apply)에서 확인해 주세요.
 - EN: Anyone interested in AI video creation can join. Please see the application page (https://www.oxxovo.ai/apply) for full details.
@@ -292,10 +292,10 @@ Q. What models are in OXXOVO Studio / how much do they cost?
 - EN: Studio offers several AI video models that differ in quality and credit usage. See the exact available models and credit rates in OXXOVO Studio (https://www.oxxovo.ai/studio) — do not state prices here.
 
 ## R. Major AI Video Tools (general overview — use web_search for the latest)
-This is general, fast-moving information. Use web_search for current model names, capabilities, and pricing; do not assert stale specifics. OXXOVO does not endorse any third-party tool. Note: Season 0 entries are created inside OXXOVO Studio (both rounds), so third-party tools cannot be used for a Season 0 submission -- answer such questions as general information only.
+This is general, fast-moving information; do not assert stale specifics or recite a fixed model roster from memory -- it goes stale and over-exposes specific vendors. Answer from web_search instead. OXXOVO does not endorse any third-party tool. Season 0 entries are created entirely inside OXXOVO Studio (both the preliminary and Main rounds); third-party tools cannot be used for a Season 0 submission -- make this constraint clear whenever a question implies otherwise.
 Q. What AI video tools exist / which should I use?
-- Widely used AI video generators include (non-exhaustive, changes often): OpenAI Sora, Google Veo, Runway (Gen-series), Kuaishou Kling, Pika, Luma Dream Machine, MiniMax Hailuo, and others. They differ in clip length, motion quality, realism, control, and price. For a current comparison or a tool's latest version, use web_search. Choose based on your concept (realism vs. stylized, length, camera control) and budget; many offer free or trial tiers.
-- KR: 자주 쓰이는 AI 영상 생성 도구로는 Sora(OpenAI), Veo(Google), Runway, Kling, Pika, Luma, Hailuo 등이 있습니다(자주 바뀜). 클립 길이·모션 품질·사실성·제어·가격이 다릅니다. 최신 비교나 버전은 web_search로 확인하세요. 시즌0 예선은 어떤 도구든 사용 가능합니다.
+- Use web_search for current tool names, capabilities, and pricing rather than a hardcoded list. Compare on clip length, motion quality, realism, control, and price; choose based on the creator's concept and budget. This is general education only -- it has no bearing on what can be used for an OXXOVO submission.
+- KR: 특정 도구 목록을 외워서 답하지 말고 web_search로 최신 정보를 확인하세요(모델 라인업이 자주 바뀌고, 특정 업체명을 고정 노출하는 것도 바람직하지 않습니다). 클립 길이·모션 품질·사실성·제어·가격을 비교 기준으로 삼으세요. 시즌0 예선·본선 모두 OXXOVO Studio 안에서만 제작합니다 — 외부 도구는 시즌0 출품에 사용할 수 없습니다.
 
 ## OUT-OF-SCOPE RULES
 Treat these as outside the knowledge base. Do NOT guess; reply with the standard info@oxxovo.ai message and the team follows up:
