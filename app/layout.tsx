@@ -41,7 +41,7 @@ const richMetadata: Metadata = {
     template: "%s · OXXOVO",
   },
   description:
-    "OXXOVO is an AI video creation tournament. Make a short AI video, compete with creators worldwide, and let the work win — judged by AI. No connections, no gatekeepers.",
+    "An AI video competition. Same tools, same clock, skill decides. Enter from anywhere.",
   applicationName: "OXXOVO",
   openGraph: {
     type: "website",
@@ -49,14 +49,14 @@ const richMetadata: Metadata = {
     url: "https://www.oxxovo.ai",
     title: "OXXOVO — The Global Arena for AI Creators",
     description:
-      "An AI video creation tournament. Same prompt, same time, no excuses. Compete worldwide; AI decides.",
+      "An AI video competition. Same tools, same clock, skill decides. Enter from anywhere.",
     images: [{ url: "/arena_image.png", width: 1200, height: 630, alt: "OXXOVO" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "OXXOVO — The Global Arena for AI Creators",
     description:
-      "An AI video creation tournament. Same prompt, same time, no excuses. Compete worldwide; AI decides.",
+      "An AI video competition. Same tools, same clock, skill decides. Enter from anywhere.",
     images: ["/arena_image.png"],
   },
 };
