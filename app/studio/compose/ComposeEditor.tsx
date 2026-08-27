@@ -82,6 +82,11 @@ export type ComposeEditorProps = {
   minSeconds: number
   maxSeconds: number
   maxClips: number
+  // ★TK 2026-08-27: null = participant picks freely (today's behavior,
+  // unchanged). A value locks the toggle to it -- createRender is the
+  // authority regardless, this only drives the UI lock + shown reason.
+  // Omitted (demo) behaves like null.
+  lockedAspect?: '16:9' | '9:16' | null
   demo?: boolean
   resumeRender?: ComposeResumeRender | null
   // ★A FAILED render offered only for its arrangement. Never resumed (the row is

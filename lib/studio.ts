@@ -182,6 +182,14 @@ export type SeasonStudioConfig = {
   // Max CLIPS in a composed render (a count, not a duration -- not part of
   // the length-gate family above, no round split exists or is needed for it).
   studioComposeMaxClips: number
+  // ★TK 2026-08-27: locked output aspect for this season, or null = no
+  // lock (participant picks freely -- today's behavior, unchanged). NULL
+  // must NEVER be read as "16:9" or any other default -- "unset" and "locked
+  // to a value" are different facts ([[feedback-absent-is-not-zero]]).
+  // Enforced both in the editor (ProComposeEditor.tsx locks the toggle) and
+  // server-side (createRender rejects a mismatched aspect) -- either one
+  // alone is not the authority, createRender is.
+  aspectRatio: '16:9' | '9:16' | null
 }
 
 // Per-round video-length bounds, resolved from the season config. Application
@@ -449,10 +457,11 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips')
+    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips, aspect_ratio')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
+  const aspectRatio = data.aspect_ratio === '16:9' || data.aspect_ratio === '9:16' ? data.aspect_ratio : null
   return {
     round: (data.studio_round as StudioRoundSetting) ?? 'main',
     maxGenerationsPerRound: Number(data.studio_max_generations_per_round ?? 10),
@@ -468,6 +477,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     studioComposeMinSeconds: Number(data.studio_compose_min_seconds ?? 0),
     studioComposeMaxSeconds: Number(data.studio_compose_max_seconds ?? 0),
     studioComposeMaxClips: Number(data.studio_compose_max_clips ?? 10),
+    aspectRatio,
   }
 }
 
@@ -1794,6 +1804,7 @@ export type CreateRenderResult =
         | 'source_not_ready'
         | 'source_cryptobind_failed'
         | 'bad_aspect'
+        | 'aspect_locked'
         | 'failed'
         | TextReason
         | MusicReason
@@ -1886,12 +1897,17 @@ export async function createRender(args: {
     // for the whole season" from before the round split existed, and never
     // got updated when application (15-30s) and main (35-40s) diverged. It
     // is dropped from this select on purpose; do not add it back as the gate.
-    .select('studio_compose_enabled, studio_compose_max_clips, studio_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds')
+    .select('studio_compose_enabled, studio_compose_max_clips, studio_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, aspect_ratio')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
   if (!seasonRow.studio_compose_enabled) return { ok: false, reason: 'compose_disabled' }
   const maxClips = Number(seasonRow.studio_compose_max_clips ?? 10)
+  // ★TK 2026-08-27: null = no lock (today's free-choice behavior, unchanged).
+  // Never treat null as a default aspect -- "unset" and "locked to 16:9" are
+  // different facts.
+  const lockedAspect =
+    seasonRow.aspect_ratio === '16:9' || seasonRow.aspect_ratio === '9:16' ? seasonRow.aspect_ratio : null
   const effectiveRound = resolveEffectiveRound({
     round: (seasonRow.studio_round as StudioRoundSetting) ?? 'main',
     mainRoundStartAt: (seasonRow.main_round_start_at as string | null) ?? null,
@@ -1932,6 +1948,14 @@ export async function createRender(args: {
   // 2a. Output aspect (EDL v2): only the two enums.
   const aspect = Array.isArray(args.edl) ? undefined : args.edl.aspect
   if (aspect !== undefined && aspect !== '16:9' && aspect !== '9:16') return { ok: false, reason: 'bad_aspect' }
+  // ★TK 2026-08-27: season-locked aspect is enforced here, not only in the
+  // editor UI -- the editor's lock is a courtesy, this is the authority. A
+  // locked season with no `aspect` sent at all (legacy EDL v1, or a v2 EDL
+  // that omitted it) is also rejected: silence is not compliance once a
+  // season has committed to one aspect.
+  if (lockedAspect && aspect !== lockedAspect) {
+    return { ok: false, reason: 'aspect_locked', detail: lockedAspect }
+  }
 
   // 2b. Text/title overlays (EDL v2). Server is authority for the shape + the 5%
   //     size floor (client mirrors both). Content moderation is a later step.

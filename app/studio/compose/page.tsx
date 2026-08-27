@@ -54,6 +54,7 @@ export default function ComposePage() {
     minSeconds: number
     maxSeconds: number
     maxClips: number
+    lockedAspect: '16:9' | '9:16' | null
     submit: ComposeSubmitCtx
     submission: ComposeSubmission
     resumeRender: ResumeRender | null
@@ -136,6 +137,7 @@ export default function ComposePage() {
             minSeconds={data.minSeconds}
             maxSeconds={data.maxSeconds}
             maxClips={data.maxClips}
+            lockedAspect={data.lockedAspect}
             submitCtx={data.submit}
             submission={data.submission}
             resumeRender={data.resumeRender}

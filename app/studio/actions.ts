@@ -630,6 +630,10 @@ export type LoadComposeResult =
         minSeconds: number
         maxSeconds: number
         maxClips: number
+        // ★TK 2026-08-27: null = participant picks freely (today's behavior).
+        // A value locks the editor's toggle to it -- createRender is still the
+        // authority (rejects a mismatched aspect independent of this hint).
+        lockedAspect: '16:9' | '9:16' | null
         submit: ComposeSubmitCtx
         submission: ComposeSubmissionStatus
         resumeRender: ResumeRender | null
@@ -828,6 +832,7 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         minSeconds: composeMin,
         maxSeconds: composeMax,
         maxClips: cfg.studioComposeMaxClips,
+        lockedAspect: cfg.aspectRatio,
         submit: {
           round: effectiveRound,
           hasApplication,

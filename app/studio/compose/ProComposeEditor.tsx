@@ -217,6 +217,7 @@ const DICT = {
     fit_cap: (n: number) => `화면에 들어가는 최대 크기 ${n}% — 이 눈금을 넘기면 잘립니다.`,
     // --- output aspect / per-clip fit ---
     aspect_hint: '출력 비율 — 미리보기가 즉시 바뀝니다',
+    aspect_locked_hint: (a: string) => `이번 시즌은 ${a}로 고정되어 있습니다`,
     crop_badge: '크롭됨',
     fit_label: '채우기',
     fit_contain: '여백',
@@ -432,6 +433,7 @@ const DICT = {
     fit_cap: (n: number) => `Largest size that fits: ${n}% — past this tick the text is clipped.`,
     // --- output aspect / per-clip fit ---
     aspect_hint: 'Output aspect — the preview reframes instantly',
+    aspect_locked_hint: (a: string) => `This season is locked to ${a}`,
     crop_badge: 'CROPPED',
     fit_label: 'Fill',
     fit_contain: 'Fit',
@@ -659,7 +661,10 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
   const [arrangementRestored, setArrangementRestored] = useState(false)
   const [texts, setTexts] = useState<TextLayer[]>([]) // text/title overlays (stage 5 renders, stage 6 edits)
   const [selText, setSelText] = useState<number | null>(null) // selected text layer index
-  const [aspect, setAspect] = useState<Aspect>('16:9') // output aspect (letterbox/crop per clip)
+  // ★TK 2026-08-27: a season-locked aspect (props.lockedAspect) seeds the
+  // initial value and wins over any stale draft below -- null means free
+  // choice, unchanged from before this existed.
+  const [aspect, setAspect] = useState<Aspect>(props.lockedAspect ?? '16:9') // output aspect (letterbox/crop per clip)
   const [music, setMusic] = useState<MusicBed | null>(null) // music bed (null = clip audio only)
   const musicEnabled = props.musicEnabled ?? false
   // Freshly-generated AI tracks (this session) merged into the picker so a
@@ -810,7 +815,9 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
     // Only restore texts alongside a restored composition (they reference its
     // timeline). The server re-validates on render regardless.
     if (rebuilt.length && draftTexts && draftTexts.length) setTexts(draftTexts)
-    if (rebuilt.length && draftAspect) setAspect(draftAspect)
+    // A season lock wins over a stale draft -- the draft may predate the lock,
+    // or the season may have relocked to a different value since it was saved.
+    if (rebuilt.length && draftAspect && !props.lockedAspect) setAspect(draftAspect)
     if (rebuilt.length && draftMusic) setMusic(draftMusic)
     if (!rebuilt.length && props.restorableRender?.edl?.length) {
       // Keep only segments whose clip still exists, exactly as the resume path
@@ -1692,12 +1699,32 @@ export default function ProComposeEditor(props: ComposeEditorProps) {
           <div className="flex items-center justify-between gap-2 border-b border-white/8 px-3.5 py-2.5">
             <h2 className={paneHead}>{t.preview}</h2>
             <div className="flex items-center gap-2">
-              {/* output aspect selector -- the preview reframes immediately */}
-              <div className="inline-flex rounded-lg border border-white/10 bg-white/[.02] p-0.5" title={t.aspect_hint}>
-                {(['16:9', '9:16'] as const).map((a) => (
-                  <button key={a} type="button" onClick={() => { if (aspect !== a) { commit('aspect'); setAspect(a) } }}
-                    className={`rounded-md px-2 py-0.5 text-[10px] font-bold transition ${aspect === a ? 'bg-[#8b22ff]/25 text-[#d9b8ff]' : 'text-white/45 hover:text-white/70'}`}>{a}</button>
-                ))}
+              {/* output aspect selector -- the preview reframes immediately.
+                  ★TK 2026-08-27: a season lock (props.lockedAspect) does not
+                  hide the other option -- it shows it disabled, with the
+                  reason, so the participant can see WHY only one works
+                  rather than wondering where the other button went. */}
+              <div
+                className="inline-flex rounded-lg border border-white/10 bg-white/[.02] p-0.5"
+                title={props.lockedAspect ? t.aspect_locked_hint(props.lockedAspect) : t.aspect_hint}
+              >
+                {(['16:9', '9:16'] as const).map((a) => {
+                  const locked = !!props.lockedAspect && props.lockedAspect !== a
+                  return (
+                    <button
+                      key={a}
+                      type="button"
+                      disabled={locked}
+                      onClick={() => { if (!locked && aspect !== a) { commit('aspect'); setAspect(a) } }}
+                      title={locked ? t.aspect_locked_hint(props.lockedAspect as string) : undefined}
+                      className={`rounded-md px-2 py-0.5 text-[10px] font-bold transition ${
+                        aspect === a ? 'bg-[#8b22ff]/25 text-[#d9b8ff]' : locked ? 'text-white/20 cursor-not-allowed' : 'text-white/45 hover:text-white/70'
+                      }`}
+                    >
+                      {a}
+                    </button>
+                  )
+                })}
               </div>
               <span className="text-[11px] font-bold text-[#b66cff]">{totalSec.toFixed(1)}{t.sec} · {segments.length} {t.clip}</span>
             </div>
