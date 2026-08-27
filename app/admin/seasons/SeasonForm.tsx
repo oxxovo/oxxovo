@@ -871,6 +871,14 @@ function IntArrayEditor({
 // Closed-set checkbox list for allowed_video_platforms -- not free text, so a
 // typo can't silently produce a platform validateVideoUrl will never match
 // (HQ 2026-08-16).
+//
+// ★If this is ever checked to anything beyond ['studio'] and that reaches
+// acceptsExternalUrl() as true, /apply's AI Service dropdown goes live and
+// the "Same tools" claims stop being true -- lib/admin-i18n.ts landing.sub2 +
+// landing.feat2_desc (EN+KR) and app/faq/page.tsx's "Can I use other AI
+// tools?" answer (EN+KR), 5 places. See app/apply/page.tsx's AI_SERVICES
+// comment for the same note at the consuming end. Whoever flips this owes
+// those 5 places new copy first.
 function PlatformCheckboxes({
   label, hint, selected, onChange, error,
 }: {
