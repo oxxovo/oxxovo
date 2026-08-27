@@ -8,11 +8,11 @@
 // absolutist) about the operator override path.
 
 export const RESULT_INTEGRITY_NOTE_KO =
-  'OXXOVO 운영진은 결과 결정에 직접 개입하지 않으며, Triple-AI 시스템이 ' +
-  '객관적으로 결정합니다. 단, 시스템 오류 또는 부정 발견 시에만 예외적으로 ' +
-  '검토 및 정정이 진행되며, 이 경우 투명하게 공개됩니다.'
+  'OXXOVO 운영진은 결과 결정에 직접 개입하지 않습니다. 순위는 복수의 이종 AI ' +
+  '모델이 매긴 점수와 관객 투표를 합산해 정해집니다. 시스템 오류나 부정이 ' +
+  '발견된 경우에만 예외적으로 검토하며, 그때는 내용을 공개합니다.'
 
 export const RESULT_INTEGRITY_NOTE_EN =
-  'OXXOVO operators do not directly intervene in outcomes — the Triple-AI ' +
-  'system determines results objectively. Exceptions are made only in cases ' +
-  'of system errors or fraud, and all such cases are publicly documented.'
+  'OXXOVO staff do not intervene in results. Rankings come from scores by ' +
+  'several independent AI models combined with audience votes. We review ' +
+  'only in cases of system error or fraud, and we publish what we find.'
