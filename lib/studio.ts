@@ -163,17 +163,36 @@ export type SeasonStudioConfig = {
   mainRoundVideoMaxSeconds: number
   // Compose on? When true, clip generation is gated by model-native bounds only.
   studioComposeEnabled: boolean
-  // Length bounds of the FINAL composed render (not of a clip). The authority is
-  // createRender/submitRender, which re-read these columns; these copies exist so
-  // the UI can STATE the rule without hardcoding it. 0 = unset -> caller decides.
+  // ★DEAD AS A LENGTH GATE (2026-08-27, HQ). Used to be what createRender/
+  // submitRender read for the composed final's length -- a single season-wide
+  // value with no round split. That's exactly wrong once a season runs
+  // application+main compose in the same season ('both'): prelim promises
+  // application_video_*  seconds, main promises main_round_video_* seconds,
+  // and this pair is neither -- season_0 measured 30/40 against a public
+  // promise of 15/30 (prelim) and 35/40 (main), rejecting valid short prelim
+  // entries and accepting too-short main entries. createRender/submitRender
+  // now read videoBoundsForRound(cfg, effectiveRound) instead (the same
+  // per-round pair S-7 already uses, just no longer skipped for the composed
+  // total). These two fields are kept only because the DB columns still
+  // exist and nothing else has repurposed them yet -- do NOT reintroduce a
+  // read of these for gating or for UI copy; use videoBoundsForRound.
   studioComposeMinSeconds: number
   studioComposeMaxSeconds: number
+  // Max CLIPS in a composed render (a count, not a duration -- not part of
+  // the length-gate family above, no round split exists or is needed for it).
+  studioComposeMaxClips: number
 }
 
 // Per-round video-length bounds, resolved from the season config. Application
 // round uses application_video_*; main round uses main_round_video_*.
 export function videoBoundsForRound(
-  cfg: SeasonStudioConfig,
+  cfg: Pick<
+    SeasonStudioConfig,
+    | 'applicationVideoMinSeconds'
+    | 'applicationVideoMaxSeconds'
+    | 'mainRoundVideoMinSeconds'
+    | 'mainRoundVideoMaxSeconds'
+  >,
   round: EffectiveRound,
 ): { min: number; max: number } {
   if (round === 'main') {
@@ -429,7 +448,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('seasons')
-    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
+    .select('studio_round, studio_max_generations_per_round, studio_max_draft_generations_per_round, studio_max_image_generations_per_round, studio_max_draft_image_generations_per_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds, studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips')
     .eq('id', seasonId)
     .single()
   if (error) throw new Error('getSeasonStudioConfig: ' + error.message)
@@ -447,6 +466,7 @@ export async function getSeasonStudioConfig(seasonId: string): Promise<SeasonStu
     studioComposeEnabled: Boolean(data.studio_compose_enabled),
     studioComposeMinSeconds: Number(data.studio_compose_min_seconds ?? 0),
     studioComposeMaxSeconds: Number(data.studio_compose_max_seconds ?? 0),
+    studioComposeMaxClips: Number(data.studio_compose_max_clips ?? 10),
   }
 }
 
@@ -1813,14 +1833,32 @@ export async function createRender(args: {
     // what broke compose: one un-migrated column fails the WHOLE PostgREST
     // select (42703) and takes the compose config down with it. It is read
     // separately, fail-closed, via lib/music-gate.
-    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips')
+    //
+    // ★2026-08-27 (HQ, judged 2): the composed final's length is gated by the
+    // ROUND's own promised bounds (application_video_*/main_round_video_*),
+    // NOT studio_compose_min/max_seconds -- that column meant "one flat value
+    // for the whole season" from before the round split existed, and never
+    // got updated when application (15-30s) and main (35-40s) diverged. It
+    // is dropped from this select on purpose; do not add it back as the gate.
+    .select('studio_compose_enabled, studio_compose_max_clips, studio_round, main_round_start_at, application_video_min_seconds, application_video_max_seconds, main_round_video_min_seconds, main_round_video_max_seconds')
     .eq('id', args.seasonId)
     .single()
   if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
   if (!seasonRow.studio_compose_enabled) return { ok: false, reason: 'compose_disabled' }
   const maxClips = Number(seasonRow.studio_compose_max_clips ?? 10)
-  const minSeconds = Number(seasonRow.studio_compose_min_seconds ?? 0)
-  const maxSeconds = Number(seasonRow.studio_compose_max_seconds ?? 30)
+  const effectiveRound = resolveEffectiveRound({
+    round: (seasonRow.studio_round as StudioRoundSetting) ?? 'main',
+    mainRoundStartAt: (seasonRow.main_round_start_at as string | null) ?? null,
+  })
+  const { min: minSeconds, max: maxSeconds } = videoBoundsForRound(
+    {
+      applicationVideoMinSeconds: Number(seasonRow.application_video_min_seconds ?? 0),
+      applicationVideoMaxSeconds: Number(seasonRow.application_video_max_seconds ?? 0),
+      mainRoundVideoMinSeconds: Number(seasonRow.main_round_video_min_seconds ?? 0),
+      mainRoundVideoMaxSeconds: Number(seasonRow.main_round_video_max_seconds ?? 0),
+    },
+    effectiveRound,
+  )
 
   if (segments.length > maxClips) return { ok: false, reason: 'too_many_clips' }
 
@@ -1843,7 +1881,7 @@ export async function createRender(args: {
   }
   if (totalMs <= 0) return { ok: false, reason: 'empty_edl' }
   if (minSeconds > 0 && totalMs < minSeconds * 1000) return { ok: false, reason: 'too_short' }
-  if (totalMs > maxSeconds * 1000) return { ok: false, reason: 'too_long' }
+  if (maxSeconds > 0 && totalMs > maxSeconds * 1000) return { ok: false, reason: 'too_long' }
 
   // 2a. Output aspect (EDL v2): only the two enums.
   const aspect = Array.isArray(args.edl) ? undefined : args.edl.aspect
@@ -2241,19 +2279,20 @@ export async function submitRender(args: {
   if (render.submit_intent_at) return { ok: false, reason: 'already_submitted' }
 
   // 2. Season compose gate + cap (defense; caps are season-variable).
-  const { data: seasonRow, error: sErr } = await admin
-    .from('seasons')
-    // Music gate read separately (fail-closed) -- see the note in createRender.
-    .select('studio_compose_enabled, studio_compose_min_seconds, studio_compose_max_seconds')
-    .eq('id', args.seasonId)
-    .single()
-  if (sErr || !seasonRow) return { ok: false, reason: 'failed', detail: 'season not found' }
-  if (!seasonRow.studio_compose_enabled) return { ok: false, reason: 'compose_disabled' }
-  const minSeconds = Number(seasonRow.studio_compose_min_seconds ?? 0)
-  const maxSeconds = Number(seasonRow.studio_compose_max_seconds ?? 30)
+  //
+  // ★2026-08-27 (HQ, judged 2): the composed final's length is gated by the
+  // ROUND's own promised bounds (application_video_*/main_round_video_*), NOT
+  // studio_compose_min/max_seconds -- see the matching note in createRender.
+  // getSeasonStudioConfig + resolveEffectiveRound were already computed lower
+  // in this function (step 5, "studio round"); pulled up here so there is one
+  // call, not a second season query with its own stale gate.
+  const cfg = await getSeasonStudioConfig(args.seasonId)
+  if (!cfg.studioComposeEnabled) return { ok: false, reason: 'compose_disabled' }
+  const effectiveRound = resolveEffectiveRound(cfg)
+  const { min: minSeconds, max: maxSeconds } = videoBoundsForRound(cfg, effectiveRound)
   const totalSeconds = Number(render.total_duration_seconds)
   if (minSeconds > 0 && totalSeconds < minSeconds - 0.001) return { ok: false, reason: 'too_short' }
-  if (totalSeconds > maxSeconds + 0.001) return { ok: false, reason: 'too_long' }
+  if (maxSeconds > 0 && totalSeconds > maxSeconds + 0.001) return { ok: false, reason: 'too_long' }
 
   // 3 / 3b / 4. Source clips + music bed + the composition's own signatures.
   //    requireFinal follows whether the render has actually landed: at intent time
@@ -2261,11 +2300,10 @@ export async function submitRender(args: {
   const chain = await verifyComposeChain(admin, render, args, rendered)
   if (!chain.ok) return chain as SubmitRenderResult
 
-  // 5. Studio round for this season -- effective round resolved server-side.
+  // 5. Studio round for this season -- effective round resolved server-side
+  //    (computed above, at step 2, alongside the length gate).
   //    Main-round window + 'selected' gate enforced below at the CAS step via
   //    canSubmitMainRound (unified with saveMainRoundSubmission).
-  const cfg = await getSeasonStudioConfig(args.seasonId)
-  const effectiveRound = resolveEffectiveRound(cfg)
 
   // 6. Find the participant's application (by email, like the rest of the site).
   const email = args.email.toLowerCase()

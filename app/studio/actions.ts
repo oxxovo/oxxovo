@@ -12,6 +12,7 @@ import {
   getActiveModels,
   getSeasonStudioConfig,
   resolveEffectiveRound,
+  videoBoundsForRound,
   isInEffectiveRound,
   countGenerationsForRound,
   listUserJobs,
@@ -241,8 +242,12 @@ export async function loadStudioState(token: string): Promise<LoadStudioResult> 
         alreadySubmitted,
         pricing: { marginRate: pricing.marginRate, creditUsdValue: pricing.creditUsdValue },
         composeEnabled: cfg.studioComposeEnabled,
-        composeMinSeconds: cfg.studioComposeMinSeconds,
-        composeMaxSeconds: cfg.studioComposeMaxSeconds,
+        // ★2026-08-27 (HQ, judged 2): round-scoped bounds, not the flat
+        // studio_compose_min/max_seconds -- see the note on those fields in
+        // lib/studio.ts. This hint must match what createRender/submitRender
+        // actually enforce, or the editor promises a number the server rejects.
+        composeMinSeconds: videoBoundsForRound(cfg, effectiveRound).min,
+        composeMaxSeconds: videoBoundsForRound(cfg, effectiveRound).max,
         profile: { creatorName: prefillName, country: prefillCountry },
       },
     }
@@ -691,11 +696,11 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
         createdAt: j.created_at,
       }))
     const admin = createSupabaseAdmin()
-    const { data: s } = await admin
-      .from('seasons')
-      .select('studio_compose_min_seconds, studio_compose_max_seconds, studio_compose_max_clips')
-      .eq('id', season.id)
-      .single()
+    // ★2026-08-27 (HQ, judged 2): round-scoped bounds (cfg, computed above),
+    // not a separate studio_compose_min/max_seconds query -- that column is
+    // no longer the length authority (see the note on it in lib/studio.ts);
+    // this hint must match what createRender/submitRender actually enforce.
+    const { min: composeMin, max: composeMax } = videoBoundsForRound(cfg, effectiveRound)
 
     // Submission context (application presence, already-submitted). cfg /
     // effectiveRound are computed above (used for the round-scoped clip filter).
@@ -820,9 +825,9 @@ export async function loadComposeState(token: string): Promise<LoadComposeResult
       data: {
         seasonId: season.id,
         clips,
-        minSeconds: Number(s?.studio_compose_min_seconds ?? 15),
-        maxSeconds: Number(s?.studio_compose_max_seconds ?? 30),
-        maxClips: Number(s?.studio_compose_max_clips ?? 10),
+        minSeconds: composeMin,
+        maxSeconds: composeMax,
+        maxClips: cfg.studioComposeMaxClips,
         submit: {
           round: effectiveRound,
           hasApplication,
