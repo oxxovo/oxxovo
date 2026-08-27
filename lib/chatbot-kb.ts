@@ -258,11 +258,11 @@ Q. Where can I see the rules?
 - KR: https://www.oxxovo.ai/rules 에서 보실 수 있습니다. 영어가 기본이며 한국어를 제공합니다.
 - EN: At https://www.oxxovo.ai/rules. English is the default, with Korean provided.
 Q. How is judging done?
-- KR: 예선은 여러 AI 모델의 100% AI 심사입니다. 본선은 AI 심사와 관객 투표를 함께 봅니다. 결과는 AI Score·Community Score·Final Score를 모두 공개합니다. 시즌0 본선은 AI Score로 순위를 정하고 관객 투표를 테스트로 함께 운영하며, 시즌1부터 AI 50% + 관객 50%로 반영됩니다. 운영진은 점수에 개입하지 않습니다.
-- EN: The preliminary is 100% AI judging by multiple models. The main round combines AI scoring with audience voting, and we publish AI Score, Community Score, and Final Score. In Season 0 the ranking is by AI Score with audience voting run as a test; from Season 1 it is AI 50% + Community 50%. Staff never intervene in scores.
+- KR: 예선은 여러 AI 모델의 100% AI 심사입니다. 본선은 AI 심사와 관객 투표를 절반씩 합산해 순위를 정합니다(시즌0 포함). 결과는 AI Score·Community Score·Final Score를 모두 공개합니다. 운영진은 점수에 개입하지 않습니다.
+- EN: The preliminary is 100% AI judging by multiple models. The main round combines AI scoring and audience voting equally (including Season 0), and we publish AI Score, Community Score, and Final Score. Staff never intervene in scores.
 Q. What is the World Championship?
-- KR: 각 대회 우승자들이 겨루는 연말 왕중왕전으로, 2027년부터 매년 12월 개최됩니다. 상금은 up to $250,000, plus sponsorship prizes (TBD)입니다. 시즌0 우승자는 2027 진출 자격을 얻습니다.
-- EN: A year-end World Championship among contest winners, held each December from 2027. The prize is up to $250,000, plus sponsorship prizes (TBD). The Season 0 winner qualifies for 2027.
+- KR: 각 대회 우승자들이 겨루는 연말 왕중왕전으로, 2027년부터 매년 12월 개최됩니다. 상금은 up to $250,000, plus sponsorship prizes (TBD)입니다.
+- EN: A year-end World Championship among contest winners, held each December from 2027. The prize is up to $250,000, plus sponsorship prizes (TBD).
 Q. Can I host my own contest?
 - KR: 자격을 갖춘 크리에이터가 대회를 여는 파트너 호스트 제도가 시즌3부터 단계적으로 도입될 예정입니다. 자세한 안내는 추후 https://www.oxxovo.ai 에서 공지됩니다.
 - EN: A partner host program for qualified creators is planned from Season 3 onward. Details will be announced later at https://www.oxxovo.ai.
