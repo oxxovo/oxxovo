@@ -11,6 +11,7 @@ import { getBalance, getStudioPricing, creditsForCostOrNull, isSellableCost } fr
 import { moderateSubmission } from '@/lib/moderation'
 import { getCreatorProfile, upsertCreatorProfile } from '@/lib/profile'
 import { getDisplayName, hasDisplayName } from '@/lib/nickname'
+import { getPlatformConfigMap } from '@/lib/partners'
 import {
   buildCryptoBind,
   verifyCryptoBind,
@@ -1208,9 +1209,10 @@ export type ApplicantInfo = {
   creatorStatement: string
   country?: string
   channelUrl?: string
-  // ★HQ 2026-08-23 (C-7): field only, no gate yet -- the minimum-age cutoff
-  // itself is still TK's call (HQ recommends 18). Collected now so enforcing
-  // it later is a value check, not a schema change + backfill.
+  // ★HQ 2026-08-23 (C-7), gate added 2026-08-27 (TK: 18): enforced in
+  // registerForSeason against platform_config.application_min_age. Missing
+  // (undefined) skips the gate -- the client form makes it required, but a
+  // hand-built request with no age is a "cannot verify" case, not a "reject".
   age?: number
   agreedRules: boolean
   agreedPrivacy: boolean
@@ -1258,6 +1260,7 @@ export type RegisterForSeasonResult =
         | 'bad_statement'
         | 'agreements_required'
         | 'name_required'
+        | 'under_min_age'
         | 'failed'
       detail?: string
     }
@@ -1328,6 +1331,21 @@ export async function registerForSeason(args: {
   }
   if (!info.agreedRules || !info.agreedPrivacy || !info.agreedIntegrity) {
     return { ok: false, reason: 'agreements_required' }
+  }
+
+  // ★TK 2026-08-27: minimum age 18, platform-wide (not season-scoped -- this
+  // is a legal/policy floor, not a competition parameter). Missing config key
+  // -> skip the gate rather than block every registration (fail-open on
+  // absence, same reasoning as studioComposeMinSeconds' "0 = unset"): the key
+  // not existing yet is a deploy-ordering fact, not evidence everyone is old
+  // enough. Missing applicant age (should not happen -- the form requires it)
+  // is likewise not evaluated, not rejected.
+  if (typeof info.age === 'number') {
+    const platformCfg = await getPlatformConfigMap()
+    const minAge = platformCfg.get('application_min_age')
+    if (typeof minAge === 'number' && Number.isFinite(minAge) && minAge > 0 && info.age < minAge) {
+      return { ok: false, reason: 'under_min_age', detail: String(minAge) }
+    }
   }
 
   const profile = await getCreatorProfile(args.userId)
@@ -1458,6 +1476,29 @@ export async function submitGeneration(args: {
   // 5a. No application row yet. For the application round the studio submission
   //     IS the application, so create the row (with the applicant info + the
   //     Intent-scoring statement). The main round requires a pre-existing row.
+  //
+  // ★2026-08-27 (HQ, traced): NOT REACHABLE for an ordinary participant. This
+  // function (submitGeneration, called from submitGenerationAction) checks
+  // only isSession6Enabled + a plain login token -- it does not call
+  // checkStudioAccess itself. But the ONLY way to obtain a jobId to submit is
+  // createGeneration/createImageGeneration/createI2vGeneration, and every
+  // caller of those (app/studio/actions.ts) calls checkStudioAccess
+  // immediately before. checkStudioAccess requires an existing appRow unless
+  // admin / STUDIO_DEV_UNLOCK / studio_test_access -- so by the time a normal
+  // participant reaches this line, appRow already exists (from their earlier,
+  // now age-gated, /apply registration) and this branch never fires for them.
+  // It fires only for the three operator-controlled bypass accounts above,
+  // never for a public under-18 user. Do NOT add an age/registration check
+  // here to "close" this -- the block below already does not need one, and
+  // adding a second copy of checkStudioAccess's own condition here is exactly
+  // the two-places-drift shape this session kept finding elsewhere (see
+  // lib/season-fixture.ts's own header for the general form of that bug).
+  // Calling checkStudioAccess again HERE, as a defense-in-depth re-check (not
+  // a second copy of its logic), is a legitimate hardening -- TK approved the
+  // principle 2026-08-27 -- but deliberately NOT done now: touching the
+  // submit path this close to the 9/9 launch is a bigger risk than the gap it
+  // closes (that gap is bypass-accounts-only, not public). Backlogged for
+  // after launch.
   if (!appRow) {
     // Only the application round can mint a new row; the main round requires a
     // pre-existing application.
@@ -2327,6 +2368,19 @@ export async function submitRender(args: {
 
   // 7a. No application row yet -- application round only (the compose IS the
   //     application; main round requires a pre-existing row).
+  //
+  // ★2026-08-27 (HQ, traced): same reachability note as submitGeneration's 5a
+  // above -- this function (submitRender, called from submitRenderAction)
+  // also checks only isSession6Enabled + a plain login token, not
+  // checkStudioAccess. But the only way to obtain a renderId is createRender,
+  // and every caller of it (app/studio/actions.ts) calls checkStudioAccess
+  // immediately before, which requires an existing appRow unless admin /
+  // STUDIO_DEV_UNLOCK / studio_test_access. NOT reachable for an ordinary
+  // participant; reachable only for those three operator-controlled bypass
+  // accounts. Do not add a second copy of checkStudioAccess's condition here
+  // to close that -- calling checkStudioAccess again HERE (defense-in-depth,
+  // TK-approved 2026-08-27) would be legitimate, but is deliberately deferred
+  // to after the 9/9 launch (backlog), not done now.
   if (!appRow) {
     // Only the application round can mint a new row; the main round requires a
     // pre-existing application.

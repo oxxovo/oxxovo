@@ -659,6 +659,10 @@ export type Messages = {
     apply_err_agreements_required: string
     apply_err_statement_length: string
     apply_err_duration_range: (min: number, max: number) => string
+    // Takes the actual configured minimum (platform_config.application_min_age)
+    // so the number in the message can never drift from what the server gate
+    // enforces ([[feedback-no-hardcode]]).
+    apply_err_under_min_age: (minAge: number) => string
     // Takes the season's allowed sources so the wording cannot name a platform
     // the column does not ([[feedback-no-hardcode]]).
     apply_err_video_platform_not_allowed: (allowed: string) => string
@@ -1712,6 +1716,8 @@ const MESSAGES_EN: Messages = {
     apply_err_statement_length: 'Creator statement must be 150–250 characters.',
     apply_err_duration_range: (min, max) =>
       `Video duration must be between ${min} and ${max} seconds.`,
+    apply_err_under_min_age: (minAge) =>
+      `You must be at least ${minAge} to enter.`,
     apply_err_video_platform_not_allowed: (allowed) =>
       `This season accepts entries from ${allowed} only.`,
     apply_err_season_not_found: 'Season configuration not found. Please try again later.',
@@ -2752,6 +2758,8 @@ const MESSAGES_KO: Messages = {
     apply_err_statement_length: 'Creator Statement는 150~250자 사이여야 합니다.',
     apply_err_duration_range: (min, max) =>
       `영상 길이는 ${min}~${max}초 사이여야 합니다.`,
+    apply_err_under_min_age: (minAge) =>
+      `참가하려면 만 ${minAge}세 이상이어야 합니다.`,
     apply_err_video_platform_not_allowed: (allowed) =>
       `이번 시즌은 ${allowed} 작품만 접수합니다.`,
     apply_err_season_not_found: '시즌 설정을 찾을 수 없습니다. 잠시 후 다시 시도해주세요.',

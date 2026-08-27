@@ -306,6 +306,11 @@ export default function ApplyPage() {
         // already explains why and shows the Founding/paid path -- no
         // separate error message needed here.
         setReloadKey((k) => k + 1)
+      } else if (res.reason === 'under_min_age') {
+        const minAge = Number(res.detail)
+        setRegisterError(
+          Number.isFinite(minAge) ? t.profile.apply_err_under_min_age(minAge) : t.profile.apply_err_server_error,
+        )
       } else {
         const registerErrorMap: Partial<Record<typeof res.reason, string>> = {
           registration_closed: 'Registration has closed for this season.',
