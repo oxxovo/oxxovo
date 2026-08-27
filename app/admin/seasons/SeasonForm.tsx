@@ -218,7 +218,20 @@ export function SeasonForm({
       <Group title={t.season_form.group_video}>
         <Field label={t.season_form.field_video_app_min} name="application_video_min_seconds" type="number" defaultValue={initial.application_video_min_seconds} error={fieldError('application_video_min_seconds')} />
         <Field label={t.season_form.field_video_app_max} name="application_video_max_seconds" type="number" defaultValue={initial.application_video_max_seconds} error={fieldError('application_video_max_seconds')} />
-        <Field label={t.season_form.field_video_main} name="main_round_video_seconds" type="number" defaultValue={initial.main_round_video_seconds} error={fieldError('main_round_video_seconds')} />
+        {/* ★TK 2026-08-27: main_round_video_seconds (the old single-value
+            column) is DEAD as a gate -- createRender/submitRender read only
+            main_round_video_min/max_seconds (videoBoundsForRound), never
+            this one. Editing it here used to look like it set "the" main-
+            round video length while nothing downstream enforced it -- same
+            shape as today's studio_compose_min/max_seconds finding. Removed
+            from the visible form; kept as a hidden passthrough (unchanged
+            value) so season-schema.ts's still-required field keeps
+            validating without a migration. Column not dropped yet
+            (lib/seasons.ts Season.main_round_video_seconds's own comment
+            already said "drop in a follow-up migration once nothing
+            references it" -- this is that follow-up, for the admin surface;
+            the column itself is a separate, later step). */}
+        <input type="hidden" name="main_round_video_seconds" value={initial.main_round_video_seconds} />
         <Field label={t.season_form.field_video_main_min} name="main_round_video_min_seconds" type="number" defaultValue={initial.main_round_video_min_seconds} error={fieldError('main_round_video_min_seconds')} />
         <Field label={t.season_form.field_video_main_max} name="main_round_video_max_seconds" type="number" defaultValue={initial.main_round_video_max_seconds} error={fieldError('main_round_video_max_seconds')} />
         <Field label={t.season_form.field_theme_label} name="main_round_theme_label" defaultValue={initial.main_round_theme_label ?? ''} error={fieldError('main_round_theme_label')} />
