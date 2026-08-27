@@ -11,30 +11,15 @@ import {
   getLobbyTournaments,
   isRehearsalFixture,
   seasonToLobbyCard,
+  MODE_BADGE as BADGE,
+  PHASE_BADGE,
   type LobbyCard,
-  type LobbyMode,
 } from '@/lib/lobby'
 import { getCurrentSeason } from '@/lib/seasons'
 import { formatFooterStatusLine } from '@/lib/ip-info'
 import { ChatWidget } from '@/app/_components/ChatWidget'
 
 export const dynamic = 'force-dynamic'
-
-const BADGE: Record<LobbyMode, { label: string; cls: string }> = {
-  upcoming: { label: 'COMING SOON', cls: 'bg-white/10 text-white/70 border-white/20' },
-  accepting: { label: 'OPEN', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
-  live: { label: 'LIVE', cls: 'bg-[#ff4444]/20 text-[#ff8888] border-[#ff4444]/50' },
-  ended: { label: 'ENDED', cls: 'bg-white/5 text-white/40 border-white/10' },
-}
-
-// ★C-4 (Jenny3, 2026-08-10) -- same seam as LobbySection.tsx's PHASE_BADGE.
-// `mode` folds main_live / voting / awaiting_results into one 'live'; this
-// overrides the badge for the two sub-phases with their own copy and falls
-// through to BADGE.live for everything else still 'live'.
-const PHASE_BADGE: Partial<Record<LobbyCard['phase'], { label: string; cls: string }>> = {
-  voting: { label: 'VOTING OPEN', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
-  awaiting_results: { label: 'TALLYING', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
-}
 
 export default async function TournamentGalleryPage() {
   const now = new Date()
@@ -67,7 +52,7 @@ export default async function TournamentGalleryPage() {
           </p>
           <h1 className="text-4xl md:text-6xl font-black tracking-tight">Compete on OXXOVO</h1>
           <p className="mt-5 max-w-2xl mx-auto text-lg text-white/70 leading-relaxed">
-            The AI video tournament where creators compete — and AI decides. Pick a season to see
+            The AI video tournament where creators compete — and skill decides. Pick a season to see
             its schedule, prizes, and how to enter.
           </p>
         </div>
