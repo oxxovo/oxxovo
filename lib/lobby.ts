@@ -47,31 +47,14 @@ export type LobbyCard = {
   phase: SeasonPhase
 }
 
-// ─── badge copy, shared by LobbySection.tsx (home) and tournament/page.tsx
-// (gallery) ───────────────────────────────────────────────────────────────
-//
-// ★Consolidated 2026-08-23 (Jenny3): these were two literal copies, one per
-// file. PHASE_BADGE already drifted once -- a KR label patch landed on
-// LobbySection.tsx first and tournament/page.tsx kept the stale English text
-// until a second pass caught it. MODE_BADGE was still English-only in both
-// when this moved, but the same drift is coming: COMING SOON/OPEN/LIVE/ENDED
-// are public copy on both surfaces and are next in line for KR text. Fixing
-// it here once, before that lands, means there is no second copy left to miss.
-export const MODE_BADGE: Record<LobbyMode, { label: string; cls: string }> = {
-  upcoming: { label: 'COMING SOON', cls: 'bg-white/10 text-white/70 border-white/20' },
-  accepting: { label: 'OPEN', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
-  live: { label: 'LIVE', cls: 'bg-[#ff4444]/20 text-[#ff8888] border-[#ff4444]/50' },
-  ended: { label: 'ENDED', cls: 'bg-white/5 text-white/40 border-white/10' },
-}
-
-// ★C-4 (Jenny3, 2026-08-10). `mode` still collapses main_live / voting /
-// awaiting_results into one 'live' -- this only overrides the badge for the
-// two sub-phases that have their own copy; every other 'live' phase falls
-// through to MODE_BADGE.live.
-export const PHASE_BADGE: Partial<Record<LobbyCard['phase'], { label: string; cls: string }>> = {
-  voting: { label: '관객 투표 중', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
-  awaiting_results: { label: '최종 집계 중', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
-}
+// ★MODE_BADGE/PHASE_BADGE moved to lib/lobby-badges.ts (2026-08-27, HQ
+// build-break fix): importing them as real values from here (not types)
+// pulled this whole module -- including fetchWinnerCounts' dynamic
+// import('./supabase-admin') below -- into the client bundle the moment a
+// Client Component (LobbySection.tsx) started doing that. Re-exported so any
+// other '@/lib/lobby' import of these two names keeps working; the two
+// Client Components now import straight from lib/lobby-badges.ts instead.
+export { MODE_BADGE, PHASE_BADGE } from './lobby-badges'
 
 type SeasonRow = {
   id: string

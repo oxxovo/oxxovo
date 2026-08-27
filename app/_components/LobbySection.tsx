@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { loadLobbyTournaments } from './lobby-actions'
-import { MODE_BADGE, PHASE_BADGE, type LobbyCard, type LobbyMode } from '@/lib/lobby'
+import { type LobbyCard, type LobbyMode } from '@/lib/lobby'
+import { MODE_BADGE, PHASE_BADGE } from '@/lib/lobby-badges'
 import { AspectThumb } from '@/app/_components/AspectThumb'
 
 // TOURNAMENTS section for the home page (below the hero). Cards come from a
