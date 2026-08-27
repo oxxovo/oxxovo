@@ -881,7 +881,7 @@ export async function getVoteContext(
   const end = season?.community_vote_end_at ? Date.parse(season.community_vote_end_at as string) : null
   const open = start != null && end != null && now >= start && now <= end
   const closed = end != null && now > end
-  const cap = (season?.community_vote_max_per_user as number | null) ?? 3
+  const cap = (season?.community_vote_max_per_user as number | null) ?? 1
 
   const { count: totalVotes } = await admin
     .from('watch_votes')

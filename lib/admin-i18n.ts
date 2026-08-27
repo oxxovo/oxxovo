@@ -1034,6 +1034,7 @@ export type Messages = {
     staffpick_off: string
     vote_error_limit: (n: number) => string
     vote_error_closed: string
+    vote_error_self: string
     vote_notopen: string
     vote_title: string
     vote_count: (n: number) => string
@@ -2075,6 +2076,7 @@ const MESSAGES_EN: Messages = {
     staffpick_off: 'Mark Staff Pick',
     vote_error_limit: (n) => `You've used all ${n} votes. Un-vote another to switch.`,
     vote_error_closed: 'Voting is closed.',
+    vote_error_self: "You can't vote for your own entry.",
     vote_notopen: 'Community voting is not open.',
     vote_title: 'Community vote',
     vote_count: (n) => `${n.toLocaleString()} votes`,
@@ -3111,6 +3113,7 @@ const MESSAGES_KO: Messages = {
     staffpick_off: '운영진 추천으로 지정',
     vote_error_limit: (n) => `${n}표를 모두 사용하셨습니다. 다른 작품의 투표를 취소하면 바꾸실 수 있습니다.`,
     vote_error_closed: '투표가 마감됐습니다.',
+    vote_error_self: '본인 작품에는 투표할 수 없습니다.',
     vote_notopen: '관객 투표가 아직 열리지 않았습니다.',
     vote_title: '관객 투표',
     vote_count: (n) => `${n.toLocaleString()}표`,

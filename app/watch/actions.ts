@@ -255,15 +255,17 @@ export async function reportWatchComment(
   return { ok: true, alreadyReported }
 }
 
-// ─── Community vote (main round, up to 3 per person) ─────────────────────────
-// Members vote for up to N (=seasons.community_vote_max_per_user, default 3)
+// ─── Community vote (main round, up to N per person) ──────────────────────────
+// Members vote for up to N (=seasons.community_vote_max_per_user, default 1)
 // DIFFERENT main-round videos during the vote window; one vote per video; toggle
 // to un-vote. The DB trigger is the hard cap (race-safe); this pre-checks for a
-// friendly message. ip/ua/timing logged for abuse detection.
+// friendly message. ip/ua/timing logged for abuse detection. Self-votes are
+// rejected regardless of when the account was created (TK 2026-08-27: an
+// account made after voting opens still votes -- no signup-date condition).
 
 export type VoteResult =
   | { ok: true; voted: boolean; usedVotes: number; cap: number }
-  | { ok: false; error: 'auth' | 'closed' | 'limit' | 'not_main' | 'failed' }
+  | { ok: false; error: 'auth' | 'closed' | 'limit' | 'not_main' | 'self_vote' | 'failed' }
 
 export async function toggleWatchVote(applicationId: string): Promise<VoteResult> {
   const user = await getUserOrNull()
@@ -272,10 +274,11 @@ export async function toggleWatchVote(applicationId: string): Promise<VoteResult
   const admin = createSupabaseAdmin()
   const { data: app } = await admin
     .from('genesis_applications')
-    .select('id, season_id, main_round_video_url')
+    .select('id, season_id, user_id, main_round_video_url')
     .eq('id', applicationId)
     .maybeSingle()
   if (!app || !app.main_round_video_url) return { ok: false, error: 'not_main' }
+  if (app.user_id === user.id) return { ok: false, error: 'self_vote' }
 
   const { data: season } = await admin
     .from('seasons')
@@ -283,7 +286,7 @@ export async function toggleWatchVote(applicationId: string): Promise<VoteResult
     .eq('id', app.season_id)
     .maybeSingle()
 
-  const cap = (season?.community_vote_max_per_user as number | null) ?? 3
+  const cap = (season?.community_vote_max_per_user as number | null) ?? 1
   const now = Date.now()
   const start = season?.community_vote_start_at ? Date.parse(season.community_vote_start_at as string) : null
   const end = season?.community_vote_end_at ? Date.parse(season.community_vote_end_at as string) : null

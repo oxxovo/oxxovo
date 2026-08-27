@@ -49,6 +49,8 @@ export function VoteButton({
         setMsg(t.watch.vote_error_limit(ctx.cap))
       } else if (res.error === 'closed') {
         setMsg(t.watch.vote_error_closed)
+      } else if (res.error === 'self_vote') {
+        setMsg(t.watch.vote_error_self)
       }
     })
   }
