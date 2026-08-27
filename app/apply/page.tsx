@@ -36,6 +36,12 @@ import {
 import type { ApplyMembershipState, MyRegistrationStatus } from './types'
 import type { ApplicantInfo } from '@/lib/studio'
 
+// ★If a future season sets allowed_video_platforms so acceptsExternalUrl()
+// is true and this form goes live, the "Same tools" claims stop being true --
+// lib/admin-i18n.ts landing.sub2 + landing.feat2_desc (EN+KR) and
+// app/faq/page.tsx's "Can I use other AI tools?" answer (EN+KR) all promise
+// everyone competes with the same toolset; this dropdown is the opposite.
+// Whoever flips that setting owes those 5 places new copy first.
 const AI_SERVICES = ['Sora', 'Veo', 'Runway', 'Kling', 'Pika', 'Other']
 const ABSTRACT_WORDS = [
   'explor', 'surreal', 'experimental', 'abstract', 'ethereal',
@@ -74,6 +80,9 @@ export default function ApplyPage() {
   const [aiService, setAiService] = useState('')
   const [statement, setStatement] = useState('')
   const [name, setName] = useState('')
+  // ★HQ 2026-08-23 (C-7): field only, no minimum-age gate yet (TK pending,
+  // HQ recommends 18) -- see lib/studio.ts ApplicantInfo.age.
+  const [age, setAge] = useState<number | ''>('')
   const [country, setCountry] = useState('')
   const [channelUrl, setChannelUrl] = useState('')
   const [agreeRules, setAgreeRules] = useState(false)
@@ -266,6 +275,8 @@ export default function ApplyPage() {
     registrationStatus?.status === 'none' &&
     !isRegistrationClosed(season) &&
     name.trim().length > 0 &&
+    typeof age === 'number' &&
+    age > 0 &&
     statementValid &&
     allAgreed &&
     !registering
@@ -281,6 +292,7 @@ export default function ApplyPage() {
         creatorStatement: statement.trim(),
         country: country.trim() || undefined,
         channelUrl: channelUrl.trim() || undefined,
+        age: typeof age === 'number' ? age : undefined,
         agreedRules: agreeRules,
         agreedPrivacy: agreePrivacy,
         agreedIntegrity: agreeIntegrity,
@@ -375,6 +387,8 @@ export default function ApplyPage() {
         registrationStatus={registrationStatus}
         name={name}
         setName={setName}
+        age={age}
+        setAge={setAge}
         country={country}
         setCountry={setCountry}
         channelUrl={channelUrl}
@@ -750,8 +764,13 @@ export default function ApplyPage() {
                   className="mt-0.5 h-4 w-4 accent-[#8b22ff] flex-shrink-0"
                   required
                 />
-                <span>
-                  I understand that my entry undergoes <span className="text-white/90">AI integrity verification</span>. Manipulating watermarks or misrepresenting the AI service used may result in disqualification.
+                <span className="flex flex-col gap-0.5">
+                  <span>
+                    Every entry passes an automated <span className="text-white/90">integrity check</span> on submission; anything flagged gets a human review. Using someone else&apos;s copyrighted work or a real person&apos;s likeness without permission is grounds for disqualification.
+                  </span>
+                  <span className="text-white/50" lang="ko">
+                    모든 출품작은 제출 시 무결성 자동 검증을 거칩니다. 검증에 걸린 작품은 사람이 다시 확인합니다. 타인의 저작물이나 실존 인물의 초상을 허락 없이 사용한 작품은 실격됩니다.
+                  </span>
                 </span>
               </label>
             </div>
@@ -1034,6 +1053,8 @@ function FunnelScreen({
   registrationStatus,
   name,
   setName,
+  age,
+  setAge,
   country,
   setCountry,
   channelUrl,
@@ -1061,6 +1082,8 @@ function FunnelScreen({
   registrationStatus: MyRegistrationStatus
   name: string
   setName: (v: string) => void
+  age: number | ''
+  setAge: (v: number | '') => void
   country: string
   setCountry: (v: string) => void
   channelUrl: string
@@ -1228,6 +1251,22 @@ function FunnelScreen({
                 />
               </div>
               <div>
+                <label className="block text-sm text-white/60 mb-1.5">Age</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={age}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setAge(v === '' ? '' : Number(v))
+                  }}
+                  required
+                  placeholder="e.g. 24"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition"
+                />
+              </div>
+              <div>
                 <label className="block text-sm text-white/60 mb-1.5">
                   Country <span className="text-white/30">(optional)</span>
                 </label>
@@ -1322,8 +1361,13 @@ function FunnelScreen({
                     className="mt-0.5 h-4 w-4 accent-[#8b22ff] flex-shrink-0"
                     required
                   />
-                  <span>
-                    I understand that my entry undergoes <span className="text-white/90">AI integrity verification</span>.
+                  <span className="flex flex-col gap-0.5">
+                    <span>
+                      Every entry passes an automated <span className="text-white/90">integrity check</span> on submission; anything flagged gets a human review. Using someone else&apos;s copyrighted work or a real person&apos;s likeness without permission is grounds for disqualification.
+                    </span>
+                    <span className="text-white/50" lang="ko">
+                      모든 출품작은 제출 시 무결성 자동 검증을 거칩니다. 검증에 걸린 작품은 사람이 다시 확인합니다. 타인의 저작물이나 실존 인물의 초상을 허락 없이 사용한 작품은 실격됩니다.
+                    </span>
                   </span>
                 </label>
               </div>
