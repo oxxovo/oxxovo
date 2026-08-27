@@ -110,7 +110,10 @@ export default function RulesPage() {
 
           <RuleSection num="①" title="Overview">
             <p>
-              {season.name} is OXXOVO&rsquo;s global AI video tournament. Creators around the world submit short AI-generated videos. Each entry is scored by a panel of {modelCount} independent AI judges, in parallel, under the same criteria. Same prompt. Same rules. No excuses.
+              {season.name} is OXXOVO&rsquo;s global AI video tournament. Creators around the world submit short AI-generated videos. Each entry is scored by a panel of {modelCount} independent AI judges, in parallel, under the same criteria. Same tools. Same deadline. Same scoring.
+            </p>
+            <p className="text-white/50" lang="ko">
+              같은 도구. 같은 마감. 같은 기준.
             </p>
             <p className="mt-4 text-sm italic text-white/45">
               These rules describe the <span className="text-white/70">current season ({season.name})</span>. Parameters such as capacity, prize pool, AI panel composition, and scoring weights may vary by season as the platform matures.
