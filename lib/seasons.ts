@@ -1,7 +1,14 @@
 import { supabase } from './supabase'
 import { DateTime } from 'luxon'
 import type { Lang } from './admin-i18n'
-import { isFixtureSeason } from './lobby'
+// ★2026-08-27 (HQ build-break fix): import straight from the pure,
+// dependency-free module, NOT './lobby' -- lib/seasons.ts is reachable from a
+// Client Component (app/admin/seasons/SeasonForm.tsx), and lib/lobby.ts
+// carries a dynamic `import('./supabase-admin')` elsewhere in the file.
+// Importing isFixtureSeason from './lobby' here pulled that whole module
+// graph into the client bundle and failed the build ('server-only' reachable
+// from a client-tagged module). See lib/season-fixture.ts's own header.
+import { isFixtureSeason } from './season-fixture'
 
 export type AIModel = {
   name: string
