@@ -624,6 +624,13 @@ export type Messages = {
     // (seasons.main_round_theme_label); the full main_round_theme is a brief
     // too long for this slot. (TK 2026-07-15)
     main_round_theme_full_link: string
+    // ★HQ 2026-08-23: getRevealedTheme()'s `twist` reaches this card's props
+    // (RevealedTheme.twist / .twistRevealed, app/profile/actions.ts) but was
+    // never rendered here -- the finalist's own profile never showed the
+    // required element (Studio and Watch already did, via the same gate).
+    // First appearance on this screen, so full "필수조건(Twist)"/"Required
+    // Element (Twist)" per the glossary rule; label only after that.
+    main_round_twist_label: string
     main_round_allowed_platforms_label: string
     // Shown instead of the URL field when the season's allowed sources contain
     // no linkable platform. Takes the sources so the wording follows the column.
@@ -1677,6 +1684,7 @@ const MESSAGES_EN: Messages = {
     main_round_section_title: 'Main Round Submission',
     main_round_theme_label: 'Main Round Theme',
     main_round_theme_full_link: 'Read the full brief →',
+    main_round_twist_label: 'Required Element (Twist)',
     main_round_allowed_platforms_label: 'Allowed Platforms',
     main_round_external_url_closed: (allowed) =>
       `${allowed} is the only entry source for this season's main round, so there is no link to submit here.`,
@@ -1904,7 +1912,7 @@ const MESSAGES_EN: Messages = {
       `${seasonName} features a $${total} prize pool ($${first} for 1st, $${second} for 2nd, $${third} for 3rd). The ${advanceLabel} earn the Finalist title.`,
     faq_q8: 'How does OXXOVO prevent cheating?',
     faq_a8:
-      "An automated integrity check flags misrepresentation. Anything it flags gets a human review. Misstating your tools or sources is grounds for disqualification. We don't publish the thresholds or weighting.",
+      "An automated integrity check flags misrepresentation. Anything it flags gets a human review. We don't publish the thresholds or weighting.",
     faq_q9: 'When do I get my results?',
     faq_a9:
       'Scoring runs in a batch after the application period closes. Your individual score and the panel’s reasoning arrive with your preliminary-round results notification, and you can also check them in your profile.',
@@ -2716,6 +2724,7 @@ const MESSAGES_KO: Messages = {
     main_round_section_title: '본선 영상 제출',
     main_round_theme_label: '본선 테마',
     main_round_theme_full_link: '전체 규정 보기 →',
+    main_round_twist_label: '필수조건(Twist)',
     main_round_allowed_platforms_label: '허용 플랫폼',
     main_round_external_url_closed: (allowed) =>
       `이번 시즌 본선은 ${allowed}에서만 제출할 수 있어, 여기에 입력할 링크가 없습니다.`,
@@ -2939,7 +2948,7 @@ const MESSAGES_KO: Messages = {
       `${seasonName}의 총상금은 $${total}입니다(1등 $${first}, 2등 $${second}, 3등 $${third}). ${advanceLabel}가 본선 진출자 타이틀을 얻습니다.`,
     faq_q8: 'OXXOVO는 부정행위를 어떻게 막나요?',
     faq_a8:
-      '무결성 검증이 허위 표기를 자동으로 잡아냅니다. 검증에 걸린 작품은 사람이 다시 확인합니다. 사용한 AI 도구나 콘텐츠 출처를 거짓으로 밝히면 자동 실격됩니다. 검증 기준과 비중은 공개하지 않습니다.',
+      '무결성 검증이 허위 표기를 자동으로 잡아냅니다. 검증에 걸린 작품은 사람이 다시 확인합니다. 검증 기준과 비중은 공개하지 않습니다.',
     faq_q9: '결과는 언제 나오나요?',
     faq_a9:
       '채점은 제출 마감 이후 일괄로 진행됩니다. 개인 점수와 심사 근거는 예선 결과 안내와 함께 받으시고, 프로필에서도 확인하실 수 있습니다.',
