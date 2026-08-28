@@ -22,6 +22,7 @@ import { formatDeadlinePT } from './seasons'
 import { WATCH_LIST_TAG, WATCH_LIST_TTL } from './watch-cache'
 import { publicScoreSeasons, areScoresPublic } from './watch-scores'
 import { isRowPublic } from './watch-visibility'
+import { isFixtureSeason } from './season-fixture'
 
 export type WatchRound = 'application' | 'main'
 export type WatchSort = 'trending' | 'latest' | 'award'
@@ -264,19 +265,49 @@ async function loadWatchVideos(
     )
   if (opt.seasonId) q = q.eq('season_id', opt.seasonId)
 
-  const [{ data: apps, error }, likeAgg, viewAgg, commentAgg, scoreAgg, voteAgg] = await Promise.all([
+  const [{ data: apps, error }, likeAgg, viewAgg, commentAgg, scoreAgg, voteAgg, seasonsRes] = await Promise.all([
     q,
     admin.from('watch_likes').select('application_id, round'),
     admin.from('watch_views').select('application_id, round'),
     admin.from('watch_comments').select('application_id, round').eq('status', 'visible'),
     admin.from('scoring_results').select('application_id, round, judged_status, verified_score'),
     admin.from('watch_votes').select('application_id, round'),
+    admin.from('seasons').select('id, season_number, is_fixture, watch_fixture_visible'),
   ])
 
   if (error) {
     console.error('[watch] failed to load applications:', error.message)
     return []
   }
+  // Fail CLOSED, not open: if this read errors (missing column, RLS, network),
+  // returning [] means nobody sees the wrong thing -- silently proceeding with
+  // an empty fixture set would mean EVERY fixture season's rows pass through
+  // unfiltered, which is a worse failure than an empty page.
+  if (seasonsRes.error) {
+    console.error('[watch] failed to load seasons for fixture filter:', seasonsRes.error.message)
+    return []
+  }
+
+  // Rehearsal/fixture seasons (season_test, season_1000+, zz_*, ...) never
+  // belong in the public feed, whether or not opt.seasonId was passed -- this
+  // is the ONLY seasonId-agnostic gate in the function, exactly because #39
+  // showed a fresh rehearsal season's rows reach here with no seasonId filter
+  // at all. `seasons` is tiny (dozens of rows), so one extra select is cheap.
+  //
+  // watch_fixture_visible is a per-season, default-false escape hatch (HQ
+  // 2026-08-27): a rehearsal needs its OWN fixture season's videos to reach
+  // /watch (community-vote + Twist-banner rehearsal steps can't be observed
+  // otherwise), but every other fixture (season_1000+, zz_*, old rehearsal
+  // leftovers) must stay excluded. Flipping this column is the ONLY way in --
+  // there is no code branch for "the currently-running rehearsal", so nothing
+  // reopens the leak by itself when a rehearsal starts.
+  const seasonRows = (seasonsRes.data ?? []) as {
+    id: string; season_number: number; is_fixture: boolean | null; watch_fixture_visible: boolean | null
+  }[]
+  const exemptFixtureIds = new Set(seasonRows.filter((s) => s.watch_fixture_visible === true).map((s) => s.id))
+  const fixtureSeasonIds = new Set(
+    seasonRows.filter((s) => isFixtureSeason(s) && !exemptFixtureIds.has(s.id)).map((s) => s.id),
+  )
 
   const likes = tallyCounts((likeAgg.data ?? []) as { application_id: string; round: string }[])
   const views = tallyCounts((viewAgg.data ?? []) as { application_id: string; round: string }[])
@@ -304,7 +335,7 @@ async function loadWatchVideos(
     if (s.verified_score != null) scoreByKey.set(`${s.application_id}:${s.round}`, s.verified_score)
   }
 
-  const rows = (apps ?? []) as AppRow[]
+  const rows = ((apps ?? []) as AppRow[]).filter((r) => !fixtureSeasonIds.has(r.season_id))
   const names = await getDisplayNames(rows.map((r) => r.user_id))
   const renderThumbs = await loadRenderThumbnails(
     admin,
