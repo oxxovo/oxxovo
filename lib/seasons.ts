@@ -844,18 +844,27 @@ export function advanceCountLabel(
 export function formatDeadlinePT(
   iso: string | null | undefined,
   lang: Lang = 'en',
-  opts?: { withKst?: boolean },
+  opts?: {
+    withKst?: boolean
+    // ★fullTzLabel (2026-08-30, HQ): spells out "미국 서부 시간" / "US Pacific
+    // Time" instead of the bare "PT" abbreviation. Opt-in, defaults off, so the
+    // ~15 existing compact-"PT" call sites (apply/tournament/emails/watch) are
+    // byte-identical -- this exists for surfaces read out of context (chatbot
+    // KB, FAQ tokens) where "PT" alone doesn't say which timezone that is.
+    fullTzLabel?: boolean
+  },
 ): string | null {
   if (!iso) return null
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return null
+  const ptLabel = lang === 'ko' ? (opts?.fullTzLabel ? '미국 서부 시간' : 'PT') : opts?.fullTzLabel ? 'US Pacific Time' : 'PT'
 
   if (lang === 'ko' && opts?.withKst) {
     const kstDate = d.toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' })
     const kstTime = d.toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: 'numeric', dayPeriod: 'short' })
     const ptDate = d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'numeric', day: 'numeric' })
     const ptTime = d.toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })
-    return `한국 시간 ${kstDate} ${kstTime} (${ptDate} ${ptTime} PT)`
+    return `한국 시간 ${kstDate} ${kstTime} (${ptDate} ${ptTime} ${ptLabel})`
   }
 
   const locale = lang === 'ko' ? 'ko-KR' : 'en-US'
@@ -870,7 +879,7 @@ export function formatDeadlinePT(
     hour: 'numeric',
     minute: '2-digit',
   })
-  return `${date} · ${time} PT`
+  return `${date} · ${time} ${ptLabel}`
 }
 
 // Canonical "what does it cost to compete" copy. Two separate things, both
