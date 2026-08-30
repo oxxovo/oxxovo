@@ -12,7 +12,6 @@ import Link from 'next/link'
 import { advanceCountLabel, formatDeadlinePT, resolveSeasonCta, type Season } from '@/lib/seasons'
 import type { MembershipLandingData } from '@/app/membership/types'
 import { formatFooterStatusLine } from '@/lib/ip-info'
-import { ChatWidget } from '@/app/_components/ChatWidget'
 import { PosterLightbox } from './PosterLightbox'
 
 function ScheduleRow({ label, value }: { label: string; value: string | null }) {
@@ -290,7 +289,6 @@ export function SeasonDetail({ season, mem }: { season: Season; mem: MembershipL
         </div>
       </footer>
 
-      <ChatWidget />
     </main>
   )
 }

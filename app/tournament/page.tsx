@@ -17,7 +17,6 @@ import {
 } from '@/lib/lobby'
 import { getCurrentSeason } from '@/lib/seasons'
 import { formatFooterStatusLine } from '@/lib/ip-info'
-import { ChatWidget } from '@/app/_components/ChatWidget'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,7 +79,6 @@ export default async function TournamentGalleryPage() {
         </div>
       </footer>
 
-      <ChatWidget />
     </main>
   )
 }

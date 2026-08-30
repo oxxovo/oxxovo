@@ -13,7 +13,8 @@
 import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
 import { getCurrentSeason } from '@/lib/seasons'
-import { CHATBOT_SYSTEM_PROMPT } from '@/lib/chatbot-kb'
+import { buildChatbotSystemPrompt } from '@/lib/chatbot-kb'
+import { loadChatbotContext } from '@/lib/chatbot-context'
 import { ask, providerForModel, providerAvailable, PROVIDER_LABEL, type ProviderId } from './providers'
 
 const WANTED: ProviderId[] = ['claude', 'gpt', 'gemini']
@@ -64,13 +65,14 @@ async function resolvePanelModels(): Promise<Record<ProviderId, string>> {
 }
 
 export async function tripleAiReview(question: string): Promise<ReviewResult | null> {
-  const models = await resolvePanelModels()
+  const [models, ctx] = await Promise.all([resolvePanelModels(), loadChatbotContext()])
+  const systemPrompt = buildChatbotSystemPrompt(ctx)
 
   // Ask every configured provider in parallel, grounded in the same KB.
   const asks = await Promise.all(
     WANTED.map((p) =>
       providerAvailable(p)
-        ? ask(models[p], CHATBOT_SYSTEM_PROMPT, question, { maxTokens: 900 })
+        ? ask(models[p], systemPrompt, question, { maxTokens: 900 })
         : Promise.resolve({ provider: p, model: models[p], available: false, ok: false, text: '', error: 'no_key' as const }),
     ),
   )

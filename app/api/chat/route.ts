@@ -21,8 +21,18 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { CHATBOT_SYSTEM_PROMPT, OUT_OF_SCOPE_MARKERS } from '@/lib/chatbot-kb'
+import { buildChatbotSystemPrompt, OUT_OF_SCOPE_MARKERS } from '@/lib/chatbot-kb'
+import { loadChatbotContext } from '@/lib/chatbot-context'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+
+// ★2026-08-30: the system prompt now embeds "today's date" (see
+// buildChatbotSystemPrompt) so the model can reason about the season phase
+// itself instead of a wired getSeasonPhase() (HQ: post-launch). That means
+// the prompt text is no longer byte-stable across requests the way the old
+// static CHATBOT_SYSTEM_PROMPT was -- cache_control below still gets partial
+// mileage within the same minute (formatDeadlinePT's minute-precision
+// output), but the effective cache-hit rate for this system block is much
+// lower than before. Known and accepted tradeoff, not an oversight.
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -128,6 +138,9 @@ export async function POST(req: NextRequest) {
   const client = new Anthropic({ apiKey })
 
   try {
+    const ctx = await loadChatbotContext()
+    const systemPrompt = buildChatbotSystemPrompt(ctx)
+
     // Build the conversation; we mutate `convo` only to resume server-tool
     // (web_search) turns that come back as pause_turn -- per the API contract we
     // re-send the assistant content verbatim, with NO extra user message.
@@ -141,8 +154,8 @@ export async function POST(req: NextRequest) {
         system: [
           {
             type: 'text',
-            text: CHATBOT_SYSTEM_PROMPT,
-            cache_control: { type: 'ephemeral' }, // stable KB -> cache across requests
+            text: systemPrompt,
+            cache_control: { type: 'ephemeral' }, // partial cache mileage now -- see loadChatbotContext's comment
           },
         ],
         // Real-time AI/video info comes from web search. Dynamic filtering

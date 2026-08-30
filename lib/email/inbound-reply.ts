@@ -16,7 +16,8 @@
 
 import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
-import { CHATBOT_SYSTEM_PROMPT, OUT_OF_SCOPE_MARKERS } from '@/lib/chatbot-kb'
+import { buildChatbotSystemPrompt, OUT_OF_SCOPE_MARKERS } from '@/lib/chatbot-kb'
+import { loadChatbotContext } from '@/lib/chatbot-context'
 
 // Same model/economics as the public chat bot: small fixed KB, strict guardrails.
 const REPLY_MODEL = 'claude-haiku-4-5'
@@ -88,14 +89,15 @@ Subject: ${subject || '(no subject)'}
 ${body}`
 
   try {
+    const ctx = await loadChatbotContext()
     const resp = await client.messages.create({
       model: REPLY_MODEL,
       max_tokens: MAX_TOKENS,
       system: [
         {
           type: 'text',
-          text: CHATBOT_SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' }, // stable KB -> cache across requests
+          text: buildChatbotSystemPrompt(ctx),
+          cache_control: { type: 'ephemeral' }, // partial cache mileage now -- see app/api/chat/route.ts's comment
         },
       ],
       messages: [{ role: 'user', content: userTurn }],
