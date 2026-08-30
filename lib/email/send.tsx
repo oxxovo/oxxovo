@@ -523,7 +523,14 @@ export async function sendNotSelected(
   const lang = input.forceLang ?? detectEmailLang(input.country)
   const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
   const nextSeasonDate = input.nextSeasonOpenAt
-    ? new Date(input.nextSeasonOpenAt).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
+    ? // ★2026-08-30 (HQ, render-preview audit): no timeZone here rendered in
+      // whatever timezone the process happened to run in (Vercel defaults to
+      // UTC) -- same bug class as SelectedTop50's date, see lib/seasons.ts's
+      // formatDeadlinePT. This stays date-only by design (no clock time in
+      // the copy), so it gets an explicit timeZone rather than switching to
+      // formatDeadlinePT (which always appends a time + PT label).
+      new Date(input.nextSeasonOpenAt).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
+        timeZone: 'America/Los_Angeles',
         dateStyle: 'long',
       })
     : ''
@@ -771,7 +778,14 @@ export async function sendSeasonInvite(input: SendSeasonInviteInput): Promise<Se
   const lang = input.forceLang ?? detectEmailLang(input.country)
   const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
   const nextSeasonOpenAt = input.nextSeasonOpenAt
-    ? new Date(input.nextSeasonOpenAt).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
+    ? // ★2026-08-30 (HQ, render-preview audit): no timeZone here rendered in
+      // whatever timezone the process happened to run in (Vercel defaults to
+      // UTC) -- same bug class as SelectedTop50's date, see lib/seasons.ts's
+      // formatDeadlinePT. This stays date-only by design (no clock time in
+      // the copy), so it gets an explicit timeZone rather than switching to
+      // formatDeadlinePT (which always appends a time + PT label).
+      new Date(input.nextSeasonOpenAt).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
+        timeZone: 'America/Los_Angeles',
         dateStyle: 'long',
       })
     : ''

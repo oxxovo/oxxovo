@@ -30,8 +30,11 @@ export function subjectFor(p: DeferralNoticeProps): string {
 }
 
 function Korean(p: DeferralNoticeProps) {
-  const registrationClose = formatDeadlinePT(p.newRegistrationCloseAt)
-  const submissionClose = formatDeadlinePT(p.newApplicationCloseAt)
+  // ★2026-08-30 (HQ, render-preview audit): missing the lang arg meant this
+  // Korean-language email rendered its dates in English ("Nov 1, 2026 · 5:00
+  // PM PT" instead of "11월 1일 ... PT") -- formatDeadlinePT defaults to 'en'.
+  const registrationClose = formatDeadlinePT(p.newRegistrationCloseAt, 'ko')
+  const submissionClose = formatDeadlinePT(p.newApplicationCloseAt, 'ko')
   return (
     <Layout lang="ko" preview={`${p.seasonName} 일정이 1주 연기되었습니다.`}>
       <Heading style={headingStyle}>
@@ -58,8 +61,8 @@ function Korean(p: DeferralNoticeProps) {
 }
 
 function English(p: DeferralNoticeProps) {
-  const registrationClose = formatDeadlinePT(p.newRegistrationCloseAt)
-  const submissionClose = formatDeadlinePT(p.newApplicationCloseAt)
+  const registrationClose = formatDeadlinePT(p.newRegistrationCloseAt, 'en')
+  const submissionClose = formatDeadlinePT(p.newApplicationCloseAt, 'en')
   return (
     <Layout lang="en" preview={`${p.seasonName}'s schedule was extended by one week.`}>
       <Heading style={headingStyle}>

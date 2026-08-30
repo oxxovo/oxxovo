@@ -10,7 +10,9 @@ export type TemplateKey =
   | 'pre_registered'
   | 'application_received'
   | 'waitlisted'
+  // ★제니3 #7 (OXXOVO_이메일_7_8_17_18_2026-08-22.md) -- prelim result, advanced.
   | 'selected_top50'
+  // ★제니3 #8 (same doc) -- prelim result, did not advance.
   | 'not_selected'
   | 'main_round_start'
   | 'submission_deadline'
@@ -37,6 +39,9 @@ export type TemplateKey =
   // notifies each time, not just the first). Dedup on metadata->>
   // 'defer_count', its own key separate from reminder_hour/reminder_day.
   | 'deferral_notice'
+  // ★제니3 #15 (OXXOVO_이메일_7_8_17_18_2026-08-22.md item ②) -- main-round
+  // participants only, 4 placement variants (1st/2nd/3rd/no-award). #15-5
+  // (a 5th prelim-non-advancer variant) was explicitly dropped -- see #17.
   | 'results_announced'
   | 'awarded_contact_request'
   | 'partner_invitation'
@@ -69,17 +74,20 @@ export type TemplateKey =
   // directly against email_logs (season_id + template_key + to_email +
   // metadata->>audience='member'), the same shape admin_broadcast's
   // campaign-id dedup uses for the same reason (no application to key off).
+  // ★제니3 #13-A = audience:'participant', #13-B = audience:'member'.
   | 'vote_deadline'
   // HQ 2026-08-22 (new email 1 of 2): "the winner is out", fired at
   // awards_announcement_at to prelim non-advancers (status='rejected') --
   // NOT a variant of results_announced (that stays main-round-only). Own
   // key on purpose so the two can never be confused or double-counted.
+  // ★제니3 #17 (OXXOVO_이메일_7_8_17_18_2026-08-22.md).
   | 'season_winner_announced'
   // HQ 2026-08-22 (new email 2 of 2): next-season invite, sent to every
   // participant of the season just concluded (any status) when the NEXT
   // season's schedule is confirmed -- not date-based, see
   // fireSeasonInviteIfConfirmed's own comment (app/admin/seasons/actions.ts)
   // for why this is a save-action side effect, not an admin "Send" button.
+  // ★제니3 #18 (same doc).
   | 'season_invite'
 
 export type LogStatus = 'sent' | 'failed' | 'queued' | 'skipped'

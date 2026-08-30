@@ -18,6 +18,7 @@ import { Heading, Text, Section, Link } from '@react-email/components'
 import { Layout } from '../components/Layout'
 import { RESULT_INTEGRITY_NOTE_KO, RESULT_INTEGRITY_NOTE_EN } from '../messages'
 import type { EmailLang } from '../lang'
+import { formatDeadlinePT } from '@/lib/seasons'
 
 export type SelectedTop50Props = {
   lang: EmailLang
@@ -82,17 +83,20 @@ export function subjectFor(p: SelectedTop50Props): string {
     : `Congratulations — you're moving to the main round`
 }
 
+// ★2026-08-30 (HQ, render-preview audit): this used to be its own
+// toLocaleString('ko-KR'/'en-US', {dateStyle, timeStyle}) with NO timeZone --
+// which renders in whatever timezone the process happens to run in. Locally
+// that is often America/Los_Angeles by coincidence, which hid the bug; on
+// Vercel (TZ=UTC by default) main_round_start_at = 2026-11-10T01:00:00Z came
+// out as "November 10, 1:00 AM" instead of the correct "November 9, 5:00 PM
+// PT" -- wrong date AND wrong time. formatDeadlinePT is the one canonical,
+// timezone-explicit formatter every other date in the product uses; this
+// template just was not using it.
 function formatDateKo(iso: string | null): string {
-  if (!iso) return '일정 안내 예정'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '일정 안내 예정'
-  return d.toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' })
+  return formatDeadlinePT(iso, 'ko') ?? '일정 안내 예정'
 }
 function formatDateEn(iso: string | null): string {
-  if (!iso) return 'to be announced'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return 'to be announced'
-  return d.toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })
+  return formatDeadlinePT(iso, 'en') ?? 'to be announced'
 }
 
 function Korean(p: SelectedTop50Props) {

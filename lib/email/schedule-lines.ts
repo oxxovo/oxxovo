@@ -8,15 +8,20 @@
 // is OMITTED rather than guessed. A receipt with one line missing is recoverable;
 // a receipt confidently naming a date the platform no longer runs on is not.
 //
-// ★And the two timezones are deliberate, not an accident of formatting. The
-// Korean copy says 한국 시간 and the English copy says PT, because those are the
-// clocks the two audiences plan against. Both come from the same instant.
+// ★2026-08-30 (HQ): PT for BOTH languages now, not "KR=한국 시간 / EN=PT".
+// The two-timezone split above WAS deliberate (2026-08-08ish design), but HQ
+// ruled it out the same day as the chatbot/FAQ token policy: the tournament
+// runs on PT, the DB is PT, two standards means someone eventually fixes only
+// one and the two drift. Kept the history above rather than deleting it --
+// this is the second time this exact question got answered differently, and
+// the reasoning for why it flipped belongs next to the reasoning it flipped
+// from ([[feedback-policy-obsolete-code-stays-inactive]]-adjacent).
 
 export type ScheduleLine = { label: string; value: string }
 
 type Lang = 'ko' | 'en'
 
-const ZONE: Record<Lang, string> = { ko: 'Asia/Seoul', en: 'America/Los_Angeles' }
+const ZONE: Record<Lang, string> = { ko: 'America/Los_Angeles', en: 'America/Los_Angeles' }
 
 function parse(iso: string | null | undefined): Date | null {
   if (!iso) return null
@@ -78,7 +83,7 @@ export function formatScheduleDay(iso: string | null | undefined, lang: Lang): s
   return lang === 'ko' ? `${w.month}월 ${w.day}일` : `${EN_MONTH[w.month - 1]} ${w.day}`
 }
 
-// "11월 8일 오전 5시(한국 시간)" / "Nov 8, 12:00 PM PST"
+// "11월 8일 오전 5시 미국 서부 시간" / "Nov 8, 12:00 PM PST"
 //
 // ★The zone abbreviation is produced by Intl, never typed. Season 0's dates fall
 // after the 2026-11-01 DST change so they are PST -- but a season that runs in
@@ -100,7 +105,10 @@ export function formatScheduleMoment(
     const period = w.hour < 12 ? '오전' : '오후'
     // 제니3 writes "오전 5시", so a whole hour drops its minutes.
     const time = w.minute === 0 ? `${period} ${h12}시` : `${period} ${h12}시 ${mm}분`
-    return `${day} ${time}(한국 시간)`
+    // ★fullTzLabel-style spelled-out name (lib/seasons.ts formatDeadlinePT),
+    // not the bare "PT" abbreviation -- read in isolation, same as the KB/FAQ
+    // tokens, so it must not depend on surrounding context to be unambiguous.
+    return `${day} ${time} 미국 서부 시간`
   }
   const zone = zoneLabel === 'exact' ? zoneAbbrev(d, ZONE.en) : 'PT'
   return `${day}, ${h12}:${mm} ${w.hour < 12 ? 'AM' : 'PM'} ${zone}`
