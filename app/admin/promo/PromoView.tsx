@@ -676,7 +676,7 @@ function PromoCard({
             fallback="9 / 16"
             fit="contain"
             className="w-full rounded bg-black"
-            videoProps={{ controls: true }}
+            videoProps={{ controls: true, muted: false }}
           />
         </div>
 
