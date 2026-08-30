@@ -5,9 +5,7 @@ import {
   getCurrentSeason,
   advanceCountLabel,
   formatAccessCopy,
-  formatModelName,
   formatWeightPercent,
-  getIntegrityModel,
   type Season,
 } from '@/lib/seasons'
 import { getMembershipLandingData } from '@/app/membership/actions'
@@ -38,10 +36,6 @@ export default function RulesPage() {
     )
   }
 
-  const integrityModel = getIntegrityModel(season.ai_models)
-  const integrityName = integrityModel
-    ? formatModelName(integrityModel.name)
-    : 'a designated panel model'
   const modelCount = season.ai_models.length
   const lastUpdated = new Date(season.updated_at).toLocaleDateString('en-US', {
     year: 'numeric',
@@ -130,10 +124,16 @@ export default function RulesPage() {
                 . Entries outside this range are automatically rejected.
               </li>
               <li>
-                <span className="text-white/90">Format:</span> uploaded to YouTube or Vimeo, publicly viewable.
+                <span className="text-white/90">Format:</span> Created and submitted inside OXXOVO Studio. Entries appear on Watch once they clear verification.
+                <div className="text-white/40 text-xs mt-0.5" lang="ko">
+                  OXXOVO Studio 안에서 만들고 그대로 제출합니다. 검증을 통과한 작품은 Watch에 공개됩니다.
+                </div>
               </li>
               <li>
-                <span className="text-white/90">AI-generated:</span> the visual content must be produced by an AI video service (Sora, Veo, Runway, Kling, Pika, or other).
+                <span className="text-white/90">AI-generated:</span> Generated inside OXXOVO Studio. Externally produced video cannot be submitted.
+                <div className="text-white/40 text-xs mt-0.5" lang="ko">
+                  OXXOVO Studio 안에서 생성합니다. 외부에서 제작한 영상은 제출할 수 없습니다.
+                </div>
               </li>
               <li>
                 <span className="text-white/90">Creator statement:</span> a {STATEMENT_MIN}&ndash;{STATEMENT_MAX} character description of what is on screen, used as input for the Intent score.
@@ -153,28 +153,8 @@ export default function RulesPage() {
               Every entry is scored in parallel by{' '}
               <span className="text-white">{modelCount} independent AI models</span>, each from a different company. Using multiple judges cancels individual AI bias.
             </p>
-            <div className="flex flex-wrap gap-3 mb-6">
-              {season.ai_models.map((m) => (
-                <div
-                  key={m.name}
-                  className={`flex-1 min-w-[160px] rounded-lg border px-4 py-3 ${
-                    m.is_integrity
-                      ? 'border-[#8b22ff]/40 bg-[#8b22ff]/[.06]'
-                      : 'border-white/10 bg-white/[.03]'
-                  }`}
-                >
-                  <p className="text-white font-bold text-sm">{formatModelName(m.name)}</p>
-                  <p className="text-white/40 text-xs mt-0.5">{m.provider ?? '—'}</p>
-                  {m.is_integrity && (
-                    <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-[#b66cff]">
-                      Integrity Judge
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
             <p>
-              Each judge scores three categories that determine your score, plus a separate integrity check that does not. The weighted average across all {modelCount} judges is your <span className="text-white">AI Score</span>, with outlier scores automatically excluded to prevent manipulation.
+              Each judge scores three categories that determine your score, plus a separate integrity check that does not. The weighted average across all {modelCount} judges is your <span className="text-white">AI Score</span>.
             </p>
 
             <div className="mt-6 rounded-lg border border-[#8b22ff]/30 bg-[#8b22ff]/[.07] px-4 py-3">
@@ -245,16 +225,12 @@ export default function RulesPage() {
           </RuleSection>
 
           <RuleSection num="⑤" title="Integrity Verification">
-            <p className="mb-4">
-              The Integrity score is judged by <span className="text-white">{integrityName}</span> alone &mdash; assigned solo by design, to prevent panel-wide collusion. It evaluates whether the submission is a genuine AI-generated video and whether the creator statement is consistent with what appears on screen.
+            <p className="mb-1">
+              The integrity check is run by a single model, separately from scoring. We don&rsquo;t publish the criteria.
             </p>
-            <div className="rounded-lg border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-sm">
-              <p className="text-amber-300/90 font-bold mb-1">Auto-flag threshold</p>
-              <p className="text-white/60">
-                Any entry with an Integrity score below{' '}
-                <span className="text-white">{season.flag_integrity_threshold}</span> is automatically flagged for human review. Flagged entries may be disqualified.
-              </p>
-            </div>
+            <p className="text-white/50 text-xs" lang="ko">
+              무결성 검사는 채점과 별도로 한 모델이 수행합니다. 검증 기준은 공개하지 않습니다.
+            </p>
           </RuleSection>
 
           <RuleSection num="⑥" title="Video Authenticity & AI Service Watermarks">
