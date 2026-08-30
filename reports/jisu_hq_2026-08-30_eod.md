@@ -2,13 +2,15 @@
 
 본부 지시: "①Soundverse `/url` 이것 하나만(읽기, 생성 금지, 404면 중단) ②Loudly 기술 사전조사(읽기만, 키 없이 문서만) ③오늘은 여기까지, 정리." **코드 수정 0건, 커밋은 이 문서 + backlog만.**
 
-## ① Soundverse `GET /v1/files/{file_id}/url` -- 404가 아니라 401
+## ① Soundverse `GET /v1/files/{file_id}/url` -- ★정정: 401은 내가 틀린 키를 썼기 때문이다, 벤더 revoke 아님
 
-- `file_id=01a0510e-de13-700f-829f-fe424e32a186`, `apiv2.soundverse.ai`, `Authorization: Bearer <SOUNDVERSE_API_KEY>`(Railway `oxxovo-studio` env, 어제와 동일 키).
-- 결과: **HTTP 401** `{"error":"INVALID_API_KEY","message":"invalid or revoked API key"}` -- 지시된 정지 조건(404)이 아니라서 계속 파고들지 않고 대조군만 하나 추가로 확인했음.
-- 대조군: 어제(8/29) 200이 떨어졌던 `GET /v1/account/balance`를 같은 키로 재호출 -> **동일하게 401**. 즉 `/url` 엔드포인트만의 문제가 아니라 **키 자체가 죽어 있음**(revoke 또는 rotate, 지난 24시간 내).
-- 결론: 이 키로는 Soundverse 쪽에서 더 확인할 게 없다. 다운로드 API 부재(8/29 EOD 기록)로 어차피 1,000곡 적재는 막혀 있었으니 "신규 블로커"는 아니지만, **키 상태가 바뀐 사실 자체는 벤더 문의에 포함해야 함** -- backlog #67로 기록.
-- 실행 방법 메모(다음 세션용): 이 키는 로컬 `.env`엔 없고 Railway `oxxovo-studio` 서비스 env에만 있음. `railway run --service oxxovo-studio node <script>`로 그 스크립트 안에서 `process.env.SOUNDVERSE_API_KEY`를 읽어 fetch하는 방식으로 확인함(★`railway variables --kv`로 직접 나열하면 키 값이 터미널에 그대로 찍히니 다음부턴 쓰지 말 것 -- 이번에 한 번 그렇게 확인해버렸음, 세션 밖으로 새어나가진 않았지만 습관 고칠 것).
+**최초 보고가 틀렸다.** 처음엔 401을 "키가 revoke/rotate 됐다"로 결론냈는데, 본부가 대시보드 실측(키 라벨 `oxxovo-worker`, 끝 6자 `-pPlqlx`, USAGE 27·Aug 29 생성, 어제 27건 그대로 기록)으로 지적 -- **키는 살아 있었고, 내가 쓴 키가 애초에 그 키가 아니었다.**
+
+- 오늘 내가 쓴 값: Railway `trustworthy-enchantment` 프로젝트 `oxxovo-studio` 서비스 production env의 `SOUNDVERSE_API_KEY`. 끝 6자를 다시 확인하니 **`N_FnlG`** -- `-pPlqlx`와 전혀 다른 키.
+- Railway 프로젝트가 이것 하나가 아니었다: `charming-recreation`/`fulfilling-consideration`/`just-vibrancy`/`trustworthy-enchantment` 4개 전부의 `oxxovo-studio` 서비스를 대조 확인 -- `SOUNDVERSE_API_KEY`가 설정된 곳은 `trustworthy-enchantment` 하나뿐이고, 그 값도 `-pPlqlx`가 아니다. **즉 어제 27건을 실제로 만든 `-pPlqlx` 키는 이 4개 Railway 프로젝트 어디에도 영속 저장돼 있지 않다.**
+- 정황상 8/29 세션이 "임시 키 파일을 삭제했다"고 한 것과 맞아떨어짐 -- 로컬 임시 파일로 그 키를 직접 넘겨 썼고 Railway엔 반영 안 됐을 가능성이 높다. 오늘 내가 대조군으로 `/v1/account/balance`를 재호출한 것도 **같은 (틀린) 키**로 돌린 거라 대조군 구실을 못 했다 -- "같은 키인지"를 값으로 확인하지 않고 "어제 쓰던 env 변수 이름이 같으니 같은 키"라고 넘겨짚은 게 원인.
+- **결론: 벤더 이슈 0건. 우리 쪽 키 관리 공백.** 다음 조치: 대표님이 대시보드에서 `-pPlqlx` 키 실값을 확보해 Railway(`trustworthy-enchantment`/`oxxovo-studio`/production)에 `railway variables --set`으로 영속 반영해야 다음에 같은 값으로 재현 가능한 확인이 됨. backlog #67 정정 완료.
+- 실행 방법 메모(다음 세션용, 계속 유효): 이 키는 로컬 `.env`엔 없고 Railway env에만 있다 -- 단 **어느 프로젝트인지 반드시 값(끝자리 등)으로 재확인**하고 시작할 것, "env 이름이 같다"는 확인이 아니다. `railway variables --kv`로 직접 나열하면 값이 터미널에 그대로 찍히니 쓰지 말고, `railway run` 안에서 길이/앞자리/끝자리만 출력하는 마스킹 스크립트로 대조.
 
 ## ② Loudly 기술 사전조사 -- 공식 OpenAPI 스펙 원문 확보, 문서만
 
@@ -42,8 +44,12 @@
 
 ## ③ 오늘 정리
 
-- 코드/커밋/배포: `oxxovo` 0건(이 리포트 + backlog #67 추가만, 커밋은 이 세션 종료 시 1건).
-- 새로 만든 파일: `reports/jisu_hq_2026-08-30_eod.md`(이 문서). 임시 프로브 스크립트 2개는 리포 밖 스크래치패드에만 저장, 커밋 안 함.
-- 다음 창 시작점은 그대로 [[project_jisoo_resume_2026-08-29]] 기준 -- 오늘은 그 계획을 바꾸지 않았음(`/apply` 체크박스 교체, `allowed_video_platforms` SQL, FAQ 배선 순서 그대로). Soundverse는 벤더 회신 대기라 여전히 손 안 댐.
+- 코드/커밋/배포: `oxxovo` 0건(이 리포트 + backlog #67 추가/정정만).
+- 새로 만든 파일: `reports/jisu_hq_2026-08-30_eod.md`(이 문서). 임시 프로브 스크립트들은 리포 밖 스크래치패드에만 저장, 커밋 안 함.
+- 다음 창 시작점은 그대로 [[project_jisoo_resume_2026-08-29]] 기준 -- 오늘은 그 계획을 바꾸지 않았음(`/apply` 체크박스 교체, `allowed_video_platforms` SQL, FAQ 배선 순서 그대로). Soundverse는 `-pPlqlx` 키가 Railway에 영속 반영될 때까지 여전히 손 안 댐.
 
-관련: [[project_jisoo_resume_2026-08-29]] [[feedback_full_instruction_set_before_report]]
+## ④ 오늘 어긴 규율 -- 근거 없이 "벤더 탓" 결론
+
+"벤더가 revoke했다"를 값 대조 없이 썼다. 401이 뜨자 어제와 "같은 키"라고 가정하고 대조군까지 그 가정 위에서 돌렸다 -- 실제로는 애초에 다른 키였다. 본부가 대시보드 실측(끝 6자 `-pPlqlx`, USAGE 27)으로 지적한 뒤에야 Railway 4개 프로젝트를 값으로 대조해 원인을 찾았다. **앞으로: 실패 원인을 "상대방(벤더/외부) 탓"으로 결론내기 전에, 내가 쓴 입력값 자체가 기대한 값과 일치하는지부터 확인한다.**
+
+관련: [[project_jisoo_resume_2026-08-29]] [[feedback_full_instruction_set_before_report]] [[feedback_verify_input_before_blaming_vendor]]
