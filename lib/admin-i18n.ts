@@ -1921,7 +1921,7 @@ const MESSAGES_EN: Messages = {
       `${seasonName} features a $${total} prize pool ($${first} for 1st, $${second} for 2nd, $${third} for 3rd). The ${advanceLabel} earn the Finalist title.`,
     faq_q8: 'How does OXXOVO prevent cheating?',
     faq_a8:
-      "An automated integrity check flags misrepresentation. Anything it flags gets a human review. We don't publish the thresholds or weighting.",
+      "Every entry goes through an automated integrity check during judging. We don't publish the criteria.",
     faq_q9: 'When do I get my results?',
     faq_a9:
       'Scoring runs in a batch after the application period closes. Your individual score and the panel’s reasoning arrive with your preliminary-round results notification, and you can also check them in your profile.',
@@ -2964,7 +2964,7 @@ const MESSAGES_KO: Messages = {
       `${seasonName}의 총상금은 $${total}입니다(1등 $${first}, 2등 $${second}, 3등 $${third}). ${advanceLabel}가 본선 진출자 타이틀을 얻습니다.`,
     faq_q8: 'OXXOVO는 부정행위를 어떻게 막나요?',
     faq_a8:
-      '무결성 검증이 허위 표기를 자동으로 잡아냅니다. 검증에 걸린 작품은 사람이 다시 확인합니다. 검증 기준과 비중은 공개하지 않습니다.',
+      '모든 출품작은 심사 과정에서 무결성 자동 검증을 거칩니다. 검증 기준은 공개하지 않습니다.',
     faq_q9: '결과는 언제 나오나요?',
     faq_a9:
       '채점은 제출 마감 이후 일괄로 진행됩니다. 개인 점수와 심사 근거는 예선 결과 안내와 함께 받으시고, 프로필에서도 확인하실 수 있습니다.',

@@ -771,10 +771,10 @@ export default function ApplyPage() {
                 />
                 <span className="flex flex-col gap-0.5">
                   <span>
-                    Every entry goes through an automated <span className="text-white/90">integrity check</span> during scoring. We don&apos;t publish the criteria. Using someone else&apos;s copyrighted work or a real person&apos;s likeness without permission is grounds for disqualification.
+                    Every entry goes through an automated <span className="text-white/90">integrity check</span> during judging. We don&apos;t publish the criteria. Using someone else&apos;s copyrighted work or a real person&apos;s likeness without permission is grounds for disqualification.
                   </span>
                   <span className="text-white/50" lang="ko">
-                    모든 출품작은 채점 과정에서 무결성 자동 검증을 거칩니다. 검증 기준은 공개하지 않습니다. 타인의 저작물이나 실존 인물의 초상을 허락 없이 사용한 작품은 실격 사유가 됩니다.
+                    모든 출품작은 심사 과정에서 무결성 자동 검증을 거칩니다. 검증 기준은 공개하지 않습니다. 타인의 저작물이나 실존 인물의 초상을 허락 없이 사용한 작품은 실격 사유가 됩니다.
                   </span>
                 </span>
               </label>
@@ -1368,10 +1368,10 @@ function FunnelScreen({
                   />
                   <span className="flex flex-col gap-0.5">
                     <span>
-                      Every entry goes through an automated <span className="text-white/90">integrity check</span> during scoring. We don&apos;t publish the criteria. Using someone else&apos;s copyrighted work or a real person&apos;s likeness without permission is grounds for disqualification.
+                      Every entry goes through an automated <span className="text-white/90">integrity check</span> during judging. We don&apos;t publish the criteria. Using someone else&apos;s copyrighted work or a real person&apos;s likeness without permission is grounds for disqualification.
                     </span>
                     <span className="text-white/50" lang="ko">
-                      모든 출품작은 채점 과정에서 무결성 자동 검증을 거칩니다. 검증 기준은 공개하지 않습니다. 타인의 저작물이나 실존 인물의 초상을 허락 없이 사용한 작품은 실격 사유가 됩니다.
+                      모든 출품작은 심사 과정에서 무결성 자동 검증을 거칩니다. 검증 기준은 공개하지 않습니다. 타인의 저작물이나 실존 인물의 초상을 허락 없이 사용한 작품은 실격 사유가 됩니다.
                     </span>
                   </span>
                 </label>
