@@ -229,9 +229,14 @@ Q. How do points and rankings work? 【F·W】
 - KR: 시합에 참가하면 포인트를 얻습니다. 성적이 좋을수록 많이 받습니다. 포인트는 계정에 쌓이고 사라지지 않습니다 — 해가 바뀌어도 초기화되지 않으며, 시즌이 지날수록 그 아래 전적이 모입니다. 크리에이터 순위는 {{first_ranking_date}}에 처음 공개됩니다. 그때까지 열리는 모든 시합의 성적이 이 순위에 쌓입니다.
 - EN: You earn points for competing, and more for placing well. Points accumulate on your account and don't expire — they carry across years without resetting, and season by season your record builds under them. Creator rankings are first published {{first_ranking_date}}. Every competition until then counts toward it.
 
-Q. Can I cancel my entry? 【F】
-- KR: 신청 마감 72시간 전까지 취소하실 수 있습니다. 취소한 뒤에도 {{application_close}}까지 다시 신청할 수 있으며, 재신청은 시즌당 1회입니다.
-- EN: You can cancel until 72 hours before entries close. After cancelling, you may re-enter once, up to {{application_close}}.
+Q. Can I cancel my entry? 【F】 ⏸ [확인 필요]
+- ★HQ 2026-08-30: this used to state a 72h-before-close cancellation window and
+  a once-per-season re-entry allowance. Neither exists in code -- no cancel/
+  withdraw path was ever built for genesis_applications (checked app/apply,
+  app/api/apply/route.ts, app/profile/actions.ts: zero hits). Do not name a
+  deadline or describe a re-entry mechanic until this ships.
+- KR: 신청 취소는 아직 안내드릴 수 있는 단계가 아닙니다. info@oxxovo.ai 으로 문의해 주세요.
+- EN: Cancellation isn't something we can confirm here yet. Please contact info@oxxovo.ai.
 
 Q. What if not enough people sign up? 【F】
 - KR: 시즌이 성립하려면 {{min_participants}}명 이상이 필요합니다. 신청 마감 72시간 전 시점에 미달이면 시즌을 1주 연기하며, 연기는 최대 {{max_postponements}}회입니다. 연기가 결정되면 신청자 전원에게 새 일정을 안내하고, 신청은 그대로 유지됩니다. {{max_postponements}}회 연기 후 {{floor_participants}}명 이상이면 그대로 개최합니다. 그에도 미치지 못하면 운영진이 개최 여부를 판단하여 신청자 전원에게 안내합니다.
