@@ -62,6 +62,12 @@ export type WatchVideo = {
   scored: boolean
   // Community votes for this main-round video (0 for prelim).
   voteCount: number
+  // True for a rehearsal/fixture season that is deliberately exposed via
+  // watch_fixture_visible=true (HQ 2026-08-30: rehearsal entries stay on
+  // Watch as real-looking cards -- score/vote badges included -- so the UI
+  // must carry its own "not a real entry" disclosure rather than relying on
+  // the row being hidden). False for every normal competition season.
+  isFixture: boolean
 }
 
 export type WatchSeasonGroup = {
@@ -175,7 +181,13 @@ function toWatchVideo(
   videoUrl: string,
   counts: { likes: number; views: number; comments: number },
   displayName?: string,
-  extra: { publicScore?: number | null; scored?: boolean; voteCount?: number; thumbnailUrl?: string | null } = {},
+  extra: {
+    publicScore?: number | null
+    scored?: boolean
+    voteCount?: number
+    thumbnailUrl?: string | null
+    isFixture?: boolean
+  } = {},
 ): WatchVideo {
   const submittedAt =
     round === 'application'
@@ -214,6 +226,7 @@ function toWatchVideo(
     publicScore: extra.publicScore ?? null,
     scored: extra.scored ?? false,
     voteCount: extra.voteCount ?? 0,
+    isFixture: extra.isFixture ?? false,
   }
 }
 
@@ -308,6 +321,12 @@ async function loadWatchVideos(
   const fixtureSeasonIds = new Set(
     seasonRows.filter((s) => isFixtureSeason(s) && !exemptFixtureIds.has(s.id)).map((s) => s.id),
   )
+  // Fixture seasons that DO reach the public feed via the exemption above --
+  // these still need the "not a real entry" disclosure (HQ 2026-08-30), since
+  // nothing else on the card distinguishes them from a real competition.
+  const visibleFixtureIds = new Set(
+    seasonRows.filter((s) => isFixtureSeason(s) && exemptFixtureIds.has(s.id)).map((s) => s.id),
+  )
 
   const likes = tallyCounts((likeAgg.data ?? []) as { application_id: string; round: string }[])
   const views = tallyCounts((viewAgg.data ?? []) as { application_id: string; round: string }[])
@@ -354,6 +373,7 @@ async function loadWatchVideos(
         scored: scoredKeys.has(`${row.id}:application`),
         publicScore: scoreFor(`${row.id}:application`),
         thumbnailUrl: roundThumb(renderThumbs, row.studio_application_render_id),
+        isFixture: visibleFixtureIds.has(row.season_id),
       }))
     }
     if (row.main_round_video_url?.trim()) {
@@ -362,6 +382,7 @@ async function loadWatchVideos(
         publicScore: scoreFor(`${row.id}:main`),
         voteCount: votes.get(`${row.id}:main`) ?? 0,
         thumbnailUrl: roundThumb(renderThumbs, row.studio_main_render_id),
+        isFixture: visibleFixtureIds.has(row.season_id),
       }))
     }
   }
@@ -826,6 +847,16 @@ export async function getWatchVideo(
   const url = (round === 'application' ? row.free_entry_url : row.main_round_video_url)?.trim()
   if (!url) return null
 
+  // Same rehearsal-disclosure signal as the bulk loader (HQ 2026-08-30): a
+  // direct link to a rehearsal video's page must show the same "not a real
+  // entry" notice, since it bypasses the list-top banner entirely.
+  const { data: seasonRow } = await admin
+    .from('seasons')
+    .select('id, season_number, is_fixture, watch_fixture_visible')
+    .eq('id', row.season_id)
+    .maybeSingle()
+  const isFixture = !!seasonRow && isFixtureSeason(seasonRow) && seasonRow.watch_fixture_visible === true
+
   // Read-only: this renders SOMEONE ELSE's entry on a public page, so it must
   // never create a profiles row. See lib/nickname.ts getDisplayNameReadOnly.
   const displayName = row.user_id ? await getDisplayNameReadOnly(row.user_id) : undefined
@@ -862,7 +893,7 @@ export async function getWatchVideo(
       comments: commentAgg.count ?? 0,
     },
     displayName,
-    { thumbnailUrl: roundThumb(renderThumbs, renderId) },
+    { thumbnailUrl: roundThumb(renderThumbs, renderId), isFixture },
   )
 }
 

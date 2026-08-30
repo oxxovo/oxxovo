@@ -25,6 +25,7 @@ import { getAdminOrNull } from '@/lib/admin-auth'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ChatWidget } from '@/app/_components/ChatWidget'
 import { WatchShell, type SidebarSeason, type SidebarSubscription } from '../WatchShell'
+import { RehearsalNotice } from '../Arena'
 import { WatchPlayer } from '../WatchPlayer'
 import { AspectThumb } from '@/app/_components/AspectThumb'
 import { FollowButton } from '../FollowButton'
@@ -161,6 +162,7 @@ export default async function WatchDetailPage({
         showRound={showRound}
         showWinners={showWinners}
       >
+        {video.isFixture && <RehearsalNotice />}
         <div className="flex flex-col lg:flex-row gap-8">
         {/* Left: player + meta + social + comments */}
         <div className="flex-1 min-w-0">

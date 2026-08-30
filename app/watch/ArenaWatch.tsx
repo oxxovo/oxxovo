@@ -20,7 +20,7 @@ import { getCurrentSeason, getCurrentSeasonId } from '@/lib/seasons'
 import { getUserOrNull } from '@/lib/user-auth'
 import { ArenaShell } from './ArenaShell'
 import { ArenaFilterBar, type FilterSeason } from './ArenaFilterBar'
-import { ArenaBanner, ArenaHero, LatestEntries, MainRoundSection, FinalistPrelimSection } from './Arena'
+import { ArenaBanner, ArenaHero, LatestEntries, MainRoundSection, FinalistPrelimSection, RehearsalNotice } from './Arena'
 
 export async function ArenaWatch({
   sort,
@@ -112,6 +112,15 @@ export async function ArenaWatch({
   // never a duplicate of what's above. No entry is hidden overall. (TK 2026-07-14)
   latest = latest.filter((v) => !(v.seasonId === currentSeasonId && finalistIds.has(v.applicationId)))
 
+  // Rehearsal disclosure (HQ 2026-08-30): show the banner whenever ANY video
+  // actually rendered on this page is a visibly-exposed fixture (season_test
+  // etc. with watch_fixture_visible=true) -- covers all three sections below,
+  // not just the current season.
+  const hasFixtureContent =
+    mainRoundVideos.some((v) => v.isFixture) ||
+    finalistPrelims.some((v) => v.isFixture) ||
+    latest.some((v) => v.isFixture)
+
   // Stopgap (A안, 2026-07): the hero card's roundName is derived from the
   // TIMELINE only (inMainRound = now>=main_round_start, no upper bound), so once
   // a season reaches the terminal stages it stays stuck on "Main Round" while the
@@ -130,6 +139,7 @@ export async function ArenaWatch({
   return (
     <ArenaShell user={user ? { email: user.email } : null}>
       <ArenaBanner content={bannerStage} />
+      {hasFixtureContent && <RehearsalNotice />}
       <ArenaHero
         seasonNumber={seasonNumber}
         roundName={cardRoundName}

@@ -913,6 +913,8 @@ export type Messages = {
     main_round_live_title: string
     finalist_prelim_title: string
     finalist_prelim_tag: string
+    rehearsal_notice: string
+    rehearsal_card_tag: string
     card_judging: string
     card_voting: string
     card_awaiting_judgment: string
@@ -1963,6 +1965,10 @@ const MESSAGES_EN: Messages = {
     main_round_live_title: '🏆 Main Round · Live Now',
     finalist_prelim_title: 'Finalist Entries · Preliminary Round',
     finalist_prelim_tag: 'Finalist Entry',
+    // ★self-authored EN (KR is the HQ-approved wording, 2026-08-30) -- direct
+    // translation of the approved sentence, not new policy content.
+    rehearsal_notice: 'This season is a system-rehearsal check. It is not a real competition, and the entries shown here are not contest submissions.',
+    rehearsal_card_tag: 'Rehearsal · Not an entry',
     card_judging: '⚡ Judging',
     card_voting: '🔥 Voting',
     card_awaiting_judgment: 'Awaiting judgment',
@@ -3002,6 +3008,9 @@ const MESSAGES_KO: Messages = {
     main_round_live_title: '🏆 본선 · 지금 시합 중',
     finalist_prelim_title: '본선 진출작 · 예선 라운드 작품',
     finalist_prelim_tag: '본선 진출작',
+    // ★본부 확정 문안, 2026-08-30 그대로.
+    rehearsal_notice: '이 시즌은 시스템 점검용 리허설입니다. 실제 시합이 아니며, 여기 실린 작품은 참가작이 아닙니다.',
+    rehearsal_card_tag: '리허설 · 참가작 아님',
     card_judging: '⚡ AI 심사 중',
     card_voting: '🔥 투표중',
     card_awaiting_judgment: '심사 대기',

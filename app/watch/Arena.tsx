@@ -82,6 +82,32 @@ export function ArenaBanner({ content }: { content: BannerContent }) {
   )
 }
 
+// ── Rehearsal notice (HQ 2026-08-30) ────────────────────────────────────────
+// A fixture season (season_test etc.) exposed via watch_fixture_visible=true
+// looks exactly like a real competition on Watch -- same score/vote badges,
+// same layout. This banner is the ONLY thing telling a viewer otherwise, so it
+// renders above the grid whenever any currently-shown video is a fixture.
+// Per-card disclosure (RehearsalTag below) covers the direct-link case, where
+// a viewer never scrolls past this banner at all.
+export function RehearsalNotice() {
+  const t = useT()
+  return (
+    <div className="mb-6 flex items-start gap-3 rounded-lg border border-amber-400/30 bg-amber-400/[.08] px-4 py-3">
+      <span aria-hidden className="text-lg leading-none">⚠️</span>
+      <p className="text-[13px] font-semibold leading-relaxed text-amber-200">{t.watch.rehearsal_notice}</p>
+    </div>
+  )
+}
+
+function RehearsalTag() {
+  const t = useT()
+  return (
+    <span className="absolute bottom-2 left-2 inline-flex items-center rounded-md bg-amber-400/90 px-2 py-1 text-[10px] font-black text-black backdrop-blur">
+      {t.watch.rehearsal_card_tag}
+    </span>
+  )
+}
+
 // ── Hero ───────────────────────────────────────────────────────────────────
 // The arena image runs FULL-WIDTH and uncropped (its baked-in scoreboards --
 // REAL COMPETITION / TRIPLE-AI VERIFIED -- logo, and silhouette all stay
@@ -272,6 +298,7 @@ function WatchCard({
       <AspectThumb url={v.thumbnailUrl} label={v.videoTitle || v.creatorName} className="w-full">
         <CardBadge v={v} showJudging={showJudging} voteOpen={voteOpen} />
         <CardCenter v={v} showJudging={showJudging} voteOpen={voteOpen} />
+        {v.isFixture && <RehearsalTag />}
         {tag && (
           <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-[#8b22ff]/90 px-2 py-1 text-[11px] font-black text-white backdrop-blur">
             🏆 {tag}
@@ -499,6 +526,7 @@ export function LatestEntries({
                     No Staff Pick / Featured badges (never promotes entries). */}
                 <CardBadge v={v} showJudging={showJudging} voteOpen={voteOpen} />
                 <CardCenter v={v} showJudging={showJudging} voteOpen={voteOpen} />
+                {v.isFixture && <RehearsalTag />}
               </AspectThumb>
               <div className="p-3.5">
                 <h3 className="truncate text-sm font-bold text-[#f4f0ff]">{v.videoTitle || v.creatorName}</h3>
