@@ -43,18 +43,23 @@ function intervalEn(interval: string): string {
   return `/${interval}`
 }
 
+// ★2026-08-30 (HQ, render-preview audit): no timeZone -- same bug class as
+// SelectedTop50's date (see lib/seasons.ts formatDeadlinePT's comment).
+// Date-only by design (no clock time in the copy), so it gets an explicit
+// timeZone rather than switching to formatDeadlinePT (which always appends a
+// time + PT label).
 function formatDateKo(iso: string | null): string {
   if (!iso) return '종료 예정일'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '종료 예정일'
-  return d.toLocaleString('ko-KR', { dateStyle: 'long' })
+  return d.toLocaleString('ko-KR', { timeZone: 'America/Los_Angeles', dateStyle: 'long' })
 }
 
 function formatDateEn(iso: string | null): string {
   if (!iso) return 'soon'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return 'soon'
-  return d.toLocaleString('en-US', { dateStyle: 'long' })
+  return d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', dateStyle: 'long' })
 }
 
 function Korean(p: MembershipFoundingExpiryProps) {
