@@ -343,9 +343,9 @@ export default function RulesPage() {
             </div>
           </RuleSection>
 
-          <RuleSection num="⑧" title="Grand Final & Future Seasons">
+          <RuleSection num="⑧" title="Future Seasons">
             <p>
-              Tournament structure scales with participation. As OXXOVO grows, future seasons will feature larger capacities, higher prize pools, and the eventual Grand Final. Specific tournament structure, prize pools, and selection counts vary by season and are announced before each application window opens.
+              Tournament structure scales with participation. As OXXOVO grows, future seasons will feature larger capacities and higher prize pools. Specific tournament structure, prize pools, and selection counts vary by season and are announced before each application window opens.
             </p>
           </RuleSection>
 

@@ -97,8 +97,7 @@ export default async function AboutPage() {
         <P>
           OXXOVO begins with {seasonName} — a launch tournament open to
           creators worldwide. From there, the arena grows into regular
-          seasonal tournaments, leading to an annual Grand Final where the
-          champions of each round compete for the title.
+          seasonal tournaments, each one open to a new field of creators.
         </P>
         <P>
           We believe competitive AI creation will become a new form of

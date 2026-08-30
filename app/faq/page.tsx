@@ -97,7 +97,7 @@ function buildFaqs(season: Season, mem: MembershipLandingData): Faq[] {
     },
     {
       q: 'Is OXXOVO only for short-form video?',
-      a: `No. Short-form AI video is the starting point. From ${season.name}, OXXOVO grows into regular seasonal tournaments and an annual Grand Final.`,
+      a: `No. Short-form AI video is the starting point. From ${season.name}, OXXOVO grows into regular seasonal tournaments.`,
     },
     {
       q: 'Can beginners enter?',

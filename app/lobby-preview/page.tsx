@@ -40,7 +40,7 @@ const DEMO: LobbyCard[] = [
   },
   {
     id: 'demo-live',
-    displayName: 'Grand Final Arena',
+    displayName: 'Finals Arena',
     theme: 'Final Render',
     posterUrl: null,
     prizePool: 10000,
