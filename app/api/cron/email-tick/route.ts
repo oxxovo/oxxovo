@@ -40,7 +40,7 @@ import {
   sendVideoLiveMain,
   type SendResult,
 } from '@/lib/email/send'
-import { detectEmailLang } from '@/lib/email/lang'
+import { resolveEmailLang } from '@/lib/email/lang'
 import { canSendMarketingEmail } from '@/lib/email/consent'
 import {
   videoLiveRounds,
@@ -485,7 +485,7 @@ async function fireVideoLive(season: Season, now: Date) {
         continue
       }
 
-      const lang = detectEmailLang(row.country)
+      const lang = await resolveEmailLang(row.email, row.country)
       // ★The main template is built around a countdown. If the end of the vote
       // window cannot be stated, the mail does not go -- see formatVoteDeadline
       // for why a dash is not an acceptable stand-in. Checked BEFORE the budget

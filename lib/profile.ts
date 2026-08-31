@@ -51,13 +51,16 @@ export async function getCreatorProfile(userId: string): Promise<CreatorProfile>
 export async function upsertCreatorProfile(
   userId: string,
   email: string,
-  fields: { creatorName?: string | null; country?: string | null },
+  fields: { creatorName?: string | null; country?: string | null; locale?: 'ko' | 'en' | null },
 ): Promise<{ ok: boolean; error?: string }> {
   const patch: Record<string, unknown> = {}
   const name = fields.creatorName?.trim()
   const country = fields.country?.trim()
   if (name) patch.creator_name = name
   if (country) patch.country = country
+  // locale, unlike name/country, is a controlled 'ko'|'en' value, not free text
+  // -- no .trim() needed, and only ever this or nothing (never blanked here).
+  if (fields.locale === 'ko' || fields.locale === 'en') patch.locale = fields.locale
   if (Object.keys(patch).length === 0) return { ok: true } // nothing to write
 
   if (!(await ensureProfileRow(userId, email))) {
@@ -68,4 +71,27 @@ export async function upsertCreatorProfile(
   const { error } = await admin.from('profiles').update(patch).eq('id', userId)
   if (error) return { ok: false, error: error.message }
   return { ok: true }
+}
+
+// ─── explicit email language (HQ 2026-08-31) ────────────────────────────────
+// Account-level, like creator_name/country above, but with its own pair of
+// functions rather than folding into get/upsertCreatorProfile: the /profile
+// language card has nothing to do with creator identity, and NULL here means
+// "never set" (not "en") -- see lib/email/lang.ts resolveEmailLang, which
+// falls back to the country guess only when this is null.
+
+export async function getLocaleForUser(userId: string): Promise<'ko' | 'en' | null> {
+  const admin = createSupabaseAdmin()
+  const { data } = await admin.from('profiles').select('locale').eq('id', userId).maybeSingle()
+  const locale = data?.locale as string | null | undefined
+  return locale === 'ko' || locale === 'en' ? locale : null
+}
+
+// SELF PATH ONLY, same reasoning as upsertCreatorProfile above.
+export async function saveLocaleForUser(
+  userId: string,
+  email: string,
+  locale: 'ko' | 'en',
+): Promise<{ ok: boolean; error?: string }> {
+  return upsertCreatorProfile(userId, email, { locale })
 }

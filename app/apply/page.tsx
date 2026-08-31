@@ -21,7 +21,7 @@ import {
   formatVideoUrlPlaceholder,
   validateVideoUrl,
 } from '@/lib/video-url'
-import { useT } from '@/lib/admin-i18n'
+import { useT, useAdminLang } from '@/lib/admin-i18n'
 import type { ApplyErrorCode } from '@/app/api/apply/route'
 import { getSessionUser } from '@/app/_actions/auth'
 import { formatFooterStatusLine } from '@/lib/ip-info'
@@ -84,6 +84,18 @@ export default function ApplyPage() {
   // HQ recommends 18) -- see lib/studio.ts ApplicantInfo.age.
   const [age, setAge] = useState<number | ''>('')
   const [country, setCountry] = useState('')
+  // ★HQ 2026-08-31: explicit, not inferred from country. Defaults to the
+  // screen's own language when the form opens; the field below lets the user
+  // change it before submitting -- see reports/
+  // email_locale_explicit_design_2026-08-31.md.
+  //
+  // null means "not yet touched" -- effectiveLocale below falls back to the
+  // live screen language, so a screen-language change before the user picks
+  // anything still updates the default, and picking a value freezes it (no
+  // effect/setState-in-effect needed to sync the two).
+  const screenLang = useAdminLang()
+  const [locale, setLocale] = useState<'ko' | 'en' | null>(null)
+  const effectiveLocale = locale ?? screenLang
   const [channelUrl, setChannelUrl] = useState('')
   const [agreeRules, setAgreeRules] = useState(false)
   const [agreePrivacy, setAgreePrivacy] = useState(false)
@@ -291,6 +303,7 @@ export default function ApplyPage() {
         creatorName: name.trim(),
         creatorStatement: statement.trim(),
         country: country.trim() || undefined,
+        locale: effectiveLocale,
         channelUrl: channelUrl.trim() || undefined,
         age: typeof age === 'number' ? age : undefined,
         agreedRules: agreeRules,
@@ -396,6 +409,8 @@ export default function ApplyPage() {
         setAge={setAge}
         country={country}
         setCountry={setCountry}
+        locale={effectiveLocale}
+        setLocale={setLocale}
         channelUrl={channelUrl}
         setChannelUrl={setChannelUrl}
         statement={statement}
@@ -1062,6 +1077,8 @@ function FunnelScreen({
   setAge,
   country,
   setCountry,
+  locale,
+  setLocale,
   channelUrl,
   setChannelUrl,
   statement,
@@ -1091,6 +1108,8 @@ function FunnelScreen({
   setAge: (v: number | '') => void
   country: string
   setCountry: (v: string) => void
+  locale: 'ko' | 'en'
+  setLocale: (v: 'ko' | 'en' | null) => void
   channelUrl: string
   setChannelUrl: (v: string) => void
   statement: string
@@ -1282,6 +1301,33 @@ function FunnelScreen({
                   placeholder="e.g. South Korea, USA, Japan"
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition"
                 />
+              </div>
+              {/* TODO(copy, HQ 2026-08-31): label/subtitle are a placeholder --
+                  needs 제니3's confirmed wording explaining this is separate
+                  from Country (see feedback_copy_not_my_call memory). Do not
+                  ship this label as final without checking with HQ. */}
+              <div>
+                <label className="block text-sm text-white/60 mb-1.5">
+                  Email Language <span className="text-white/30">(separate from Country, above)</span>
+                </label>
+                <div className="flex gap-3" role="radiogroup" aria-label="Email language">
+                  {(['ko', 'en'] as const).map((code) => (
+                    <button
+                      key={code}
+                      type="button"
+                      role="radio"
+                      aria-checked={locale === code}
+                      onClick={() => setLocale(code)}
+                      className={`flex-1 rounded-lg border px-4 py-3 text-sm transition ${
+                        locale === code
+                          ? 'border-[#8b22ff] bg-[#8b22ff]/10 text-white'
+                          : 'border-white/10 bg-white/5 text-white/60 hover:border-white/20'
+                      }`}
+                    >
+                      {code === 'ko' ? '한국어' : 'English'}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="block text-sm text-white/60 mb-1.5">

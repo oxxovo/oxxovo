@@ -1,7 +1,8 @@
 // Receipt schedule bullets -- every date from the season row, and none invented.
 //
-// Falsifiable form. The cases that matter: the same instant must render in two
-// different clocks for the two languages, and a null column must remove its
+// Falsifiable form. The cases that matter: the same instant must render as the
+// same calendar day and time in both languages (PT for both, 2026-08-30 HQ
+// policy -- see schedule-lines.ts header), and a null column must remove its
 // bullet rather than degrade it.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -13,9 +14,9 @@ import {
   mainReceiptLines,
 } from './schedule-lines.ts'
 
-// Season 0, canonical v2. 2026-11-04 08:00Z = Nov 4 00:00 PST = Nov 4 17:00 KST.
+// Season 0, canonical v2. 2026-11-04 08:00Z = Nov 4 00:00 PST.
 const CLOSE = '2026-11-04T08:00:00.000Z'
-// Awards: 2026-11-17 04:00Z = Nov 16 20:00 PST = Nov 17 13:00 KST.
+// Awards: 2026-11-17 04:00Z = Nov 16 20:00 PST.
 const AWARDS = '2026-11-17T04:00:00.000Z'
 
 test('the same instant is stated in the clock each audience plans against', () => {
@@ -23,12 +24,14 @@ test('the same instant is stated in the clock each audience plans against', () =
   assert.equal(formatScheduleDay(CLOSE, 'ko'), '11월 4일')
 })
 
-// ★The awards instant is a DIFFERENT CALENDAR DAY in the two zones -- Nov 16
-// evening in California is Nov 17 afternoon in Seoul. A formatter that rendered
-// one date for both languages would tell half the audience the wrong day.
-test('★a single instant can be two different days, and both must be right', () => {
+// ★2026-08-30 (HQ): KR now renders in PT too, same zone as EN (see
+// schedule-lines.ts header). The two-zone design this test used to guard
+// (KR in Seoul time, a different calendar day from the EN PT date) was
+// retired the same day as the chatbot/FAQ token policy -- so the two
+// languages must now agree on the same calendar day for the same instant.
+test('★the same instant renders as the same calendar day in both languages', () => {
   assert.equal(formatScheduleMoment(AWARDS, 'en'), 'Nov 16, 8:00 PM PT')
-  assert.equal(formatScheduleMoment(AWARDS, 'ko'), '11월 17일 오후 1시(한국 시간)')
+  assert.equal(formatScheduleMoment(AWARDS, 'ko'), '11월 16일 오후 8시 미국 서부 시간')
 })
 
 // ★Outward copy says PT and only PT (HQ, 2026-08-08). PT is true in every
@@ -50,9 +53,9 @@ test('the exact label follows the date, not the season', () => {
 })
 
 test('a whole hour drops its minutes in Korean, per the copy', () => {
-  assert.equal(formatScheduleMoment(AWARDS, 'ko'), '11월 17일 오후 1시(한국 시간)')
-  // 2026-11-17 04:30Z = 13:30 KST
-  assert.equal(formatScheduleMoment('2026-11-17T04:30:00.000Z', 'ko'), '11월 17일 오후 1시 30분(한국 시간)')
+  assert.equal(formatScheduleMoment(AWARDS, 'ko'), '11월 16일 오후 8시 미국 서부 시간')
+  // 2026-11-17 04:30Z = Nov 16 20:30 PST
+  assert.equal(formatScheduleMoment('2026-11-17T04:30:00.000Z', 'ko'), '11월 16일 오후 8시 30분 미국 서부 시간')
 })
 
 test('half a range is not a range', () => {
@@ -157,8 +160,8 @@ test('★the results bullet renders from its own column, not the judging end', (
   )
   assert.equal(lines.length, 3)
   assert.deepEqual(lines.map((l) => l.label), ['공개', 'AI 심사', '결과 안내'])
-  // Nov 8 12:00 PST = Nov 9 05:00 KST -- a different calendar day, same instant.
-  assert.deepEqual(lines[2], { label: '결과 안내', value: '11월 9일 오전 5시(한국 시간)' })
+  // Nov 8 12:00 PST -- both languages read this in PT now (2026-08-30 policy).
+  assert.deepEqual(lines[2], { label: '결과 안내', value: '11월 8일 오후 12시 미국 서부 시간' })
 })
 
 // ★Absent stays absent -- the column being null must still omit the bullet,

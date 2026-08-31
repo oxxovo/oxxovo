@@ -13,7 +13,7 @@ import { render } from '@react-email/components'
 import type { ReactElement } from 'react'
 import { getResend, EMAIL_FROM, APP_URL } from './client'
 import type { RankAward } from '@/lib/seasons'
-import { detectEmailLang, type EmailLang } from './lang'
+import { resolveEmailLang, type EmailLang } from './lang'
 import { logEmail, alreadySent, type TemplateKey } from './log'
 import { sendAdminAlert } from './admin-alert'
 import { isRateLimitError } from './deferral'
@@ -325,7 +325,7 @@ type SendPreRegisteredInput = {
 export async function sendPreRegistered(
   input: SendPreRegisteredInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: PreRegisteredProps = {
     lang,
     seasonName: input.seasonName,
@@ -393,7 +393,7 @@ type SendApplicationReceivedInput = {
 export async function sendApplicationReceived(
   input: SendApplicationReceivedInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: ApplicationReceivedProps = {
     lang,
     creatorName: input.creatorName,
@@ -426,7 +426,7 @@ type SendWaitlistedInput = {
 export async function sendWaitlisted(
   input: SendWaitlistedInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: WaitlistedProps = {
     lang,
     creatorName: input.creatorName,
@@ -468,7 +468,7 @@ type SendSelectedTop50Input = {
 export async function sendSelectedTop50(
   input: SendSelectedTop50Input,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
   const props: SelectedTop50Props = {
     lang,
@@ -520,7 +520,7 @@ type SendNotSelectedInput = {
 export async function sendNotSelected(
   input: SendNotSelectedInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
   const nextSeasonDate = input.nextSeasonOpenAt
     ? // ★2026-08-30 (HQ, render-preview audit): no timeZone here rendered in
@@ -578,7 +578,7 @@ type SendMainRoundStartInput = {
 export async function sendMainRoundStart(
   input: SendMainRoundStartInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: MainRoundStartProps = {
     lang,
     creatorName: input.creatorName,
@@ -618,7 +618,7 @@ type SendSubmissionDeadlineInput = {
 export async function sendSubmissionDeadline(
   input: SendSubmissionDeadlineInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: SubmissionDeadlineProps = {
     lang,
     creatorName: input.creatorName,
@@ -662,7 +662,7 @@ type SendApplicationDeadlineInput = {
 export async function sendApplicationDeadline(
   input: SendApplicationDeadlineInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: ApplicationDeadlineProps = {
     lang,
     creatorName: input.creatorName,
@@ -702,7 +702,7 @@ type SendVoteDeadlineInput = {
 }
 
 export async function sendVoteDeadline(input: SendVoteDeadlineInput): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
   const props: VoteDeadlineProps = {
     lang,
@@ -740,7 +740,7 @@ type SendSeasonWinnerAnnouncedInput = {
 export async function sendSeasonWinnerAnnounced(
   input: SendSeasonWinnerAnnouncedInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
   const props: SeasonWinnerAnnouncedProps = {
     lang,
@@ -775,7 +775,7 @@ type SendSeasonInviteInput = {
 }
 
 export async function sendSeasonInvite(input: SendSeasonInviteInput): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const base = (process.env.APP_URL ?? 'https://www.oxxovo.ai').replace(/\/$/, '')
   const nextSeasonOpenAt = input.nextSeasonOpenAt
     ? // ★2026-08-30 (HQ, render-preview audit): no timeZone here rendered in
@@ -828,7 +828,7 @@ type SendRegistrationCountInput = {
 export async function sendRegistrationCount(
   input: SendRegistrationCountInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: RegistrationCountProps = {
     lang,
     creatorName: input.creatorName,
@@ -867,7 +867,7 @@ type SendDeferralNoticeInput = {
 export async function sendDeferralNotice(
   input: SendDeferralNoticeInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: DeferralNoticeProps = {
     lang,
     creatorName: input.creatorName,
@@ -905,7 +905,7 @@ type SendResultsAnnouncedInput = {
 export async function sendResultsAnnounced(
   input: SendResultsAnnouncedInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: ResultsAnnouncedProps = {
     lang,
     creatorName: input.creatorName,
@@ -939,7 +939,7 @@ type SendAwardedContactRequestInput = {
 export async function sendAwardedContactRequest(
   input: SendAwardedContactRequestInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: AwardedContactRequestProps = {
     lang,
     creatorName: input.creatorName,
@@ -982,7 +982,7 @@ export async function sendPartnerInvitation(
   if (!(await isMemberHostedEnabled())) {
     return { ok: true, messageId: null, skipped: true, reason: 'member_hosted_disabled' }
   }
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: PartnerInvitationProps = {
     lang,
     recipientName: input.recipientName,
@@ -1014,7 +1014,7 @@ export async function sendPartnerEligible(
   if (!(await isMemberHostedEnabled())) {
     return { ok: true, messageId: null, skipped: true, reason: 'member_hosted_disabled' }
   }
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: PartnerEligibleProps = {
     lang,
     creatorName: input.creatorName,
@@ -1049,7 +1049,7 @@ type SendMembershipRenewalInput = {
 export async function sendMembershipRenewal(
   input: SendMembershipRenewalInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: MembershipRenewalProps = {
     lang,
     creatorName: input.creatorName,
@@ -1081,7 +1081,7 @@ type SendMembershipFoundingExpiryInput = {
 export async function sendMembershipFoundingExpiry(
   input: SendMembershipFoundingExpiryInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: MembershipFoundingExpiryProps = {
     lang,
     creatorName: input.creatorName,
@@ -1125,7 +1125,7 @@ type SendSubmissionReceivedInput = {
 export async function sendSubmissionReceived(
   input: SendSubmissionReceivedInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: SubmissionReceivedProps = {
     lang,
     creatorName: input.creatorName,
@@ -1149,7 +1149,7 @@ export async function sendSubmissionReceived(
 export async function sendMainRoundSubmissionReceived(
   input: SendSubmissionReceivedInput,
 ): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const props: MainRoundSubmissionReceivedProps = {
     lang,
     creatorName: input.creatorName,
@@ -1222,7 +1222,7 @@ type SendVideoLivePrelimInput = {
 }
 
 export async function sendVideoLivePrelim(input: SendVideoLivePrelimInput): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const watchUrl = `${APP_BASE}/watch/${input.applicationId}?round=application`
   const props: VideoLivePrelimProps = {
     lang,
@@ -1266,7 +1266,7 @@ type SendVideoLiveMainInput = {
 }
 
 export async function sendVideoLiveMain(input: SendVideoLiveMainInput): Promise<SendResult> {
-  const lang = input.forceLang ?? detectEmailLang(input.country)
+  const lang = input.forceLang ?? (await resolveEmailLang(input.toEmail, input.country))
   const watchUrl = `${APP_BASE}/watch/${input.applicationId}?round=main`
   const props: VideoLiveMainProps = {
     lang,

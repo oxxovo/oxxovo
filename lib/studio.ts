@@ -1218,6 +1218,12 @@ export type ApplicantInfo = {
   creatorName: string
   creatorStatement: string
   country?: string
+  // ★HQ 2026-08-31: explicit, not inferred from country -- there are Koreans
+  // in the US and non-Koreans in Korea. Written straight to profiles.locale
+  // (account-level, not per-application) via upsertCreatorProfile below; never
+  // inserted into genesis_applications. See reports/
+  // email_locale_explicit_design_2026-08-31.md.
+  locale?: 'ko' | 'en'
   channelUrl?: string
   // ★HQ 2026-08-23 (C-7), gate added 2026-08-27 (TK: 18): enforced in
   // registerForSeason against platform_config.application_min_age. Missing
@@ -1409,6 +1415,7 @@ export async function registerForSeason(args: {
   const mirror = await upsertCreatorProfile(args.userId, args.email, {
     creatorName: providedName || undefined,
     country: country || undefined,
+    locale: info.locale,
   }).catch((e) => ({ ok: false as const, error: String(e) }))
   if (!mirror.ok) {
     console.error('[studio] creator profile mirror failed (non-fatal)', {

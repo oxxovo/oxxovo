@@ -12,6 +12,7 @@ import { getStripe } from '@/lib/stripe'
 import { getDisplayName, setDisplayName, validateNickname, isDisplayNameLocked } from '@/lib/nickname'
 import { nicknameContainsBannedWord } from '@/lib/nickname-banned-words'
 import { isMemberHostedEnabled } from '@/lib/member-hosted'
+import { getLocaleForUser, saveLocaleForUser } from '@/lib/profile'
 import { partnerHostLinkVisible } from '@/lib/partner-host-link'
 import { sendSubmissionReceipts } from '@/lib/email/submission-receipts'
 import type {
@@ -534,6 +535,34 @@ export async function unsubscribeEmail(): Promise<UnsubscribeEmailResult> {
     .eq('id', user.id)
   if (error) return { ok: false, error: 'save_failed', detail: error.message }
 
+  revalidatePath('/profile')
+  return { ok: true }
+}
+
+// ─── email language (HQ 2026-08-31) ────────────────────────────────────────
+// Account-level, explicit (never inferred from country) -- see lib/profile.ts
+// getLocaleForUser/saveLocaleForUser and reports/
+// email_locale_explicit_design_2026-08-31.md. This is the retrofit path for
+// accounts that never applied (so never saw the /apply form's language field)
+// and for anyone who wants to change what they picked there.
+
+export async function loadLocale(): Promise<
+  { ok: true; locale: 'ko' | 'en' | null } | { ok: false }
+> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false }
+  return { ok: true, locale: await getLocaleForUser(user.id) }
+}
+
+export type SaveLocaleResult =
+  | { ok: true }
+  | { ok: false; error: 'unauthenticated' | 'save_failed'; detail?: string }
+
+export async function saveLocale(locale: 'ko' | 'en'): Promise<SaveLocaleResult> {
+  const user = await getUserOrNull()
+  if (!user) return { ok: false, error: 'unauthenticated' }
+  const result = await saveLocaleForUser(user.id, user.email, locale)
+  if (!result.ok) return { ok: false, error: 'save_failed', detail: result.error }
   revalidatePath('/profile')
   return { ok: true }
 }

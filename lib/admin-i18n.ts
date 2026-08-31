@@ -2897,7 +2897,7 @@ const MESSAGES_KO: Messages = {
     sub2: '같은 도구. 같은 시간. 오직 실력으로.',
     hero_tournament_btn: '대회 안내',
     hero_submit_prefix: 'AI 영상을 제출하세요.',
-    hero_submit_scoring: (panelLabel) => `${panelLabel} 채점 — 복수의 이종 AI 모델이 참여합니다.`,
+    hero_submit_scoring: (panelLabel) => `${panelLabel} 채점 — 서로 다른 회사의 AI 모델이 참여합니다.`,
     hero_submit_fallback: 'AI 검증 채점.',
     countdown_label: '제출 마감까지',
     countdown_days: '일',

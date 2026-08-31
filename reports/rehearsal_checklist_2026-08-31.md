@@ -1,0 +1,12 @@
+# 리허설 전 점검 — 2026-08-31 작업분 (내일 아침 가장 먼저 볼 것)
+
+한 줄씩. 전부 오늘 코드/DB 실측, 짐작 없음.
+
+1. **`allowed_video_platforms`에 studio — season_0은 OK, `season_test`는 아니다.** 라이브 조회(2026-08-31): `season_0.allowed_video_platforms = ["studio"]` ✅. 그런데 **`season_test`(내일 리허설이 실제 쓰는 시즌, `scripts/rehearsal-register-real-2026-08-29.mjs` `SEASON_ID='season_test'`)는 `["youtube","vimeo","instagram","tiktok"]`로, `'studio'`가 없다.** 등록(`registerForSeason`)과 본선 제출 UI 숨김 로직(`acceptsExternalUrl`) 코드를 확인한 결과, 이 컬럼은 (a) `/apply`·`/profile`의 "URL 직접 붙여넣기" 구식 폼을 보여줄지 숨길지만 결정하고, (b) `registerForSeason()` 자체는 이 컬럼을 아예 안 읽는다 — 리허설 스크립트가 UI를 안 거치고 `registerForSeason`을 직접 호출하는 구조라 등록 단계는 이 값과 무관하게 통과할 것으로 보인다. **다만 본선 제출도 스크립트로 직접 하는지, UI(`/profile`)로 하는지는 오늘 확인 못 함** — UI로 한다면 season_test는 season_0과 다르게 "URL 붙여넣기" 폼이 뜬다(Studio 흐름을 그대로 재현하지 못함). 리허설 시작 전에 `season_test.allowed_video_platforms`를 `["studio"]`로 맞출지 판단 필요.
+2. **이메일 언어 결정 방식이 오늘 바뀌었다(②locale 착수).** `lib/email/lang.ts`에 `resolveEmailLang(toEmail, country)` 신설 — `profiles.locale`이 있으면 그 값, 없으면 기존 `detectEmailLang(country)`로 폴백. **마이그 SQL(`ALTER TABLE profiles ADD COLUMN locale ...`)은 아직 안 돌았다** — 컬럼이 없는 상태에서도 `resolveEmailLang`의 try/catch가 조회 실패를 흡수하고 country 추정으로 폴백하므로 **리허설 이메일 발송은 SQL 실행 여부와 무관하게 오늘 이전과 동일하게 작동한다**(회귀 없음, 유닛테스트 566/566 통과).
+3. **`detectEmailLang(country)` 자체 동작 재확인(본부 질문 ①) — country="KR"이면 정확히 'ko' 반환됨을 실행해서 확인함**(코드 읽기 아니라 실제 실행). "Korea"/"South Korea"/"kr"/"KR" 전부 ko, 그 외 en.
+4. **schedule-lines.ts의 "한국 시간" 계산은 이미 삭제돼 있었다**(8/30 다른 작업에서 완료, ZONE이 양쪽 다 PT). 오늘은 그 뒤로 안 고쳐진 테스트 3건(구 KST 기대값)만 정리 — 566개 전체 테스트 통과 확인.
+5. **"이종 AI 모델" → "서로 다른 회사의 AI 모델"** 3곳(`lib/chatbot-kb.ts`, `lib/admin-i18n.ts`, `lib/email/messages.ts`) 전수 교체 완료. 리포 전체 grep으로 "이종"/"heterogeneous" 잔여 0건 확인(생성된 `outputs/` 파일 3개엔 옛 문구가 남아있지만 소스가 아니라 다음 재생성 시 자동 반영됨 — 안 건드림).
+6. **`/apply` 신청 폼에 "Email Language" 라디오 신설**(국가 필드 옆), 화면 언어로 기본값 채워짐 · 사용자가 바꿀 수 있음 · 값은 `profiles.locale`에 저장. **라벨/부제 문구는 임시 표시**(코드 주석에 TODO로 명시, 제니3 확정본 대기) — 대표님이 실제 화면에서 보시면 그 문구는 최종본이 아님을 미리 알려드린다. `/profile`에도 같은 목적의 "언어 설정" 카드 신설(기존 회원 소급용).
+7. **오늘 변경분 검증 범위**: `tsc --noEmit` 클린, `npm test` 566/566 통과, `eslint`로 신규 코드에 새 에러 없음(기존에 있던 무관한 경고 2건·에러 1건은 내가 안 건드린 코드). **못 한 것**: `/apply` 폼의 실제 브라우저 렌더 스크린샷 미확인 — `season_0`이 아직 신청 기간 전(`application_open_at=2026-10-15`)이라 실제 화면 도달이 시간창 우회 없인 안 됨. 오늘 새로 추가한 라디오 UI는 코드 검토로만 확인했고, 눈으로 본 적은 없다 — /rules 사고와 같은 종류의 문제(레이아웃 중복/깨짐)가 여기 있을 가능성을 배제 못 한다.
+8. **배포 여부**: 지금까지 전부 로컬 커밋 대상 코드일 뿐, 아직 배포 안 함(sha 대조 전) — 배포는 별도 보고 후 진행 예정.

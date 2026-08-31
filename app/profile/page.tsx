@@ -9,6 +9,7 @@ import { VideoEmbed } from '@/app/_components/VideoEmbed'
 import { WinnerCelebrationCard } from './WinnerCelebrationCard'
 import { SmsConsentCard } from './SmsConsentCard'
 import { EmailConsentCard } from './EmailConsentCard'
+import { LocaleCard } from './LocaleCard'
 import { NicknameCard } from './NicknameCard'
 import { ScoringCard } from './ScoringCard'
 import { MainRoundCard, type MockOverrides } from './MainRoundCard'
@@ -248,6 +249,8 @@ function ProfilePageInner() {
         <SmsConsentCard />
 
         <EmailConsentCard />
+
+        <LocaleCard />
 
         {!currentApp ? (
           <NoApplicationCard />

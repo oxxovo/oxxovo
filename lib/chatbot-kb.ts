@@ -181,7 +181,7 @@ Q. Can I submit more than one entry? Can I post my video on social media? 【F·
 ## D. Judging
 
 Q. Who judges? 【F·W】
-- KR: 예선은 AI가 심사합니다. 본선은 AI 심사와 관객 투표가 절반씩입니다. 복수의 이종 AI 모델이 각각 채점합니다.
+- KR: 예선은 AI가 심사합니다. 본선은 AI 심사와 관객 투표가 절반씩입니다. 서로 다른 회사의 AI 모델이 각각 채점합니다.
 - EN: The preliminary round is scored by AI. In the Finals, half comes from AI scoring and half from audience votes. Several different AI models score each entry independently.
 
 Q. What are the judging criteria? 【F·W】

@@ -8,7 +8,7 @@
 // absolutist) about the operator override path.
 
 export const RESULT_INTEGRITY_NOTE_KO =
-  'OXXOVO 운영진은 결과 결정에 직접 개입하지 않습니다. 순위는 복수의 이종 AI ' +
+  'OXXOVO 운영진은 결과 결정에 직접 개입하지 않습니다. 순위는 서로 다른 회사의 AI ' +
   '모델이 매긴 점수와 관객 투표를 합산해 정해집니다. 시스템 오류나 부정이 ' +
   '발견된 경우에만 예외적으로 검토하며, 그때는 내용을 공개합니다.'
 
