@@ -55,6 +55,11 @@ export type ApplicationRow = {
   integrity_recommendation: IntegrityRecommendation | null
   judged_status: 'pending' | 'in_progress' | 'completed' | 'failed' | null
   processing_attempts: number | null
+  // ★슬롯 분리 상태기계(2026-09-06) — 관제 전용, judged_status는 그대로 진실원천.
+  // 'RECHECK' = 3사 다 채점됐지만 합의 등급이 Low(자동 재심 1회로도 안 풀림).
+  // 사람이 확인해야 하고, 여기서 점수를 주거나 탈락시키는 버튼은 만들지 않는다
+  // (본부 지시) — RecommendationsPanel의 읽기전용 표에서만 노출.
+  judgment_state: string | null
 }
 
 type SeasonOption = {

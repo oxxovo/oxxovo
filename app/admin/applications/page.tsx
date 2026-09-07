@@ -53,7 +53,7 @@ export default async function ApplicationsPage({
       supabase
         .from('scoring_results')
         .select(
-          'application_id, verified_score, grade, integrity_confidence, integrity_flag, integrity_recommendation, judged_status, processing_attempts',
+          'application_id, verified_score, grade, integrity_confidence, integrity_flag, integrity_recommendation, judged_status, processing_attempts, judgment_state',
         )
         .eq('season_id', selectedSeasonId)
         .eq('round', 'application'),
@@ -69,7 +69,7 @@ export default async function ApplicationsPage({
     const scoringByApp = new Map<string, NonNullable<typeof scoringRes.data>[number]>()
     for (const s of scoringRes.data ?? []) scoringByApp.set(s.application_id, s)
 
-    applications = ((appsRes.data ?? []) as Omit<ApplicationRow, 'verified_score' | 'grade' | 'integrity_confidence' | 'integrity_flag' | 'integrity_recommendation' | 'judged_status' | 'processing_attempts'>[]).map((a) => {
+    applications = ((appsRes.data ?? []) as Omit<ApplicationRow, 'verified_score' | 'grade' | 'integrity_confidence' | 'integrity_flag' | 'integrity_recommendation' | 'judged_status' | 'processing_attempts' | 'judgment_state'>[]).map((a) => {
       const s = scoringByApp.get(a.id)
       return {
         ...a,
@@ -80,6 +80,7 @@ export default async function ApplicationsPage({
         integrity_recommendation: (s?.integrity_recommendation as ApplicationRow['integrity_recommendation']) ?? null,
         judged_status: (s?.judged_status as ApplicationRow['judged_status']) ?? null,
         processing_attempts: s?.processing_attempts ?? null,
+        judgment_state: (s?.judgment_state as string | null) ?? null,
       }
     })
 

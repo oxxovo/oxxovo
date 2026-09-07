@@ -65,6 +65,14 @@ export function RecommendationsPanel({
     [applications],
   )
 
+  // ★슬롯 분리 상태기계(2026-09-06, 본부 지시) — judgment_state='RECHECK'.
+  // 3사 다 채점됐지만 합의 등급 Low, 자동 재심 1회로도 안 풀린 항목. 읽기전용
+  // (FlaggedAppsTable 재사용) — 점수 override/탈락 버튼은 만들지 않는다.
+  const recheckApps = useMemo(
+    () => applications.filter((a) => a.judgment_state === 'RECHECK'),
+    [applications],
+  )
+
   const gradeLabel = lang === 'ko' ? GRADE_LABEL_KO : GRADE_LABEL_EN
 
   const handleApplyClick = () => {
@@ -267,6 +275,19 @@ export function RecommendationsPanel({
             {t.applications.recommendations_flagged_section_note}
           </p>
           <FlaggedAppsTable apps={flaggedApps} lang={lang} t={t} />
+        </div>
+      )}
+
+      {/* RECHECK sub-section — 읽기전용, override/탈락 버튼 없음(본부 지시) */}
+      {recheckApps.length > 0 && (
+        <div className="mt-6 border border-amber-500/30 bg-amber-500/[.05] rounded p-4">
+          <h3 className="text-sm font-bold text-amber-300 mb-2">
+            {t.applications.recommendations_recheck_section_title}
+          </h3>
+          <p className="text-xs text-white/60 mb-3 leading-relaxed">
+            {t.applications.recommendations_recheck_section_note}
+          </p>
+          <FlaggedAppsTable apps={recheckApps} lang={lang} t={t} />
         </div>
       )}
 

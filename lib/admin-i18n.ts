@@ -389,6 +389,10 @@ export type Messages = {
     recommendations_applied_status: string
     recommendations_flagged_section_title: string
     recommendations_flagged_section_note: string
+    // ★슬롯 분리 상태기계(2026-09-06) — 3사 다 채점됐지만 합의 등급 Low, 자동 재심
+    // 1회로도 안 풀린 항목. 읽기전용 — 점수 override/탈락 버튼 없음(본부 지시).
+    recommendations_recheck_section_title: string
+    recommendations_recheck_section_note: string
     recommendations_total_label: (n: number) => string
     // ⑥G gap 3 -- retry-exhausted entries blocking Top N finalization
     recommendations_blocked_title: string
@@ -1452,6 +1456,9 @@ const MESSAGES_EN: Messages = {
     recommendations_flagged_section_title: 'Flagged Applications (excluded from recommendation)',
     recommendations_flagged_section_note:
       'These applications were excluded due to integrity concerns. Admin review and status update required.',
+    recommendations_recheck_section_title: 'Judging Disagreement (needs review)',
+    recommendations_recheck_section_note:
+      'All 3 AI judges scored these, but they disagreed and one automatic recheck did not resolve it. This list is read-only — there is no override or reject button here.',
     recommendations_total_label: (n) => `${n} recommended in total`,
     recommendations_blocked_title: 'Top N finalization is on hold',
     recommendations_blocked_note: (n) =>
@@ -2501,6 +2508,9 @@ const MESSAGES_KO: Messages = {
     recommendations_flagged_section_title: '검토 대기 신청 (자동 추천 제외)',
     recommendations_flagged_section_note:
       '다음 신청은 무결성 우려로 자동 추천에서 제외되었습니다. 운영진 검토 후 상태 변경이 필요합니다.',
+    recommendations_recheck_section_title: '심사 불일치 (확인 필요)',
+    recommendations_recheck_section_note:
+      '3사 AI 전부 채점했지만 서로 의견이 갈렸고, 자동 재심 1회로도 안 풀렸습니다. 이 목록은 읽기전용입니다 — 점수를 덮어쓰거나 탈락시키는 버튼은 없습니다.',
     recommendations_total_label: (n) => `총 ${n}건 추천됨`,
     recommendations_blocked_title: 'Top N 확정이 보류 중입니다',
     recommendations_blocked_note: (n) =>

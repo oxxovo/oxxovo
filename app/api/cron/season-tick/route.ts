@@ -109,6 +109,11 @@ type SeasonTickReport = {
   belowFloorAlerts: { id: string; active: number; floor: number | null; recovered: boolean }[]
   prelimReleases: { id: string; released: number }[]
   advancements: { id: string; advanced: number; rejected: number; nTarget: number }[]
+  // ★2026-09-06(HQ 지시) — scoring_complete_at은 지났지만 예선 채점(judgment_state
+  // 슬롯 상태기계)이 전원 FINAL/PUBLISHED가 아니라서 advance_season_finalists를
+  // 이번 틱에 안 부른 시즌. 자동 탈락/2사평균/이월로 메우지 않고 그냥 기다린다
+  // ("발표 연기"의 실제 구현 = RPC를 안 부르는 것). is_fixture는 제외하고 1일1회 메일.
+  scoringIncompletePastDeadline: { id: string; scored: number; total: number }[]
   // Championship Points (HQ 2026-08-18). Isolated, never-throwing steps -- a
   // points failure must not cost the tick its reminder/results/main-round
   // mail. See lib/championship-points.ts.
@@ -434,8 +439,55 @@ async function handle(request: NextRequest) {
   const advancements: SeasonTickReport['advancements'] = []
   const flaggedBlocks: string[] = []
   const championshipTop50: SeasonTickReport['championshipTop50'] = []
+  const scoringIncompletePastDeadline: SeasonTickReport['scoringIncompletePastDeadline'] = []
   for (const s of seasons) {
     if (!s.scoring_complete_at || nowMs < new Date(s.scoring_complete_at).getTime()) continue
+
+    // ★게이트 보강 2026-09-06(HQ 지시, 09-01 사고 재발 방지: "채점 미완 상태에서
+    // 결과가 확정된다" — 이 한 줄이 scoring_results를 아예 안 봤다). 날짜가 지나도
+    // 이 라운드(예선) 대상 전원이 judgment_state='FINAL'|'PUBLISHED'일 때만
+    // advance_season_finalists를 부른다. "전원"의 분모는 pickPending과 같은 기준
+    // (free_entry_url이 있는 신청 전부) — status가 pending/verifying을 오가며
+    // 재시도 중인 것도 분모에서 안 빠진다.
+    const { count: totalCount, error: totalErr } = await supabase
+      .from('genesis_applications')
+      .select('id', { count: 'exact', head: true })
+      .eq('season_id', s.id)
+      .not('free_entry_url', 'is', null)
+    const { count: finalCount, error: finalErr } = await supabase
+      .from('scoring_results')
+      .select('id', { count: 'exact', head: true })
+      .eq('season_id', s.id)
+      .eq('round', 'application')
+      .in('judgment_state', ['FINAL', 'PUBLISHED'])
+
+    if (totalErr || finalErr) {
+      errors.push(
+        `season-tick: scoring completeness check ${s.id} failed: ${totalErr?.message ?? finalErr?.message}`,
+      )
+      continue
+    }
+    const total = totalCount ?? 0
+    const scored = finalCount ?? 0
+    if (total > 0 && scored < total) {
+      // ★"발표 연기"의 실제 구현: RPC를 안 부른다. 자동 탈락/2사평균/이월 전부 없음
+      // -- 이 시즌은 그냥 다음 틱까지(또는 대표님이 scoring_complete_at을 미룰
+      // 때까지) 대기한다.
+      scoringIncompletePastDeadline.push({ id: s.id, scored, total })
+      if (!isFixtureSeason(s)) {
+        await sendAdminAlertOnceDaily(
+          `scoring_incomplete_past_deadline_${s.id}`,
+          `[OXXOVO] ${s.id} 예선 채점 미완료 — scoring_complete_at 경과, 확정 보류`,
+          `<p>${s.id}의 scoring_complete_at(${s.scoring_complete_at})이 지났지만 ` +
+            `예선 채점이 ${scored}/${total}편만 끝났습니다(judgment_state=FINAL 기준). ` +
+            `자동 탈락·2사평균·이월로 메우지 않고 advance_season_finalists 호출을 ` +
+            `보류했습니다 — 남은 채점이 끝나거나, 대표님이 직접 scoring_complete_at을 ` +
+            `미루셔야 진행됩니다.</p>`,
+        )
+      }
+      continue
+    }
+
     const { data, error } = await supabase.rpc('advance_season_finalists', { p_season_id: s.id })
     if (error) {
       errors.push(`season-tick: advance ${s.id} failed: ${error.message}`)
@@ -688,6 +740,7 @@ async function handle(request: NextRequest) {
     belowFloorAlerts,
     prelimReleases,
     advancements,
+    scoringIncompletePastDeadline,
     championshipParticipation,
     championshipTop50,
     ...(skippedCreation ? { skippedCreation } : {}),
