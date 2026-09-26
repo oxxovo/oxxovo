@@ -21,7 +21,7 @@ import { getDisplayNameReadOnly, getDisplayNames } from './nickname'
 import { formatDeadlinePT } from './seasons'
 import { WATCH_LIST_TAG, WATCH_LIST_TTL } from './watch-cache'
 import { publicScoreSeasons, areScoresPublic } from './watch-scores'
-import { isRowPublic } from './watch-visibility'
+import { isRowPublic, isSeasonPublic } from './watch-visibility'
 import { isFixtureSeason } from './season-fixture'
 
 export type WatchRound = 'application' | 'main'
@@ -317,15 +317,17 @@ async function loadWatchVideos(
   const seasonRows = (seasonsRes.data ?? []) as {
     id: string; season_number: number; is_fixture: boolean | null; watch_fixture_visible: boolean | null
   }[]
-  const exemptFixtureIds = new Set(seasonRows.filter((s) => s.watch_fixture_visible === true).map((s) => s.id))
-  const fixtureSeasonIds = new Set(
-    seasonRows.filter((s) => isFixtureSeason(s) && !exemptFixtureIds.has(s.id)).map((s) => s.id),
-  )
+  // ★Phase 0-B (HQ 2026-09-27): this used to build exemptFixtureIds/fixtureSeasonIds
+  // inline, and getWatchVideo() (the detail page) had no equivalent check at all --
+  // see lib/watch-visibility.ts's isSeasonPublic for the incident and why the rule
+  // now lives in one place both call sites share. Behavior here is unchanged:
+  // fixtureSeasonIds is exactly the old (isFixtureSeason && !exempt) set.
+  const fixtureSeasonIds = new Set(seasonRows.filter((s) => !isSeasonPublic(s)).map((s) => s.id))
   // Fixture seasons that DO reach the public feed via the exemption above --
   // these still need the "not a real entry" disclosure (HQ 2026-08-30), since
   // nothing else on the card distinguishes them from a real competition.
   const visibleFixtureIds = new Set(
-    seasonRows.filter((s) => isFixtureSeason(s) && exemptFixtureIds.has(s.id)).map((s) => s.id),
+    seasonRows.filter((s) => isFixtureSeason(s) && isSeasonPublic(s)).map((s) => s.id),
   )
 
   const likes = tallyCounts((likeAgg.data ?? []) as { application_id: string; round: string }[])
@@ -847,15 +849,33 @@ export async function getWatchVideo(
   const url = (round === 'application' ? row.free_entry_url : row.main_round_video_url)?.trim()
   if (!url) return null
 
-  // Same rehearsal-disclosure signal as the bulk loader (HQ 2026-08-30): a
-  // direct link to a rehearsal video's page must show the same "not a real
-  // entry" notice, since it bypasses the list-top banner entirely.
-  const { data: seasonRow } = await admin
+  // ★Phase 0-B gate, not just a badge (HQ 2026-09-27). Before this fix, seasonRow
+  // below was read ONLY to compute the isFixture disclosure flag -- nothing in
+  // this function ever refused to SERVE a fixture-season video, so a direct URL
+  // to a rehearsal season's detail page bypassed loadWatchVideos()'s list-level
+  // exclusion entirely. Reproduced live 2026-09-27: a season_test row (fixture,
+  // watch_fixture_visible=false) returned HTTP 200 here despite being absent
+  // from /watch's grid. Same rule the list uses (isSeasonPublic,
+  // lib/watch-visibility.ts) -- one rule, two call sites, so they cannot drift
+  // apart again.
+  //
+  // Fail CLOSED on an unreadable season row, same doctrine loadWatchVideos
+  // already applies (this file, loadWatchVideos: "Fail CLOSED, not open"): an
+  // undetermined fixture status must not default to "show it".
+  const { data: seasonRow, error: seasonErr } = await admin
     .from('seasons')
     .select('id, season_number, is_fixture, watch_fixture_visible')
     .eq('id', row.season_id)
     .maybeSingle()
-  const isFixture = !!seasonRow && isFixtureSeason(seasonRow) && seasonRow.watch_fixture_visible === true
+  if (seasonErr || !seasonRow) {
+    console.error(
+      '[watch] getWatchVideo: could not resolve season for the fixture gate:',
+      seasonErr?.message ?? 'season not found',
+    )
+    return null
+  }
+  if (!isSeasonPublic(seasonRow)) return null
+  const isFixture = isFixtureSeason(seasonRow)
 
   // Read-only: this renders SOMEONE ELSE's entry on a public page, so it must
   // never create a profiles row. See lib/nickname.ts getDisplayNameReadOnly.

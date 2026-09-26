@@ -4,7 +4,7 @@
 
 import { notFound } from 'next/navigation'
 import { type WatchSort, type WatchRound } from '@/lib/watch'
-import { isWatchPublic } from '@/lib/watch-gate'
+import { isCompetitionWatchPublic } from '@/lib/watch-gate'
 import { ArenaWatch } from './ArenaWatch'
 import { ChatWidget } from '@/app/_components/ChatWidget'
 
@@ -16,7 +16,9 @@ export default async function WatchPage({
   searchParams: Promise<{ sort?: string; season?: string; q?: string; round?: string; award_rank?: string }>
 }) {
   // Pre-launch: Watch is not publicly reachable in production (patent novelty).
-  if (!isWatchPublic()) notFound()
+  // AND'd with Competition Publication (Phase 0-3, HQ 2026-09-27) -- see
+  // lib/watch-gate.ts's isCompetitionWatchPublic for the split rationale.
+  if (!(await isCompetitionWatchPublic())) notFound()
   const sp = await searchParams
   const sort: WatchSort = sp.sort === 'trending' || sp.sort === 'award' ? sp.sort : 'latest'
   const round: WatchRound | undefined =

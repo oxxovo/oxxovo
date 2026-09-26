@@ -22,7 +22,7 @@
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { isWatchPublic } from '@/lib/watch-gate'
+import { isCompetitionWatchPublic } from '@/lib/watch-gate'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { RankRow } from '../ArenaShell'
 
@@ -50,8 +50,10 @@ async function getRankingRevealConfig() {
 }
 
 export default async function RankingsInfoPage() {
-  // Same pre-launch gate as /watch itself -- this is a sub-page of Watch.
-  if (!isWatchPublic()) notFound()
+  // Same pre-launch gate as /watch itself -- this is a sub-page of Watch. AND'd
+  // with Competition Publication (Phase 0-3, HQ 2026-09-27) -- see
+  // lib/watch-gate.ts's isCompetitionWatchPublic for the split rationale.
+  if (!(await isCompetitionWatchPublic())) notFound()
 
   const { revealAtRaw, rows } = await getRankingRevealConfig()
   const revealDate = revealAtRaw ? new Date(revealAtRaw) : null

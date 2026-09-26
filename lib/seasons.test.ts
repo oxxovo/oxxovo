@@ -12,6 +12,8 @@ import {
   deadlineReminderFireTimes,
   registrationReminderFireTimes,
   applicationDeadlineReminderFireTimes,
+  isBeforeApplicationOpen,
+  isApplicationClosed,
 } from './seasons'
 
 test('computeSubmissionCloseAt prefers main_round_end_at when set', () => {
@@ -88,4 +90,37 @@ test('applicationDeadlineReminderFireTimes: hours counted back from application_
 test('applicationDeadlineReminderFireTimes: null close_at yields null fire times, not a thrown error', () => {
   const times = applicationDeadlineReminderFireTimes(null, [168, 72])
   assert.deepEqual(times.map((t) => t.fireAt), [null, null])
+})
+
+// ── isBeforeApplicationOpen / isApplicationClosed (P0-4, HQ 2026-09-27) ─────
+// The two /apply server-side gates. Regression target: season_0's real current
+// shape (status='draft', application_open_at=null) must be BLOCKED by the open
+// gate -- this is the exact input that used to let a direct POST to /api/apply
+// (with an explicit season_id in the body, bypassing getCurrentSeason()) through
+// with neither gate objecting.
+test('★fail-closed: no application_open_at at all -> BEFORE open (blocked)', () => {
+  assert.equal(isBeforeApplicationOpen({ application_open_at: null }), true)
+})
+
+test('a normal season with a past open date is open (unaffected by the fix)', () => {
+  assert.equal(isBeforeApplicationOpen({ application_open_at: '2020-01-01T00:00:00Z' }), false)
+})
+
+test('a normal season with a future open date is still before-open (unaffected by the fix)', () => {
+  const farFuture = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString()
+  assert.equal(isBeforeApplicationOpen({ application_open_at: farFuture }), true)
+})
+
+// isApplicationClosed is deliberately UNTOUCHED by P0-4 -- null close_at is a
+// legitimate "open-ended window" (lib/season-phase.ts's documented convention),
+// not an unscheduled season. Pinned here so a future edit cannot fold the two
+// functions' null policies into one by accident.
+test('isApplicationClosed: null close_at still reads as open-ended, NOT closed (untouched by P0-4)', () => {
+  assert.equal(isApplicationClosed({ application_close_at: null }), false)
+})
+
+test('isApplicationClosed: a past close date is closed; a future one is not', () => {
+  assert.equal(isApplicationClosed({ application_close_at: '2020-01-01T00:00:00Z' }), true)
+  const farFuture = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString()
+  assert.equal(isApplicationClosed({ application_close_at: farFuture }), false)
 })

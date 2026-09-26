@@ -18,7 +18,7 @@ import {
   type WatchRound,
   type WatchVideo,
 } from '@/lib/watch'
-import { isWatchPublic } from '@/lib/watch-gate'
+import { isCompetitionWatchPublic } from '@/lib/watch-gate'
 import { getRevealedTheme } from '@/lib/seasons-theme'
 import { getUserOrNull } from '@/lib/user-auth'
 import { getAdminOrNull } from '@/lib/admin-auth'
@@ -65,7 +65,9 @@ export default async function WatchDetailPage({
   searchParams: Promise<{ round?: string }>
 }) {
   // Pre-launch: Watch is not publicly reachable in production (patent novelty).
-  if (!isWatchPublic()) notFound()
+  // AND'd with Competition Publication (Phase 0-3, HQ 2026-09-27) -- see
+  // lib/watch-gate.ts's isCompetitionWatchPublic for the split rationale.
+  if (!(await isCompetitionWatchPublic())) notFound()
   const [{ id }, sp] = await Promise.all([params, searchParams])
   const round = parseRound(sp.round)
 

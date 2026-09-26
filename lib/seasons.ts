@@ -467,11 +467,17 @@ export async function getCurrentSeason(): Promise<Season | null> {
   // exposes application_open_at/close_at/is_fixture; the secret twist/theme
   // columns stay out of it. (getSeasonById already reads the view -- keep them
   // consistent.)
+  //
+  // ★Deterministic tie-break (P0-2, HQ 2026-09-27): season_number DESC as a
+  // second sort key, so two seasons that opened at the exact same instant
+  // resolve the same way on every call instead of depending on whatever order
+  // Postgres happens to return equal-keyed rows in.
   const { data: openedCandidates, error: openedErr } = await supabase
     .from('seasons_public')
     .select('*')
     .lte('application_open_at', nowIso)
     .order('application_open_at', { ascending: false })
+    .order('season_number', { ascending: false })
     .limit(CURRENT_SEASON_CANDIDATE_LIMIT)
 
   if (openedErr) {
@@ -482,12 +488,32 @@ export async function getCurrentSeason(): Promise<Season | null> {
   if (opened) return opened
 
   // Fallback (pre-launch): nothing real has opened yet -- surface the soonest
-  // upcoming REAL season so the site can render an "applications open soon"
-  // state. Fixtures excluded the same way, for the same reason.
+  // upcoming REAL season, PROVIDED it actually has a scheduled open date.
+  // Fixtures excluded the same way, for the same reason.
+  //
+  // ★P0-2 (HQ 2026-09-27) -- corrects a defect this fallback always had: a
+  // season with application_open_at = NULL is not "upcoming", it is
+  // UNSCHEDULED. lib/season-phase.ts already documents this exact rule ("a
+  // season with no open date is a teaser whose schedule is TBD -- draft", never
+  // "open since forever" and never "the soonest thing coming up" either) --
+  // this fallback just never applied it. `.not(..., 'is', null)` removes every
+  // unscheduled season from candidacy entirely, so when EVERY real season is
+  // unscheduled (season_0's dates were cleared 2026-09-26, and season_1..4 have
+  // never had any) this query returns NO ROWS and the function returns null
+  // below. That null is the correct, honest answer -- "there is no current
+  // season right now" -- not a guess landing on whichever row Postgres happens
+  // to return first among ties (measured: with every candidate's
+  // application_open_at NULL, ordering by it ASC provides no real ordering,
+  // and the old code could resolve to season_1 as easily as season_0).
+  // Deterministic tie-break (season_number ASC) covers the case a plain
+  // second sort key WAS the right fix for: two genuinely SCHEDULED seasons
+  // opening on the same date.
   const { data: upcomingCandidates, error: upcomingErr } = await supabase
     .from('seasons_public')
     .select('*')
+    .not('application_open_at', 'is', null)
     .order('application_open_at', { ascending: true })
+    .order('season_number', { ascending: true })
     .limit(CURRENT_SEASON_CANDIDATE_LIMIT)
 
   if (upcomingErr) {
@@ -585,10 +611,26 @@ export function resolveSeasonCta(
 
 // True before the application window opens. The CTA on /tournament already hides
 // /apply until open, but a direct visit to /apply must not be able to submit
-// early -- the open date is enforced server-side here too. No open date set ->
-// treat as open (do not block) so seasons without a scheduled open still work.
-export function isBeforeApplicationOpen(season: Season): boolean {
-  if (!season.application_open_at) return false
+// early -- the open date is enforced server-side here too.
+//
+// ★P0-4 (HQ 2026-09-27, fail-closed correction): this used to read "no open
+// date set -> treat as open (do not block)". That is backwards for the one case
+// it actually matters: a season with NO application_open_at at all is not
+// scheduled -- it is a draft/teaser whose calendar is still being decided
+// (lib/season-phase.ts's documented null policy: "a season with no open date is
+// a teaser whose schedule is TBD -- draft", never "open since forever"). Every
+// season that is genuinely meant to accept applications gets application_open_at
+// set when it is created (season-tick's buildNextSeasonRow always sets it) or by
+// an admin before launch -- so a null open date here means "not ready yet", and
+// treating that as "already open" is exactly the fail-open gap HQ found: with
+// season_0's dates cleared (status='draft', every date NULL, 2026-09-26),
+// isBeforeApplicationOpen used to return false ("not before open") and let a
+// direct POST to /api/apply through. Flipped: no open date -> true (blocked),
+// the fail-CLOSED reading. A normally scheduled season (open date set, whether
+// in the past or the future) is completely unaffected -- this only changes the
+// answer for the one input value (null) that used to mean "skip the gate".
+export function isBeforeApplicationOpen(season: Pick<Season, 'application_open_at'>): boolean {
+  if (!season.application_open_at) return true
   return new Date() < new Date(season.application_open_at)
 }
 

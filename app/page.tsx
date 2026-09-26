@@ -5,7 +5,7 @@
 //          /welcome (sidebar "Tournament").
 
 import { isWatchHome } from '@/lib/watch-home'
-import { isWatchPublic } from '@/lib/watch-gate'
+import { isCompetitionWatchPublic } from '@/lib/watch-gate'
 import { ArenaWatch } from './watch/ArenaWatch'
 import { LandingView } from './_landing/LandingView'
 import { ChatWidget } from './_components/ChatWidget'
@@ -15,7 +15,8 @@ export const dynamic = 'force-dynamic'
 export default async function Home() {
   // watch-as-home may render the Watch surface at the root. Pre-launch that must
   // not expose Watch in production (patent novelty) -- fall back to the landing.
-  if ((await isWatchHome()) && isWatchPublic()) {
+  // AND'd with Competition Publication (Phase 0-3, HQ 2026-09-27).
+  if ((await isWatchHome()) && (await isCompetitionWatchPublic())) {
     return (
       <main className="min-h-screen bg-[#070512] text-[#f4f0ff]">
         <ArenaWatch sort="latest" />

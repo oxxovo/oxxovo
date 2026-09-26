@@ -3,7 +3,7 @@
 // any query string (season/sort/round/etc.) so old preview links keep working.
 
 import { notFound, permanentRedirect } from 'next/navigation'
-import { isWatchPublic } from '@/lib/watch-gate'
+import { isCompetitionWatchPublic } from '@/lib/watch-gate'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,8 +13,9 @@ export default async function WatchArenaRedirect({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   // Pre-launch: Watch is not publicly reachable in production (patent novelty).
-  // 404 before redirecting, so this alias cannot leak into /watch either.
-  if (!isWatchPublic()) notFound()
+  // 404 before redirecting, so this alias cannot leak into /watch either. AND'd
+  // with Competition Publication (Phase 0-3, HQ 2026-09-27).
+  if (!(await isCompetitionWatchPublic())) notFound()
   const sp = await searchParams
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(sp)) {

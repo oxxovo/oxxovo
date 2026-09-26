@@ -4,7 +4,7 @@
 // them fails.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isRowPublic } from './watch-visibility.ts'
+import { isRowPublic, isSeasonPublic } from './watch-visibility.ts'
 
 const PUBLIC = {
   status: 'submitted',
@@ -43,4 +43,38 @@ test('only flagged hides by status -- rejected stays visible', () => {
 
 test('nullable columns read as "not set" rather than throwing', () => {
   assert.equal(isRowPublic({ ...PUBLIC, watch_hidden: null, watch_hold: null }), true)
+})
+
+// ── isSeasonPublic (Phase 0-B, HQ 2026-09-27) ───────────────────────────────
+// The season-level half of the same public/private decision. Regression target:
+// season_test (is_fixture=true, watch_fixture_visible=false) must be excluded --
+// this is the exact shape that returned HTTP 200 on /watch/[id] before the fix.
+const NON_FIXTURE = { id: 'season_0', season_number: 0, is_fixture: false, watch_fixture_visible: false }
+const FIXTURE_SEASON = { id: 'season_test', season_number: 999, is_fixture: true, watch_fixture_visible: false }
+
+test('a normal, non-fixture season is public', () => {
+  assert.equal(isSeasonPublic(NON_FIXTURE), true)
+})
+
+test('★regression: a fixture season without the exemption is NOT public (the season_test leak)', () => {
+  assert.equal(isSeasonPublic(FIXTURE_SEASON), false)
+})
+
+test('a fixture season WITH watch_fixture_visible=true stays public (the rehearsal escape hatch)', () => {
+  assert.equal(isSeasonPublic({ ...FIXTURE_SEASON, watch_fixture_visible: true }), true)
+})
+
+test('watch_fixture_visible missing/null on a fixture season is NOT an exemption -- fail closed', () => {
+  assert.equal(isSeasonPublic({ ...FIXTURE_SEASON, watch_fixture_visible: null }), false)
+  const { watch_fixture_visible: _omit, ...withoutColumn } = FIXTURE_SEASON
+  assert.equal(isSeasonPublic(withoutColumn), false)
+})
+
+test('watch_fixture_visible=true on a NON-fixture season changes nothing -- it is public either way', () => {
+  assert.equal(isSeasonPublic({ ...NON_FIXTURE, watch_fixture_visible: true }), true)
+})
+
+test('the id/number heuristic fallback (isFixtureSeason) is still honored when is_fixture is absent', () => {
+  const { is_fixture: _omit, ...heuristicOnly } = FIXTURE_SEASON // id starts with 'season_test'
+  assert.equal(isSeasonPublic(heuristicOnly), false)
 })

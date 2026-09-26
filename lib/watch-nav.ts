@@ -25,7 +25,7 @@
 // away instead of pointing at an empty grid.
 
 import 'server-only'
-import { isWatchPublic } from './watch-gate'
+import { isCompetitionWatchPublic } from './watch-gate'
 import { getCurrentSeason } from './seasons'
 import { getCurrentCompetitionStats } from './watch'
 
@@ -40,7 +40,10 @@ export function watchNavVisible(input: { publicSurface: boolean; currentSeasonEn
 // is a smaller wrong than a link to a 404 or an empty page.
 export async function isWatchNavVisible(): Promise<boolean> {
   try {
-    if (!isWatchPublic()) return false
+    // AND'd with Competition Publication (Phase 0-3, HQ 2026-09-27) -- the pure
+    // watchNavVisible() below is unchanged (and untested-by-this-change): it
+    // still just takes a `publicSurface` boolean, whichever gate produced it.
+    if (!(await isCompetitionWatchPublic())) return false
     const season = await getCurrentSeason()
     if (!season) return false
     // Already cached and tagged (WATCH_LIST_TAG, lib/watch-cache) because /watch's
