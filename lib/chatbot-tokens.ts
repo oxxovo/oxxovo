@@ -69,7 +69,15 @@ export const CHATBOT_TOKENS = [
 export type ChatbotToken = (typeof CHATBOT_TOKENS)[number]
 
 export interface ChatbotTokenContext {
-  season: Season
+  // ★null when no season is currently scheduled (HQ 2026-09-27, Phase 0
+  // chatbot fix). Every season-derived token below already returns null on a
+  // missing FIELD ([[feedback-absent-is-not-zero]] -- "ABSENT IS NOT A BLANK"),
+  // so `season?.field` extends that same convention to "there is no season at
+  // all" instead of needing a second null policy: the token renders as the
+  // existing "(not available -- do not guess)" marker either way, and
+  // resolveChatbotDocument, buildChatbotSystemPrompt and every non-season
+  // token (now/membership/founding/theme) are unaffected.
+  season: Season | null
   membership: ChatbotMembership | null
   championshipRevealAt: string | null // platform_config.championship_points_reveal_at
   revealedTheme: ThemeDisplay // lib/seasons-theme.ts getRevealedTheme() -- already fail-closed
@@ -92,31 +100,31 @@ function resolveToken(token: ChatbotToken, ctx: ChatbotTokenContext, lang: 'ko' 
     case 'now':
       return pt(now.toISOString(), lang)
     case 'application_open':
-      return pt(season.application_open_at, lang)
+      return pt(season?.application_open_at, lang)
     case 'application_close':
-      return pt(season.registration_close_at, lang)
+      return pt(season?.registration_close_at, lang)
     case 'prelim_submit_close':
-      return pt(season.application_close_at, lang)
+      return pt(season?.application_close_at, lang)
     case 'prelim_results':
-      return pt(season.prelim_results_announcement_at, lang)
+      return pt(season?.prelim_results_announcement_at, lang)
     case 'main_round_start':
-      return pt(season.main_round_start_at, lang)
+      return pt(season?.main_round_start_at, lang)
     case 'voting_open':
-      return pt(season.community_vote_start_at, lang)
+      return pt(season?.community_vote_start_at, lang)
     case 'voting_close':
-      return pt(season.community_vote_end_at, lang)
+      return pt(season?.community_vote_end_at, lang)
     case 'winners_announced':
-      return pt(season.awards_announcement_at, lang)
+      return pt(season?.awards_announcement_at, lang)
     case 'first_ranking_date':
       return pt(championshipRevealAt, lang)
     case 'prize_pool':
-      return usd(season.total_prize_pool)
+      return usd(season?.total_prize_pool)
     case 'prize_first':
-      return usd(season.prize_first)
+      return usd(season?.prize_first)
     case 'prize_second':
-      return usd(season.prize_second)
+      return usd(season?.prize_second)
     case 'prize_third':
-      return usd(season.prize_third)
+      return usd(season?.prize_third)
     case 'membership_price': {
       if (!membership?.price) return null
       const interval = membership.interval === 'year' ? (lang === 'ko' ? '년' : '/year') : lang === 'ko' ? '월' : '/month'
@@ -125,39 +133,43 @@ function resolveToken(token: ChatbotToken, ctx: ChatbotTokenContext, lang: 'ko' 
     case 'founding_cap':
       return Number.isFinite(membership?.founding.cap) ? String(membership?.founding.cap) : null
     case 'video_length_range': {
-      const min = season.application_video_min_seconds
-      const max = season.application_video_max_seconds
+      const min = season?.application_video_min_seconds
+      const max = season?.application_video_max_seconds
       if (!Number.isFinite(min) || !Number.isFinite(max)) return null
       return lang === 'ko' ? `${min}~${max}초` : `${min}–${max} seconds`
     }
     case 'main_round_video_length_range': {
-      const min = season.main_round_video_min_seconds
-      const max = season.main_round_video_max_seconds
+      const min = season?.main_round_video_min_seconds
+      const max = season?.main_round_video_max_seconds
       if (!Number.isFinite(min) || !Number.isFinite(max)) return null
       return lang === 'ko' ? `${min}~${max}초` : `${min}–${max} seconds`
     }
     case 'aspect_ratio':
-      return season.aspect_ratio ?? null
+      return season?.aspect_ratio ?? null
     case 'intent_weight':
-      return Number.isFinite(season.scoring_intent_clarity_weight)
-        ? `${Math.round(season.scoring_intent_clarity_weight * 100)}%`
+      return Number.isFinite(season?.scoring_intent_clarity_weight)
+        ? `${Math.round(season!.scoring_intent_clarity_weight * 100)}%`
         : null
     case 'execution_weight':
-      return Number.isFinite(season.scoring_execution_weight)
-        ? `${Math.round(season.scoring_execution_weight * 100)}%`
+      return Number.isFinite(season?.scoring_execution_weight)
+        ? `${Math.round(season!.scoring_execution_weight * 100)}%`
         : null
     case 'originality_weight':
-      return Number.isFinite(season.scoring_originality_weight)
-        ? `${Math.round(season.scoring_originality_weight * 100)}%`
+      return Number.isFinite(season?.scoring_originality_weight)
+        ? `${Math.round(season!.scoring_originality_weight * 100)}%`
         : null
     case 'advance_label':
-      return advanceCountLabel(season)
+      // advanceCountLabel has no null-season case of its own (it always
+      // computes a label) -- guarded here rather than there, since every
+      // other caller of advanceCountLabel (lib/lobby.ts, ArenaWatch) always
+      // has a real season and must not gain a null check it will never use.
+      return season ? advanceCountLabel(season) : null
     case 'min_participants':
-      return Number.isFinite(season.min_participants) ? String(season.min_participants) : null
+      return Number.isFinite(season?.min_participants) ? String(season!.min_participants) : null
     case 'max_postponements':
-      return Number.isFinite(season.max_defer_count) ? String(season.max_defer_count) : null
+      return Number.isFinite(season?.max_defer_count) ? String(season!.max_defer_count) : null
     case 'floor_participants':
-      return Number.isFinite(season.absolute_min_participants) ? String(season.absolute_min_participants) : null
+      return Number.isFinite(season?.absolute_min_participants) ? String(season!.absolute_min_participants) : null
     case 'main_theme':
       return ctx.revealedTheme.twistRevealed ? ctx.revealedTheme.mainTheme : null
     case 'required_element':
