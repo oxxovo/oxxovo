@@ -60,7 +60,7 @@ function Korean(p: MainRoundStartProps) {
       </Text>
       <Text style={muted}>
         제출 마감 임박 시 별도 리마인더 메일이 자동 발송됩니다. 본선 결과는
-        Triple-AI 채점 + 커뮤니티 투표 가중합으로 결정됩니다.
+        서로 다른 회사의 AI 모델 채점 + 커뮤니티 투표 가중합으로 결정됩니다.
       </Text>
       <Text style={signoff}>OXXOVO Genesis 운영팀 드림</Text>
     </Layout>
@@ -92,7 +92,8 @@ function English(p: MainRoundStartProps) {
       </Text>
       <Text style={muted}>
         We&rsquo;ll send an automatic reminder as the deadline approaches.
-        Final results combine Triple-AI scoring with community vote weighting.
+        Final results combine scoring by AI models from different companies
+        with community vote weighting.
       </Text>
       <Text style={signoff}>— The OXXOVO Genesis team</Text>
     </Layout>

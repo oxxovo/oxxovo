@@ -74,7 +74,7 @@ function ReportCard(p: NotSelectedProps & { L: Record<string, string> }) {
 
 function Korean(p: NotSelectedProps) {
   const L = {
-    score: 'Triple-AI 점수',
+    score: 'AI 점수',
     percentile: '전체 참가자 중',
     top: '상위',
     strength: '가장 강했던 요소',
@@ -85,8 +85,8 @@ function Korean(p: NotSelectedProps) {
     <Layout lang="ko" preview={`${p.seasonName} 평가 결과 — Season Report가 도착했습니다.`}>
       <Heading style={headingStyle}>안녕하세요, {p.creatorName}님</Heading>
       <Text style={paragraph}>
-        OXXOVO {p.seasonName}에 참가해 주셔서 감사합니다. 귀하의 작품에 대한 공식
-        Triple-AI 평가가 완료되었습니다. 이번 시즌 본선에는 오르지 못했습니다.
+        OXXOVO {p.seasonName}에 참가해 주셔서 감사합니다. 귀하의 작품은 서로 다른 회사의
+        AI 모델로 공식 평가가 완료되었습니다. 이번 시즌 본선에는 오르지 못했습니다.
       </Text>
       <Text style={paragraph}>
         하지만 이것이 끝은 아닙니다. 모든 훌륭한 감독은 우승하기 전에 먼저
@@ -140,7 +140,7 @@ function Korean(p: NotSelectedProps) {
 
 function English(p: NotSelectedProps) {
   const L = {
-    score: 'Triple-AI Score',
+    score: 'AI Score',
     percentile: 'Among all entrants',
     top: 'top',
     strength: 'Your strongest trait',
@@ -151,9 +151,9 @@ function English(p: NotSelectedProps) {
     <Layout lang="en" preview={`Your ${p.seasonName} results — Season Report inside.`}>
       <Heading style={headingStyle}>Hi {p.creatorName},</Heading>
       <Text style={paragraph}>
-        Thank you for entering OXXOVO {p.seasonName}. Your official Triple-AI
-        evaluation is complete. This season your entry was not selected for the
-        main round.
+        Thank you for entering OXXOVO {p.seasonName}. Your official evaluation
+        by AI models from different companies is complete. This season your
+        entry was not selected for the main round.
       </Text>
       <Text style={paragraph}>
         But this isn&rsquo;t the end. Every great director entered before they

@@ -101,7 +101,7 @@ function formatDateEn(iso: string | null): string {
 
 function Korean(p: SelectedTop50Props) {
   const L = {
-    score: 'Triple-AI 점수',
+    score: 'AI 점수',
     percentile: '전체 참가자 중',
     top: '상위',
     strength: '가장 강했던 요소',
@@ -113,7 +113,8 @@ function Korean(p: SelectedTop50Props) {
       <Heading style={headingStyle}>축하합니다, {p.creatorName}님 — 본선 진출 확정!</Heading>
       <Text style={paragraph}>
         {p.totalParticipants.toLocaleString()}명의 크리에이터 중, 당신의 작품이 OXXOVO{' '}
-        <strong>{p.seasonName}</strong> 본선에 진출했습니다. Triple-AI 채점 기준 상위{' '}
+        <strong>{p.seasonName}</strong> 본선에 진출했습니다. 서로 다른 회사의 AI 모델 채점
+        기준 상위{' '}
         <strong>{p.topNAdvance.toLocaleString()}명</strong>입니다.
       </Text>
 
@@ -139,7 +140,7 @@ function Korean(p: SelectedTop50Props) {
 
 function English(p: SelectedTop50Props) {
   const L = {
-    score: 'Triple-AI Score',
+    score: 'AI Score',
     percentile: 'Among all entrants',
     top: 'top',
     strength: 'Your strongest trait',
@@ -152,7 +153,8 @@ function English(p: SelectedTop50Props) {
       <Text style={paragraph}>
         Out of {p.totalParticipants.toLocaleString()} creators, your entry advanced to the
         OXXOVO <strong>{p.seasonName}</strong> main round — the top{' '}
-        <strong>{p.topNAdvance.toLocaleString()}</strong> by Triple-AI score.
+        <strong>{p.topNAdvance.toLocaleString()}</strong> scored by AI models
+        from different companies.
       </Text>
 
       <Heading as="h2" style={sectionHead}>

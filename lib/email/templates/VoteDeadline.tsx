@@ -63,7 +63,7 @@ function Korean(p: VoteDeadlineProps) {
           <Heading style={headingStyle}>{p.name}님, 투표 마감까지 24시간 남았습니다.</Heading>
           <Text style={paragraph}>
             <strong>{p.seasonName}</strong> 관객 투표가 <strong>24시간 후</strong> 마감됩니다.
-            본선 결과는 Triple-AI 채점과 관객 투표를 합산해 정해집니다 — 마지막으로 팬들에게
+            본선 결과는 서로 다른 회사의 AI 모델 채점과 관객 투표를 합산해 정해집니다 — 마지막으로 팬들에게
             투표를 부탁할 기회입니다.
           </Text>
           {p.videoUrl && (
@@ -101,8 +101,9 @@ function English(p: VoteDeadlineProps) {
           <Heading style={headingStyle}>Hi {p.name} — 24 hours left to vote.</Heading>
           <Text style={paragraph}>
             <strong>{p.seasonName}</strong>&rsquo;s community vote closes in{' '}
-            <strong>24 hours</strong>. The main round result combines Triple-AI scoring with
-            the audience vote — this is your last chance to ask your fans to cast theirs.
+            <strong>24 hours</strong>. The main round result combines scoring by AI models
+            from different companies with the audience vote — this is your last chance to
+            ask your fans to cast theirs.
           </Text>
           {p.videoUrl && (
             <Section style={{ textAlign: 'center', margin: '20px 0' }}>

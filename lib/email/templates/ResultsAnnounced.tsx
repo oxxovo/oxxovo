@@ -71,7 +71,7 @@ function Korean(p: ResultsAnnouncedProps) {
           : `${p.creatorName}님, 최종 결과가 발표되었습니다.`}
       </Heading>
       <Text style={paragraph}>
-        <strong>{p.seasonName}</strong>의 최종 결과 — Triple-AI 채점과
+        <strong>{p.seasonName}</strong>의 최종 결과 — 서로 다른 회사의 AI 모델 채점과
         커뮤니티 투표 가중합 — 가 공개되었습니다. OXXOVO 프로필에서 본인의
         최종 순위와 점수 세부 항목을 확인하실 수 있습니다.
       </Text>
@@ -103,8 +103,9 @@ function English(p: ResultsAnnouncedProps) {
           : `Hi ${p.creatorName} — final results are live.`}
       </Heading>
       <Text style={paragraph}>
-        The final <strong>{p.seasonName}</strong> results — Triple-AI scoring
-        combined with community vote — are now posted. Check your OXXOVO
+        The final <strong>{p.seasonName}</strong> results — scoring by AI
+        models from different companies, combined with community vote — are
+        now posted. Check your OXXOVO
         profile for your final placement and the full score breakdown.
       </Text>
       {rank ? (

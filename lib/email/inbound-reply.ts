@@ -30,7 +30,7 @@ const MAX_BODY_CHARS = 4000
 // Matched case-insensitively against subject + body. Bilingual (KR/EN).
 const SENSITIVE_PATTERNS: RegExp[] = [
   /refund|chargeback|dispute|charged|billing|\benvoi\b/i,
-  /환불|결제\s*취소|이중\s*결제|결제\s*오류|청구/,
+  /환불|결제\s*취소|이중\s*결제|결제\s*오류|청구|이의|재심/,
   /lawyer|legal|lawsuit|attorney|subpoena|infring|copyright\s*claim|dmca/i,
   /법률|변호사|소송|고소|법적|침해|저작권\s*침해/,
   /press|journalist|media\s*inquiry|interview|reporter/i,

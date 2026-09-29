@@ -45,7 +45,7 @@ function Korean(p: ApplicationReceivedProps) {
       <Text style={paragraph}>
         현재 정원 <strong>{p.maxApplicants.toLocaleString()}명</strong> 중{' '}
         <strong>{p.applicationCount.toLocaleString()}번째</strong> 신청자이시며,
-        본인의 영상은 시즌 마감 후 Triple-AI 채점 시스템으로 평가됩니다.
+        본인의 영상은 시즌 마감 후 서로 다른 회사의 AI 모델 채점 시스템으로 평가됩니다.
       </Text>
       <Text style={muted}>
         결과가 준비되는 대로 별도 이메일로 안내드리겠습니다. 그동안 본인의 신청
@@ -72,9 +72,9 @@ function English(p: ApplicationReceivedProps) {
       <Text style={paragraph}>
         You&rsquo;re applicant{' '}
         <strong>#{p.applicationCount.toLocaleString()}</strong> of{' '}
-        <strong>{p.maxApplicants.toLocaleString()}</strong>. Triple-AI scoring
-        runs after the season closes — three independent models score every
-        entry in parallel to keep the result fair.
+        <strong>{p.maxApplicants.toLocaleString()}</strong>. Scoring runs
+        after the season closes — AI models from different companies score
+        every entry in parallel to keep the result fair.
       </Text>
       <Text style={muted}>
         We&rsquo;ll email you the moment your results are ready. You can check
