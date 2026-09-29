@@ -18,10 +18,13 @@
 -- secret -- code-level stripping alone is useless because the publishable key
 -- is in the bundle and anyone could query the column directly.
 --
--- Rollout is split so nothing breaks mid-deploy:
---   PART 1  additive + safe -- run ANY time (before or after deploy).
---   PART 2  the breaking REVOKE -- run ONLY AFTER the app deploy that repoints
---           getSeasonById() to the seasons_public view.
+-- Rollout is split across TWO files so the breaking step can never run by
+-- accident alongside the additive one:
+--   PART 1 (this file)  additive + safe -- run ANY time (before or after deploy).
+--   PART 2 (separate)   the breaking REVOKE -- see
+--                       seasons_theme_hybrid_part2_revoke_anon_2026-06.sql,
+--                       run ONLY AFTER the app deploy that repoints
+--                       getSeasonById() to the seasons_public view.
 --
 -- ASCII-only. Idempotent where possible.
 -- =========================================================================
@@ -85,43 +88,15 @@ COMMIT;
 
 
 -- =========================================================================
--- PART 2  (BREAKING -- run ONLY AFTER the app deploy that points
---          getSeasonById() at seasons_public)
---
--- Removes anon's direct read of the base seasons table. After this, the public
--- key can no longer fetch main_round_twist / main_round_theme at all; the only
--- public read path is the secret-free seasons_public view.
---
--- authenticated KEEPS base access here so the admin console (which reads
--- seasons through the authenticated session) is untouched. Closing the
--- authenticated-token vector as well requires moving the admin seasons reads to
--- the service-role client first -- see the OPTIONAL block below.
--- =========================================================================
-BEGIN;
-
-REVOKE SELECT ON public.seasons FROM anon;
-
-COMMIT;
-
-
--- =========================================================================
--- OPTIONAL  full lockdown (authenticated contestants too) -- DO NOT RUN YET
---
--- A logged-in user can still read seasons.main_round_twist directly with their
--- own token, because the admin console reads seasons through the authenticated
--- role. To close that, FIRST switch every admin seasons read to the
--- service-role client (app/admin/seasons/{page,[id]/page,new/page,actions}.ts),
--- deploy, and ONLY THEN run:
---
---   REVOKE SELECT ON public.seasons FROM authenticated;
---
--- Those files overlap the 지수2 platform-internal season-creation sprint, so
--- this is intentionally deferred to coordinate and avoid a merge collision.
+-- PART 2 has MOVED to its own file (so it can never run by accident alongside
+-- PART 1 again):
+--     reports/seasons_theme_hybrid_part2_revoke_anon_2026-06.sql
+-- Run it ONLY AFTER the app deploy that repoints getSeasonById() at the view.
 -- =========================================================================
 
 
 -- =========================================================================
--- Verification
+-- Verification  (PART 1)
 -- =========================================================================
 
 -- 1) Columns exist
@@ -137,10 +112,3 @@ FROM information_schema.columns
 WHERE table_schema = 'public' AND table_name = 'seasons_public'
   AND column_name IN ('season_theme', 'main_round_theme', 'main_round_twist');
 -- expect a single row: season_theme
-
--- 3) After PART 2 -- anon grant on base seasons should be GONE
-SELECT grantee, privilege_type
-FROM information_schema.role_table_grants
-WHERE table_schema = 'public' AND table_name = 'seasons'
-  AND grantee IN ('anon', 'authenticated')
-ORDER BY grantee, privilege_type;
