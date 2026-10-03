@@ -817,9 +817,18 @@ function TrashCard({ t, row }: { t: Dict; row: TrashRow }) {
   const canDelete = confirmText.trim().toLowerCase() === expected.toLowerCase()
 
   const handleRestore = () => {
+    setMsg(null)
     startRestore(async () => {
-      await restorePromoVideoAction(row.id)
-      router.refresh()
+      try {
+        const res = await restorePromoVideoAction(row.id)
+        if (!res.ok) {
+          setMsg({ ok: false, text: `${t.restore_err}: ${res.error}` })
+          return
+        }
+        router.refresh()
+      } catch (e) {
+        setMsg({ ok: false, text: `${t.restore_err}: ${e instanceof Error ? e.message : String(e)}` })
+      }
     })
   }
 

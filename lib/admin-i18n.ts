@@ -76,6 +76,7 @@ export type Messages = {
     view_public_site: string
     sign_out: string
     signing_out: string
+    action_failed: string
     soon: string
     nav: {
       dashboard: string
@@ -403,6 +404,7 @@ export type Messages = {
     apply_rec_err_no_recommendations: string
     apply_rec_err_race_or_already_applied: string
     apply_rec_err_update_failed: string
+    apply_rec_emails_failed: string
   }
   application_detail: {
     back: string
@@ -1134,6 +1136,7 @@ const MESSAGES_EN: Messages = {
     view_public_site: '← View public site',
     sign_out: 'Sign out',
     signing_out: 'Signing out…',
+    action_failed: 'Failed — nothing was changed.',
     soon: 'soon',
     nav: {
       dashboard: 'Dashboard',
@@ -1471,6 +1474,7 @@ const MESSAGES_EN: Messages = {
     apply_rec_err_race_or_already_applied:
       'Already applied or another admin is applying concurrently.',
     apply_rec_err_update_failed: 'Failed to apply. Please try again later.',
+    apply_rec_emails_failed: 'Applied, but {n} notification email(s) failed to send.',
   },
   application_detail: {
     back: '← Applications',
@@ -2188,6 +2192,7 @@ const MESSAGES_KO: Messages = {
     view_public_site: '← 공개 사이트 보기',
     sign_out: '로그아웃',
     signing_out: '로그아웃 중…',
+    action_failed: '실패했습니다 — 변경되지 않았습니다.',
     soon: '준비 중',
     nav: {
       dashboard: '대시보드',
@@ -2525,6 +2530,7 @@ const MESSAGES_KO: Messages = {
     apply_rec_err_race_or_already_applied:
       '이미 적용되었거나 다른 관리자가 동시에 적용 중입니다.',
     apply_rec_err_update_failed: '적용 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+    apply_rec_emails_failed: '적용은 완료됐지만 안내 메일 {n}건이 발송에 실패했습니다.',
   },
   application_detail: {
     back: '← 지원자 관리',

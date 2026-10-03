@@ -3,6 +3,7 @@
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useT } from '@/lib/admin-i18n'
+import { useActionError } from '@/lib/use-action-error'
 import { setWatchHidden, approveModeration } from '@/app/watch/actions'
 import { AdminExternalLink } from '../AdminExternalLink'
 
@@ -23,18 +24,19 @@ export function WatchVideoModRow({ v }: { v: ModVideo }) {
   const t = useT()
   const router = useRouter()
   const [pending, start] = useTransition()
+  const { error, run } = useActionError()
 
   function toggleHide() {
     start(async () => {
-      const res = await setWatchHidden(v.id, !v.watchHidden)
-      if (res.ok) router.refresh()
+      const res = await run(() => setWatchHidden(v.id, !v.watchHidden))
+      if (res) router.refresh()
     })
   }
 
   function approve() {
     start(async () => {
-      const res = await approveModeration(v.id)
-      if (res.ok) router.refresh()
+      const res = await run(() => approveModeration(v.id))
+      if (res) router.refresh()
     })
   }
 
@@ -103,6 +105,11 @@ export function WatchVideoModRow({ v }: { v: ModVideo }) {
             {v.watchHidden ? t.watch_videos.unhide_btn : t.watch_videos.hide_btn}
           </button>
         </div>
+        {error && (
+          <p role="alert" className="mt-1 max-w-[220px] whitespace-normal text-[11px] text-[#ff8888]">
+            {t.layout.action_failed} ({error})
+          </p>
+        )}
       </td>
     </tr>
   )

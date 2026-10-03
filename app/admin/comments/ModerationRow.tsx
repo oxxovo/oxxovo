@@ -3,6 +3,7 @@
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useT } from '@/lib/admin-i18n'
+import { useActionError } from '@/lib/use-action-error'
 import { setCommentHidden } from './actions'
 import { AdminExternalLink } from '../AdminExternalLink'
 
@@ -21,12 +22,13 @@ export function ModerationRow({ c }: { c: ModComment }) {
   const t = useT()
   const router = useRouter()
   const [pending, start] = useTransition()
+  const { error, run } = useActionError()
   const hidden = c.status === 'hidden'
 
   function toggle() {
     start(async () => {
-      const res = await setCommentHidden(c.id, !hidden)
-      if (res.ok) router.refresh()
+      const res = await run(() => setCommentHidden(c.id, !hidden))
+      if (res) router.refresh()
     })
   }
 
@@ -63,6 +65,11 @@ export function ModerationRow({ c }: { c: ModComment }) {
         >
           {hidden ? t.comments.unhide_btn : t.comments.hide_btn}
         </button>
+        {error && (
+          <p role="alert" className="mt-1 max-w-[220px] whitespace-normal text-[11px] text-[#ff8888]">
+            {t.layout.action_failed} ({error})
+          </p>
+        )}
       </td>
     </tr>
   )

@@ -77,7 +77,15 @@ export function MainResultsView({
     setConfirmOpen(false)
     setApproving(true)
     setActionError(null)
-    const res = await approveTop3Awards(seasonId)
+    let res: Awaited<ReturnType<typeof approveTop3Awards>>
+    try {
+      res = await approveTop3Awards(seasonId)
+    } catch (e) {
+      // A thrown action must not leave the button stuck on "approving".
+      setApproving(false)
+      setActionError(e instanceof Error ? e.message : String(e))
+      return
+    }
     setApproving(false)
     if (!res.ok) {
       const map: Record<string, string> = {
@@ -119,7 +127,14 @@ export function MainResultsView({
       return
     }
     setSavingOverride(true)
-    const res = await saveAwardOverride(id, rankNum, overrideReason)
+    let res: Awaited<ReturnType<typeof saveAwardOverride>>
+    try {
+      res = await saveAwardOverride(id, rankNum, overrideReason)
+    } catch (e) {
+      setSavingOverride(false)
+      setActionError(e instanceof Error ? e.message : String(e))
+      return
+    }
     setSavingOverride(false)
     if (!res.ok) {
       setActionError(res.errorMessage ?? 'error')

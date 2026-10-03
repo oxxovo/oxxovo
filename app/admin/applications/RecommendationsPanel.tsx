@@ -48,6 +48,7 @@ export function RecommendationsPanel({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [applying, setApplying] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
+  const [applyNotice, setApplyNotice] = useState<string | null>(null)
 
   const appById = useMemo(() => {
     const m = new Map<string, ApplicationRow>()
@@ -83,8 +84,17 @@ export function RecommendationsPanel({
     setConfirmOpen(false)
     setApplying(true)
     setApplyError(null)
+    setApplyNotice(null)
 
-    const res = await applyRecommendation({ seasonId })
+    let res: Awaited<ReturnType<typeof applyRecommendation>>
+    try {
+      res = await applyRecommendation({ seasonId })
+    } catch (e) {
+      // A thrown action must not leave the button stuck on "applying".
+      setApplying(false)
+      setApplyError(e instanceof Error ? e.message : String(e))
+      return
+    }
 
     setApplying(false)
 
@@ -98,6 +108,12 @@ export function RecommendationsPanel({
       }
       setApplyError(errorMap[res.error])
       return
+    }
+
+    // Applied, but the notification emails are best-effort on the server and used to be
+    // dropped here -- tell the admin how many applicants did not get their mail.
+    if (res.emailsFailed > 0) {
+      setApplyNotice(t.applications.apply_rec_emails_failed.replace('{n}', String(res.emailsFailed)))
     }
 
     // success — refresh server data so RecommendationsPanel re-renders with
@@ -122,6 +138,13 @@ export function RecommendationsPanel({
           {t.applications.recommendations_subtitle}
         </p>
       </header>
+
+      {/* 적용은 됐지만 안내 메일이 일부 실패한 경우 — 적용 후(isApplied) 화면에서도 보이도록 본문 분기 밖에 둔다 */}
+      {applyNotice && (
+        <div role="alert" className="mb-4 px-3 py-2 rounded border border-amber-500/30 bg-amber-500/10 text-xs text-amber-200">
+          {applyNotice}
+        </div>
+      )}
 
       {/* 본문 분기 */}
       {!hasRecommendations ? (

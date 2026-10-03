@@ -93,10 +93,16 @@ export function StudioTestAccess({ seasonId }: { seasonId: string }) {
   const [revokingId, setRevokingId] = useState<string | null>(null)
 
   const load = () => {
-    listStudioTestAccessAction(seasonId).then((r) => {
-      setRows(r)
-      setLoaded(true)
-    })
+    listStudioTestAccessAction(seasonId)
+      .then((r) => {
+        setRows(r)
+        setLoaded(true)
+      })
+      .catch(() => {
+        // Without this the list stays empty and reads as "no test access granted".
+        setError(t.err_failed)
+        setLoaded(true)
+      })
   }
 
   useEffect(() => {
