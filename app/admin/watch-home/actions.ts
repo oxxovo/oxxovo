@@ -22,6 +22,8 @@ export async function setWatchAsHome(on: boolean): Promise<SetWatchAsHomeState> 
     p_new_value: on ? 'true' : 'false',
     p_admin_id: profile.id,
     p_admin_email: profile.email,
+    // Explicit: without p_field the call is ambiguous between the two live overloads (PGRST203).
+    p_field: 'value',
   })
   if (error) {
     console.error('[admin] setWatchAsHome failed:', error.message)

@@ -40,6 +40,9 @@ export async function updateConfigValueAction(key: string, rawValue: string): Pr
     p_new_value: result.normalized,
     p_admin_id: admin_profile.id,
     p_admin_email: admin_profile.email,
+    // Explicit on purpose: live has two overloads (4-arg v1 and 5-arg v2 with a default),
+    // and a call without p_field is ambiguous (PGRST203). Naming it selects v2 only.
+    p_field: 'value',
   })
   if (error) return { ok: false, error: error.message }
 
