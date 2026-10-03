@@ -66,6 +66,7 @@ const DICT = {
     progress: (done: number, total: number, remaining: number) =>
       `${done}/${total} 처리됨 · ${remaining}통 남음`,
     cancel_btn: '취소',
+    cancel_err: '캠페인을 취소하지 못했습니다 — 발송이 계속될 수 있습니다',
     cancel_confirm: '이 캠페인을 취소할까요? 처리 중이던 다음 수신자부터 멈추고, 이미 나간 메일은 되돌릴 수 없습니다.',
     cancel_ok: '취소했습니다.',
   },
@@ -114,6 +115,7 @@ const DICT = {
     progress: (done: number, total: number, remaining: number) =>
       `${done}/${total} processed · ${remaining} remaining`,
     cancel_btn: 'Cancel',
+    cancel_err: 'Could not cancel the campaign -- sending may continue',
     cancel_confirm: 'Cancel this campaign? It stops before the next recipient in the queue -- mail already sent cannot be recalled.',
     cancel_ok: 'Canceled.',
   },
@@ -146,6 +148,7 @@ export function BroadcastsView({
   const [imagesOn, setImagesOn] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [cancelMsg, setCancelMsg] = useState<string | null>(null)
 
   const [campaigns, setCampaigns] = useState(initialCampaigns)
 
@@ -206,9 +209,18 @@ export function BroadcastsView({
 
   const handleCancel = async (id: string) => {
     if (!confirm(t.cancel_confirm)) return
-    const r = await cancelBroadcast(id)
-    if (r.ok) {
+    setCancelMsg(null)
+    try {
+      const r = await cancelBroadcast(id)
+      if (!r.ok) {
+        // Includes "Already done or already canceled." -- the list may be stale, so say
+        // the cancel did NOT take effect instead of leaving the admin to assume it did.
+        setCancelMsg(`${t.cancel_err}: ${r.error}`)
+        return
+      }
       setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'canceled' } : c)))
+    } catch (e) {
+      setCancelMsg(`${t.cancel_err}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
@@ -394,6 +406,11 @@ export function BroadcastsView({
 
       <section>
         <h2 className="text-xs uppercase tracking-[0.2em] text-[#ff8844] font-bold mb-3">{t.list_title}</h2>
+        {cancelMsg && (
+          <p role="alert" className="mb-3 text-[12px] text-[#ff8888]">
+            {cancelMsg}
+          </p>
+        )}
         {campaigns.length === 0 ? (
           <p className="text-white/40 text-xs">—</p>
         ) : (

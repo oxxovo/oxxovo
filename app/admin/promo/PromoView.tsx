@@ -153,6 +153,8 @@ const DICT = {
     permadelete_ok_file: '완전 삭제됨 (파일도 삭제)',
     permadelete_ok_no_file: '완전 삭제됨 — 파일은 R2에 남아 있습니다(이 앱은 R2 자격증명이 없음, 별도 정리 필요)',
     permadelete_err: '완전 삭제 실패',
+    delete_err: '삭제 실패 — 영상은 그대로입니다',
+    restore_err: '되돌리기 실패 — 영상은 아직 삭제된 상태입니다',
   },
   en: {
     title: 'Promo Videos',
@@ -239,6 +241,8 @@ const DICT = {
     permadelete_ok_file: 'Permanently deleted (file removed too)',
     permadelete_ok_no_file: 'Permanently deleted -- the file is still on R2 (this app has no R2 credentials; needs separate cleanup)',
     permadelete_err: 'Permanent delete failed',
+    delete_err: 'Delete failed -- the video is unchanged',
+    restore_err: 'Undo failed -- the video is still deleted',
   },
 }
 
@@ -271,14 +275,26 @@ export function PromoView({
   // unmounts the moment the list refreshes post-delete.
   const [justDeleted, setJustDeleted] = useState<{ id: string; label: string } | null>(null)
   const [restoring, startRestore] = useTransition()
+  const [undoError, setUndoError] = useState<string | null>(null)
 
+  // A failed restore must NOT clear the banner: the video is still deleted, and
+  // the banner (with its Undo) is the only place the admin can retry from.
   const handleUndo = () => {
     if (!justDeleted) return
     const id = justDeleted.id
+    setUndoError(null)
     startRestore(async () => {
-      await restorePromoVideoAction(id)
-      setJustDeleted(null)
-      router.refresh()
+      try {
+        const res = await restorePromoVideoAction(id)
+        if (!res.ok) {
+          setUndoError(`${t.restore_err}: ${res.error}`)
+          return
+        }
+        setJustDeleted(null)
+        router.refresh()
+      } catch (e) {
+        setUndoError(`${t.restore_err}: ${e instanceof Error ? e.message : String(e)}`)
+      }
     })
   }
 
@@ -294,7 +310,10 @@ export function PromoView({
 
       {justDeleted && (
         <div className="mb-6 flex items-center justify-between gap-3 border border-emerald-500/30 bg-emerald-500/[.08] rounded px-4 py-3 text-xs text-emerald-200">
-          <span>{t.just_deleted(justDeleted.label)}</span>
+          <span>
+            {t.just_deleted(justDeleted.label)}
+            {undoError && <span className="mt-1 block text-[#ff8888]">{undoError}</span>}
+          </span>
           <div className="flex items-center gap-3 shrink-0">
             <button
               type="button"
@@ -648,6 +667,7 @@ function PromoCard({
 }) {
   const router = useRouter()
   const [deleting, startDelete] = useTransition()
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const posted =
     row.postedChannels && row.postedChannels.length > 0
@@ -659,10 +679,20 @@ function PromoCard({
     // a generic "this one", so a reflexive OK on the browser dialog still
     // shows what it just agreed to.
     if (!confirm(t.confirm_delete(row.label || row.id))) return
+    setDeleteError(null)
     startDelete(async () => {
-      await deletePromoVideoAction(row.id)
-      onDeleted(row.id, row.label || row.id)
-      router.refresh()
+      try {
+        const res = await deletePromoVideoAction(row.id)
+        if (!res.ok) {
+          // Not deleted: do NOT announce "Deleted" / offer Undo for a video that is still live.
+          setDeleteError(`${t.delete_err}: ${res.error}`)
+          return
+        }
+        onDeleted(row.id, row.label || row.id)
+        router.refresh()
+      } catch (e) {
+        setDeleteError(`${t.delete_err}: ${e instanceof Error ? e.message : String(e)}`)
+      }
     })
   }
 
@@ -696,6 +726,11 @@ function PromoCard({
               {row.status}
             </span>
           </div>
+          {deleteError && (
+            <p role="alert" className="mt-2 text-[11px] text-[#ff8888]">
+              {deleteError}
+            </p>
+          )}
 
           <div className="mt-2 text-[11px] text-white/50">
             <span className="text-white/35">{t.col_posted}: </span>

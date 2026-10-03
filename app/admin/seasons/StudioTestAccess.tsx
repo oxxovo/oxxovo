@@ -46,6 +46,7 @@ const T = {
     err_expiry_in_past: '만료 시각은 미래여야 합니다.',
     err_already_active: '이미 이 계정에 활성 부여가 있습니다 — 먼저 해제하세요.',
     err_failed: '처리하지 못했습니다.',
+    err_revoke_failed: '취소하지 못했습니다 — 이 계정은 아직 접근 권한이 살아 있습니다.',
   },
   en: {
     heading: 'Studio test access',
@@ -75,6 +76,7 @@ const T = {
     err_expiry_in_past: 'Expiry must be in the future.',
     err_already_active: 'This account already has an active grant — revoke it first.',
     err_failed: 'Could not complete that.',
+    err_revoke_failed: 'Revoke failed -- this account still has access.',
   },
 }
 
@@ -136,11 +138,20 @@ export function StudioTestAccess({ seasonId }: { seasonId: string }) {
   }
 
   const handleRevoke = (id: string) => {
+    setError(null)
     setRevokingId(id)
     startTransition(async () => {
-      await revokeStudioTestAccessAction(id, seasonId)
-      setRevokingId(null)
-      load()
+      try {
+        const res = await revokeStudioTestAccessAction(id, seasonId)
+        // Access control: a failed revoke means the account STILL has access.
+        // Say so instead of silently reloading a list that looks unchanged.
+        if (!res.ok) setError(t.err_revoke_failed)
+      } catch {
+        setError(t.err_revoke_failed)
+      } finally {
+        setRevokingId(null)
+        load()
+      }
     })
   }
 
