@@ -58,3 +58,8 @@ _pt_*.png
 # `npm run deploy:prod` (it refuses a dirty tree, because `vercel deploy` uploads
 # the directory rather than the commit -- how the reference mockups leaked).
 reports/_shots/
+
+# Local scratch/review output (2.2 GB: watermark tests, GT fixtures, previews). Never committed,
+# never uploaded by `vercel deploy` (2026-10-03: it was untracked AND not in .vercelignore, so the
+# next CLI deploy would have uploaded it, and the dirty-tree gate would have refused anyway).
+outputs/
