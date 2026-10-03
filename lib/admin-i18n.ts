@@ -1062,6 +1062,8 @@ export type Messages = {
     subtitle: string
     toggle_on: string
     toggle_off: string
+    save_ok: string
+    save_failed: string
   }
   watch_videos: {
     title: string
@@ -2111,6 +2113,8 @@ const MESSAGES_EN: Messages = {
       "When ON, the site root (oxxovo.ai) shows the Watch surface. When OFF, the root shows the marketing landing. The landing always stays reachable at /welcome (Watch sidebar “Tournament”). Turn this ON only after Season 0 has enough videos so Watch isn't empty.",
     toggle_on: 'ON — root shows Watch',
     toggle_off: 'OFF — root shows landing',
+    save_ok: 'Saved.',
+    save_failed: 'Save failed — the switch was NOT changed.',
   },
   watch_videos: {
     title: 'Video moderation',
@@ -3154,6 +3158,8 @@ const MESSAGES_KO: Messages = {
       'ON이면 사이트 루트(oxxovo.ai)가 Watch 화면을 보여줍니다. OFF면 루트가 마케팅 랜딩을 보여줍니다. 랜딩은 항상 /welcome에서 볼 수 있습니다(Watch 사이드바 "Tournament"). 시즌 0에 영상이 충분히 쌓인 뒤에만 ON으로 켜세요 — Watch가 비어 보이지 않도록.',
     toggle_on: 'ON — 루트가 Watch를 보여줍니다',
     toggle_off: 'OFF — 루트가 랜딩을 보여줍니다',
+    save_ok: '저장되었습니다.',
+    save_failed: '저장 실패 — 스위치는 바뀌지 않았습니다.',
   },
   watch_videos: {
     title: '영상 관리',
