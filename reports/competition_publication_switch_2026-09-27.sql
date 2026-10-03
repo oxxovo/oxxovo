@@ -1,4 +1,7 @@
 -- =========================================================================
+-- *** SUPERSEDED 2026-10-03 -- DO NOT RUN. The code is now fail-closed and this
+-- *** file inserts 'true' (open). Use competition_publication_switch_2026-10-03.sql.
+-- =========================================================================
 -- Phase 0-3 (HQ 2026-09-27) -- platform_config rows for the two new switches.
 -- NOT RUN by this change. Code (lib/competition-publication.ts) already
 -- defaults competition_publication_enabled=true when this row is absent, so

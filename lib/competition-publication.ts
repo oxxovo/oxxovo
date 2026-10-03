@@ -14,26 +14,32 @@
 // isRiskKey('*_enabled') and platform_config_history already cover this key for
 // free, same as member_hosted_enabled). It also has to be independently
 // switchable from isWatchPublic(), which stays OFF pre-launch for legal reasons
-// unrelated to any one content type -- see [[project-official_actors_...]]-style
-// reasoning: Platform Availability and Competition Publication are different
-// questions, decided by different people, on different schedules.
+// unrelated to any one content type. Platform Availability and Competition
+// Publication are different questions, decided by different people, on different
+// schedules.
 //
-// News Publication (Daily News) is NOT built here -- this file, and the
-// platform_config row it reads, exist so that when News ships it gets its OWN
-// switch (news_publication_enabled) instead of either sharing this one or
-// reusing isWatchPublic() -- "Competition may be closed while News stays open"
-// is the requirement this split exists for, and it only holds if News never
-// reads this key.
+// News Publication (Daily News) gets its OWN switch (news_publication_enabled)
+// instead of either sharing this one or reusing isWatchPublic() -- "Competition
+// may be closed while News stays open" is the requirement this split exists for,
+// and it only holds if News never reads this key.
 //
-// Default TRUE when the key is missing/unreadable: unlike member_hosted_enabled
-// (a program that was never live and defaults hidden), competition content is
-// live today under isWatchPublic() alone -- defaulting this switch to false
-// before the platform_config row exists would silently close Watch with no code
-// change and no admin action. The row insert (reports/competition_publication_switch_2026-09-27.sql)
-// is a DB write and was NOT run by this change -- see the Phase 0 report.
+// FAIL-CLOSED (HQ 2026-10-03; was fail-open until then). Missing row, query
+// error, thrown exception, or any value other than 'true' = closed. The
+// competition is paused and the row is 'false' (inserted 2026-10-03); re-opening
+// it is a deliberate act in /admin/settings, never a side effect of a deleted row.
 
 import 'server-only'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+
+// Pure, so the direction of every non-'true' input is testable without a
+// database. `row` is the maybeSingle() result (null = no row).
+export function decideCompetitionPublication(
+  row: { value: unknown } | null | undefined,
+  error: unknown,
+): boolean {
+  if (error || !row) return false
+  return String(row.value).trim().toLowerCase() === 'true'
+}
 
 export async function isCompetitionPublicationEnabled(): Promise<boolean> {
   try {
@@ -43,9 +49,8 @@ export async function isCompetitionPublicationEnabled(): Promise<boolean> {
       .select('value')
       .eq('key', 'competition_publication_enabled')
       .maybeSingle()
-    if (error || !data) return true
-    return String(data.value).trim().toLowerCase() !== 'false'
+    return decideCompetitionPublication(data, error)
   } catch {
-    return true
+    return false
   }
 }

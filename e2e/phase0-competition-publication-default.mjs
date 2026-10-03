@@ -1,8 +1,10 @@
-// Phase 0-3 verification: competition_publication_enabled has NOT been inserted
-// into platform_config (that INSERT is a DB write -- see the Phase 0 report,
-// reports/competition_publication_switch_2026-09-27.sql, for TK to run). Until it
-// exists, isCompetitionPublicationEnabled() must default to true so this whole
-// change is a no-op on current production behavior.
+// Competition Publication is FAIL-CLOSED (HQ 2026-10-03). Verification against the
+// real platform_config, read-only. Holds whether or not the row exists, so it
+// needs no editing if the row is ever removed or flipped.
+//
+// The missing-row / error / garbage directions are pinned without a database in
+// lib/competition-publication.test.ts; this file checks the wiring against the
+// live row and the composed gate.
 //
 // Usage: node --env-file=.env.local --import ./scripts/test-register.mjs --test e2e/phase0-competition-publication-default.mjs
 import test from 'node:test'
@@ -11,16 +13,14 @@ import { createClient } from '@supabase/supabase-js'
 import { isCompetitionPublicationEnabled } from '../lib/competition-publication.ts'
 import { isWatchPublic, isCompetitionWatchPublic } from '../lib/watch-gate.ts'
 
-test('★precondition: competition_publication_enabled does not exist in platform_config yet', async () => {
+test('isCompetitionPublicationEnabled() equals "row exists and says true" -- a missing row is closed', async () => {
   const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
-  const { data } = await admin.from('platform_config').select('key').eq('key', 'competition_publication_enabled').maybeSingle()
-  assert.equal(data, null, 'this row should not exist -- P0-3 did not write to the DB')
+  const { data, error } = await admin.from('platform_config').select('value').eq('key', 'competition_publication_enabled').maybeSingle()
+  assert.equal(error, null)
+  const expected = data ? String(data.value).trim().toLowerCase() === 'true' : false
+  assert.equal(await isCompetitionPublicationEnabled(), expected)
 })
 
-test('isCompetitionPublicationEnabled() defaults to true when the row is missing (no behavior change)', async () => {
-  assert.equal(await isCompetitionPublicationEnabled(), true)
-})
-
-test('isCompetitionWatchPublic() equals isWatchPublic() alone while the new switch is unset', async () => {
-  assert.equal(await isCompetitionWatchPublic(), isWatchPublic())
+test('isCompetitionWatchPublic() is the AND of the env gate and the DB switch', async () => {
+  assert.equal(await isCompetitionWatchPublic(), isWatchPublic() && (await isCompetitionPublicationEnabled()))
 })
