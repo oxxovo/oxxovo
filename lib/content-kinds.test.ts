@@ -12,6 +12,8 @@ import {
   pickAssetRole,
   hasMainVideoRole,
   isPublicAssetRole,
+  PUBLIC_ASSET_ROLES,
+  ASSET_ROLES,
   dispatchSwitchKey,
   publicationSwitchKey,
 } from './content-kinds'
@@ -90,4 +92,13 @@ test('public roles: script is never public', () => {
   assert.equal(isPublicAssetRole('thumbnail'), true)
   assert.equal(isPublicAssetRole('script'), false)
   assert.equal(isPublicAssetRole('audio_master'), false)
+})
+
+test('public role allow-list is exactly main_* + thumbnail; every defined role is decided on purpose (SS7-2)', () => {
+  assert.deepEqual([...PUBLIC_ASSET_ROLES].sort(), ['main_16x9', 'main_9x16', 'thumbnail'])
+  const isPublic = (r: string) => (PUBLIC_ASSET_ROLES as readonly string[]).includes(r)
+  assert.deepEqual(ASSET_ROLES.filter(isPublic).sort(), ['main_16x9', 'main_9x16', 'thumbnail'])
+  assert.deepEqual(ASSET_ROLES.filter((r) => !isPublic(r)), ['script'])
+  // anything not on the list is private, including roles that do not exist yet
+  for (const r of ['script', 'audio_master', 'audio', 'master', 'anything_new', '']) assert.equal(isPublicAssetRole(r), false, r)
 })

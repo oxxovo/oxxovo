@@ -130,8 +130,12 @@ export function hasMainVideoRole(roles: Iterable<string>): boolean {
   return have.has('main_16x9') || have.has('main_9x16')
 }
 
-// Roles that may leave the building on a public page (SS7-2). script and any
-// master/audio role are deliberately absent.
+// Roles that may leave the building on a public page (SS7-2). An ALLOW-list:
+// script and any role not named here (audio_master and whatever is added to
+// ASSET_ROLES later) stay private until someone decides otherwise. The public
+// query filters on this same constant, so the predicate and the SQL cannot drift.
+export const PUBLIC_ASSET_ROLES = ['main_16x9', 'main_9x16', 'thumbnail'] as const
+
 export function isPublicAssetRole(role: string): boolean {
-  return role === 'main_16x9' || role === 'main_9x16' || role === 'thumbnail'
+  return (PUBLIC_ASSET_ROLES as readonly string[]).includes(role)
 }
