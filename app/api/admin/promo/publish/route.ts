@@ -50,7 +50,11 @@ export async function POST(req: Request) {
           ? 404
           : result.error === 'no_video' || result.error === 'no_channels'
             ? 400
-            : 502
+            : // A closed/unreadable dispatch switch is NOT a Postiz outage; the
+              // admin must be able to tell them apart (design SS5-6).
+              result.error === 'dispatch_disabled' || result.error === 'dispatch_unreadable'
+              ? 503
+              : 502
     return NextResponse.json({ error: result.error }, { status })
   }
   return NextResponse.json({ ok: true, postIds: result.postIds, channels: result.channels })

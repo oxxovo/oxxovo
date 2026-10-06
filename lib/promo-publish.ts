@@ -1,6 +1,8 @@
 import 'server-only'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { publishPost, type PromoChannel } from '@/lib/postiz'
+import { prepareMedia, publishPrepared, type PromoChannel } from '@/lib/postiz'
+import { adminConfigReader } from '@/lib/config-reader'
+import { readMasterSwitch, type ConfigReader } from '@/lib/dispatch-switch'
 
 // The single place that actually calls Postiz for a promo_videos row. Both
 // the manual publish route (app/api/admin/promo/publish) and the
@@ -14,12 +16,45 @@ import { publishPost, type PromoChannel } from '@/lib/postiz'
 
 export type PublishOutcome =
   | { ok: true; postIds: string[]; channels: string[] }
-  | { ok: false; error: 'not_found' | 'not_approved' | 'no_video' | 'no_channels' | string }
+  | {
+      ok: false
+      error:
+        | 'not_found'
+        | 'not_approved'
+        | 'no_video'
+        | 'no_channels'
+        | 'dispatch_disabled'
+        | 'dispatch_unreadable'
+        | string
+    }
+
+// Injected so the guard order can be tested without Postiz or a database.
+export type PromoPublishDeps = {
+  readConfig: ConfigReader
+  prepare: typeof prepareMedia
+  publish: typeof publishPrepared
+}
+
+const realDeps = (): PromoPublishDeps => ({ readConfig: adminConfigReader(), prepare: prepareMedia, publish: publishPrepared })
+
+// Promo is gated by the MASTER switch only (design SS5-6): social_dispatch_enabled.
+// Checked twice on purpose -- see the two call sites below.
+function guardError(state: 'closed' | 'unreadable'): 'dispatch_disabled' | 'dispatch_unreadable' {
+  return state === 'closed' ? 'dispatch_disabled' : 'dispatch_unreadable'
+}
 
 export async function publishPromoVideo(
   promoVideoId: string,
   triggeredBy: 'cron' | 'manual',
+  deps: PromoPublishDeps = realDeps(),
 ): Promise<PublishOutcome> {
+  // GUARD 1 -- BEFORE anything else (HQ 2026-10-06). Without this the approval
+  // gate below answers first (409 not_approved), so a switch-off test could only
+  // be run with an APPROVED video -- and a broken guard would then post to the
+  // real accounts. Here the answer is 503 for ANY id, touching no row.
+  const first = await readMasterSwitch(deps.readConfig)
+  if (first !== 'open') return { ok: false, error: guardError(first) }
+
   const admin = createSupabaseAdmin()
 
   const { data: pv, error } = await admin
@@ -36,7 +71,13 @@ export async function publishPromoVideo(
   const caption = (pv.caption as string | null) ?? ''
 
   try {
-    const r = await publishPost({ channels, mediaUrl: pv.video_url as string, caption })
+    const media = await deps.prepare(pv.video_url as string)
+    // GUARD 2 -- between media prep and POST /posts (design SS5-6): the switch
+    // may have been turned off while the file was downloading/uploading. Nothing
+    // is posted and no failure is logged: this is a stop, not an error.
+    const second = await readMasterSwitch(deps.readConfig)
+    if (second !== 'open') return { ok: false, error: guardError(second) }
+    const r = await deps.publish({ channels, media, caption })
     await admin
       .from('promo_videos')
       .update({

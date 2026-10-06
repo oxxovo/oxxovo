@@ -22,7 +22,9 @@ const ALERT_FROM = process.env.EMAIL_FROM || 'info@oxxovo.ai'
 // user in the loop. Returns true on a 2xx send and NEVER throws — a failed
 // alert must not crash the job that is trying to report. The caller logs the
 // boolean if it cares.
-export async function sendAdminAlert(subject: string, html: string): Promise<boolean> {
+// `to` overrides the recipient for ONE send (OPS_ALERT_EMAIL stays the default).
+export async function sendAdminAlert(subject: string, html: string, to?: string): Promise<boolean> {
+  const recipient = to && to.trim() ? to.trim() : ALERT_TO
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.error('[admin-alert] RESEND_API_KEY missing; cannot send:', subject)
@@ -40,7 +42,7 @@ export async function sendAdminAlert(subject: string, html: string): Promise<boo
         // Safe to land in the info@ inbox even though the inbound Worker reads
         // it: the Auto-Submitted tag below plus the inbound self/auto-submitted
         // guards break the loop at the recipient.
-        to: [ALERT_TO],
+        to: [recipient],
         subject,
         html,
         // Mark as auto-generated so that if this alert ever lands back in info@,
@@ -57,7 +59,7 @@ export async function sendAdminAlert(subject: string, html: string): Promise<boo
       // verified in this Resend account", and without the pair in the log that
       // reads as a generic outage instead of a one-line fix.
       console.error(
-        `[admin-alert] Resend returned ${res.status} (from=${ALERT_FROM} to=${ALERT_TO}):`,
+        `[admin-alert] Resend returned ${res.status} (from=${ALERT_FROM} to=${recipient}):`,
         detail,
       )
       return false
@@ -69,7 +71,7 @@ export async function sendAdminAlert(subject: string, html: string): Promise<boo
       .json()
       .then((j: { id?: string }) => j?.id)
       .catch(() => undefined)
-    console.log(`[admin-alert] sent to ${ALERT_TO} (resend id ${id ?? 'unknown'}): ${subject}`)
+    console.log(`[admin-alert] sent to ${recipient} (resend id ${id ?? 'unknown'}): ${subject}`)
     return true
   } catch (e) {
     console.error('[admin-alert] send failed:', e instanceof Error ? e.message : e)

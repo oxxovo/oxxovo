@@ -25,6 +25,9 @@ const SECRET = process.env.CONTENT_IMPORT_SECRET_PRODUCTION_OS
 const STATE_FILE = join(tmpdir(), 'oxxovo-probe-contents-state.json')
 const STEPS = ['wrongsecret', 'presign', 'put', 'import', 'resend', 'conflict', 'rightsdown', 'status', 'returns', 'public']
 const FILE_BYTES = 2048
+// PROBE_RIGHTS=cleared makes a CLEARED probe row (for the DB-path test of release/claim/mark).
+// It must be finished by the SQL blocks (ends hidden); never leave it scheduled.
+const CLEARED = process.env.PROBE_RIGHTS === 'cleared'
 
 let failed = false
 function show(ok, label, detail) {
@@ -80,8 +83,8 @@ function importBody(s, over = {}) {
     kind: 'cf',
     form: 'short',
     language: 'ko',
-    rights_status: 'restricted',
-    rights_reason: 'probe: runtime test, never publish',
+    rights_status: CLEARED ? 'cleared' : 'restricted',
+    ...(CLEARED ? {} : { rights_reason: 'probe: runtime test, never publish' }),
     title: 'probe runtime test',
     upstream_approved_by: 'probe@oxxovo',
     upstream_approved_at: s.approvedAt,
@@ -116,7 +119,7 @@ const run = {
     expectLine('PASS 1줄, key가 imports/production_os/probe-.../v1/main_16x9- 로 시작')
     if (!SECRET) return show(false, '환경변수 CONTENT_IMPORT_SECRET_PRODUCTION_OS 없음', '아래 안내의 1번 줄을 먼저 실행하세요')
     const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
-    const ref = `probe-rt-${stamp}`
+    const ref = `${CLEARED ? 'probe-rt-cl-' : 'probe-rt-'}${stamp}`
     const s = {
       ref,
       approvalId: randomUUID(),
@@ -152,7 +155,10 @@ const run = {
     const r = await call('POST', '/api/contents/import', { body: importBody(s) })
     const ok = r.status === 201 && r.json?.outcome === 'created'
     show(ok, 'import created', brief(r))
-    if (ok) saveState({ ...s, contentId: r.json.id })
+    if (ok) {
+      saveState({ ...s, contentId: r.json.id })
+      console.log(`      content id = ${r.json.id}`)
+    }
   },
 
   async resend() {
