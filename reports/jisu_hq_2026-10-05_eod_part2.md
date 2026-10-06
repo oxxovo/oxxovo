@@ -142,3 +142,25 @@ SQL 원본: `reports/phase1_step3b_rpc_redefine_2026-10-05.sql` (Run된 그대�
 - **이월 -> ⑧:** 설계서 §5-3 ①b의 두 대상 중 배포 행(unknown·failed)만 ⑥에 넣었다. **콘텐츠 `held` 알림(`notified_at IS NULL`)은 ⑧.**
 - **설계서 누락(본부가 고침):** §5-3 순서에 "점유 후 `content_assets.bytes`를 메모리 상한과 비교"가 빠져 있었다(§5-4 큰 파일에만 있음). 코드에는 들어 있다. 수입 상한 500MB와 송출 상한 100MB 사이(100~500MB) 영상은 수입은 통과하고 송출에서 `failed_terminal`이 된다 -- 영상 kind의 `content_max_bytes_<kind>_<form>`을 송출 상한 이하로 둘지는 TK님 결정.
 - **가드 시험 원칙(본부 지시):** 중요한 가드마다 "일부러 망가뜨려 테스트가 빨개지는지"를 확인한다. ⑥에서 재확인 게이트 제거 -> 2개 실패, `scheduledAt` 거부 제거 -> 1개 실패.
+
+## 10. ③b 미완 5경로 종결 (10-06, 라이브 DB, TK님 Run)
+
+시험 행 `probe-rt-cl-20261006060004` (kind=cf, **cleared**, content `9946fb81-3ecb-40ee-b065-7c0fb1456818`, dist `35426cf0-4690-4ef2-bed0-e030dc9e9cae`). `allowed_platforms:['youtube']`로 수입 -> `scheduled`, 배포 1행 `queued`. 스텁 없이 Postiz에 닿지 않는 경로로 풀었다(⑥ 크론 배포 전, `entertainment_dispatch_enabled=false`, 점유 가능한 행이 이 행뿐임을 먼저 확인).
+
+| 경로 | 결과 |
+|---|---|
+| `content_hide` | scheduled -> hidden |
+| `content_unhide` | hidden -> held |
+| `content_release` 성공 | held -> scheduled, `publish_at=now()`, `requeued:0` |
+| `dist_claim` 점유 성공 | 1행 점유, 응답에 kind·form·language·title·caption 포함 |
+| `dist_mark('sent')` | posted, attempts 0, next_attempt_at NULL |
+
+- 끝에 `content_hide`로 **hidden**까지 닫았다(안 닫으면 공개 스위치가 켜질 때 `scheduled`+`cleared`+지난 `publish_at`인 시험 행이 공개 판정을 통과한다). 최종: hidden / posted / `external_id=probe-stub` / log_rows 1. 감사 `db:%` 행위자 0행.
+- `external_id=probe-stub`은 **실제 게시가 아닌 시험 값**이다. 이 행의 `posted`를 실제 송출의 증거로 읽지 말 것.
+- 영구 잔존 시험 행에 추가: `probe-rt-cl-20261006060004`(hidden, cleared). 05:42 `probe-rt-20261006054214`(held/blocked)는 실패한 `hide`/`unhide` 호출이 건드리지 않았음을 확인.
+
+### 사고·정정 (성공만 적지 않는다)
+- **본부 중계 오독:** 본부가 05:42 시험 화면(id `00e4acbb`...)을 06:00 cleared 시험 것으로 읽어 블록에 넣었다. `hide`/`unhide`가 실패했고 "import가 201을 주고 DB에 없다"는 오보가 나왔다. 지수가 서버 로그(06:00:04 presign만 있고 import 요청 없음)와 `content_presigns`(`consumed_at` NULL)로 반증했다. **코드·DB 결함 아님.**
+- **원인 구조:** 스크립트가 호출 대상·`source_ref`·content id를 출력하지 않아 두 시험을 구분할 수 없었다. 고침(`e54b9f4`, `7edfe51`): 모든 단계 머리글에 대상 서버·모드·source_ref·content id, import 성공 시 `★★★ content id`, 모드는 `source_ref` 접두사에서 결정(환경변수 누락으로 cleared ref에 restricted가 들어가는 경로 차단).
+- **지수의 오류:** 블록 11의 컬럼명을 `changed_by`(uuid)로 잘못 적었다(`changed_by_email`이 맞음). 에러로 드러나 정정.
+- **지수의 셸 인용 오류 3건:** `node -e` 안 템플릿 리터럴이 셸에 먹혀 코드가 깨진 것을 3번 겪었다. 빌드·테스트(`tsc`, 단위 시험)가 즉시 잡았다. 앞으로 여러 줄 코드 수정은 셸 치환 말고 편집 도구로 한다.
