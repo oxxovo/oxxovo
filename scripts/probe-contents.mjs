@@ -28,6 +28,9 @@ const FILE_BYTES = 2048
 // PROBE_RIGHTS=cleared makes a CLEARED probe row (for the DB-path test of release/claim/mark).
 // It must be finished by the SQL blocks (ends hidden); never leave it scheduled.
 const CLEARED = process.env.PROBE_RIGHTS === 'cleared'
+// The mode of a run is fixed by its source_ref prefix (set at presign), so a later step run
+// without PROBE_RIGHTS cannot silently send a different rights_status for the same ref.
+const isCleared = (s) => (s && s.ref ? s.ref.startsWith('probe-rt-cl-') : CLEARED)
 
 let failed = false
 function show(ok, label, detail) {
@@ -83,8 +86,8 @@ function importBody(s, over = {}) {
     kind: 'cf',
     form: 'short',
     language: 'ko',
-    rights_status: CLEARED ? 'cleared' : 'restricted',
-    ...(CLEARED ? {} : { rights_reason: 'probe: runtime test, never publish' }),
+    rights_status: isCleared(s) ? 'cleared' : 'restricted',
+    ...(isCleared(s) ? {} : { rights_reason: 'probe: runtime test, never publish' }),
     title: 'probe runtime test',
     upstream_approved_by: 'probe@oxxovo',
     upstream_approved_at: s.approvedAt,
@@ -112,7 +115,7 @@ function header(step) {
   const s = loadState()
   console.log('==============================================================')
   console.log(`[대상 서버]  ${BASE}`)
-  console.log(`[단계]       ${step}   (모드: ${CLEARED ? 'cleared' : 'restricted'})`)
+  console.log(`[단계]       ${step}   (모드: ${isCleared(s) ? 'cleared' : 'restricted'})`)
   console.log(`[source_ref] ${s?.ref ?? '(아직 없음 -- presign 단계에서 만들어집니다)'}`)
   console.log(`[content id] ${s?.contentId ?? '(아직 없음 -- import 성공 후 생깁니다)'}`)
   console.log('==============================================================')
@@ -162,7 +165,7 @@ const run = {
 
   async import() {
     console.log('[4-a] 수입 -> created (서버가 R2에서 파일 존재·크기·sha256을 직접 확인한다)')
-    expectLine(`PASS 1줄, HTTP 201, "outcome":"created", status는 ${CLEARED ? 'scheduled (cleared라서)' : 'held (restricted라서)'}`)
+    expectLine(`PASS 1줄, HTTP 201, "outcome":"created", status는 ${isCleared(loadState()) ? 'scheduled (cleared라서)' : 'held (restricted라서)'}`)
     const s = needState('key')
     const r = await call('POST', '/api/contents/import', { body: importBody(s) })
     const ok = r.status === 201 && r.json?.outcome === 'created'
