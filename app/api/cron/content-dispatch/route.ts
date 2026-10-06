@@ -36,6 +36,20 @@ async function handle(request: NextRequest) {
   }
   try {
     const report = await runDispatchTick(realDispatchDeps())
+    // One summary line per tick. A cron's response body is not kept by Vercel,
+    // so without this "which stage did the tick end in" is unobservable (the
+    // closed-switch state leaves no other trace). No ids, no content text.
+    console.log(
+      '[content-dispatch] ' +
+        JSON.stringify({
+          stage: report.stage,
+          processed: report.processed,
+          swept: report.swept,
+          alerted: report.alerted,
+          stopped: report.stopped,
+          warnings: report.warnings,
+        }),
+    )
     return NextResponse.json({ ok: true, ranAt: new Date().toISOString(), report }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (e) {
     console.error('[content-dispatch] tick crashed:', e instanceof Error ? e.message : e)
