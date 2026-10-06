@@ -128,3 +128,10 @@ SQL 원본: `reports/phase1_step3b_rpc_redefine_2026-10-05.sql` (Run된 그대�
 - **함수를 만들거나 바꾸면 `prosrc`(그 정의에만 있는 토큰 둘 이상)와 `aclexplode`로 되읽는다. 0행으로 증명해야 하는 것은 `count(*)`로 받는다.**
 - 배포·DB 변경은 지시 전까지 하지 않는다. 배포는 TK님이 `! npm run deploy:prod`.
 - 안 맞다고 보이면 근거를 대고 반대할 것(TK 상시 지시). 실패·반례도 기록할 것.
+
+## 9. 추가 기록 (10-06 배포 직후)
+
+- **④ 배포 완료:** `npm run deploy:prod` -> 라이브 `9962684`, `dirty:false` (`www.oxxovo.ai/api/version` 실측). 엔드포인트 5개가 인증 없이 401, `status`/`returns`에 POST는 405(GET 전용, 의도대로). R2·시크릿 환경변수 7개 이름 존재 확인(production 26개), 값은 읽지 않음.
+- **미결(급하지 않음) -- 배포 스크립트 자동 검증 실패:** `scripts/deploy-prod.mjs`가 deployment URL(`oxxovo-hwg6a2lbt-...vercel.app/api/version`)을 부르면 JSON이 아니라 HTML(`<!DOCTYPE`)이 와서 파싱이 실패했다. canonical(`www.oxxovo.ai/api/version`)은 정상. **원인은 확인하지 못했다**(deployment URL 보호 설정으로 보이나 추정). 지수 판단: **canonical을 보게 고치는 쪽을 권한다.** 근거: 사람이 실제로 쓰는 주소를 보는 검증이 더 의미 있고, 지금 방식은 매번 "자동 검증 불가"가 떠서 경고가 무뎌진다. 단서 둘: (a) alias 직후 전파 지연이 있을 수 있어 몇 번 재시도, (b) 응답이 JSON이 아니면 "보호/HTML 응답"이라고 구분해 출력. 기록만 하고 코드는 손대지 않았다.
+- **런타임 시험 스크립트:** `scripts/probe-contents.mjs`(시크릿은 환경변수로만, 출력·저장 안 함). 시험 행은 `probe-rt-<시각>`, restricted, 영구 잔존. 시험 결과는 별도 기록 예정.
+- **관찰(시험 전 메모):** R2 버킷이 공개 주소를 쓰므로, 권리가 `blocked`가 된 콘텐츠의 파일도 key를 아는 사람은 직접 열 수 있다(key는 추측하기 어렵지만 비공개가 아니다). 공개 판정(`content-public`)은 사이트 노출만 막는다. 설계서 §7과 대조해 의도인지 확인 필요.
