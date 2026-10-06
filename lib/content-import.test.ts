@@ -91,9 +91,11 @@ test('approval fields, ai_generated, title', () => {
   assert.equal(code('news_desk', mut(news(), (o) => { o.title = '   ' })), 'title_invalid')
 })
 
-test('allowed_platforms: at least one, known, no duplicates', () => {
-  assert.equal(code('news_desk', mut(news(), (o) => { o.allowed_platforms = [] })), 'allowed_platforms_required')
-  assert.equal(code('news_desk', mut(news(), (o) => { delete o.allowed_platforms })), 'allowed_platforms_required')
+test('allowed_platforms: key and array required, [] allowed, known, no duplicates', () => {
+  assert.equal(code('news_desk', mut(news(), (o) => { o.allowed_platforms = [] })), 'OK') // explicit "none" is intent
+  assert.equal(code('news_desk', mut(news(), (o) => { delete o.allowed_platforms })), 'allowed_platforms_required') // forgotten is not
+  assert.equal(code('news_desk', mut(news(), (o) => { o.allowed_platforms = null })), 'allowed_platforms_required')
+  assert.equal(code('news_desk', mut(news(), (o) => { o.allowed_platforms = 'youtube' })), 'allowed_platforms_not_array')
   assert.equal(code('news_desk', mut(news(), (o) => { o.allowed_platforms = ['facebook'] })), 'allowed_platforms_invalid')
   assert.equal(code('news_desk', mut(news(), (o) => { o.allowed_platforms = ['x', 'x'] })), 'allowed_platforms_duplicate')
 })
@@ -160,4 +162,14 @@ test('payload_hash does not depend on the slot, lateness or public base', () => 
   const a = buildImportRpcPayload(r.req, new Date('2026-10-06T22:00:00Z'), false, 'https://a.example')
   const b = buildImportRpcPayload(r.req, new Date('2026-10-07T22:00:00Z'), true, 'https://b.example')
   assert.equal(a.payload_hash, b.payload_hash)
+})
+
+test('empty allowed_platforms builds an empty channels list and hashes differently from a non-empty one', () => {
+  const none = validateImportRequest('news_desk', mut(news(), (o) => { o.allowed_platforms = [] }))
+  const some = validateImportRequest('news_desk', news())
+  assert.ok(none.ok && some.ok)
+  if (!none.ok || !some.ok) return
+  const p = buildImportRpcPayload(none.req, new Date('2026-10-06T22:00:00Z'), false, 'https://pub.example')
+  assert.deepEqual(p.channels, [])
+  assert.notEqual(none.req.payload_hash, some.req.payload_hash)
 })

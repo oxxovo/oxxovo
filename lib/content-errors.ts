@@ -31,6 +31,7 @@ const EXACT: Record<string, number> = {
   nothing_to_update: 400,
   threshold_invalid: 400,
   url_invalid: 400,
+  url_required: 400,
   // 422
   lead_too_short: 422,
   bytes_over_limit: 422,

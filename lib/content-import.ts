@@ -201,8 +201,11 @@ export function validateImportRequest(source: ContentSource, body: unknown): { o
 
   if (typeof b.ai_generated !== 'boolean') return fail('ai_generated_invalid')
 
+  // The KEY and an array are required; an explicit [] is valid (a master kept
+  // for the site only, HQ/Jenny2 2026-10-05). Omitting the key or sending null
+  // is a 400, so "forgot to send" stays distinguishable from "intentionally none".
   const platforms = b.allowed_platforms
-  if (!Array.isArray(platforms) || platforms.length === 0) return fail('allowed_platforms_required')
+  if (!Array.isArray(platforms)) return fail('allowed_platforms_required')
   if (!platforms.every(isPlatform)) return fail('allowed_platforms_invalid')
 
   let not_before: Date | null = null

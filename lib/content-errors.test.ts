@@ -4,7 +4,7 @@ import { mapContentRpcError } from './content-errors'
 
 test('exact codes map per the EOD SS7 table', () => {
   const table: Record<string, number> = {
-    source_invalid: 400, request_invalid: 400, rights_up_denied: 400, main_asset_required: 400, version_invalid: 400,
+    source_invalid: 400, request_invalid: 400, rights_up_denied: 400, main_asset_required: 400, version_invalid: 400, url_required: 400, url_invalid: 400,
     lead_too_short: 422, bytes_over_limit: 422, approval_not_newer: 422,
     already_imported: 409, approval_id_reused: 409, concurrent_import: 409, rate_limited: 409, not_sending: 409,
     not_found: 404,
