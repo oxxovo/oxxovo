@@ -1436,7 +1436,7 @@ Automatic dubbing     → 켜지 않음
 | 2 | 공개 경로 이름 (slug) | TK | 부분 — slug 없으면 그 면만 404 |
 
 | 4 | music kind가 넘기는 것 (음원? 영상?) | 제니2 | 부분 — `surface` CHECK 확장 여부 |
-| 5 | **`upstream_approval_id` 제공 가능 여부** | 제니2 | **차단 — UNIQUE 키로 쓴다** |
+| 5 | ~~`upstream_approval_id` 제공 가능 여부~~ | ~~제니2·뉴스~~ | ✅ **종결 10-05** — 양쪽 UUID. 아래 "upstream_approval_id 확정" 참조 |
 | 6 | AI 생성물 표기 의무 (플랫폼별) | 제니3 | 송출 전 필수 |
 | 6b | ~~YouTube 자동 더빙~~ | ~~TK~~ | ✅ **종결 10-04** — 켜지 않음. 켤 때 수동 게시로 |
 | 7 | ElevenLabs·Hedra 약관 상업 이용 조건 | 뉴스·엔터 | 아니오 — 그때까지 held |
@@ -1446,7 +1446,19 @@ Automatic dubbing     → 켜지 않음
 | 11 | `r2-orphan-sweep.mjs`가 고아 객체를 치우나 | 지수 | 아니오 |
 | 12 | Postiz에 게시 삭제 기능이 있나 | 지수 | 아니오 — 후속 기능 후보 |
 
-**구현(①~⑨)을 막는 것은 #5 하나뿐이다.**
+**구현(①~⑨)을 막는 것은 없다** (#5 종결 10-05). 남은 것은 TK 결정 둘(R2 의존성 승인, 출처별 시크릿 2개).
+
+**✅ `upstream_approval_id` 확정 (본부 10-05, 뉴스 제니 답 반영)**
+```
+형식   양쪽 다 UUID (사람이 읽는 형식 news-<id>-v1-<시각> 안 씀)
+엔터   approvals.id — Human EP final_release 승인 UUID. 실제 승인 기록의 ID
+뉴스   보낼 때 생성하는 새 UUID. 뒤에 실제 승인 기록이 없다
+       (뉴스 승인은 TK가 눈으로 보고 정하며 기록·ID를 남기는 장치가 없다)
+```
+**차이 (사실만 기록)** — 양쪽 다 "출처가 주장하는 값"이라는 한계(§6-3)는 같다.
+다만 **엔터는 상류에 근거가 있고, 뉴스는 없다.** 뉴스 쪽 승인 체계가 생기면 달라질 일이다.
+따라서 뉴스의 `UNIQUE (source, upstream_approval_id)`는 **재사용 방지 장치로 실질 힘이 없다**
+(매번 새 값을 만들면 충돌할 일이 없다). 엔터는 상류 ID라 재사용하면 Production OS 쪽도 어긋난다.
 
 **✅ 값 다섯 확정 (TK 10-05)** — ① SQL에 그대로 넣는다
 ```
@@ -1483,7 +1495,8 @@ content_dispatch_backoff_base_minutes
 | 최종 h | **YouTube 자동 더빙 추가** — 더빙은 rights_status·정지·반송·긴급 스위치를 전부 우회한다(이미 YouTube 쪽에 있어 회수 불가). "수동 게시로 변경"이 유일한 방어선이라 §11 잔여 위험과 ⑩ 전 운영 설정 체크리스트에 명시, 미결 #6b·#6c 신설 |
 | 최종 i | **유튜브 설정 확정 (TK 10-04)** — 자동 더빙은 얼리 액세스 미활성(지금 위험 없음, 켤 때 수동 게시 조건 명시), Audience=not made for kids, Third-party training 해제. 미결 #6b 종결 |
 | 최종 j | **지수 8차 반영** — 알림 발송 단계 ①b 신설(RPC 추가 없이 서버 액션 직접 UPDATE → 15개 유지, 전송 실패 시 alerted_at 안 씀), `alerted_at` 초기화를 **트리거**로(dist_mark만으론 claim·sweep·requeue 경로가 샌다), `failed_terminal`의 "attempts=max" 삭제(dist_mark에 max 인자가 없다 → `next_attempt_at=NULL`로), `sendAdminAlert`에 `to?` 선택 인자 추가 확정(현재 인자 없음을 코드로 확인), 시간 예산 숫자를 문서에서 빼고 선언값 기반 계산 + `item_budget_seconds` 키, `dist_mark(result='skipped')` 삭제, 더빙 문구 2곳 정정(유튜브만 끄려면 allowed_platforms, 메뉴 경로 단정 제거) |
-| **최종 k** | **platform_config 값 5개 확정 (TK 10-05)** — min_lead 120분 / max_bytes_default 500MB / per_tick 10 / presign_ttl 3600초 / presign_rate 20회. 미결 #1·#1c·#1e·#3 종결 |
+| 최종 k | **platform_config 값 5개 확정 (TK 10-05)** — min_lead 120분 / max_bytes_default 500MB / per_tick 10 / presign_ttl 3600초 / presign_rate 20회. 미결 #1·#1c·#1e·#3 종결 |
+| **최종 l** | **`upstream_approval_id` 확정 (본부 10-05, 뉴스 제니 답)** — ①미결 #5 종결: 양쪽 다 UUID(엔터 `approvals.id` / 뉴스 보낼 때 생성), 형식 검증은 **Node 코드에서 소문자 UUID만 받고 틀리면 400**(컬럼 CHECK 없음: 시험 행 2건이 이미 UUID가 아니고 NOT VALID는 착각만 남기며 RPC 재정의 비용이 과함. 대문자는 UNIQUE 우회라 거절). ②**엔터와 뉴스의 차이**: 엔터는 상류에 실제 승인 기록이 있고 뉴스는 없다(TK 육안 승인, 기록·ID 장치 없음). 둘 다 "출처가 주장하는 값"이라는 한계는 같다. 뉴스의 `UNIQUE (source, upstream_approval_id)`는 재사용 방지로 실질 힘이 없다. ③**뉴스 재시도 규칙: UUID는 `(source_ref, source_version)`당 하나** — 만들어 기록해 두고 같은 버전 재전송에는 그 값을 그대로 쓴다, v2에서만 새로 만든다. 안 그러면 재시도마다 `payload_hash`가 달라져 행은 들어갔는데 409가 난다. `upstream_approval_id`는 해시에서 빼지 않는다(내용의 일부이고, 빼면 승인 ID만 바꾼 재전송이 멱등으로 통과) |
 
 ---
 
