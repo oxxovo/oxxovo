@@ -106,6 +106,18 @@ function importBody(s, over = {}) {
   }
 }
 
+// Printed before EVERY step so a pasted result says which server and which test
+// it belongs to (2026-10-06: two runs were mixed up because neither was shown).
+function header(step) {
+  const s = loadState()
+  console.log('==============================================================')
+  console.log(`[대상 서버]  ${BASE}`)
+  console.log(`[단계]       ${step}   (모드: ${CLEARED ? 'cleared' : 'restricted'})`)
+  console.log(`[source_ref] ${s?.ref ?? '(아직 없음 -- presign 단계에서 만들어집니다)'}`)
+  console.log(`[content id] ${s?.contentId ?? '(아직 없음 -- import 성공 후 생깁니다)'}`)
+  console.log('==============================================================')
+}
+
 const run = {
   async wrongsecret() {
     console.log('[2] 잘못된 시크릿으로 호출 -> 거절되어야 함')
@@ -150,14 +162,17 @@ const run = {
 
   async import() {
     console.log('[4-a] 수입 -> created (서버가 R2에서 파일 존재·크기·sha256을 직접 확인한다)')
-    expectLine('PASS 1줄, HTTP 201, "outcome":"created", status는 held (restricted라서)')
+    expectLine(`PASS 1줄, HTTP 201, "outcome":"created", status는 ${CLEARED ? 'scheduled (cleared라서)' : 'held (restricted라서)'}`)
     const s = needState('key')
     const r = await call('POST', '/api/contents/import', { body: importBody(s) })
     const ok = r.status === 201 && r.json?.outcome === 'created'
     show(ok, 'import created', brief(r))
     if (ok) {
       saveState({ ...s, contentId: r.json.id })
-      console.log(`      content id = ${r.json.id}`)
+      console.log('')
+      console.log(`  ★★★  content id = ${r.json.id}`)
+      console.log(`  ★★★  source_ref = ${s.ref}   (이 두 값을 SQL 블록에 쓰세요)`)
+      console.log('')
     }
   },
 
@@ -226,11 +241,13 @@ async function main() {
   const step = process.argv[2]
   if (step === 'all') {
     for (const st of STEPS.filter((x) => x !== 'public')) {
-      await run[st]()
+      header(st)
+    await run[st]()
       console.log('')
       if (failed) break
     }
   } else if (run[step]) {
+    header(step)
     await run[step]()
   } else {
     console.log(`사용법: node scripts/probe-contents.mjs <${STEPS.join('|')}|all>`)
