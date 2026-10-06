@@ -137,3 +137,8 @@ SQL 원본: `reports/phase1_step3b_rpc_redefine_2026-10-05.sql` (Run된 그대�
 - **관찰(시험 전 메모):** R2 버킷이 공개 주소를 쓰므로, 권리가 `blocked`가 된 콘텐츠의 파일도 key를 아는 사람은 직접 열 수 있다(key는 추측하기 어렵지만 비공개가 아니다). 공개 판정(`content-public`)은 사이트 노출만 막는다. 설계서 §7과 대조해 의도인지 확인 필요.
 - **⑤ 확인된 것(10-06, 테스트 26개 통과):** 판정 4조건, 스위치 fail-closed(행 없음·오류·`true` 아닌 값=닫힘), 대회 스위치와 무관, SQL 필터+이중 검사, 공개 에셋 `main_*`·`thumbnail`만, `script`·hash·source·`rights_reason`·caption 제외, slug 예약어(`c` 포함)·`app/` 최상위 폴더 전수 테스트, 같은 slug 두 kind면 둘 다 닫힘, `/c/<id>`는 공개 통과+slug 설정 시만.
 - **⑤ 미확인(설계서 미결로 올릴 것):** (1) **단위 테스트가 가짜 DB를 쓴다.** 실제 PostgREST가 컬럼명·필터를 받는지는 미검증이고, 호출하는 곳이 없어 ⑨ 전에는 라이브로 돌릴 길이 없다. **⑨에서 처음 라이브로 돌릴 때 PostgREST 모르는 컬럼 무음 거부([[feedback_postgrest_unknown_column_silent]])부터 확인한다.** (2) 스위치 전부 false·`content_path_<kind>` 없음은 의도. (3) 동적 라우트 문서는 ⑨ 몫.
+- **⑥ 송출 코드(10-06, `2b7bbb4` + 후속):** 송출 틱·`postiz.ts` 분리·promo 가드 두 겹·`sendAdminAlert(to?)`·크론 `/api/cron/content-dispatch`(`*/5`, maxDuration 300 일치 테스트). **미배포.** `vercel.json`에 크론이 들어 있어 `deploy:prod` 전까지 활성 아님. 배포 전에 ③b 미완 5경로 DB 시험(블록 0~11)을 끝낼 것.
+- **송출 메모리 상한은 DB 키 `content_dispatch_max_bytes_default`(104857600)만 읽는다.** 코드 기본값 없음. 키가 없거나 비정상이면 송출 0건 + 일일 알림(`per_tick`과 같은 취급). 이 값(100MB)과 항목당 예산 120초는 **측정한 적 없는 추정**이고 함수 메모리 한도도 미확인. 첫 실제 송출에서 재서 조정.
+- **이월 -> ⑧:** 설계서 §5-3 ①b의 두 대상 중 배포 행(unknown·failed)만 ⑥에 넣었다. **콘텐츠 `held` 알림(`notified_at IS NULL`)은 ⑧.**
+- **설계서 누락(본부가 고침):** §5-3 순서에 "점유 후 `content_assets.bytes`를 메모리 상한과 비교"가 빠져 있었다(§5-4 큰 파일에만 있음). 코드에는 들어 있다. 수입 상한 500MB와 송출 상한 100MB 사이(100~500MB) 영상은 수입은 통과하고 송출에서 `failed_terminal`이 된다 -- 영상 kind의 `content_max_bytes_<kind>_<form>`을 송출 상한 이하로 둘지는 TK님 결정.
+- **가드 시험 원칙(본부 지시):** 중요한 가드마다 "일부러 망가뜨려 테스트가 빨개지는지"를 확인한다. ⑥에서 재확인 게이트 제거 -> 2개 실패, `scheduledAt` 거부 제거 -> 1개 실패.

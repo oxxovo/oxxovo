@@ -5,7 +5,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  DEFAULT_DISPATCH_MAX_BYTES,
   DISPATCH_MAX_DURATION_SEC,
   SWEEP_MARGIN_SEC,
   runDispatchTick,
@@ -23,6 +22,7 @@ const OPEN = {
   news_dispatch_enabled: 'true',
   entertainment_dispatch_enabled: 'true',
   content_dispatch_per_tick: '10',
+  content_dispatch_max_bytes_default: '104857600',
 }
 
 const row = (n: number, over: Partial<ClaimedDist> = {}): ClaimedDist => ({
@@ -107,7 +107,7 @@ test('control: everything open -> one row is claimed, verified, published and ma
   assert.equal(h.marks[0].result, 'sent')
   assert.equal(h.marks[0].externalId, 'post-1')
   assert.equal(h.marks[0].captionSent, 'caption 1') // the text actually sent is snapshotted
-  assert.deepEqual(h.prepared[0].opts, { expectedSha256: SHA, maxBytes: DEFAULT_DISPATCH_MAX_BYTES })
+  assert.deepEqual(h.prepared[0].opts, { expectedSha256: SHA, maxBytes: 104857600 })
 })
 
 test('master switch closed: nothing is claimed or sent, but the sweep still runs', async () => {
@@ -168,6 +168,19 @@ test('per_tick missing or invalid -> nothing is sent and a daily alert is raised
     assert.equal(r.stage, 'config', String(bad))
     assert.equal(h.claimKinds.length, 0)
     assert.deepEqual(h.daily, ['content_dispatch_config'])
+  }
+})
+
+test('memory ceiling key missing or invalid -> nothing is sent (no code default)', async () => {
+  for (const bad of [undefined, '0', 'abc', '1e9']) {
+    const cfg: Record<string, string> = { ...OPEN }
+    if (bad === undefined) delete cfg.content_dispatch_max_bytes_default
+    else cfg.content_dispatch_max_bytes_default = bad
+    const h = harness({ config: cfg, rows: [row(1)] })
+    const r = await runDispatchTick(h.deps)
+    assert.equal(r.stage, 'config', String(bad))
+    assert.equal(r.stopped, 'config:content_dispatch_max_bytes_default')
+    assert.equal(h.claimKinds.length, 0)
   }
 })
 
@@ -275,7 +288,7 @@ test('hash mismatch: failed_terminal, nothing published (a changed file never re
 
 test('asset bigger than the dispatch memory ceiling: failed_terminal without downloading', async () => {
   const h = harness({
-    config: { ...OPEN, content_dispatch_max_bytes: '1000' },
+    config: { ...OPEN, content_dispatch_max_bytes_default: '1000' },
     rows: [row(1)],
     assets: () => [asset('main_16x9', { bytes: 1001 })],
   })
@@ -285,7 +298,7 @@ test('asset bigger than the dispatch memory ceiling: failed_terminal without dow
   assert.match(h.marks[0].error ?? '', /^oversize_for_dispatch/)
   // control: at the ceiling it goes through
   const ok = harness({
-    config: { ...OPEN, content_dispatch_max_bytes: '1000' },
+    config: { ...OPEN, content_dispatch_max_bytes_default: '1000' },
     rows: [row(1)],
     assets: () => [asset('main_16x9', { bytes: 1000 })],
   })

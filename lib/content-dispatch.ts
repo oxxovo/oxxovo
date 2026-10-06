@@ -46,16 +46,17 @@ export const TICK_SAFETY_SEC = 30
 // upload yet (no test channel exists, design SS5-7). Replace with the first
 // real send's numbers; both are overridable in platform_config without a deploy.
 export const DEFAULT_ITEM_BUDGET_SEC = 120
-// Memory ceiling, NOT a business limit: the file is held in memory and copied
-// once more into the multipart Blob (~2x). Unmeasured; the function's memory
-// limit has not been verified either.
-export const DEFAULT_DISPATCH_MAX_BYTES = 100 * 1024 * 1024
 
 export const KEY_PER_TICK = 'content_dispatch_per_tick'
 export const KEY_MAX_ATTEMPTS = 'content_dispatch_max_attempts'
 export const KEY_BACKOFF_BASE = 'content_dispatch_backoff_base_minutes'
 export const KEY_ITEM_BUDGET = 'content_dispatch_item_budget_seconds'
-export const KEY_MAX_BYTES = 'content_dispatch_max_bytes'
+// Memory ceiling for one asset, NOT a business limit: the file is held in memory
+// and copied once more into the multipart Blob (~2x). The value (100MB, set
+// 2026-10-05) is unmeasured and the function's memory limit is unverified. The
+// DB key is the ONLY place the number lives -- no code default (HQ 2026-10-06);
+// missing/invalid = dispatch sends nothing, like per_tick.
+export const KEY_MAX_BYTES = 'content_dispatch_max_bytes_default'
 const CONFIG_KEYS = [KEY_PER_TICK, KEY_MAX_ATTEMPTS, KEY_BACKOFF_BASE, KEY_ITEM_BUDGET, KEY_MAX_BYTES] as const
 
 export type ClaimedDist = {
@@ -185,16 +186,18 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<TickReport> {
   if (st.openDbas.length === 0) return { ...report, stage: 'no_open_dba' }
 
   const perTick = parsePosInt(st.config.get(KEY_PER_TICK))
-  if (perTick === null) {
+  const maxBytes = parsePosInt(st.config.get(KEY_MAX_BYTES))
+  if (perTick === null || maxBytes === null) {
     // Silent non-sending is the failure mode to avoid: say so, once a day.
+    const bad = perTick === null ? KEY_PER_TICK : KEY_MAX_BYTES
     await deps
       .alertDaily(
         'content_dispatch_config',
-        '[OXXOVO] content dispatch is OPEN but content_dispatch_per_tick is missing/invalid',
-        '<p>Dispatch switches are on, but <code>content_dispatch_per_tick</code> is not a positive integer, so nothing is sent.</p>',
+        `[OXXOVO] content dispatch is OPEN but ${bad} is missing/invalid`,
+        `<p>Dispatch switches are on, but <code>${bad}</code> is not a positive integer, so nothing is sent.</p>`,
       )
       .catch(() => false)
-    return { ...report, stage: 'config', stopped: 'config:content_dispatch_per_tick' }
+    return { ...report, stage: 'config', stopped: `config:${bad}` }
   }
   const optional = (key: string, fallback: number | null, name: string): number | null => {
     const raw = st.config.get(key)
@@ -210,7 +213,6 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<TickReport> {
   const maxAttempts = optional(KEY_MAX_ATTEMPTS, null, KEY_MAX_ATTEMPTS)
   const backoff = optional(KEY_BACKOFF_BASE, null, KEY_BACKOFF_BASE)
   const itemBudgetSec = optional(KEY_ITEM_BUDGET, DEFAULT_ITEM_BUDGET_SEC, KEY_ITEM_BUDGET) as number
-  const maxBytes = optional(KEY_MAX_BYTES, DEFAULT_DISPATCH_MAX_BYTES, KEY_MAX_BYTES) as number
 
   const kinds = openKinds(st.openDbas)
   const deadline = tickStart + (DISPATCH_MAX_DURATION_SEC - TICK_SAFETY_SEC) * 1000
