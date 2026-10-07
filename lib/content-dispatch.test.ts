@@ -79,6 +79,8 @@ function harness(opts: {
     async markAlerted(ids) { h.alerted.push(ids) },
     async listNotifiable() { return [] },
     async markNotified() {},
+    async listReturned() { return [] },
+    async markReturnedNotified() {},
     async sendAlert(subject) { h.alertsSent.push(subject); return opts.sendAlertOk ?? true },
     async alertDaily(key) { h.daily.push(key); return true },
     async claimOne(kinds) { h.log.push('claim'); h.claimKinds.push(kinds); return queue.shift() ?? null },
@@ -506,4 +508,47 @@ test('an unusable title only matters for youtube (control: an instagram row with
   const h = harness({ rows: [row(1, { platform: 'instagram', title: 'a' })], assets: () => [asset('main_9x16')] })
   await runDispatchTick(h.deps)
   assert.equal(h.marks[0].result, 'sent')
+})
+
+test('returned notices: own stage, runs with switches CLOSED, counted in returnedNotified; a broken returned query leaves held notices alone', async () => {
+  const closed = { ...OPEN, social_dispatch_enabled: 'false' }
+  const ret = (n: number, ref = `ref-${n}`) => ({
+    id: `r${n}`, title: `t${n}`, kind: 'cf', source_ref: ref, returned_reason: 'taken down',
+    returned_at: '2026-10-08T07:00:00Z', returned_notified_at: null,
+  })
+  const held1 = {
+    id: 'c1', title: 't1', kind: 'cf', source_ref: 'ref-1', source_version: 1, status: 'held',
+    rights_status: 'cleared', held_reason: 'late_for_slot', rights_reason: null, publish_at: '2026-10-08T07:00:00Z',
+  }
+
+  const h = harness({ config: closed })
+  const marked: unknown[] = []
+  h.deps.listReturned = async () => [ret(1), ret(2, 'probe-rpc-20261005')]
+  h.deps.markReturnedNotified = async (m) => { marked.push(m) }
+  const r = await runDispatchTick(h.deps)
+  assert.equal(r.stage, 'master_closed')
+  assert.equal(r.returnedNotified, 1)
+  assert.equal(r.notified, 0)
+  assert.deepEqual(marked, [[{ id: 'r1', returned_at: '2026-10-08T07:00:00Z' }]])
+  assert.match(h.alertsSent[0], /1 content item\(s\) returned/)
+
+  // The returned query throws (column missing): the held notice still goes out.
+  const boom = harness({ config: closed })
+  boom.deps.listNotifiable = async () => [held1]
+  boom.deps.listReturned = async () => { throw new Error('column does not exist') }
+  const r2 = await runDispatchTick(boom.deps)
+  assert.equal(r2.notified, 1)
+  assert.equal(r2.returnedNotified, 0)
+  assert.ok(r2.warnings.some((w) => w.startsWith('return_notify_list_failed')))
+
+  // ...and a CRASH in that stage (not just a warning) does not stop the stages after it.
+  const crash = harness({ config: closed })
+  crash.deps.listNotifiable = async () => [held1]
+  // list() resolving to null gets past the runner's own try (it only wraps list()) and
+  // throws in the planner -> only the tick's own catch can stop it.
+  crash.deps.listReturned = async () => null as never
+  const r3 = await runDispatchTick(crash.deps)
+  assert.equal(r3.stage, 'master_closed')
+  assert.equal(r3.notified, 1)
+  assert.ok(r3.warnings.some((w) => w.startsWith('return_notify_crashed:')))
 })

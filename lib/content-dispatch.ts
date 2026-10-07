@@ -30,7 +30,13 @@ import {
   type Dba,
   type Platform,
 } from '@/lib/content-kinds'
-import { runContentNotices, type NotifiableContent } from '@/lib/content-notify'
+import {
+  runContentNotices,
+  runReturnNotices,
+  type NotifiableContent,
+  type ReturnedContent,
+  type ReturnedMark,
+} from '@/lib/content-notify'
 import { readDispatchState, type ConfigReader } from '@/lib/dispatch-switch'
 import { PostizConfigError, PostizHttpError, PostizMediaError, parseYoutubeVisibility, youtubeTitle } from '@/lib/postiz'
 import type { PostizMedia, PromoChannel, YoutubeSettings } from '@/lib/postiz'
@@ -118,6 +124,8 @@ export type DispatchDeps = {
   markAlerted(ids: string[]): Promise<void>
   listNotifiable(): Promise<NotifiableContent[]>
   markNotified(ids: string[]): Promise<void>
+  listReturned(): Promise<ReturnedContent[]>
+  markReturnedNotified(marks: ReturnedMark[]): Promise<void>
   sendAlert(subject: string, html: string): Promise<boolean>
   alertDaily(key: string, subject: string, html: string): Promise<boolean>
   claimOne(kinds: ContentKind[], maxAttempts: number | null): Promise<ClaimedDist | null>
@@ -142,6 +150,7 @@ export type TickReport = {
   swept: number
   alerted: number
   notified: number
+  returnedNotified: number
   processed: number
   rows: { dist_id: string; outcome: RowOutcome }[]
   stopped: string | null
@@ -168,7 +177,7 @@ function alertHtml(rows: AlertableDist[]): string {
 }
 
 export async function runDispatchTick(deps: DispatchDeps): Promise<TickReport> {
-  const report: TickReport = { stage: 'ran', swept: 0, alerted: 0, notified: 0, processed: 0, rows: [], stopped: null, warnings: [] }
+  const report: TickReport = { stage: 'ran', swept: 0, alerted: 0, notified: 0, returnedNotified: 0, processed: 0, rows: [], stopped: null, warnings: [] }
   const tickStart = deps.nowMs()
 
   // 1. sweep -- regardless of switches.
@@ -202,6 +211,16 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<TickReport> {
     report.warnings.push(...n.warnings)
   } catch (e) {
     report.warnings.push(`notify_crashed:${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  // 1d. returned notices -- its OWN try: a failure here (e.g. the column is
+  // missing) must not stop the held / scheduled notices above or anything below.
+  try {
+    const n = await runReturnNotices({ list: deps.listReturned, send: deps.sendAlert, mark: deps.markReturnedNotified })
+    report.returnedNotified = n.marked
+    report.warnings.push(...n.warnings)
+  } catch (e) {
+    report.warnings.push(`return_notify_crashed:${e instanceof Error ? e.message : String(e)}`)
   }
 
   // 2. early exit

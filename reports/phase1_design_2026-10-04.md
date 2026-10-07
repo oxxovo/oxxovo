@@ -1225,6 +1225,18 @@ content_set_publish_at(content_id, publish_at, …)
 - 문구는 `lib/content-notify.ts`의 `NOTICE_TEXT` 한곳. 영문, 운영자 전용. 한 번에 최대 100건 읽고 넘으면 본문에 안내한다.
 - **라이브 미검증:** 실제 메일 발송과 `contents.notified_at` UPDATE는 가짜 DB 테스트뿐이다. 감사 트리거는 `notified_at`을 안 보므로 `contents_history`에 행이 안 생기는 것이 정상이다(라이브에서 확인 필요).
 
+### 반송 알림 구현 (2026-10-08, 지수) — 위 "반송 알림 미구현" 항목을 대체한다
+
+- **칸:** `contents.returned_notified_at timestamptz`(nullable, 기본값 없음). SQL B1~B4, B6을 TK님이 Run, 되읽기·컬럼 ACL 확인 완료(table 단위만, column 단위 GRANT 없음, anon·authenticated·PUBLIC 없음).
+- **판정:** 트리거·RPC 없이 비교. `status='returned' AND (returned_notified_at IS NULL OR returned_notified_at < returned_at)`. 반송 -> 정지 복구 -> 재반송은 `returned_at`이 새로 써지므로 다시 알린다. PostgREST는 두 컬럼을 비교하지 못하므로 읽기 두 번(미통지 오래된 순 / 최근 반송 순)을 합쳐 코드에서 같은 판정을 한 번 더 적용한다.
+- **기록값:** `now()`가 아니라 **목록을 읽을 때 본 `returned_at`**을 쓴다. 목록 읽기와 기록 사이에 재반송이 들어오면 더 새로운 `returned_at`이 남아 계속 대기 상태가 된다(`now()`로 쓰면 그 알림이 사라진다). 기록은 `status='returned'`인 행에만.
+- **별도 단계:** 틱의 1d(held·scheduled 알림 1c 다음). 자체 `try` + 러너 내부 `try`라서 이 단계가 실패해도(예: 컬럼 없음) held·scheduled 알림과 이후 단계는 그대로 돈다. 크론 로그에 `returnedNotified` 건수가 추가됐다.
+- **메일:** 제목에 건수, 본문 첫 줄에 최신 건의 사유(나머지는 "and N more"), 어드민 링크 `?status=returned`. 문구는 `NOTICE_TEXT` 한곳. `returned_reason`·제목은 제어문자 제거·길이 제한·이스케이프.
+- **`probe-` 행은 대상 아님**(쿼리 + 빌더 이중). `probe-rpc-20261005`는 `returned_notified_at`이 영구히 NULL로 남는다.
+- **한계 1:** 메일은 수락됐는데 `returned_notified_at` 기록이 실패하면 다음 틱에 같은 메일이 한 번 더 간다(⑧ `notified_at`과 같은 한계).
+- **한계 2:** 실제 메일 경로는 라이브 미검증이다. ⑩의 `[반송]`(시험 영상 삭제 기록)이 처음 돌린다 — 그 행이 info@로 메일 1통을 만드는 것이 정상.
+- **한계 3:** 재반송은 `returned_at`이 가장 최신이라 읽기 B(최근 100건)에 잡힌다. 놓치는 경우는 이미 통지된 행이 재반송된 뒤 **한 틱 사이에 100건 넘게** 다른 반송이 들어올 때뿐이다. 반송은 사람이 하는 드문 작업이라 감수한다.
+
 ### 알림 메일
 
 ```

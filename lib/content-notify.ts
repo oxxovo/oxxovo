@@ -7,8 +7,9 @@
 // do NOT count towards "need action" -- nobody here can fix them, they only have
 // to stay visible (otherwise "why is the news not going out" is never answered).
 //
-// Not sent: returned notices. contents has no column to track them (notified_at
-// is the import notice). Open item in the design doc.
+// Returned notices (bottom of this file) are a SEPARATE run with their own list,
+// mail and column (returned_notified_at): a failure there must not touch the
+// held / scheduled notices above, and the other way round.
 //
 // Same rule as the dispatch alerts: notified_at is written only AFTER the mail
 // was accepted, so a failed send is retried on the next tick. Runs in the
@@ -50,6 +51,11 @@ export const NOTICE_TEXT = {
   scheduledLead: (n: number) => `${n} content item(s) imported and scheduled. Times are UTC.`,
   moreNote: (limit: number) => `More than ${limit} pending; the rest follow in the next mail.`,
   linkLabel: 'Open in admin',
+  returnedSubject: (n: number) => `[OXXOVO] ${n} content item(s) returned`,
+  // First line of the returned mail: WHY the newest one came back.
+  returnedLead: (reason: string, others: number) =>
+    others > 0 ? `Returned: ${reason} (and ${others} more, listed below).` : `Returned: ${reason}`,
+  returnedNoReason: 'no reason recorded',
 } as const
 
 const esc = (s: string) =>
@@ -215,4 +221,124 @@ export async function markContentsNotified(admin: NoticeAdmin, ids: string[]): P
     .in('id', ids)
     .is('notified_at', null)
   if (error) throw new Error(error.message)
+}
+
+// ---- returned notices -------------------------------------------------------
+// A content the platform sent back to its maker (status 'returned'). The maker can
+// already poll GET /api/contents/returns; this is the mail to the person in
+// charge. Judged by comparison, no trigger: a return -> recovery -> return again
+// writes a newer returned_at, so it is announced again.
+//
+// Same rule as above: returned_notified_at is written only AFTER the mail was
+// accepted. Known limit (same as notified_at): mail accepted but the write failed
+// -> the same mail goes out once more next tick.
+export type ReturnedContent = {
+  id: string
+  title: string
+  kind: string
+  source_ref: string
+  returned_reason: string | null
+  returned_at: string | null
+  returned_notified_at: string | null
+}
+// Written back as the returned_at we SAW, not now(): a return that lands between
+// list and mark keeps a newer returned_at and stays pending.
+export type ReturnedMark = { id: string; returned_at: string }
+
+const ts = (iso: string | null) => {
+  const t = iso === null ? NaN : new Date(iso).getTime()
+  return Number.isNaN(t) ? null : t
+}
+
+export function isReturnPending(c: Pick<ReturnedContent, 'returned_at' | 'returned_notified_at'>): boolean {
+  const r = ts(c.returned_at)
+  if (r === null) return false
+  if (c.returned_notified_at === null) return true
+  const n = ts(c.returned_notified_at)
+  return n === null || n < r
+}
+
+export type ReturnNotice = { subject: string; html: string; marks: ReturnedMark[] }
+
+export function planReturnNotice(all: readonly ReturnedContent[]): ReturnNotice | null {
+  const rows = all
+    .filter((c) => !isProbeRef(c.source_ref) && isReturnPending(c))
+    .sort((a, b) => (ts(b.returned_at) as number) - (ts(a.returned_at) as number))
+  if (rows.length === 0) return null
+  const reasonOf = (c: ReturnedContent) => safe(c.returned_reason, 200) || esc(NOTICE_TEXT.returnedNoReason)
+  const items = rows
+    .map((c) => `<li><b>${safe(c.title)}</b> (${safe(c.kind, 20)}, ${safe(c.source_ref, 80)}) -- ${reasonOf(c)}</li>`)
+    .join('')
+  return {
+    subject: NOTICE_TEXT.returnedSubject(rows.length),
+    html:
+      `<p>${NOTICE_TEXT.returnedLead(reasonOf(rows[0]), rows.length - 1)}</p><ul>${items}</ul>` +
+      `<p><a href="${ADMIN_CONTENTS_URL}?status=returned">${esc(NOTICE_TEXT.linkLabel)}</a></p>`,
+    marks: rows.map((c) => ({ id: c.id, returned_at: c.returned_at as string })),
+  }
+}
+
+export type ReturnNoticeDeps = {
+  list(): Promise<ReturnedContent[]>
+  send(subject: string, html: string): Promise<boolean>
+  mark(marks: ReturnedMark[]): Promise<void>
+}
+export type ReturnNoticeReport = { mails: number; marked: number; warnings: string[] }
+
+export async function runReturnNotices(deps: ReturnNoticeDeps): Promise<ReturnNoticeReport> {
+  const report: ReturnNoticeReport = { mails: 0, marked: 0, warnings: [] }
+  let rows: ReturnedContent[]
+  try {
+    rows = await deps.list()
+  } catch (e) {
+    report.warnings.push(`return_notify_list_failed:${e instanceof Error ? e.message : String(e)}`)
+    return report
+  }
+  const notice = planReturnNotice(rows)
+  if (!notice) return report
+  try {
+    if (!(await deps.send(notice.subject, notice.html))) {
+      report.warnings.push('return_notice_not_sent') // not marked -> retried next tick
+      return report
+    }
+    report.mails++
+    await deps.mark(notice.marks)
+    report.marked += notice.marks.length
+  } catch (e) {
+    report.warnings.push(`return_notice_failed:${e instanceof Error ? e.message : String(e)}`)
+  }
+  return report
+}
+
+const RETURNED_COLUMNS = 'id, title, kind, source_ref, returned_reason, returned_at, returned_notified_at'
+
+// PostgREST cannot compare two columns, so two reads are merged:
+//  A) never notified (server-side filter, oldest first -> never starved);
+//  B) the newest returns, filtered here by isReturnPending (catches a re-return).
+export async function listReturnedContents(admin: NoticeAdmin): Promise<ReturnedContent[]> {
+  const base = () =>
+    admin
+      .from('contents')
+      .select(RETURNED_COLUMNS)
+      .eq('status', 'returned')
+      // probe- rows are permanent test rows: excluded by the QUERY, not the UI.
+      .not('source_ref', 'ilike', 'probe-%')
+  const a = await base().is('returned_notified_at', null).order('returned_at', { ascending: true }).limit(NOTIFY_LIMIT)
+  if (a.error) throw new Error(a.error.message)
+  const b = await base().order('returned_at', { ascending: false }).limit(NOTIFY_LIMIT)
+  if (b.error) throw new Error(b.error.message)
+  const byId = new Map<string, ReturnedContent>()
+  for (const r of [...((a.data ?? []) as ReturnedContent[]), ...((b.data ?? []) as ReturnedContent[])]) {
+    if (isReturnPending(r)) byId.set(r.id, r)
+  }
+  return [...byId.values()].slice(0, NOTIFY_LIMIT)
+}
+
+export async function markReturnedNotified(admin: NoticeAdmin, marks: ReturnedMark[]): Promise<void> {
+  const errors: string[] = []
+  for (const m of marks) {
+    const { error } = await admin.from('contents').update({ returned_notified_at: m.returned_at }).eq('id', m.id).eq('status', 'returned')
+    if (error) errors.push(error.message)
+  }
+  if (errors.length > 0) throw new Error(errors[0])
 }

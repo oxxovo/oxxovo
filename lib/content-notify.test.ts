@@ -8,6 +8,12 @@ import {
   markContentsNotified,
   planNotices,
   runContentNotices,
+  isReturnPending,
+  planReturnNotice,
+  runReturnNotices,
+  listReturnedContents,
+  markReturnedNotified,
+  type ReturnedContent,
   type NotifiableContent,
   type NoticeAdmin,
   type NoticeDeps,
@@ -152,6 +158,7 @@ function fakeDb(rows: Row[]) {
         update: (p: Row) => ((patch = p), q),
         is: (col: string, v: null) => (filters.push((r) => (r[col] ?? null) === v), q),
         in: (col: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[col])), q),
+        eq: (col: string, v: unknown) => (filters.push((r) => r[col] === v), q),
         not: (col: string, op: string, pat: string) => {
           assert.equal(op, 'ilike')
           const re = new RegExp('^' + pat.replace(/%/g, '.*') + '$', 'i')
@@ -193,4 +200,83 @@ test('markContentsNotified only touches rows that are still unnotified, and skip
   assert.ok(typeof db.updates[0].patch.notified_at === 'string')
   await markContentsNotified(db.admin, [])
   assert.equal(db.updates.length, 1)
+})
+
+// ---- returned notices -------------------------------------------------------
+const rt = (n: number, over: Partial<ReturnedContent> = {}): ReturnedContent => ({
+  id: `r${n}`, title: `title ${n}`, kind: 'cf', source_ref: `ref-${n}`, returned_reason: `reason ${n}`,
+  returned_at: `2026-10-08T0${n}:00:00Z`, returned_notified_at: null, ...over,
+})
+
+test('returned judgment: never notified, or notified BEFORE the latest return (re-return) = pending; notified after = not', () => {
+  assert.equal(isReturnPending(rt(1)), true)
+  assert.equal(isReturnPending(rt(1, { returned_notified_at: '2026-10-08T00:30:00Z' })), true) // re-returned later
+  assert.equal(isReturnPending(rt(1, { returned_notified_at: '2026-10-08T01:00:00Z' })), false) // equal = done
+  assert.equal(isReturnPending(rt(1, { returned_notified_at: '2026-10-08T02:00:00Z' })), false)
+  assert.equal(isReturnPending(rt(1, { returned_at: null })), false)
+})
+
+test('returned mail: count in subject, newest reason on the first line, escaped, admin link', () => {
+  const p = planReturnNotice([rt(1), rt(3, { returned_reason: '<b>x</b>"' }), rt(2)])
+  assert.ok(p)
+  assert.match(p!.subject, /^\[OXXOVO\] 3 content item\(s\) returned/)
+  const first = p!.html.split('</p>')[0]
+  assert.match(first, /Returned: &lt;b&gt;x&lt;\/b&gt;&quot; \(and 2 more/)
+  assert.doesNotMatch(p!.html, /<b>x<\/b>/)
+  assert.ok(p!.html.includes('https://www.oxxovo.ai/admin/contents?status=returned'))
+  assert.deepEqual(p!.marks.map((m) => m.id), ['r3', 'r2', 'r1'])
+  assert.equal(planReturnNotice([]), null)
+  assert.match(planReturnNotice([rt(1, { returned_reason: null })])!.html, /no reason recorded/)
+})
+
+test('returned mail: probe- rows never reach a mail or a mark (control: a real row does)', () => {
+  const probe = [rt(1, { source_ref: 'probe-rpc-20261005' }), rt(2, { source_ref: 'PROBE-x' })]
+  assert.equal(planReturnNotice(probe), null)
+  assert.deepEqual(planReturnNotice([...probe, rt(3)])!.marks.map((m) => m.id), ['r3'])
+})
+
+test('returned mail: a return already notified is not mailed again (control: re-return is)', () => {
+  assert.equal(planReturnNotice([rt(2, { returned_notified_at: '2026-10-08T05:00:00Z' })]), null)
+  assert.ok(planReturnNotice([rt(2, { returned_notified_at: '2026-10-08T01:00:00Z' })]))
+})
+
+test('returned: marked only AFTER the mail was accepted, with the returned_at that was seen', async () => {
+  const marked: unknown[] = []
+  const mk = (ok: boolean) => ({
+    async list() { return [rt(1)] },
+    async send() { return ok },
+    async mark(m: unknown) { marked.push(m) },
+  })
+  const r1 = await runReturnNotices(mk(true))
+  assert.deepEqual([r1.mails, r1.marked], [1, 1])
+  assert.deepEqual(marked, [[{ id: 'r1', returned_at: '2026-10-08T01:00:00Z' }]])
+
+  marked.length = 0
+  const r2 = await runReturnNotices(mk(false))
+  assert.deepEqual([r2.mails, r2.marked, marked.length], [0, 0, 0])
+  assert.deepEqual(r2.warnings, ['return_notice_not_sent'])
+
+  const r3 = await runReturnNotices({ ...mk(true), async send() { throw new Error('boom') } })
+  assert.equal(r3.marked, 0)
+  assert.match(r3.warnings[0], /return_notice_failed:boom/)
+  const r4 = await runReturnNotices({ ...mk(true), async list() { throw new Error('no column') } })
+  assert.match(r4.warnings[0], /return_notify_list_failed:no column/)
+})
+
+test('listReturnedContents: probe- excluded by the QUERY; notified, non-returned rows too (control: pending ones come)', async () => {
+  const db = fakeDb([
+    { ...rt(1), status: 'returned' },
+    { ...rt(2, { source_ref: 'probe-rpc-20261005' }), status: 'returned' },
+    { ...rt(3, { returned_notified_at: '2026-10-09T00:00:00Z' }), status: 'returned' },
+    { ...rt(4, { returned_notified_at: '2026-10-08T00:00:00Z' }), status: 'returned' }, // re-return
+    { ...rt(5), status: 'held' },
+  ])
+  const got = await listReturnedContents(db.admin)
+  assert.deepEqual(got.map((r) => r.id).sort(), ['r1', 'r4'])
+})
+
+test('markReturnedNotified writes the seen returned_at and only touches rows still returned', async () => {
+  const db = fakeDb([{ id: 'a', status: 'returned' }, { id: 'b', status: 'held' }])
+  await markReturnedNotified(db.admin, [{ id: 'a', returned_at: 'T1' }, { id: 'b', returned_at: 'T2' }])
+  assert.deepEqual(db.updates.map((u) => [u.patch.returned_notified_at, u.ids]), [['T1', ['a']], ['T2', []]])
 })

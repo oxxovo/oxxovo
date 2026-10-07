@@ -47,6 +47,7 @@ async function handle(request: NextRequest) {
           swept: report.swept,
           alerted: report.alerted,
           notified: report.notified,
+          returnedNotified: report.returnedNotified,
           stopped: report.stopped,
           warnings: report.warnings,
         }),
