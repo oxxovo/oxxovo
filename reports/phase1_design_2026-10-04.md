@@ -1583,8 +1583,14 @@ content_dispatch_backoff_base_minutes
 **Phase 2에서 결정하거나 고쳐야 하는 것 (막는 것이 아니라 일)**
 1. **수입 요청 검증**: 최상위·에셋의 **알 수 없는 필드는 400**이고 해시 함수도 던진다. 출처가 시리즈 정보를 보내려면 `validateImportRequest`, 해시의 알려진 필드 목록, `content_import` RPC를 함께 확장해야 한다. 시그니처는 `(source, payload jsonb)`라 **오버로드는 생기지 않는다**(`CREATE OR REPLACE`).
 2. **불변 여부**: `series_id`·회차를 `kind`처럼 불변으로 둘지, 나중에 붙일 수 있게 가변으로 둘지. 가변이면 **새 RPC와 감사 필드 추가**가 필요하다(지금 감사 목록은 9개 고정).
-3. **⚠️ 승인 단위**: `UNIQUE (source, upstream_approval_id)` — 승인 하나는 콘텐츠 한 버전에만 쓸 수 있다. **제작 쪽이 시즌 단위로 승인 하나를 발급하면 둘째 에피소드가 `approval_id_reused`(409)로 막힌다.** 제니2에게 "승인은 에피소드마다 별도 UUID인가"를 지금 확인하는 것이 가장 싸다(막으려면 제약을 풀어야 하고, 데이터가 쌓이기 전이 쉽다).
-4. **출처 표시 라벨**: `news`->DAILY, `drama`/`film`->ORIGINAL, `music`/`music_video`->MUSIC은 `kind`에서 나온다. 그러나 **외부 고객 CF(COMMERCIAL, Production Service)와 자체 CF는 둘 다 `kind=cf`** 라 구분이 안 된다. Phase 2에 "출처 라벨/고객" 같은 additive 컬럼이 필요할 수 있다.
+3. **✅ 승인 단위 — 확인 완료, 제약 그대로 유지(제니2, 2026-10-07)**: `UNIQUE (source, upstream_approval_id)`는 바꾸지 않는다. 제니2 확인: **approval은 프로젝트/시즌 전체에 두루 쓰는 승인증이 아니라 특정 subject + 특정 version에 대한 승인 증거다.** `Series -> Season -> Episode -> Episode Version -> final_release Approval`이고, Episode 1 v1 = UUID A, Episode 2 v1 = UUID B, Episode 2 v2 = **새 UUID D(B 재사용 안 함)**. 영화도 같다(한 편 = 독립 release subject, Sequel/Collection은 묶음 관계일 뿐 승인은 각각). 따라서 `approval_id_reused`(409)는 시즌 안에서 나지 않는다. 근거: "그래야 수정·반송·재승인 provenance가 안 깨진다." (시즌 단위였으면 데이터가 쌓이기 전인 지금 고치는 것이 훨씬 쌌다 — 물어 둔 보람은 "바꿀 것이 없음"의 확인.)
+4. **출처 표시 라벨 — Phase 2 `production_origin` (제니2 안, 2026-10-07, 지금 구현하지 않는다)**: `news`->DAILY, `drama`/`film`->ORIGINAL, `music`/`music_video`->MUSIC은 `kind`에서 나온다. **외부 고객 CF와 자체 CF는 둘 다 `kind=cf`가 맞다 — `kind`는 나누지 않는다.** 구분할 것은 "어떤 사업 관계로 제작됐는가"이고, **세 축으로 분리**한다.
+   - `kind` = 콘텐츠 종류(cf, film, drama ...)
+   - `production_origin` = 제작 사업 성격: `oxxovo_original` | `client_production`
+   - `client_id` = 누구의 의뢰인가
+   - **`client_id`를 "외부 수주 여부" 판정값으로 쓰지 않는다**(고객 정보가 없을 수도 있고, 내부 프로젝트에도 파트너가 붙을 수 있다).
+   - 홈 카드 라벨: `production_origin = oxxovo_original` -> **OXXOVO ORIGINAL**, `production_origin = client_production` + `kind = cf` -> **COMMERCIAL**.
+   - Phase 1 DB는 additive하게 두 컬럼(nullable)을 더하는 것으로 받는다. 수입 요청 검증과 RPC 확장은 12-3의 1번과 같은 종류의 일이다.
 5. **정렬·묶기**: 지금 목록은 `publish_at desc, id desc`(최대 50건)다. 시리즈로 묶는 것은 **스키마가 아니라 쿼리 변경**이다.
 6. **`kind` 검사 제약**은 값을 열거하므로 새 종류는 `ALTER`가 필요하지만, Series 자체는 새 `kind`가 필요 없다. "음악" 합치기는 화면 문제라 DB 변경이 없다. 대회 탭은 `contents`에 없고(분리 유지) 홈이 두 출처를 합친다.
 
