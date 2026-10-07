@@ -101,7 +101,8 @@
 | ⑨ | 7 | 상세 SQL probe 제외 · 목록 SQL probe 제외 · 재검사 probe · projection `source_ref` 유출 · 오류 로그에 message · content 쿼리 로그 제거 · asset 쿼리 로그 제거 |
 | ⑩ 준비 | 10 | 기본값을 public으로 · 틱 시작 값 사용 · 재확인 읽기에서 키 제거(**테스트 결함 포착**) · 모든 채널에 YouTube 설정 · 가시성 재파싱 제거 · 제목 꺾쇠 정리 제거 · 100자 제한 제거 · 최소 2자 검사 제거 · 사전 제목 검사 제거 · YouTube 행에 설정 안 넘김 |
 | 문구 정리 | 7 | 규칙 페이지·챗봇·한글 붙은 형태에 구 명칭 재삽입 3 · 검사기 한글 붙은 경우 못 잡게 · 검사기 CRLF 되돌림 · 허용 목록 이메일 항목 삭제 · 허용 목록 낡은 항목 |
-| 합계 | **37** | ⑦ 5 + ⑧ 8 + ⑨ 7 + ⑩ 준비 10 + 문구 7 |
+| 반송 알림 | 8 | 쿼리 probe 제외 · 빌더 probe 제외 · 메일 실패해도 기록 · `returned_notified_at < returned_at` 제거 · 이스케이프 · 틱 단계 제거 · 단계 크래시 재던짐(**테스트 결함 포착**) · 기록값 `now()` |
+| 합계 | **45** | ⑦ 5 + ⑧ 8 + ⑨ 7 + ⑩ 준비 10 + 문구 7 + 반송 알림 8 |
 - 전부 빨개졌고 원복 후 통과. (⑨ 상세 SQL 제외를 빼도 "id로 조회" 테스트는 재검사가 막아 통과한다 -> "층별로 따로 검증하는" 테스트가 잡는다. 층마다 독립 검증이 필요한 이유.)
 
 ### 대조군을 먼저 세운다 (원칙 재확인)
@@ -146,6 +147,23 @@
 - **승인 단위 확정(제니2):** 승인은 프로젝트/시즌 전체가 아니라 **특정 subject + 특정 version**의 증거다. Episode 1 v1 = UUID A, Episode 2 v1 = B, Episode 2 v2 = 새 UUID D. 영화도 한 편 = 독립 release subject. **`UNIQUE (source, upstream_approval_id)` 그대로 유지**(시즌 단위였다면 지금이 가장 쌌다 — 바꿀 것이 없음을 확인한 것).
 - **CF 구분 세 축(제니2 안, Phase 2, 구현 안 함):** `kind`는 안 나눈다(둘 다 `cf`). `production_origin`(`oxxovo_original` | `client_production`), `client_id`(누구의 의뢰인가). **`client_id`를 "외부 수주 여부" 판정값으로 쓰지 않는다.** 라벨: `oxxovo_original` -> OXXOVO ORIGINAL, `client_production` + `cf` -> COMMERCIAL.
 
+## 6-3. 저녁 작업: 반송 알림 (SQL -> 코드 -> 배포 `4fb8824`)
+
+- **SQL(TK님 Run, 본부 동석):** B1 사전 확인 -> B2 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS returned_notified_at timestamptz` -> B3 `pg_attribute` 되읽기 -> B4 기존 행 `count(*)` -> **B6 컬럼 ACL 확인(`aclexplode`, 본부 추가 승인).** B6 결과: table 단위 16행(`postgres`·`service_role` 각 8권한), column 단위 0행, `anon`·`authenticated`·`PUBLIC` 없음. "테이블 GRANT가 새 컬럼에도 적용된다"는 **믿지 않고 확인**했다.
+- **코드:** `lib/content-notify.ts`(판정 `isReturnPending`·`planReturnNotice`·`runReturnNotices`·읽기·기록), 틱 1d 단계(별도 `try`), 크론 로그 `returnedNotified`. 판정은 트리거·RPC 없이 비교. 설계서 "반송 알림 구현" 절에 근거 기록.
+- **승인된 설계와 다르게 한 둘(본부 승인):** ① 기록값을 `now()`가 아니라 **읽을 때 본 `returned_at`**으로 — `now()`면 읽기와 기록 사이에 들어온 재반송이 알리지 않은 채 "완료"로 판정돼 조용히 사라진다. ② PostgREST가 두 컬럼을 비교하지 못해 **읽기 두 번(미통지 오래된 순 / 최근 반송 순)을 합치고 코드에서 같은 판정을 한 번 더** 건다(⑤ 공개 판정과 같은 방식).
+- **검증:** `npm test` 778 통과, `tsc`·eslint 통과. **가드 훼손 8건 전부 빨개짐**(원복 후 통과): 쿼리 probe 제외 · 빌더 probe 제외 · 메일 실패해도 기록 · `returned_notified_at < returned_at` 조건 제거(3건 빨강) · 이스케이프 · 틱에서 단계 제거 · 단계 크래시를 틱 밖으로 던짐 · 기록값을 `now()`로. 누적 합계 **37 -> 45**.
+- **배포·라이브 확인:** `4fb8824`, `www.oxxovo.ai/api/version`이 `sha:"4fb8824"`, `dirty:false`. 배포 스크립트의 자동 검증은 이번에도 "Could not verify automatically"(배포 고유 URL이 HTML을 줌, 4순위 이월 건)라 `www`로 직접 확인했다.
+- **첫 틱(18:45:14 UTC, 새 배포 `dpl_FTmf39yb`):** `{"stage":"no_open_dba","processed":0,"swept":0,"alerted":0,"notified":0,"returnedNotified":0,"stopped":null,"warnings":[]}` — **기대값과 일치**(`returnedNotified:0`이므로 probe- 제외가 새지 않았고, `return_notify_list_failed` 없음 = 컬럼을 PostgREST가 읽는다). 대조군: 직전 틱(18:40, 옛 배포 `dpl_GidEmeP`)은 `returnedNotified` 필드가 없다 -> 로그 도구가 두 배포를 구분해 읽고 있다. 이 틱은 반송 행이 `probe-rpc-20261005` 하나뿐이라 **"메일을 안 보낸 것"의 확인이지 "보내는 것"의 확인이 아니다.** info@ 메일 0통은 TK님 확인 대기.
+- **한계:** ① 메일 수락 후 기록 실패 -> 다음 틱에 같은 메일 한 번 더(⑧ `notified_at`과 같은 한계). ② **실제 메일 경로는 라이브 미검증, ⑩의 `[반송]`이 처음 돌린다.** ③ 이미 통지된 행이 재반송된 뒤 **한 틱 사이에 100건 넘게** 다른 반송이 들어오면 놓칠 수 있다(재반송은 `returned_at`이 최신이라 읽기 B에 잡힘).
+
+### ★ 가드 훼손 시험이 초록이면 가드가 아니라 시험을 의심한다 (반송 알림, 훼손 7번)
+
+- **무슨 일:** 훼손 7번("틱에서 반송 단계가 크래시해도 밖으로 안 던진다" 보호를 `throw e`로 바꿈)이 **처음에 초록이었다**(`STAYED GREEN`). 가드가 안 걸린 것이 아니라 **시험이 그 가드에 닿지 못했다.**
+- **원인:** 시험이 `listReturned`를 동기로 던지게 했는데, 그 경우는 러너 **안쪽** `try`가 먼저 잡는다. 틱 단계의 `catch`는 한 번도 실행되지 않았다. 훼손한 줄이 **도달 불가능한 코드**였다.
+- **고친 것:** `list()`가 `null`로 resolve하게 했다. 러너의 `try`(list만 감쌈)를 지나 플래너에서 던지므로 **틱의 `catch`만이** 막을 수 있다. 같은 훼손이 빨개졌다.
+- **교훈:** 어제 가짜 `readConfig`가 요청 키를 안 걸러 훼손 3번이 초록이었던 것과 **같은 종류**다. 훼손이 초록이면 "가드가 필요 없다"도 "가드가 이미 있다"도 아니고 **먼저 시험을 의심한다.** 훼손한 줄이 그 시험 입력으로 **실제로 실행되는가**를 확인한다. 초록 훼손을 그냥 넘기면 안전망이 없는 상태가 안전해 보인다.
+
 ## 7. 영구 잔존 시험 행 (변화 없음)
 
 `probe-trg-20261005`(hidden) · `probe-rpc-20261005`(returned) · `probe-rt-20261006054214`(held, blocked) · `probe-rt-cl-20261006060004`(**hidden**, cleared, 배포 posted `probe-stub`, **hidden 유지 필수**; 본부 전달 id `9946fb81-3ecb-40ee-b065-7c0fb1456818`).
@@ -153,7 +171,8 @@
 
 ## 8. 미결 — 우선순위대로 (본부 정리 2026-10-07)
 
-### 1순위 — 내일 첫 작업: **반송 알림 (승인됨, 내일 SQL부터)**
+### 1순위 — ~~반송 알림~~ **완료·라이브 `4fb8824`**(6-3절). 남은 것: 메일 실제 발송은 ⑩의 `[반송]`이 처음 돌린다. 아래는 승인 당시 기록.
+### (기록) 반송 알림 — 내일 첫 작업이었던 것
 - 영상 없이 할 수 있고 ⑩과 겹치지 않아서 영상이 오기 전에 한다. **⑩ 자체는 영상 대기다**(2순위).
 - 내일 순서: ① SQL 블록(사전 확인 -> 추가 -> 되읽기 -> 되돌리기, **TK님이 Run하실 때 본부가 같이 본다** — 오늘은 만들지 않았다) ② 코드 ③ **배포는 TK님 명령**. 방법은 아래 "반송 알림" 절.
 
@@ -208,7 +227,8 @@
 ## 9. 인계 메모
 
 **현재 상태**
-- 레포 `main` = 라이브 = **`9ab016e`**(이 EOD 커밋 전). 작업 트리 clean.
+- **(저녁 갱신) 레포 `main` = 라이브 = `4fb8824`**(반송 알림, 6-3절). 아래 `9ab016e`는 오후 시점 기록. 컬럼 `contents.returned_notified_at` 라이브. 크론 로그에 `returnedNotified` 필드 추가(정상 `0`). 8절 1순위는 완료.
+- 레포 `main` = 라이브 = **`9ab016e`**(오후 EOD 커밋 전). 작업 트리 clean.
 - **오늘 라이브 상태(확정):** SHA `9ab016e` · 스위치 **마스터만 열림, 엔터·데일리 닫힘** · **실제 SNS 게시 0건** · **공개 화면 전부 404** · 크론 `no_open_dba`. **⑩은 뉴스·엔터 영상 대기**(양쪽에 제작 지시가 나갔다).
 - 플래그(변화 없음): `social_dispatch_enabled=true`, `news_dispatch_enabled=false`, `entertainment_dispatch_enabled=false`, `news_publication_enabled=false`, `entertainment_publication_enabled=false`, `competition_publication_enabled=false`. **실제 SNS 게시 0건, 공개 화면 전부 404. 건드리지 말 것.**
 - 크론 6개 그대로. 틱 로그에 `notified` 필드가 추가됐다: `[content-dispatch] {"stage":...,"notified":N,...}`. 정상은 `no_open_dba`·`notified:0`·`warnings:[]`.
