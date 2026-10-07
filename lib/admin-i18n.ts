@@ -89,6 +89,7 @@ export type Messages = {
       emails: string
       credits: string
       promo: string
+      contents: string
       actors: string
       music: string
       messages: string
@@ -1149,6 +1150,7 @@ const MESSAGES_EN: Messages = {
       emails: 'Emails',
       credits: 'Credits',
       promo: 'Promo videos',
+      contents: 'Content dispatch',
       actors: 'Actors',
       music: 'Music library',
       messages: 'Messages',
@@ -2205,6 +2207,7 @@ const MESSAGES_KO: Messages = {
       emails: '이메일',
       credits: '크레딧',
       promo: '홍보영상',
+      contents: '콘텐츠 송출',
       actors: '배우',
       music: '음악 라이브러리',
       messages: '메시지',
