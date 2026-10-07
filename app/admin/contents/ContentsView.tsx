@@ -10,13 +10,22 @@ import {
   PROBE_BLOCK_MESSAGE,
   STATUS_FILTER_LABEL,
   formatMB,
+  formatPT,
   isProbeRef,
   isRightsWaiting,
+  ptWallToIso,
   remainingLabel,
   type DbaFilter,
   type DispatchSwitches,
   type StatusFilter,
 } from '@/lib/content-admin'
+import {
+  BUTTON_TEXT,
+  CONTENT_STATUS_TEXT,
+  DIST_STATUS_TEXT,
+  HELD_REASON_TEXT,
+  SCREEN_TEXT,
+} from '@/lib/content-admin-text'
 import type { ContentKind, Dba } from '@/lib/content-kinds'
 import {
   holdContentAction,
@@ -78,20 +87,26 @@ type Props = {
   truncated: boolean
 }
 
-const STATUS_TEXT: Record<string, string> = { scheduled: '예약', held: '정지', returned: '반송', hidden: '숨김' }
-const DIST_TEXT: Record<string, string> = {
-  queued: '대기', sending: '송출 중', posted: '송출됨', failed: '실패', unknown: '⚠️ 확인 필요',
-  cancelled: '취소', skipped_no_asset: '건너뜀(에셋 없음)', skipped_oversize: '건너뜀(용량 초과)',
-}
+// A value the table does not know is shown raw, never hidden (a new DB status must be visible).
+const statusText = (s: string) => (CONTENT_STATUS_TEXT as Record<string, string>)[s] ?? s
+const distText = (s: string) => (DIST_STATUS_TEXT as Record<string, string>)[s] ?? s
 
 function heldReasonText(c: ContentRow): string | null {
   if (c.status !== 'held') return null
   const calc = isRightsWaiting({ status: c.status, rights_status: c.rightsStatus, held_reason: c.heldReason })
-    ? `권리 미확정(${c.rightsStatus})`
+    ? HELD_REASON_TEXT.rightsNotCleared(c.rightsStatus)
     : null
-  const stored = c.heldReason === 'late_for_slot' ? '슬롯을 놓침' : c.heldReason === 'manual' ? '수동 정지' : c.heldReason
+  const stored =
+    c.heldReason === 'late_for_slot'
+      ? HELD_REASON_TEXT.late_for_slot
+      : c.heldReason === 'manual'
+        ? HELD_REASON_TEXT.manual
+        : c.heldReason
   // Both on purpose (design SS8): the computed reason and the stored one can differ.
-  return [calc && `계산: ${calc}`, stored && `저장: ${stored}`].filter(Boolean).join(' / ') || '사유 없음(버전 2 이상 등)'
+  return (
+    [calc && HELD_REASON_TEXT.computed(calc), stored && HELD_REASON_TEXT.stored(stored)].filter(Boolean).join(' / ') ||
+    HELD_REASON_TEXT.none
+  )
 }
 
 const pill = 'px-2.5 py-1 rounded text-xs border transition'
@@ -101,62 +116,62 @@ export function ContentsView(p: Props) {
   const { banner } = p
   return (
     <div className="p-8">
-      <AdminPageHeader title="콘텐츠 송출" subtitle="수입된 콘텐츠의 상태·송출 대기열을 관리합니다. [송출]은 대기열에 넣는 버튼이며, 실제 게시는 5분 크론이 합니다." />
+      <AdminPageHeader title={SCREEN_TEXT.title} subtitle={SCREEN_TEXT.subtitle} />
       <div className="space-y-5">
         {(banner.configUnreadable || banner.missingRequired.length > 0) && (
           <div role="alert" className="border border-[#ff4444]/60 bg-[#ff4444]/10 rounded p-3 text-sm text-[#ff8888]">
-            <b>송출 설정 없음 — 지금은 아무것도 송출되지 않습니다.</b>{' '}
+            <b>{SCREEN_TEXT.noConfigTitle}</b>{' '}
             {banner.configUnreadable
-              ? '설정을 읽지 못했습니다.'
-              : `없는 키: ${banner.missingRequired.join(', ')}`}
+              ? SCREEN_TEXT.configUnreadable
+              : SCREEN_TEXT.missingKeys(banner.missingRequired.join(', '))}
           </div>
         )}
         {banner.missingRetry.length > 0 && !banner.configUnreadable && (
           <div className="border border-[#ff8844]/40 bg-[#ff8844]/5 rounded p-3 text-xs text-[#ffaa66]">
-            재시도 설정이 없어 실패한 송출은 자동 재시도 없이 바로 &quot;조치 필요&quot;가 됩니다 ({banner.missingRetry.join(', ')}).
+            {SCREEN_TEXT.noRetryConfig(banner.missingRetry.join(', '))}
           </div>
         )}
         <SwitchLine s={banner.switches} />
 
         <div className="space-y-2">
-          <FilterRow label="DBA">
+          <FilterRow label={SCREEN_TEXT.filterDba}>
             {(['all', 'entertainment', 'news'] as const).map((v) => (
               <Chip key={v} href={p.links.dba[v]} active={p.filters.dba === v}>
-                {v === 'all' ? '전체' : DBA_LABEL[v]}
+                {v === 'all' ? STATUS_FILTER_LABEL.all : DBA_LABEL[v]}
               </Chip>
             ))}
           </FilterRow>
-          <FilterRow label="상태">
+          <FilterRow label={SCREEN_TEXT.filterStatus}>
             {(Object.keys(STATUS_FILTER_LABEL) as StatusFilter[]).map((v) => (
               <Chip key={v} href={p.links.status[v]} active={p.filters.status === v}>
                 {STATUS_FILTER_LABEL[v]}
               </Chip>
             ))}
           </FilterRow>
-          <FilterRow label="kind">
+          <FilterRow label={SCREEN_TEXT.filterKind}>
             {Object.keys(p.links.kind).map((v) => (
               <Chip key={v} href={p.links.kind[v]} active={p.filters.kind === v}>
-                {v === 'all' ? '전체' : v}
+                {v === 'all' ? STATUS_FILTER_LABEL.all : v}
               </Chip>
             ))}
           </FilterRow>
-          <FilterRow label="시험 행">
+          <FilterRow label={SCREEN_TEXT.filterTestRows}>
             <Chip href={p.links.probeToggle} active={p.filters.showProbe}>
-              {p.filters.showProbe ? 'probe- 행 보는 중 (끄기)' : 'probe- 행 숨김 (보기)'}
+              {p.filters.showProbe ? SCREEN_TEXT.probeShown : SCREEN_TEXT.probeHidden}
             </Chip>
-            {p.filters.showProbe && <span className="text-xs text-white/40">시험 행은 [송출]·[다시 보냄]이 막혀 있습니다.</span>}
+            {p.filters.showProbe && <span className="text-xs text-white/40">{SCREEN_TEXT.probeNote}</span>}
           </FilterRow>
         </div>
 
         {p.loadError && (
           <div role="alert" className="border border-[#ff4444]/60 bg-[#ff4444]/10 rounded p-3 text-sm text-[#ff8888]">
-            목록을 불러오지 못했습니다: {p.loadError}
+            {SCREEN_TEXT.loadFailed(p.loadError)}
           </div>
         )}
-        {p.truncated && (
-          <div className="text-xs text-[#ffaa66]">최근 {p.limit}건까지만 읽었습니다. 필터를 좁히세요.</div>
+        {p.truncated && <div className="text-xs text-[#ffaa66]">{SCREEN_TEXT.truncated(p.limit)}</div>}
+        {!p.loadError && p.rows.length === 0 && (
+          <div className="text-sm text-white/40 py-10 text-center">{SCREEN_TEXT.empty}</div>
         )}
-        {!p.loadError && p.rows.length === 0 && <div className="text-sm text-white/40 py-10 text-center">해당하는 콘텐츠가 없습니다.</div>}
 
         <div className="space-y-4">
           {p.rows.map((c) => (
@@ -169,11 +184,13 @@ export function ContentsView(p: Props) {
 }
 
 function SwitchLine({ s }: { s: DispatchSwitches | null }) {
-  if (!s) return <div className="text-xs text-[#ffaa66]">송출 스위치 상태를 읽지 못했습니다.</div>
-  const f = (on: boolean) => (on ? <b className="text-[#66dd88]">열림</b> : <b className="text-[#ff8888]">닫힘</b>)
+  if (!s) return <div className="text-xs text-[#ffaa66]">{SCREEN_TEXT.switchesUnreadable}</div>
+  const f = (on: boolean) =>
+    on ? <b className="text-[#66dd88]">{SCREEN_TEXT.open}</b> : <b className="text-[#ff8888]">{SCREEN_TEXT.closed}</b>
   return (
     <div className="text-xs text-white/60">
-      송출 스위치 — 마스터 {f(s.master)} · 엔터 {f(s.entertainment)} · 데일리 {f(s.news)}
+      {SCREEN_TEXT.switchLine} — {SCREEN_TEXT.master} {f(s.master)} · {DBA_LABEL.entertainment} {f(s.entertainment)} ·{' '}
+      {DBA_LABEL.news} {f(s.news)}
     </div>
   )
 }
@@ -225,7 +242,7 @@ function Card({ c, nowIso, switches }: { c: ContentRow; nowIso: string; switches
   }
 
   async function onReturn() {
-    const r = window.prompt('반송 사유를 입력하세요 (필수, 2000자 이하)')
+    const r = window.prompt(SCREEN_TEXT.returnPrompt)
     if (r === null) return
     await go(() => returnContentAction(c.id, r))
   }
@@ -242,26 +259,28 @@ function Card({ c, nowIso, switches }: { c: ContentRow; nowIso: string; switches
             className="w-48 max-h-44 rounded bg-black shrink-0"
           />
         ) : (
-          <div className="w-48 h-28 rounded bg-white/5 text-white/30 text-xs flex items-center justify-center shrink-0">영상 없음</div>
+          <div className="w-48 h-28 rounded bg-white/5 text-white/30 text-xs flex items-center justify-center shrink-0">{SCREEN_TEXT.noVideo}</div>
         )}
         <div className="flex-1 min-w-[16rem] space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-white">{c.title}</span>
-            <span className="text-[11px] px-1.5 py-0.5 rounded bg-white/10">{STATUS_TEXT[c.status] ?? c.status}</span>
+            <span className="text-[11px] px-1.5 py-0.5 rounded bg-white/10">{statusText(c.status)}</span>
             <span className="text-[11px] text-white/50">{c.kind} · {DBA_LABEL[c.dba]} · v{c.version}</span>
-            {probe && <span className="text-[11px] px-1.5 py-0.5 rounded bg-[#ff8844]/20 text-[#ffaa66]">시험 행</span>}
+            {probe && <span className="text-[11px] px-1.5 py-0.5 rounded bg-[#ff8844]/20 text-[#ffaa66]">{SCREEN_TEXT.testRow}</span>}
           </div>
           <div className="text-[11px] text-white/40 break-all">{c.sourceRef}</div>
           <div className="text-xs text-white/70">
-            송출 예정 {new Date(c.publishAt).toLocaleString('ko-KR')} ({remainingLabel(c.publishAt, new Date(nowIso))})
+            {SCREEN_TEXT.dispatchScheduled(formatPT(c.publishAt), remainingLabel(c.publishAt, new Date(nowIso)))}
           </div>
           {c.rightsStatus !== 'cleared' && (
-            <div className="text-xs text-[#ffaa66]">권리 {c.rightsStatus}{c.rightsReason ? ` — ${c.rightsReason}` : ''}</div>
+            <div className="text-xs text-[#ffaa66]">{SCREEN_TEXT.rights(c.rightsStatus, c.rightsReason)}</div>
           )}
-          {reason && <div className="text-xs text-[#ffaa66]">정지 사유 — {reason}</div>}
-          {c.returnedReason && c.status === 'returned' && <div className="text-xs text-[#ff8888]">반송 사유 — {c.returnedReason}</div>}
+          {reason && <div className="text-xs text-[#ffaa66]">{SCREEN_TEXT.holdReason(reason)}</div>}
+          {c.returnedReason && c.status === 'returned' && (
+            <div className="text-xs text-[#ff8888]">{SCREEN_TEXT.returnReason(c.returnedReason)}</div>
+          )}
           {(c.status === 'returned' || c.status === 'hidden') && postedDists.length > 0 && (
-            <div className="text-xs text-[#ff8888]">이미 송출됨 — 각 플랫폼에서 직접 삭제해야 합니다.</div>
+            <div className="text-xs text-[#ff8888]">{SCREEN_TEXT.alreadyDispatched}</div>
           )}
         </div>
       </div>
@@ -273,7 +292,7 @@ function Card({ c, nowIso, switches }: { c: ContentRow; nowIso: string; switches
           ))}
         </ul>
       ) : (
-        <div className="text-xs text-white/40">송출 채널 없음 (사이트 전용)</div>
+        <div className="text-xs text-white/40">{SCREEN_TEXT.noChannels}</div>
       )}
 
       {editing === 'meta' && <MetaEditor c={c} busy={busy} go={go} onClose={() => setEditing(null)} />}
@@ -282,9 +301,9 @@ function Card({ c, nowIso, switches }: { c: ContentRow; nowIso: string; switches
       <div className="flex items-center gap-2 flex-wrap">
         {c.status === 'scheduled' && (
           <>
-            <button className={btn} disabled={busy} onClick={() => go(() => holdContentAction(c.id))}>정지</button>
-            <button className={btn} disabled={busy} onClick={() => go(() => hideContentAction(c.id))}>숨김</button>
-            <button className={btn} disabled={busy} onClick={onReturn}>반송</button>
+            <button className={btn} disabled={busy} onClick={() => go(() => holdContentAction(c.id))}>{BUTTON_TEXT.hold}</button>
+            <button className={btn} disabled={busy} onClick={() => go(() => hideContentAction(c.id))}>{BUTTON_TEXT.hide}</button>
+            <button className={btn} disabled={busy} onClick={onReturn}>{BUTTON_TEXT.return}</button>
           </>
         )}
         {c.status === 'held' && (
@@ -295,29 +314,29 @@ function Card({ c, nowIso, switches }: { c: ContentRow; nowIso: string; switches
               title={probe ? PROBE_BLOCK_MESSAGE : undefined}
               onClick={onRelease}
             >
-              송출
+              {BUTTON_TEXT.dispatch}
             </button>
-            <button className={btn} disabled={busy} onClick={onReturn}>반송</button>
+            <button className={btn} disabled={busy} onClick={onReturn}>{BUTTON_TEXT.return}</button>
           </>
         )}
         {c.status === 'returned' && (
-          <button className={btn} disabled={busy} onClick={() => go(() => holdContentAction(c.id))} title="오반송 복구 — 정지 상태로 돌아갑니다">
-            정지로 복구
+          <button className={btn} disabled={busy} onClick={() => go(() => holdContentAction(c.id))} title={SCREEN_TEXT.restoreTitle}>
+            {BUTTON_TEXT.restoreToHold}
           </button>
         )}
         {c.status === 'hidden' && (
           <>
-            <button className={btn} disabled={busy} onClick={() => go(() => unhideContentAction(c.id))}>되살리기</button>
-            <button className={btn} disabled={busy} onClick={onReturn}>반송</button>
+            <button className={btn} disabled={busy} onClick={() => go(() => unhideContentAction(c.id))}>{BUTTON_TEXT.unhide}</button>
+            <button className={btn} disabled={busy} onClick={onReturn}>{BUTTON_TEXT.return}</button>
           </>
         )}
-        <button className={btn} disabled={busy} onClick={() => setEditing(editing === 'meta' ? null : 'meta')}>메타 수정</button>
+        <button className={btn} disabled={busy} onClick={() => setEditing(editing === 'meta' ? null : 'meta')}>{BUTTON_TEXT.editMetadata}</button>
         {(c.status === 'scheduled' || c.status === 'held') && (
-          <button className={btn} disabled={busy} onClick={() => setEditing(editing === 'time' ? null : 'time')}>송출 시각 수정</button>
+          <button className={btn} disabled={busy} onClick={() => setEditing(editing === 'time' ? null : 'time')}>{BUTTON_TEXT.editDispatchTime}</button>
         )}
         {probe && c.status === 'held' && <span className="text-xs text-[#ffaa66]">{PROBE_BLOCK_MESSAGE}</span>}
         {c.status === 'held' && !probe && c.oversizeBytes !== null && (
-          <span className="text-xs text-[#ffaa66]">영상 {formatMB(c.oversizeBytes)} — 송출 상한 초과, 송출에서 실패합니다</span>
+          <span className="text-xs text-[#ffaa66]">{SCREEN_TEXT.oversize(formatMB(c.oversizeBytes))}</span>
         )}
       </div>
 
@@ -326,15 +345,15 @@ function Card({ c, nowIso, switches }: { c: ContentRow; nowIso: string; switches
       {modal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div className="bg-[#100608] border border-[#ff4444]/40 rounded p-5 max-w-md w-full space-y-3">
-            <div className="text-sm font-bold text-white">송출 대기열에 넣기</div>
+            <div className="text-sm font-bold text-white">{SCREEN_TEXT.queueDialogTitle}</div>
             <div className="text-sm text-white/80 space-y-1.5">
               {modal.map((l, i) => (
                 <p key={i}>{l}</p>
               ))}
             </div>
-            {switches === null && <p className="text-xs text-[#ffaa66]">스위치 상태를 읽지 못했습니다.</p>}
+            {switches === null && <p className="text-xs text-[#ffaa66]">{SCREEN_TEXT.switchStateUnreadable}</p>}
             <div className="flex justify-end gap-2 pt-1">
-              <button className={btn} disabled={busy} onClick={() => setModal(null)}>취소</button>
+              <button className={btn} disabled={busy} onClick={() => setModal(null)}>{BUTTON_TEXT.cancel}</button>
               <button
                 className={`${btn} border-[#ff4444]/60 text-[#ff8888]`}
                 disabled={busy}
@@ -343,7 +362,7 @@ function Card({ c, nowIso, switches }: { c: ContentRow; nowIso: string; switches
                   setModal(null) // a failure shows under the card
                 }}
               >
-                대기열에 넣기
+                {BUTTON_TEXT.addToQueue}
               </button>
             </div>
           </div>
@@ -362,9 +381,9 @@ function DistLine({ d, probe, busy, go }: { d: DistRow; probe: boolean; busy: bo
     <li className="flex items-center gap-2 flex-wrap text-xs">
       <span className="w-20 text-white/60">{d.platform}</span>
       <span className={d.status === 'unknown' || d.status === 'failed' ? 'text-[#ffaa66] font-bold' : 'text-white/80'}>
-        {DIST_TEXT[d.status] ?? d.status}
+        {distText(d.status)}
       </span>
-      {d.attempts > 0 && <span className="text-white/40">시도 {d.attempts}</span>}
+      {d.attempts > 0 && <span className="text-white/40">{SCREEN_TEXT.attempts(d.attempts)}</span>}
       {d.externalUrl && (
         <a href={d.externalUrl} target="_blank" rel="noreferrer noopener" className="text-[#ff8844] underline break-all">
           {d.externalUrl}
@@ -377,15 +396,12 @@ function DistLine({ d, probe, busy, go }: { d: DistRow; probe: boolean; busy: bo
           disabled={busy}
           onClick={async () => {
             const needsUrl = d.status.startsWith('skipped_')
-            const url = window.prompt(
-              `${d.platform}에 올라간 것을 직접 확인하셨습니까?\n게시물 URL을 입력하세요${needsUrl ? ' (이 채널은 필수)' : ' (비워도 됩니다)'}.`,
-              '',
-            )
+            const url = window.prompt(SCREEN_TEXT.markDispatchedPrompt(d.platform, needsUrl), '')
             if (url === null) return
             await go(() => markDistPostedAction(d.id, url))
           }}
         >
-          나갔음
+          {BUTTON_TEXT.markDispatched}
         </button>
       )}
       {canRequeue && (
@@ -396,13 +412,13 @@ function DistLine({ d, probe, busy, go }: { d: DistRow; probe: boolean; busy: bo
           onClick={async () => {
             const msg =
               d.status === 'unknown'
-                ? `${d.platform}: 이미 올라갔는지 모르는 상태입니다. SNS를 먼저 확인하셨습니까? 올라가 있으면 중복 게시됩니다. 다시 보낼까요?`
-                : `${d.platform}: 다시 보냅니다. 계속할까요?`
+                ? SCREEN_TEXT.redispatchUnknown(d.platform)
+                : SCREEN_TEXT.redispatchFailed(d.platform)
             if (!window.confirm(msg)) return
             await go(() => requeueDistAction(d.id))
           }}
         >
-          다시 보냄
+          {BUTTON_TEXT.redispatch}
         </button>
       )}
     </li>
@@ -416,9 +432,9 @@ function MetaEditor({ c, busy, go, onClose }: { c: ContentRow; busy: boolean; go
   const input = 'w-full bg-black/40 border border-white/15 rounded px-2 py-1.5 text-sm'
   return (
     <div className="border border-white/10 rounded p-3 space-y-2">
-      <label className="block text-[11px] text-white/50">제목<input className={input} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
-      <label className="block text-[11px] text-white/50">설명<textarea className={input} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
-      <label className="block text-[11px] text-white/50">캡션 (SNS에 나가는 문구)<textarea className={input} rows={3} value={caption} onChange={(e) => setCaption(e.target.value)} /></label>
+      <label className="block text-[11px] text-white/50">{SCREEN_TEXT.labelTitle}<input className={input} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+      <label className="block text-[11px] text-white/50">{SCREEN_TEXT.labelDescription}<textarea className={input} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+      <label className="block text-[11px] text-white/50">{SCREEN_TEXT.labelCaption}<textarea className={input} rows={3} value={caption} onChange={(e) => setCaption(e.target.value)} /></label>
       <div className="flex gap-2">
         <button
           className={btn}
@@ -432,9 +448,9 @@ function MetaEditor({ c, busy, go, onClose }: { c: ContentRow; busy: boolean; go
             if (await go(() => updateContentMetaAction(c.id, meta))) onClose()
           }}
         >
-          저장
+          {BUTTON_TEXT.save}
         </button>
-        <button className={btn} onClick={onClose}>닫기</button>
+        <button className={btn} onClick={onClose}>{BUTTON_TEXT.close}</button>
       </div>
     </div>
   )
@@ -442,23 +458,25 @@ function MetaEditor({ c, busy, go, onClose }: { c: ContentRow; busy: boolean; go
 
 function TimeEditor({ c, busy, go, onClose }: { c: ContentRow; busy: boolean; go: Go; onClose: () => void }) {
   const [v, setV] = useState('')
+  // The picker's value is a wall-clock time with no zone; the screen is PT, so it is read as PT.
+  const iso = v === '' ? null : ptWallToIso(v)
   return (
     <div className="border border-white/10 rounded p-3 space-y-2">
       <label className="block text-[11px] text-white/50">
-        새 송출 시각 (이 브라우저의 현지 시각 기준 · 현재+최소 리드 시간 이후여야 합니다)
+        {SCREEN_TEXT.labelNewDispatchTime}
         <input type="datetime-local" className="block mt-1 bg-black/40 border border-white/15 rounded px-2 py-1.5 text-sm" value={v} onChange={(e) => setV(e.target.value)} />
       </label>
       <div className="flex gap-2">
         <button
           className={btn}
-          disabled={busy || v === ''}
+          disabled={busy || iso === null}
           onClick={async () => {
-            if (await go(() => setContentPublishAtAction(c.id, new Date(v).toISOString()))) onClose()
+            if (iso !== null && (await go(() => setContentPublishAtAction(c.id, iso)))) onClose()
           }}
         >
-          저장
+          {BUTTON_TEXT.save}
         </button>
-        <button className={btn} onClick={onClose}>닫기</button>
+        <button className={btn} onClick={onClose}>{BUTTON_TEXT.close}</button>
       </div>
     </div>
   )

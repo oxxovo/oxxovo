@@ -23,6 +23,7 @@ import {
   type DispatchSwitches,
   type PreviousVersion,
 } from '@/lib/content-admin'
+import { ERROR_TEXT } from '@/lib/content-admin-text'
 import { MASTER_DISPATCH_KEY, dispatchSwitchKey, isContentKind } from '@/lib/content-kinds'
 
 export type AdminLike = {
@@ -59,7 +60,7 @@ async function callRpc(
 // ---- probe guard -----------------------------------------------------------
 async function guardContent(admin: AdminLike, contentId: string): Promise<ActionResult> {
   const { data, error } = await admin.from('contents').select('source_ref').eq('id', contentId).maybeSingle()
-  if (error || !data) return fail('대상을 확인할 수 없어 중단했습니다')
+  if (error || !data) return fail(ERROR_TEXT.targetUnverifiable)
   if (isProbeRef((data as { source_ref?: unknown }).source_ref)) return fail(PROBE_BLOCK_MESSAGE)
   return { ok: true }
 }
@@ -91,7 +92,7 @@ export async function returnContent(
   if (!UUID.test(contentId)) return fail(describeActionError('not_found'))
   const r = reason.trim()
   if (r === '') return fail(describeActionError('reason_required'))
-  if (r.length > REASON_MAX) return fail(`사유는 ${REASON_MAX}자 이하여야 합니다`)
+  if (r.length > REASON_MAX) return fail(ERROR_TEXT.reasonTooLong(REASON_MAX))
   return callRpc(admin, actor, 'content_return', { p_content_id: contentId, p_reason: r })
 }
 
@@ -119,7 +120,7 @@ export async function setContentPublishAt(
 ): Promise<ActionResult> {
   if (!UUID.test(contentId)) return fail(describeActionError('not_found'))
   const t = new Date(publishAtIso)
-  if (Number.isNaN(t.getTime())) return fail('시각 형식이 올바르지 않습니다')
+  if (Number.isNaN(t.getTime())) return fail(ERROR_TEXT.badTime)
   return callRpc(admin, actor, 'content_set_publish_at', { p_content_id: contentId, p_publish_at: t.toISOString() })
 }
 
@@ -138,7 +139,7 @@ async function loadDist(admin: AdminLike, distId: string): Promise<DistRow | nul
 export async function requeueDist(admin: AdminLike, actor: Actor, distId: string): Promise<ActionResult> {
   if (!UUID.test(distId)) return fail(describeActionError('not_found'))
   const d = await loadDist(admin, distId)
-  if (!d) return fail('대상을 확인할 수 없어 중단했습니다')
+  if (!d) return fail(ERROR_TEXT.targetUnverifiable)
   const g = await guardContent(admin, d.content_id)
   if (!g.ok) return g
   return callRpc(admin, actor, 'dist_requeue', { p_dist_id: distId })
@@ -152,7 +153,7 @@ export async function markDistPosted(
 ): Promise<ActionResult> {
   if (!UUID.test(distId)) return fail(describeActionError('not_found'))
   const d = await loadDist(admin, distId)
-  if (!d) return fail('대상을 확인할 수 없어 중단했습니다')
+  if (!d) return fail(ERROR_TEXT.targetUnverifiable)
   const chk = checkExternalUrl(d.platform, rawUrl, d.status.startsWith('skipped_'))
   if (!chk.ok) return fail(chk.error)
   return callRpc(admin, actor, 'dist_mark_posted', { p_dist_id: distId, p_external_url: chk.url })
@@ -172,10 +173,10 @@ export async function preflightRelease(
     .select('id, title, kind, source, source_ref, source_version')
     .eq('id', contentId)
     .maybeSingle()
-  if (error || !c) return fail('대상을 확인할 수 없어 중단했습니다')
+  if (error || !c) return fail(ERROR_TEXT.targetUnverifiable)
   const row = c as { title: string; kind: string; source: string; source_ref: string; source_version: number }
   if (isProbeRef(row.source_ref)) return fail(PROBE_BLOCK_MESSAGE)
-  if (!isContentKind(row.kind)) return fail('알 수 없는 kind 입니다')
+  if (!isContentKind(row.kind)) return fail(ERROR_TEXT.unknownKind)
 
   const { data: dists } = await admin
     .from('content_distributions')

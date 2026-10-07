@@ -111,10 +111,10 @@ test('actor: empty email or non-uuid id is refused before any rpc', async () => 
   assert.equal(calls.length, 0)
 })
 
-test('rpc error text is mapped to a readable Korean message, not echoed raw', async () => {
+test('rpc error text is mapped to a readable message, not echoed raw', async () => {
   const { admin } = fake({ contents: [content()] }, 'precondition_failed:no_main_asset')
   const r = await releaseContent(admin, ACTOR, CID)
-  assert.deepEqual(r, { ok: false, error: '송출할 메인 영상 에셋이 없습니다' })
+  assert.deepEqual(r, { ok: false, error: 'There is no main video asset to dispatch' })
   const { admin: a2 } = fake({ contents: [content()] }, 'ERROR: duplicate key value violates constraint "x"')
   const r2 = await releaseContent(a2, ACTOR, CID)
   assert.equal(r2.ok, false)
@@ -157,9 +157,9 @@ test('preflight refuses a probe- row; for a real row says "queue", never "posts 
   )
   assert.equal(r.ok, true)
   const text = (r as { lines: string[] }).lines.join('\n')
-  assert.match(text, /송출 대기열에 넣습니다/)
-  assert.match(text, /엔터 송출 스위치가 닫혀/) // entertainment_dispatch_enabled row missing => closed
-  assert.doesNotMatch(text, /지금 올립니다/)
+  assert.match(text, /puts it in the dispatch queue/)
+  assert.match(text, /The Entertainment dispatch switch is closed/) // entertainment_dispatch_enabled row missing => closed
+  assert.doesNotMatch(text, /goes out now|posts now|right now/i)
 })
 
 test('preflight shows the previous version that is already posted + oversize', async () => {
@@ -180,22 +180,22 @@ test('preflight shows the previous version that is already posted + oversize', a
     CID,
   )
   const text = (r as { lines: string[] }).lines.join('\n')
-  assert.match(text, /이전 버전이 이미 송출됐습니다 \(v1 youtube\)/)
-  assert.match(text, /송출 상한\(100MB\)보다 큽니다/)
-  assert.doesNotMatch(text, /스위치가 닫혀/)
+  assert.match(text, /An earlier version was already dispatched \(v1 youtube\)/)
+  assert.match(text, /larger than the dispatch limit \(100MB\): 200MB/)
+  assert.doesNotMatch(text, /switch is closed/)
 })
 
 // ---- pure ------------------------------------------------------------------
 test('releaseConfirmLines: unreadable switches are reported as unreadable, not "closed"', () => {
   const t = releaseConfirmLines({ title: 'T', kind: 'cf', platforms: [], switches: null, previous: [], oversize: null }).join('\n')
-  assert.match(t, /읽지 못했습니다/)
-  assert.doesNotMatch(t, /닫혀 있어/)
-  assert.match(t, /사이트 전용/)
+  assert.match(t, /Could not read the dispatch switch state/)
+  assert.doesNotMatch(t, /switch is closed/)
+  assert.match(t, /site only/)
 })
 
 test('dispatchClosedReason: master first, then the kind\'s DBA', () => {
-  assert.match(dispatchClosedReason('news', { master: false, news: true, entertainment: true }) ?? '', /마스터/)
-  assert.match(dispatchClosedReason('news', { master: true, news: false, entertainment: true }) ?? '', /데일리/)
+  assert.match(dispatchClosedReason('news', { master: false, news: true, entertainment: true }) ?? '', /master dispatch switch is closed/)
+  assert.match(dispatchClosedReason('news', { master: true, news: false, entertainment: true }) ?? '', /Daily dispatch switch is closed/)
   assert.equal(dispatchClosedReason('cf', { master: true, news: false, entertainment: true }), null)
 })
 
@@ -234,8 +234,9 @@ test('checkExternalUrl: https + platform domain only', () => {
 
 test('remainingLabel / missingKeys', () => {
   const now = new Date('2026-10-07T00:00:00Z')
-  assert.equal(remainingLabel('2026-10-07T03:12:00Z', now), '3시간 12분 후')
-  assert.equal(remainingLabel('2026-10-06T23:30:00Z', now), '30분 지남')
+  assert.equal(remainingLabel('2026-10-07T03:12:00Z', now), 'in 3h 12m')
+  assert.equal(remainingLabel('2026-10-06T23:30:00Z', now), '30m ago')
+  assert.equal(remainingLabel('2026-10-09T05:00:00Z', now), 'in 2d 5h')
   assert.deepEqual(missingKeys(null, ['a']), ['a'])
   assert.deepEqual(missingKeys(new Map([['a', '1'], ['b', ' ']]), ['a', 'b', 'c']), ['b', 'c'])
 })

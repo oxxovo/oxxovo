@@ -13,6 +13,21 @@ import {
   type Dba,
   type Platform,
 } from '@/lib/content-kinds'
+import { DateTime } from 'luxon'
+import {
+  ACTION_ERROR_TEXT,
+  CONFIRM_TEXT,
+  CONTENT_STATUS_TEXT,
+  DBA_TEXT,
+  ERROR_TEXT,
+  FILTER_TEXT,
+  PROBE_BLOCK_MESSAGE,
+  SWITCH_TEXT,
+} from '@/lib/content-admin-text'
+
+// All wording is in lib/content-admin-text.ts. Re-exported because the server actions
+// and the tests have always imported it from here.
+export { PROBE_BLOCK_MESSAGE }
 
 // ---- probe rows (HQ 2026-10-06) --------------------------------------------
 // Test rows are named `probe-...` by scripts/probe-contents.mjs. They are
@@ -20,7 +35,6 @@ import {
 // them in the list is a convenience; the thing that matters is that nobody can
 // push one into the dispatch queue, so the server actions call this too.
 export const PROBE_PREFIX = 'probe-'
-export const PROBE_BLOCK_MESSAGE = '시험 행입니다. 송출할 수 없습니다'
 
 export function isProbeRef(sourceRef: unknown): boolean {
   return typeof sourceRef === 'string' && sourceRef.trim().toLowerCase().startsWith(PROBE_PREFIX)
@@ -33,15 +47,15 @@ export const DBA_FILTERS = ['all', ...DBAS] as const
 export type DbaFilter = (typeof DBA_FILTERS)[number]
 
 export const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
-  all: '전체',
-  action: '⚠️ 조치 필요',
-  rights: '⏸ 권리 대기',
-  scheduled: '예약',
-  held: '정지',
-  returned: '반송',
-  hidden: '숨김',
+  all: FILTER_TEXT.all,
+  action: FILTER_TEXT.action,
+  rights: FILTER_TEXT.rights,
+  scheduled: CONTENT_STATUS_TEXT.scheduled,
+  held: CONTENT_STATUS_TEXT.held,
+  returned: CONTENT_STATUS_TEXT.returned,
+  hidden: CONTENT_STATUS_TEXT.hidden,
 }
-export const DBA_LABEL: Record<Dba, string> = { news: '데일리', entertainment: '엔터' }
+export const DBA_LABEL: Record<Dba, string> = { news: DBA_TEXT.news, entertainment: DBA_TEXT.entertainment }
 
 export function parseStatusFilter(v: unknown): StatusFilter {
   return (STATUS_FILTERS as readonly string[]).includes(v as string) ? (v as StatusFilter) : 'all'
@@ -123,9 +137,9 @@ export function isSwitchOpen(value: unknown): boolean {
 export type DispatchSwitches = { master: boolean; news: boolean; entertainment: boolean }
 
 export function dispatchClosedReason(kind: ContentKind, s: DispatchSwitches): string | null {
-  if (!s.master) return '전체 송출 마스터 스위치가 닫혀 있어'
+  if (!s.master) return SWITCH_TEXT.masterClosed
   const dba = dbaOfKind(kind)
-  if (!s[dba]) return `현재 ${DBA_LABEL[dba]} 송출 스위치가 닫혀 있어`
+  if (!s[dba]) return SWITCH_TEXT.dbaClosed(DBA_LABEL[dba])
   return null
 }
 
@@ -161,8 +175,38 @@ export function remainingLabel(publishAt: string, now: Date): string {
   const d = Math.floor(mins / 1440)
   const h = Math.floor((mins % 1440) / 60)
   const m = mins % 60
-  const span = d > 0 ? `${d}일 ${h}시간` : h > 0 ? `${h}시간 ${m}분` : `${m}분`
-  return ms >= 0 ? `${span} 후` : `${span} 지남`
+  const span = d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`
+  return ms >= 0 ? `in ${span}` : `${span} ago`
+}
+
+// ★One zone on this screen: US Pacific, "Oct 7, 2026, 14:30 PT" -- en-US, 24-hour
+// (an ops screen: AM/PM gets misread), always suffixed. Cron logs and the EOD docs
+// stay UTC; only this screen is PT. Built from formatToParts so the shape does not
+// depend on the runtime's punctuation, and hourCycle h23 so midnight is 00, not 24.
+export const PT_ZONE = 'America/Los_Angeles'
+const PT_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: PT_ZONE,
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+export function formatPT(iso: string): string {
+  const t = new Date(iso)
+  if (Number.isNaN(t.getTime())) return '-'
+  const p = Object.fromEntries(PT_FORMAT.formatToParts(t).map((x) => [x.type, x.value]))
+  return `${p.month} ${p.day}, ${p.year}, ${p.hour}:${p.minute} PT`
+}
+
+// A <input type="datetime-local"> value ("2026-10-08T07:00") is a wall-clock time with
+// no zone. The screen shows PT, so the input is read as PT too -- NOT the browser's
+// zone, which is what new Date(v) would use. null = not a valid time.
+export function ptWallToIso(v: string): string | null {
+  const dt = DateTime.fromISO(v, { zone: PT_ZONE })
+  return dt.isValid ? dt.toUTC().toISO() : null
 }
 
 // ---- [나갔음] URL ----------------------------------------------------------
@@ -181,19 +225,19 @@ export type UrlCheck = { ok: true; url: string | null } | { ok: false; error: st
 // same, this just fails earlier with a readable message).
 export function checkExternalUrl(platform: string, raw: string, required: boolean): UrlCheck {
   const s = raw.trim()
-  if (s === '') return required ? { ok: false, error: '이 채널은 직접 올린 URL이 필요합니다' } : { ok: true, url: null }
+  if (s === '') return required ? { ok: false, error: ERROR_TEXT.urlRequired } : { ok: true, url: null }
   let u: URL
   try {
     u = new URL(s)
   } catch {
-    return { ok: false, error: 'URL 형식이 올바르지 않습니다' }
+    return { ok: false, error: ERROR_TEXT.urlInvalid }
   }
-  if (u.protocol !== 'https:') return { ok: false, error: 'https 주소만 입력할 수 있습니다' }
+  if (u.protocol !== 'https:') return { ok: false, error: ERROR_TEXT.httpsOnly }
   const hosts = PLATFORM_HOSTS[platform as Platform]
-  if (!hosts) return { ok: false, error: '알 수 없는 채널입니다' }
+  if (!hosts) return { ok: false, error: ERROR_TEXT.unknownChannel }
   const host = u.hostname.toLowerCase()
   if (!hosts.some((h) => host === h || host.endsWith('.' + h))) {
-    return { ok: false, error: `${platform} 도메인(${hosts.join(', ')}) 주소여야 합니다` }
+    return { ok: false, error: ERROR_TEXT.wrongDomain(platform, hosts.join(', ')) }
   }
   return { ok: true, url: u.toString() }
 }
@@ -216,26 +260,22 @@ export type ReleaseConfirmInput = {
 // never says "posts now" -- with the switches closed that would be false.
 export function releaseConfirmLines(i: ReleaseConfirmInput): string[] {
   const lines = [
-    `「${i.title}」`,
-    i.platforms.length > 0 ? `채널: ${i.platforms.join(', ')}` : '채널: 없음 (사이트 전용)',
-    '송출 대기열에 넣습니다. 스위치가 열려 있으면 약 5분 안에 올라갑니다.',
+    `"${i.title}"`,
+    i.platforms.length > 0 ? CONFIRM_TEXT.channels(i.platforms.join(', ')) : CONFIRM_TEXT.noChannels,
+    CONFIRM_TEXT.queueNote,
   ]
   if (i.switches === null) {
-    lines.push('송출 스위치 상태를 읽지 못했습니다. 열려 있는지 확인할 수 없습니다.')
+    lines.push(CONFIRM_TEXT.switchesUnreadable)
   } else {
     const closed = dispatchClosedReason(i.kind, i.switches)
-    if (closed) lines.push(`${closed} 대기열에만 들어갑니다.`)
+    if (closed) lines.push(CONFIRM_TEXT.onlyQueued(closed))
   }
   const posted = i.previous.filter((p) => p.status === 'posted')
   if (posted.length > 0) {
-    lines.push(
-      `이전 버전이 이미 송출됐습니다 (${posted.map((p) => `v${p.version} ${p.platform}`).join(', ')}). 플랫폼에서 지우셨습니까?`,
-    )
+    lines.push(CONFIRM_TEXT.priorDispatched(posted.map((p) => `v${p.version} ${p.platform}`).join(', ')))
   }
   if (i.oversize) {
-    lines.push(
-      `영상이 송출 상한(${formatMB(i.oversize.max)})보다 큽니다 (${formatMB(i.oversize.bytes)}). 송출에서 실패 처리됩니다.`,
-    )
+    lines.push(CONFIRM_TEXT.oversize(formatMB(i.oversize.max), formatMB(i.oversize.bytes)))
   }
   return lines
 }
@@ -245,25 +285,10 @@ export function formatMB(bytes: number): string {
 }
 
 // ---- action errors ---------------------------------------------------------
-const ERROR_TEXT: Record<string, string> = {
-  actor_required: '어드민 이메일을 확인할 수 없습니다',
-  not_found: '대상을 찾을 수 없습니다',
-  reason_required: '사유를 입력하세요',
-  title_empty: '제목은 비울 수 없습니다',
-  nothing_to_update: '바뀐 내용이 없습니다',
-  lead_too_short: '현재 시각 + 최소 리드 시간보다 늦은 시각이어야 합니다',
-  url_invalid: 'https 주소만 입력할 수 있습니다',
-  url_required: '이 채널은 직접 올린 URL이 필요합니다',
-  'precondition_failed:rights_not_cleared': '권리가 cleared가 아니라 송출할 수 없습니다',
-  'precondition_failed:no_main_asset': '송출할 메인 영상 에셋이 없습니다',
-  'precondition_failed:asset_url_empty': '메인 영상 에셋의 URL이 비어 있습니다',
-  internal_error: '서버 오류가 났습니다 (서버 로그를 확인하세요)',
-}
-
 export function describeActionError(code: string): string {
-  if (code in ERROR_TEXT) return ERROR_TEXT[code]
+  if (code in ACTION_ERROR_TEXT) return ACTION_ERROR_TEXT[code]
   const m = /^invalid_transition:([A-Za-z_]+)->([A-Za-z_]+)$/.exec(code)
-  if (m) return `현재 상태(${m[1]})에서는 할 수 없습니다`
-  if (code.startsWith('config_missing:') || code.startsWith('config_invalid:')) return `설정 오류: ${code}`
-  return `실패: ${code}`
+  if (m) return ERROR_TEXT.invalidTransition(m[1])
+  if (code.startsWith('config_missing:') || code.startsWith('config_invalid:')) return ERROR_TEXT.configError(code)
+  return ERROR_TEXT.failed(code)
 }

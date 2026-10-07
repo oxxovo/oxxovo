@@ -103,7 +103,8 @@
 | 문구 정리 | 7 | 규칙 페이지·챗봇·한글 붙은 형태에 구 명칭 재삽입 3 · 검사기 한글 붙은 경우 못 잡게 · 검사기 CRLF 되돌림 · 허용 목록 이메일 항목 삭제 · 허용 목록 낡은 항목 |
 | 반송 알림 | 8 | 쿼리 probe 제외 · 빌더 probe 제외 · 메일 실패해도 기록 · `returned_notified_at < returned_at` 제거 · 이스케이프 · 틱 단계 제거 · 단계 크래시 재던짐(**테스트 결함 포착**) · 기록값 `now()` |
 | 배포 검증 | 8 | SHA 비교 끄기 · 옛 SHA 통과 처리 · `builtAt` 제거 · HTML 구분 제거 · 인증 벽 진단 제거 · 재시도 제거 · 미검증이어도 성공 종료 · 옛 배포 URL 검증 복원 |
-| 합계 | **53** | ⑦ 5 + ⑧ 8 + ⑨ 7 + ⑩ 준비 10 + 문구 7 + 반송 알림 8 + 배포 검증 8 |
+| 어드민 영어 전환 | 16 | 로캘 ko-KR 되돌림 · PT 접미사 · UTC · 12시간제 · dispatch/publish 혼용 2 · 상태 매핑 누락 2 · 용어 표류 3 · 한글 재삽입 2 · 입력을 브라우저 시간대로 읽음 · 화면이 formatPT 우회(**테스트 결함 포착**) · 화면이 `new Date(v)` |
+| 합계 | **69** | ⑦ 5 + ⑧ 8 + ⑨ 7 + ⑩ 준비 10 + 문구 7 + 반송 알림 8 + 배포 검증 8 + 어드민 영어 16 |
 - 전부 빨개졌고 원복 후 통과. (⑨ 상세 SQL 제외를 빼도 "id로 조회" 테스트는 재검사가 막아 통과한다 -> "층별로 따로 검증하는" 테스트가 잡는다. 층마다 독립 검증이 필요한 이유.)
 
 ### 대조군을 먼저 세운다 (원칙 재확인)
@@ -184,6 +185,38 @@
 - **`deploy-prod.mjs`의 검증 연결 시험이 약하다.** 실행하면 진짜 배포가 되므로 실행할 수 없어서 **소스 텍스트를 읽는 시험**(`verifyLive` 호출·`exitCode = 1`·옛 검사 부재)으로 고정했다. 줄을 지웠는지만 잡고 **동작하는지는 증명하지 못한다.** 실제 동작 확인은 **TK님 다음 배포**다.
 - 이 검증이 라이브 배포와 함께 도는 것은 다음 배포가 처음이다. 거짓 실패가 나면 **재배포하지 말고** 메시지에 찍힌 `deploy:verify` 명령을 쓴다.
 - 엣지 전파 지연은 실측하지 못했다(위).
+
+## 6-5. 밤 작업 2: `/admin/contents` 영어 전환 (제니3 용어 확정, 코드 완료·미배포)
+
+- **무엇을:** 화면 문구 전부를 `lib/content-admin-text.ts` 한곳(영어 한 벌)으로 모으고 확정 용어표대로 바꿨다. 화면(`ContentsView.tsx`)·서버 액션 오류(`content-admin-actions.ts`)·Dispatch 확인창(`releaseConfirmLines`)·`remainingLabel`·URL 검사 메시지가 같은 곳을 쓴다. 설계서 §8-0에 **대괄호 표기 <-> 화면 영어 대응표**와 시간 규칙을 한 번 적었다(`[송출]`=Dispatch · `[반송]`=Return · `[정지]`=Hold ...).
+- **구조 판단(본부가 맡긴 부분): `admin-i18n`에 넣지 않고 별도 파일.** 서버가 만드는 메시지는 브라우저의 한/영 토글을 모른다. 그래서 **이 화면은 한/영 토글을 따르지 않는다**(메뉴 이름만 `admin-i18n`에 이미 한/영이 있다). 토글을 따르게 하려면 서버 메시지를 코드+인자로 바꾸고 클라이언트가 조립해야 해서 범위가 커진다 — 본부가 "화면은 영어"로 못 박았고 쓰는 사람이 TK님 한 분이라 영어 고정으로 갔다.
+- **시간:** `formatPT` = `en-US` · PT 하나 · 24시간제 · 항상 `PT`(`Oct 7, 2026, 14:30 PT`, 자정 `00:00`). **입력도 PT**: `송출 시각 수정`의 `datetime-local` 값을 브라우저 시간대가 아니라 PT로 읽는다(`ptWallToIso`) — 화면은 PT인데 입력만 브라우저 시간대면 PT가 아닌 브라우저에서 어긋난다(본부 지시 범위를 넓힌 부분, 반대하시면 말씀).
+- **크론 로그와 EOD는 UTC 그대로.** 화면만 PT. 혼동 방지로 설계서 §8-0에 적었다.
+- **어색한 것 하나:** 확정표에 없는 문장(확인창·안내·배너)의 영어는 제가 썼다. 용어는 확정표만 썼지만 **문장 자체는 제니3 확인을 받은 적이 없다.** 운영자 내부 화면이라 제 소관으로 봤으나, 문장 확인이 필요하면 `lib/content-admin-text.ts` 한 파일만 보면 된다.
+- **검증:** 전체 `npm test` 802 통과, `tsc`·eslint 통과. **가드 훼손 16건 전부 빨개짐**(원복 후 초록): 로캘 `ko-KR` 되돌림 · `PT` 접미사 제거 · PT 대신 UTC · 12시간제 · dispatch/publish 혼용(제목·버튼) · 상태 매핑 누락(송출 `skipped_oversize`·콘텐츠 `hidden`) · 용어 표류(Canceled/Hold/Daily) · 화면·액션에 한글 재삽입 · `datetime-local`을 브라우저 시간대로 읽음 · 화면이 `formatPT`를 우회 · 화면이 `new Date(v)`로 입력 읽음. 누적 합계 **53 -> 69**.
+- **상태 매핑 완전성:** 시험이 `reports/phase1_step1_tables_2026-10-05.sql`의 `contents_status_chk`와 `content_distributions_status_chk`를 읽어 라벨 키와 **정확히 같은지** 비교한다(정규식이 실제로 찾는지 대조군 포함). 새 DB 상태가 생기면 라벨이 없다고 빨개진다.
+
+### ★ 이번 훼손 시험에서 나온 실패 둘 (지난번 "시험을 의심한다"의 연장)
+
+1. **H15 — 화면이 `formatPT`를 우회해도 초록이었다.** 화면 코드에 `toLocaleString('ko-KR')`를 직접 쓰면 어떤 시험도 못 잡았다. `ko-KR`은 한글이 아니라서 한글 스캔도 통과했고, 화면은 렌더 시험이 없다. **훼손해 보기 전에는 "시간이 PT로 나온다"는 시험이 있다고 믿었지만 그 시험은 `formatPT` 함수만 봤다.** 화면 소스가 `formatPT`·`ptWallToIso`만 쓰고 `toLocale*`·`Intl.DateTimeFormat`·`new Date(v)`를 안 쓴다는 소스 시험을 추가해 빨개졌다(H16 포함). 소스 읽기 시험은 약하다(줄이 있는지만 본다) — 그 한계는 알고 있다.
+2. **PC 시간대가 PT라서 "브라우저 시간대로 읽는" 훼손이 초록이 될 뻔했다.** 작성자 PC가 `America/Los_Angeles`라서, 입력을 PT로 읽어도 브라우저 시간대로 읽어도 **같은 값**이 나온다. 그대로면 H14가 초록이었다. **자식 프로세스를 `TZ=UTC`로 강제해** 실행하는 시험을 만들고, 그 자식이 정말 UTC인지(`getHours()==7`) 대조군으로 먼저 확인한다. 참고: 이 Windows 환경에서는 `TZ=Asia/Seoul`이 **무시된다**(UTC만 먹는다) — 안 먹는 설정으로 시험을 짰으면 대조군 없는 PASS였을 것이다.
+- 교훈: **"내 환경에서 같은 값이 나오는 가드"는 훼손해도 안 빨개진다.** 가드를 시험할 때는 내 환경이 정답과 우연히 일치하지 않는지 먼저 본다.
+
+### 메일 영어 대조 (확정 용어 vs 현재 메일) — **목록만 올림, 메일은 아직 안 고쳤다(본부 지시)**
+
+| # | 위치 | 현재 | 확정 용어와 | 제안 |
+|---|---|---|---|---|
+| 1 | `NOTICE_TEXT.reason.late_for_slot` | `missed its publish slot` | **publish가 섞였다** (이 슬롯은 dispatch) | `missed its dispatch slot` |
+| 2 | `NOTICE_TEXT.reason.manual` | `stopped by a person` | 화면은 Held / `Held manually` | `held by a person` |
+| 3 | `NOTICE_TEXT.reason.version` | `...always held until a person releases it` | 버튼 이름이 Dispatch (release 아님) | `...until a person dispatches it` |
+| 4 | `NOTICE_TEXT.scheduledLead` + `minuteUtc` | `Times are UTC` / `07:00 UTC` | 화면은 PT 하나 | **결정 필요**(아래) |
+| 5 | `content-dispatch.ts` `alertHtml` | 상태를 원문 `unknown`/`failed`로 표기 | 화면은 `Needs review`/`Failed` | `Needs review` / `Failed` |
+| 6 | 같은 곳 `re-sending` | 화면 버튼은 `Re-dispatch` | `re-dispatching` |
+| 7 | 같은 곳 제목 `content distribution(s) need attention` | `distribution`은 확정표에 없는 내부 용어 | 제니3 확인 필요(`dispatch(es)`?) |
+| ✓ | held / returned / scheduled 제목·본문 | 이미 일치 | 변경 없음 | |
+| ✓ | `content dispatch is OPEN but <key> is missing` | 화면 `Open`/`Closed`와 대소문자만 다름 | 변경 불필요 | |
+
+- **4번은 결정이 필요하다:** 화면은 PT 하나라고 확정됐는데 메일은 UTC다. 메일도 PT로 맞추면 "기준은 미국 서부 시간 하나"와 일치하지만, 메일의 UTC는 로그·EOD와 대조하기 쉬운 장점이 있다. **지수 의견: 메일도 PT로, 단 `PT`를 항상 붙인다**(같은 사람이 화면과 메일을 번갈아 보므로 두 시각이 다르면 혼동이 더 크다). 본부 판단.
 
 ## 7. 영구 잔존 시험 행 (변화 없음)
 

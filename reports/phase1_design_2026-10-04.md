@@ -1151,6 +1151,34 @@ AND publish_at <= now() AND {dba}_publication_enabled = true
 
 ## 8. 어드민
 
+### 8-0. 화면 영어 전환과 용어 대응표 (2026-10-07, 제니3 확정 · 본부 지시)
+
+**`/admin/contents` 화면은 영어 한 벌이다.** 아래 §8의 박스 안 한국어 표기(`[송출]`, `[정지]` ...)는 **운영 문서의 이름**이고, 화면 글자는 이 표를 따른다. 대괄호 표기는 화면에 맞추지 않는다(문서가 읽기 어려워진다).
+
+| 운영 문서 표기 | 화면 영어 | 비고 |
+|---|---|---|
+| `[송출]` | **Dispatch** | 대기열에 넣는 버튼. 실제 전송은 5분 크론 |
+| `[다시 보냄]` | Re-dispatch | |
+| `[나갔음]` | **Mark dispatched** | 사람이 손으로 올린 것을 기록 |
+| `[정지]` | **Hold** | Pause 쓰지 않는다. 상태는 Held |
+| `[반송]` | **Return** | 상태는 Returned |
+| `[숨김]` / `[되살리기]` | Hide / Unhide | 상태는 Hidden |
+| `[정지로 복구]` | Restore to hold | 오반송 복구 |
+| `[메타 수정]` | Edit metadata | Meta로 줄이지 않는다(회사 이름과 겹침) |
+| `[송출 시각 수정]` | Edit dispatch time | |
+| 데일리 / 엔터 | **Daily** / **Entertainment** | News 아님(브랜드 OXXOVO AI DAILY), Ent로 줄이지 않는다. 설정 키 `news_*`는 그대로(내부) |
+| 권리 / 슬롯 / 대기열 / 시험 행 / 에셋 / 캡션 | Rights / Slot / Queue / Test row / Asset / Caption | |
+
+- **상태:** 예약 Scheduled · 정지 Held · 반송 Returned · 숨김 Hidden / 대기 Queued · 송출 중 Dispatching · 송출됨 Dispatched · 실패 Failed · 확인 필요 Needs review · 취소 Canceled · 건너뜀(에셋 없음) Skipped — no asset · 건너뜀(용량 초과) Skipped — too large. (DB 값은 그대로: `posted`가 화면에선 Dispatched, `sending`은 Dispatching, `unknown`은 Needs review.)
+- **dispatch와 publish를 가른다:** dispatch = 우리가 밖으로 내보낸다(SNS·유튜브), publish = 사이트에 공개된다. **이 화면에는 publish라는 단어가 없다.**
+- **구조:** 화면 문구는 전부 `lib/content-admin-text.ts` 한곳(영어 한 벌). 서버가 만드는 메시지(액션 오류·Dispatch 확인창)도 같은 파일이다 — 서버는 브라우저의 한/영 토글을 모르기 때문에 `admin-i18n`(토글식)에 넣지 않았다. **이 화면은 한/영 토글을 따르지 않는다**(메뉴 이름만 `admin-i18n`에 한/영이 이미 있다). 시험(`lib/content-admin-text.test.ts`)이 확정 용어표 · DB 상태값 대조 · 한글 재유입 · publish 혼용 · 금지어(Pause/News/Ent/Meta)를 지킨다.
+
+**시간 표기 — 화면은 PT, 로그와 문서는 UTC (혼동 주의)**
+- **화면:** 로캘 `en-US`, 시간대 **PT(America/Los_Angeles) 하나**, 24시간제, 항상 `PT`를 붙인다. 형식 `Oct 7, 2026, 14:30 PT`. 자정은 `00:00`(24:00 아님). 서머타임은 자동(PDT -7 / PST -8). `formatPT`(`lib/content-admin.ts`).
+- **입력도 PT:** `송출 시각 수정`의 `datetime-local` 값은 시간대가 없는 벽시계 시각이다. 화면이 PT이므로 **브라우저 시간대가 아니라 PT로 읽는다**(`ptWallToIso`). 안 그러면 PT가 아닌 브라우저에서 화면과 입력이 어긋난다.
+- **그대로 UTC:** 크론 로그(`[content-dispatch] ...`), EOD·설계서 같은 운영 문서, DB 저장값(timestamptz). **화면만 PT다.**
+- **알림 메일:** 현재 `Times are UTC`(`minuteUtc`). 화면 PT와 달라서 **본부 판단 대기**(8-0 말미 "메일 대조" 참고, EOD 6-5절).
+
 ```
 /admin/contents  신설
   DBA 필터 [전체][엔터][데일리]
