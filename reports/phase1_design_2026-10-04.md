@@ -1541,6 +1541,57 @@ content_dispatch_backoff_base_minutes
 
 ---
 
+## 12-2. Phase 2 (홈 · Discovery) — 기록만 한다. 지금 구현하지 않는다
+
+**결정 (본부·제니2, 2026-10-07): Phase 1을 다시 뜯지 않는다.** 수입 -> 어드민 -> SNS 자동 배포 -> **실제 YouTube 비공개 송출 검증(⑩)** 까지 먼저 끝낸다. 지금 홈을 뜯으면 ⑩이 멈추고, 영상이 왔을 때 코드가 바뀌어 있으면 검증이 섞인다. **홈 설계와 구 경로(`/watch*`) 정리는 같이 Phase 2에서 본다.**
+
+**사업축 7개 + Studio**
+- Compete(Tournament) / Entertainment / News(Daily) / Market / Education / Jobs / AI Games.
+- Studio는 독립 DBA가 아니다. 현재 Tournament 소속 제작 도구이고, 외부 SaaS화할 때 독립으로 검토한다.
+- Production Service(외부 고객 CF·영상 수주)는 Entertainment 내부 사업부다. 독립으로 세지 않는다.
+
+**두 층을 분리한다 (핵심)**
+1. 전체 Navigation = 위 사업축 7개.
+2. 영상 Discovery 탭 = `[전체][대회][뉴스][영화][드라마][CF][음악]`.
+- Market·Jobs·Education·AI Games를 영상 탭에 넣지 않는다(섞으면 메뉴 백화점이 된다).
+- **음악 탭**: DB는 `music` / `music_video` 구분을 유지하고, 사용자에게는 "음악" 하나로 합친다.
+
+**배너**: 항목마다 바뀐다. 16:9, 최소 1920x1080, WebP/JPEG, 중앙 safe area. 본부가 규격과 어드민 등록 구조를 정하고 각 DBA가 공급한다. 모바일 전용 asset은 처음부터 의무화하지 않는다.
+
+**Series / Season / Episode**: 드라마 10편이 최신순에 흩어지면 안 된다. **Phase 1에 `series_id` 한 칸을 급하게 넣지 않는다.** Phase 2에서 모델을 제대로 설계한다(제니2·본부 판단). Phase 1 구조가 이를 막지 않는지는 아래 12-3.
+
+**빈 항목**: 숨기지 않는다. 배너 + 짧은 설명 + Coming Soon.
+
+**대회와 콘텐츠**: 같은 홈에 있되 **DB는 합치지 않는다.** 홈은 Aggregation/Discovery Layer다. **대회 데이터를 `contents`에 복제하지 않는다**(§1). 카드에 출처 표시: `COMPETITION` / `OXXOVO ORIGINAL` / `OXXOVO DAILY` / `COMMERCIAL` / `MUSIC`.
+
+**Phase 1 DB가 Phase 2를 막지 않아야 한다**: `source` / `source_ref` / `source_version` / `kind` / approval / assets를 유지하고, Series 관계는 **additive하게** 붙인다.
+
+**지금 홈의 사실(코드, 2026-10-07)**: 루트(`app/page.tsx`)는 `watch_as_home` AND 대회 공개 스위치가 모두 참일 때만 대회 갤러리(`ArenaWatch`)를 보이고, 아니면 랜딩이다. 대회 스위치가 닫힌 채 `watch_as_home`을 켜도 눈에 보이는 변화는 없다(랜딩으로 떨어짐). 루트는 `searchParams`를 받지 않는다(구 `/watch`로 가는 정렬·필터가 `/`에서는 사라진다) — Phase 2에서 홈을 설계할 때 함께 본다.
+
+### 12-3. Phase 1 DB가 Series/Season/Episode를 additive하게 받을 수 있나 (지수 판단, 2026-10-07)
+
+**결론: 막는 것은 없다.** `contents`에 nullable 컬럼과 새 표를 더하는 것만으로 붙는다. 코드를 고치지 않고 판단만 적는다.
+
+**받쳐 주는 것**
+- 한 편 = 한 `contents` 행(자기 `source_ref`·자기 승인). `source_version`은 **같은 작품의 수정판**이지 회차가 아니다 -> 에피소드와 섞이지 않는다.
+- 불변 컬럼 보호 트리거(`trg_contents_guard`)는 **명시 목록**(`id`, `source`, `source_ref`, `source_version`, `kind`, `upstream_*`, `payload_hash`, `language`, `form`, `ai_generated`, `created_at`)만 막는다. 새 컬럼은 기본이 가변이다.
+- 감사 트리거도 9개 필드를 명시한다. `content_import`의 `INSERT`도 컬럼을 명시한다. 새 컬럼을 더해도 기존 경로가 깨지지 않는다.
+- 공개·어드민 쿼리는 모두 **컬럼을 명시**한다(`SELECT *` 없음). 새 컬럼이 공개 응답에 새어 나갈 일이 없고, 열려면 의도적으로 컬럼 목록에 넣어야 한다.
+- 해시: "null과 absent는 같다"이므로 기존 콘텐츠에 새 선택 필드가 없으면 해시가 안 변한다(재전송이 멱등으로 유지된다).
+- `contents -> content_assets`가 `ON DELETE RESTRICT`인 패턴이 이미 있어 새 FK도 같은 방식으로 붙는다.
+
+**Phase 2에서 결정하거나 고쳐야 하는 것 (막는 것이 아니라 일)**
+1. **수입 요청 검증**: 최상위·에셋의 **알 수 없는 필드는 400**이고 해시 함수도 던진다. 출처가 시리즈 정보를 보내려면 `validateImportRequest`, 해시의 알려진 필드 목록, `content_import` RPC를 함께 확장해야 한다. 시그니처는 `(source, payload jsonb)`라 **오버로드는 생기지 않는다**(`CREATE OR REPLACE`).
+2. **불변 여부**: `series_id`·회차를 `kind`처럼 불변으로 둘지, 나중에 붙일 수 있게 가변으로 둘지. 가변이면 **새 RPC와 감사 필드 추가**가 필요하다(지금 감사 목록은 9개 고정).
+3. **⚠️ 승인 단위**: `UNIQUE (source, upstream_approval_id)` — 승인 하나는 콘텐츠 한 버전에만 쓸 수 있다. **제작 쪽이 시즌 단위로 승인 하나를 발급하면 둘째 에피소드가 `approval_id_reused`(409)로 막힌다.** 제니2에게 "승인은 에피소드마다 별도 UUID인가"를 지금 확인하는 것이 가장 싸다(막으려면 제약을 풀어야 하고, 데이터가 쌓이기 전이 쉽다).
+4. **출처 표시 라벨**: `news`->DAILY, `drama`/`film`->ORIGINAL, `music`/`music_video`->MUSIC은 `kind`에서 나온다. 그러나 **외부 고객 CF(COMMERCIAL, Production Service)와 자체 CF는 둘 다 `kind=cf`** 라 구분이 안 된다. Phase 2에 "출처 라벨/고객" 같은 additive 컬럼이 필요할 수 있다.
+5. **정렬·묶기**: 지금 목록은 `publish_at desc, id desc`(최대 50건)다. 시리즈로 묶는 것은 **스키마가 아니라 쿼리 변경**이다.
+6. **`kind` 검사 제약**은 값을 열거하므로 새 종류는 `ALTER`가 필요하지만, Series 자체는 새 `kind`가 필요 없다. "음악" 합치기는 화면 문제라 DB 변경이 없다. 대회 탭은 `contents`에 없고(분리 유지) 홈이 두 출처를 합친다.
+
+**Phase 1 안에서 지금 할 것: 없음.** (제니2에게 위 3번 확인만 요청하면 된다.)
+
+---
+
 ## 13. 설계서 변경 이력
 
 | 판 | 바뀐 것 |
