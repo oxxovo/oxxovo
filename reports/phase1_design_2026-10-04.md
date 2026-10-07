@@ -1103,6 +1103,26 @@ AND publish_at <= now() AND {dba}_publication_enabled = true
 🚫 audio_master  음원 원본은 라이선스 문제가 있다
 ```
 
+### 7-3. 🔴 공개 스위치를 켜기 전 체크리스트 (2026-10-07, 본부 지시)
+
+**아래가 전부 끝나기 전에는 `news_publication_enabled`·`entertainment_publication_enabled`를 켜지 않는다. 켜는 사람은 이 목록을 먼저 본다.**
+
+- [ ] **AI 생성물 표기** — 제니3, **플랫폼별**(공개 화면 + 각 SNS). `ai_generated` 플래그는 이미 있다.
+- [ ] **ElevenLabs·Hedra 약관 확인** — 상업 이용 조건(뉴스·엔터가 확인). 그때까지 뉴스는 전부 `held`.
+- [ ] **공개 화면 문구 확정** — `lib/content-public-text.ts`에 **중립 영문 임시값**이 들어 있다. 제니3 확정본으로 교체.
+- [ ] `content_path_<kind>` slug 결정(TK님) + 예약어 충돌 없음 확인.
+- [ ] **라이브 컬럼 확인** — `scripts/probe-public-columns.mjs`(읽기 전용) PASS. 스위치가 닫혀 있으면 공개 쿼리가 실행조차 안 되므로, 이 스크립트가 컬럼 오타(전부 404로 보이는 사고)를 미리 잡는 유일한 방법이다.
+- [ ] 스위치를 켠 직후 **응답 본문을 직접 본다**(`script`·`sha256`·`source_ref`·`caption`·`rights_reason` 없음) + `/c/<id>`가 **308**인지(스트리밍이면 meta 태그 리다이렉트로 바뀔 수 있다 — Next.js 문서) 헤더로 확인.
+
+### 7-4. ⑨ 구현 후 한계 (2026-10-07, 지수)
+
+- **공개 판정의 `probe-` 제외는 3중이다**: `getPublicContent`·`listPublicContents`의 SQL `source_ref not ilike 'probe-%'` 둘 + `isPublicRow` 재검사(`source_ref`가 없거나 문자열이 아니면 닫힘). 재검사용으로만 `source_ref`를 읽고 projection에는 싣지 않는다. 각 층을 따로 망가뜨려 테스트가 빨개지는 것 확인.
+- **쿼리 오류는 로그에 남긴다**(`[content-public] query error where=… code=… id=…`): 오류 코드와 id만, message·내용 없음. 응답은 그대로 404. 모든 실패가 404라서 "닫힘"과 "쿼리 깨짐"이 구분 안 되던 문제를 로그로만 구분한다.
+- **캐시 없음(의도)**: 모르는 최상위 경로(`/wp-admin` 등 slug 모양)는 `platform_config` 1회 읽기 후 404. 점·대문자·예약어·너무 긴 경로는 DB 없이 404. 긴급 정지가 느려지면 안 되므로 slug도 캐시하지 않는다. 로그 소음은 나중에.
+- **`app/c/[id]` 폴더를 허용했다**: ⑤ 테스트가 `app/c`를 금지했는데 설계서의 영구 주소가 그 경로다. 단언을 "`app/c`에는 `[id]`만"으로 바꿨다.
+- 목록 50건·페이지네이션 없음. `[section]` 목록은 slug는 있는데 그 DBA 스위치가 닫혀 있으면 404(빈 목록이 아니다).
+- **라이브 미검증**: 이 세 페이지는 라이브에서 한 번도 열려 본 적이 없다(열 수 없다). 지금 기대값은 **전부 404**. 308과 응답 본문은 스위치를 처음 켤 때 확인한다.
+
 ---
 
 ## 8. 어드민

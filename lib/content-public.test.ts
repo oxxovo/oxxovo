@@ -25,7 +25,7 @@ type Call = { table: string; select: string; filters: string[] }
 
 function fakeAdmin(
   tables: Record<string, Row[]>,
-  opts: { ignoreFilters?: boolean; errorOn?: string; throwOn?: string } = {},
+  opts: { ignoreFilters?: boolean; errorOn?: string; throwOn?: string; errorCode?: string } = {},
 ): { admin: Admin; calls: Call[] } {
   const calls: Call[] = []
   const admin = {
@@ -38,13 +38,22 @@ function fakeAdmin(
         const cols = rec.select.split(',').map((c) => c.trim()).filter(Boolean)
         return rows.map((r) => (cols.length ? Object.fromEntries(cols.map((c) => [c, r[c]])) : r))
       }
-      const result = (data: unknown) => (opts.errorOn === table ? { data: null, error: { message: 'x' } } : { data, error: null })
+      const result = (data: unknown) => (opts.errorOn === table ? { data: null, error: { message: 'SECRET-TEXT-IN-MESSAGE', code: opts.errorCode } } : { data, error: null })
       const q = {
         select(c: string) { rec.select = c; return q },
         eq(k: string, v: unknown) { rec.filters.push(`eq:${k}`); if (!opts.ignoreFilters) rows = rows.filter((r) => r[k] === v); return q },
         lte(k: string, v: string) { rec.filters.push(`lte:${k}`); if (!opts.ignoreFilters) rows = rows.filter((r) => Date.parse(String(r[k])) <= Date.parse(v)); return q },
         in(k: string, vals: unknown[]) { rec.filters.push(`in:${k}`); if (!opts.ignoreFilters) rows = rows.filter((r) => vals.includes(r[k])); return q },
-        not(k: string) { rec.filters.push(`not:${k}`); if (!opts.ignoreFilters) rows = rows.filter((r) => r[k] !== null && r[k] !== undefined); return q },
+        not(k: string, op?: string, pat?: string) {
+          rec.filters.push(`not:${k}`)
+          if (!opts.ignoreFilters) {
+            if (op === 'ilike') {
+              const re = new RegExp('^' + String(pat).replace(/%/g, '.*') + '$', 'i')
+              rows = rows.filter((r) => !re.test(String(r[k])))
+            } else rows = rows.filter((r) => r[k] !== null && r[k] !== undefined)
+          }
+          return q
+        },
         order(k: string, o: { ascending: boolean }) {
           rec.filters.push(`order:${k}`)
           rows.sort((a, b) => (String(a[k]) < String(b[k]) ? -1 : String(a[k]) > String(b[k]) ? 1 : 0) * (o.ascending ? 1 : -1))
@@ -101,7 +110,7 @@ test('decidePublicationSwitch: only a literal true opens; every other input clos
 })
 
 test('isPublicRow: each of the four conditions alone closes it (control: all four open)', () => {
-  const ok = { kind: 'news', status: 'scheduled', rights_status: 'cleared', publish_at: '2026-10-09T00:00:00Z' }
+  const ok = { kind: 'news', status: 'scheduled', rights_status: 'cleared', publish_at: '2026-10-09T00:00:00Z', source_ref: 'pn-1' }
   assert.equal(isPublicRow(ok, ['news'], NOW), true)
   assert.equal(isPublicRow({ ...ok, status: 'held' }, ['news'], NOW), false)
   assert.equal(isPublicRow({ ...ok, status: 'hidden' }, ['news'], NOW), false)
@@ -113,6 +122,11 @@ test('isPublicRow: each of the four conditions alone closes it (control: all fou
   assert.equal(isPublicRow(ok, [], NOW), false)
   assert.equal(isPublicRow(ok, ['film'], NOW), false)
   assert.equal(isPublicRow({ ...ok, publish_at: NOW.toISOString() }, ['news'], NOW), true) // boundary: publish_at <= now
+  // third layer: probe- test rows, and a missing source_ref (fail-closed)
+  assert.equal(isPublicRow({ ...ok, source_ref: 'probe-rt-cl-20261006060004' }, ['news'], NOW), false)
+  assert.equal(isPublicRow({ ...ok, source_ref: 'PROBE-x' }, ['news'], NOW), false)
+  assert.equal(isPublicRow({ ...ok, source_ref: undefined }, ['news'], NOW), false)
+  assert.equal(isPublicRow({ ...ok, source_ref: 'my-probe-1' }, ['news'], NOW), true) // prefix only
 })
 
 test('toPublicAssets: only main_*/thumbnail with a url; script, audio_master and url-less rows never pass', () => {
@@ -208,8 +222,12 @@ test('nothing internal is selected: no script text, hashes, source identity, rig
   const { admin, calls } = world()
   await getPublicContent(ID, { admin, now: NOW })
   const selected = calls.map((c) => c.select).join(',')
+  // source_ref is selected for the probe- re-check and nowhere else; `source`,
+  // `source_version` and everything below must not be selected at all.
+  const withoutRecheck = selected.replace('source_ref', '')
+  assert.ok(selected.includes('source_ref'), 'source_ref is read for the probe- re-check')
   for (const secret of ['text_content', 'sha256', 'source', 'payload_hash', 'upstream', 'rights_reason', 'held_reason', 'returned', 'caption', 'notified_at']) {
-    assert.ok(!selected.includes(secret), `${secret} must not be selected`)
+    assert.ok(!withoutRecheck.includes(secret), `${secret} must not be selected`)
   }
 })
 
@@ -290,4 +308,114 @@ test('/c/<id> resolves to the current address only for a public item with a conf
   assert.equal(await resolvePublicAddress(ID, { admin: tables(slug, {}, sw('false', 'false')), now: NOW }), null)
   // invalid / reserved slug -> closed
   assert.equal(await resolvePublicAddress(ID, { admin: tables([{ key: 'content_path_news', value: 'api' }]), now: NOW }), null)
+})
+
+// ---- probe- rows: three layers (HQ 2026-10-07) --------------------------------
+
+const PROBE_ID = '44444444-4444-4444-8444-444444444444'
+const probeRow = () => content({ id: PROBE_ID, source_ref: 'probe-rt-cl-20261006060004' }) // cleared + scheduled + due: ONLY the prefix stops it
+
+test('probe- row is not public by id (control: the same row without the prefix IS public)', async () => {
+  const tables = (over: Row) => fakeAdmin({ platform_config: sw('true', 'true'), contents: [content({ id: PROBE_ID, ...over })], content_assets: assets() }).admin
+  assert.equal(await getPublicContent(PROBE_ID, { admin: tables({ source_ref: 'probe-rt-cl-20261006060004' }), now: NOW }), null)
+  assert.ok(await getPublicContent(PROBE_ID, { admin: tables({ source_ref: 'real-1' }), now: NOW }))
+})
+
+test('probe- row is not listed (control: a real row is)', async () => {
+  const { admin, calls } = fakeAdmin({ platform_config: sw('true', 'true'), contents: [probeRow(), content()] })
+  const out = await listPublicContents({ admin, now: NOW })
+  assert.deepEqual(out.map((r) => r.id), [ID])
+  assert.ok(calls.find((c) => c.table === 'contents')!.filters.includes('not:source_ref'), 'the SQL carries the probe- exclusion')
+})
+
+test('layers 1+2 (SQL) and layer 3 (re-check) each stop a probe- row on their own', async () => {
+  // SQL layer alone: the re-check cannot help a client whose rows never contain the probe row
+  const sqlOnly = fakeAdmin({ platform_config: sw('true', 'true'), contents: [probeRow()], content_assets: assets() })
+  assert.equal(await getPublicContent(PROBE_ID, { admin: sqlOnly.admin, now: NOW }), null)
+  assert.ok(sqlOnly.calls.find((c) => c.table === 'contents')!.filters.includes('not:source_ref'))
+  // re-check alone: filters ignored (as if the SQL were broken), the probe row still does not come out
+  const broken = fakeAdmin({ platform_config: sw('true', 'true'), contents: [probeRow()], content_assets: assets() }, { ignoreFilters: true })
+  assert.equal(await getPublicContent(PROBE_ID, { admin: broken.admin, now: NOW }), null)
+  const brokenList = fakeAdmin({ platform_config: sw('true', 'true'), contents: [probeRow(), content()] }, { ignoreFilters: true })
+  assert.deepEqual((await listPublicContents({ admin: brokenList.admin, now: NOW })).map((r) => r.id), [ID])
+})
+
+test('source_ref is read for the re-check but never part of the projection', async () => {
+  const { admin } = world()
+  const r = await getPublicContent(ID, { admin, now: NOW })
+  assert.ok(!('source_ref' in r!.content))
+  assert.ok(!JSON.stringify(r).includes('pn-1'))
+  const list = await listPublicContents({ admin: world().admin, now: NOW })
+  assert.ok(!JSON.stringify(list).includes('pn-1'))
+})
+
+// ---- a broken query must leave a trace (but only a code and an id) -------------
+
+test('query failures are logged with code and id only; the answer stays null', async () => {
+  const logs: string[] = []
+  const orig = console.error
+  console.error = (...a: unknown[]) => { logs.push(a.map(String).join(' ')) }
+  try {
+    for (const table of ['contents', 'content_assets', 'platform_config']) {
+      const { admin } = fakeAdmin({ platform_config: sw('true', 'true'), contents: [content()], content_assets: assets() }, { errorOn: table, errorCode: '42703' })
+      assert.equal(await getPublicContent(ID, { admin, now: NOW }), null)
+    }
+    const { admin } = fakeAdmin({ platform_config: sw('true', 'true'), contents: [content()] }, { errorOn: 'contents', errorCode: '42703' })
+    assert.deepEqual(await listPublicContents({ admin, now: NOW }), [])
+  } finally {
+    console.error = orig
+  }
+  const text = logs.join('\n')
+  assert.match(text, /where=content code=42703 id=3f2b8c1e/)
+  assert.match(text, /where=assets code=42703/)
+  assert.match(text, /where=switches code=42703/)
+  assert.match(text, /where=list code=42703/)
+  assert.ok(!text.includes('SECRET-TEXT-IN-MESSAGE'), 'the error message text must not be logged')
+  assert.ok(!text.includes('SNS caption') && !text.includes('title'), 'no content in the log')
+})
+
+// ---- section routing -----------------------------------------------------------
+
+import { resolveSectionKind, getPublicContentBySection, listPublicContentsBySection } from './content-public'
+
+const SLUG_NEWS = [{ key: 'content_path_news', value: 'daily' }]
+const world2 = (paths: Row[], sws = sw('true', 'true'), rows: Row[] = [content()]) =>
+  fakeAdmin({ platform_config: [...sws, ...paths], contents: rows, content_assets: assets() })
+
+test('section: a segment that cannot be a slug is answered WITHOUT a database read', async () => {
+  const { admin, calls } = world2(SLUG_NEWS)
+  for (const bad of ['wp-login.php', 'Admin', 'api', 'c', 'watch', '', 'a'.repeat(60), '.env', 'x y']) {
+    assert.equal(await resolveSectionKind(bad, { admin }), null, bad)
+  }
+  assert.equal(calls.length, 0)
+})
+
+test('section: slug-shaped but not configured -> null; configured -> its kind (control)', async () => {
+  const none = world2([])
+  assert.equal(await resolveSectionKind('daily', { admin: none.admin }), null)
+  assert.equal(none.calls.length, 1) // exactly one platform_config read, no cache
+  assert.equal(await resolveSectionKind('daily', { admin: world2(SLUG_NEWS).admin }), 'news')
+  assert.equal(await resolveSectionKind('other', { admin: world2(SLUG_NEWS).admin }), null)
+})
+
+test('section item: wrong section, missing slug, closed switch, held, probe- are all null (control: the right section shows it)', async () => {
+  const ok = await getPublicContentBySection('daily', ID, { admin: world2(SLUG_NEWS).admin, now: NOW })
+  assert.equal(ok?.kind, 'news')
+  assert.equal(ok?.item.content.id, ID)
+
+  const filmSlug = [...SLUG_NEWS, { key: 'content_path_film', value: 'movies' }]
+  assert.equal(await getPublicContentBySection('movies', ID, { admin: world2(filmSlug).admin, now: NOW }), null) // news item under the film section
+  assert.equal(await getPublicContentBySection('daily', ID, { admin: world2([]).admin, now: NOW }), null)
+  assert.equal(await getPublicContentBySection('daily', ID, { admin: world2(SLUG_NEWS, sw('false', 'false')).admin, now: NOW }), null)
+  assert.equal(await getPublicContentBySection('daily', ID, { admin: world2(SLUG_NEWS, sw('true', 'true'), [content({ status: 'held' })]).admin, now: NOW }), null)
+  assert.equal(await getPublicContentBySection('daily', PROBE_ID, { admin: world2(SLUG_NEWS, sw('true', 'true'), [probeRow()]).admin, now: NOW }), null)
+  assert.equal(await getPublicContentBySection('daily', 'not-a-uuid', { admin: world2(SLUG_NEWS).admin, now: NOW }), null)
+})
+
+test('section list: closed DBA -> null (404); open and empty -> []; open with items -> items', async () => {
+  assert.equal(await listPublicContentsBySection('daily', { admin: world2(SLUG_NEWS, sw('false', 'true')).admin, now: NOW }), null)
+  assert.equal(await listPublicContentsBySection('daily', { admin: world2(SLUG_NEWS, sw('true', 'true'), []).admin, now: NOW }).then((r) => r?.items.length), 0)
+  const r = await listPublicContentsBySection('daily', { admin: world2(SLUG_NEWS).admin, now: NOW })
+  assert.deepEqual(r?.items.map((i) => i.id), [ID])
+  assert.equal(await listPublicContentsBySection('nothing', { admin: world2(SLUG_NEWS).admin, now: NOW }), null)
 })

@@ -33,7 +33,14 @@ test('EVERY top-level folder under app/ is reserved (a new route cannot be shado
   assert.ok(dirs.length > 10, 'sanity: the app/ listing was actually read')
   const missing = dirs.filter((d) => !RESERVED_SLUGS.includes(d))
   assert.deepEqual(missing, [], `add these to RESERVED_SLUGS in lib/content-paths.ts: ${missing.join(', ')}`)
-  assert.ok(!dirs.includes('c'), 'app/c must not exist: it would collide with /c/<id>')
+  // app/c IS the permanent-address route (/c/<id>, design SS7-1). It is a fixed
+  // segment, which is exactly why 'c' is reserved. Anything else under it would
+  // be a second thing living at a permanent address, so only [id] is allowed.
+  if (dirs.includes('c')) {
+    const inner = readdirSync(join(root, 'c'))
+    assert.deepEqual(inner, ['[id]'], 'app/c may contain only the [id] route')
+  }
+  assert.ok(RESERVED_SLUGS.includes('c'), "'c' must stay reserved: a slug named c would shadow /c/<id>")
 })
 
 test('parseContentPaths: only valid, unshared slugs count; no row = no path (fail-closed)', () => {

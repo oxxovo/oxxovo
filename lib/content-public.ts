@@ -26,6 +26,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   CONTENT_KINDS,
   DBAS,
+  dbaOfKind,
   PUBLIC_ASSET_ROLES,
   isPublicAssetRole,
   openKinds,
@@ -33,18 +34,36 @@ import {
   type ContentKind,
   type Dba,
 } from '@/lib/content-kinds'
-import { contentPathKey, contentUrl, parseContentPaths, type ContentPaths } from '@/lib/content-paths'
+import { isProbeRef } from '@/lib/content-admin'
+import {
+  contentPathKey,
+  contentUrl,
+  isValidSlug,
+  kindForSlug,
+  parseContentPaths,
+  type ContentPaths,
+} from '@/lib/content-paths'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const PUBLIC_LIST_MAX = 50
 
-// Selected so the post-check below can re-verify what the SQL filtered; the
-// status/rights/publish_at columns are NOT part of the returned projection.
-export const PUBLIC_CONTENT_COLUMNS =
-  'id, kind, form, language, title, description, ai_generated, publish_at, status, rights_status'
-export const PUBLIC_ASSET_COLUMNS = 'content_id, role, media_type, file_format, url, duration_sec, width, height'
+// The column lists live in a pure file (shared with the live read-only probe).
+export { PUBLIC_CONTENT_COLUMNS, PUBLIC_ASSET_COLUMNS } from '@/lib/content-public-columns'
+import { PUBLIC_CONTENT_COLUMNS, PUBLIC_ASSET_COLUMNS } from '@/lib/content-public-columns'
 
 type Admin = ReturnType<typeof createSupabaseAdmin>
+
+// Every failure below answers "not public" (404), so a broken query looks exactly
+// like a closed switch. This line is the only way to tell them apart: the error
+// CODE (e.g. 42703 = unknown column) and the item id, never message text or
+// content. `where` is a fixed label.
+function logQueryError(where: string, error: unknown, id?: string): void {
+  const code = (error as { code?: unknown } | null)?.code
+  console.error(`[content-public] query error where=${where} code=${typeof code === 'string' ? code : 'unknown'}${id ? ` id=${id}` : ''}`)
+}
+function logException(where: string, e: unknown, id?: string): void {
+  console.error(`[content-public] exception where=${where} name=${e instanceof Error ? e.name : 'unknown'}${id ? ` id=${id}` : ''}`)
+}
 
 export type PublicContent = {
   id: string
@@ -78,11 +97,15 @@ export function decidePublicationSwitch(row: { value: unknown } | null | undefin
 // broken filter (a refactor that drops an .eq) shows up as a dropped row plus a
 // log line instead of a published one.
 export function isPublicRow(
-  row: { kind: unknown; status: unknown; rights_status: unknown; publish_at: unknown },
+  row: { kind: unknown; status: unknown; rights_status: unknown; publish_at: unknown; source_ref: unknown },
   open: readonly ContentKind[],
   now: Date,
 ): boolean {
   if (row.status !== 'scheduled' || row.rights_status !== 'cleared') return false
+  // Third layer for probe- rows (SQL filter x2 + this). A missing/non-string
+  // source_ref fails closed: if the column ever stopped being selected, nothing
+  // would be public instead of the test rows leaking.
+  if (typeof row.source_ref !== 'string' || isProbeRef(row.source_ref)) return false
   if (typeof row.kind !== 'string' || !(open as readonly string[]).includes(row.kind)) return false
   if (typeof row.publish_at !== 'string') return false
   const t = Date.parse(row.publish_at)
@@ -126,10 +149,14 @@ export async function getOpenPublicationDbas(admin?: Admin): Promise<Dba[]> {
     const db = admin ?? createSupabaseAdmin()
     const keys = DBAS.map(publicationSwitchKey)
     const { data, error } = await db.from('platform_config').select('key, value').in('key', keys)
-    if (error || !data) return []
+    if (error || !data) {
+      if (error) logQueryError('switches', error)
+      return []
+    }
     const byKey = new Map((data as { key: string; value: unknown }[]).map((r) => [r.key, r]))
     return DBAS.filter((dba) => decidePublicationSwitch(byKey.get(publicationSwitchKey(dba)) ?? null, null))
-  } catch {
+  } catch (e) {
+    logException('switches', e)
     return []
   }
 }
@@ -141,9 +168,13 @@ export async function getContentPaths(admin?: Admin): Promise<ContentPaths> {
       .from('platform_config')
       .select('key, value')
       .in('key', CONTENT_KINDS.map(contentPathKey))
-    if (error || !data) return {}
+    if (error || !data) {
+      if (error) logQueryError('paths', error)
+      return {}
+    }
     return parseContentPaths(data as { key: string; value: unknown }[])
-  } catch {
+  } catch (e) {
+    logException('paths', e)
     return {}
   }
 }
@@ -172,7 +203,10 @@ export async function getPublicContent(
       .eq('rights_status', 'cleared')
       .lte('publish_at', now.toISOString())
       .in('kind', open)
+      // probe- rows are permanent test rows (one is cleared): never public.
+      .not('source_ref', 'ilike', 'probe-%')
       .maybeSingle()
+    if (error) logQueryError('content', error, id)
     if (error || !data) return null
     const row = data as Record<string, unknown>
     if (!isPublicRow(row as never, open, now)) {
@@ -186,9 +220,13 @@ export async function getPublicContent(
       .eq('content_id', id)
       .in('role', [...PUBLIC_ASSET_ROLES])
       .not('url', 'is', null)
-    if (aErr) return null
+    if (aErr) {
+      logQueryError('assets', aErr, id)
+      return null
+    }
     return { content: toPublicContent(row), assets: toPublicAssets((assets ?? []) as Record<string, unknown>[]) }
-  } catch {
+  } catch (e) {
+    logException('content', e, id)
     return null
   }
 }
@@ -212,9 +250,11 @@ export async function listPublicContents(
       .eq('rights_status', 'cleared')
       .lte('publish_at', now.toISOString())
       .in('kind', open)
+      .not('source_ref', 'ilike', 'probe-%')
       .order('publish_at', { ascending: false })
       .order('id', { ascending: false })
       .limit(limit)
+    if (error) logQueryError('list', error)
     if (error || !data) return []
     const rows = (data as Record<string, unknown>[]).filter((r) => {
       const ok = isPublicRow(r as never, open, now)
@@ -222,7 +262,8 @@ export async function listPublicContents(
       return ok
     })
     return rows.map(toPublicContent)
-  } catch {
+  } catch (e) {
+    logException('list', e)
     return []
   }
 }
@@ -237,4 +278,48 @@ export async function resolvePublicAddress(id: string, opts: { admin?: Admin; no
   if (!found) return null
   const paths = await getContentPaths(admin)
   return contentUrl(found.content.kind, found.content.id, paths)
+}
+
+// ---- section routing (app/[section]) -------------------------------------------
+// The first path segment is a configured slug, never a hard-coded word. Order of
+// checks keeps the cheap ones first: a segment that cannot be a slug (dots,
+// capitals, reserved words, too long) answers null WITHOUT touching the database;
+// only a slug-shaped segment costs one platform_config read. No cache on purpose
+// (HQ 2026-10-07): changing or removing a slug must take effect at once.
+// null always means 404, for every reason, with no way to tell them apart.
+
+export async function resolveSectionKind(slug: string, opts: { admin?: Admin } = {}): Promise<ContentKind | null> {
+  if (!isValidSlug(slug)) return null
+  const paths = await getContentPaths(opts.admin ?? createSupabaseAdmin())
+  return kindForSlug(slug, paths)
+}
+
+// One item under its section. The item must belong to the section's kind:
+// /<news-slug>/<film-id> is 404, not a page under the wrong heading.
+export async function getPublicContentBySection(
+  slug: string,
+  id: string,
+  opts: { admin?: Admin; now?: Date } = {},
+): Promise<{ kind: ContentKind; item: PublicContentResult } | null> {
+  const admin = opts.admin ?? createSupabaseAdmin()
+  const kind = await resolveSectionKind(slug, { admin })
+  if (!kind) return null
+  const item = await getPublicContent(id, { admin, now: opts.now })
+  if (!item || item.content.kind !== kind) return null
+  return { kind, item }
+}
+
+// The section's list. null = the surface does not exist (no slug, or its DBA's
+// publication switch is closed) -> 404. [] = it exists and is empty.
+export async function listPublicContentsBySection(
+  slug: string,
+  opts: { admin?: Admin; now?: Date; limit?: number } = {},
+): Promise<{ kind: ContentKind; items: PublicContent[] } | null> {
+  const admin = opts.admin ?? createSupabaseAdmin()
+  const kind = await resolveSectionKind(slug, { admin })
+  if (!kind) return null
+  const open = await getOpenPublicationDbas(admin)
+  if (!open.includes(dbaOfKind(kind))) return null
+  const items = await listPublicContents({ kind, limit: opts.limit, admin, now: opts.now })
+  return { kind, items }
 }
