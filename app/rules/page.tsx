@@ -124,9 +124,9 @@ export default function RulesPage() {
                 . Entries outside this range are automatically rejected.
               </li>
               <li>
-                <span className="text-white/90">Format:</span> Created and submitted inside OXXOVO Studio. Entries appear on Watch once they clear verification.
+                <span className="text-white/90">Format:</span> Created and submitted inside OXXOVO Studio. Entries appear on OXXOVO once they clear verification.
                 <div className="text-white/40 text-xs mt-0.5" lang="ko">
-                  OXXOVO Studio 안에서 만들고 그대로 제출합니다. 검증을 통과한 작품은 Watch에 공개됩니다.
+                  OXXOVO Studio 안에서 만들고 그대로 제출합니다. 검증을 통과한 작품은 OXXOVO에 공개됩니다.
                 </div>
               </li>
               <li>
@@ -187,10 +187,10 @@ export default function RulesPage() {
                 exists and when it's revealed, never a season's actual
                 secret value (isTwistRevealed() gates that everywhere). */}
             <p className="mt-4 text-white/60 text-sm">
-              Every Main Round theme includes one required element (Twist) that every entry must include. It is revealed to Finalists, and to the audience on Watch, at the start of the Main Round.
+              Every Main Round theme includes one required element (Twist) that every entry must include. It is revealed to Finalists, and to the audience on OXXOVO, at the start of the Main Round.
             </p>
             <p className="mt-1 text-white/50 text-xs" lang="ko">
-              모든 본선 주제에는 모든 출품작이 반드시 포함해야 하는 필수조건(Twist)이 있습니다. 본선 시작 시각에 진출자와 Watch 관객 모두에게 공개됩니다.
+              모든 본선 주제에는 모든 출품작이 반드시 포함해야 하는 필수조건(Twist)이 있습니다. 본선 시작 시각에 진출자와 OXXOVO 관객 모두에게 공개됩니다.
             </p>
           </RuleSection>
 

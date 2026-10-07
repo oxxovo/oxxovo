@@ -583,7 +583,7 @@ export default function ApplyPage() {
                   placeholder="Give your video a title"
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition"
                 />
-                <p className="text-xs text-white/40 mt-1.5">Shown on Watch as the video&apos;s title.</p>
+                <p className="text-xs text-white/40 mt-1.5">Shown on OXXOVO as the video&apos;s title.</p>
               </div>
 
               <div>
@@ -603,7 +603,7 @@ export default function ApplyPage() {
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-[#8b22ff] transition resize-none"
                 />
                 <p className="text-xs text-white/40 mt-1.5">
-                  Your public intro on Watch. Separate from the Creator Statement below (used for scoring).
+                  Your public intro on OXXOVO. Separate from the Creator Statement below (used for scoring).
                 </p>
               </div>
 

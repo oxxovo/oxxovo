@@ -36,7 +36,7 @@ export function ArenaTopBar({
         ☰
       </button>
 
-      <Link href="/watch" aria-label="Watch home" className="flex shrink-0 items-center gap-2">
+      <Link href="/watch" aria-label="OXXOVO home" className="flex shrink-0 items-center gap-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/oxxovo_logo.png"

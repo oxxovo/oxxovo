@@ -938,7 +938,6 @@ export type Messages = {
     // sidebar / top bar (doc-covered)
     search_placeholder: string
     signin: string
-    badge_watch: string
     badge_subtitle: string
     nav_home: string
     nav_home_sub: string
@@ -1155,7 +1154,7 @@ const MESSAGES_EN: Messages = {
       music: 'Music library',
       messages: 'Messages',
       comments: 'Comment moderation',
-      watch_home: 'Watch as Home',
+      watch_home: 'Home mode',
       watch_videos: 'Video moderation',
       broadcasts: 'Broadcasts',
       faq: 'FAQ',
@@ -2002,7 +2001,6 @@ const MESSAGES_EN: Messages = {
         : 'Champions revealed after judging completes',
     search_placeholder: 'Search videos & creators',
     signin: 'Sign in',
-    badge_watch: 'WATCH',
     badge_subtitle: 'AI Creator League',
     nav_home: 'Home',
     nav_home_sub: 'Go to Landing Page',
@@ -2022,7 +2020,7 @@ const MESSAGES_EN: Messages = {
     lib_watchlater: 'Watch Later',
     lib_history: 'History',
     footer_tip_title: 'All Information in One Place',
-    footer_tip_body: 'You are in WATCH. Click menu items to open in a new tab.',
+    footer_tip_body: 'You are in OXXOVO. Click menu items to open in a new tab.',
     filter_current: 'Current Competition',
     filter_all_competitions: 'All Competitions',
     filter_newest: 'Newest First',
@@ -2114,10 +2112,10 @@ const MESSAGES_EN: Messages = {
     score_integrity_verified: 'Integrity Verified',
   },
   watch_home: {
-    title: 'Watch as Home',
+    title: 'Home mode',
     subtitle:
-      "When ON, the site root (oxxovo.ai) shows the Watch surface. When OFF, the root shows the marketing landing. The landing always stays reachable at /welcome (Watch sidebar “Tournament”). Turn this ON only after Season 0 has enough videos so Watch isn't empty.",
-    toggle_on: 'ON — root shows Watch',
+      "When ON, the site root (oxxovo.ai) shows the video site. When OFF, the root shows the marketing landing. The landing always stays reachable at /welcome (the sidebar “Tournament”). Turn this ON only after Season 0 has enough videos so the home isn't empty.",
+    toggle_on: 'ON — root shows the video site',
     toggle_off: 'OFF — root shows landing',
     save_ok: 'Saved.',
     save_failed: 'Save failed — the switch was NOT changed.',
@@ -2125,7 +2123,7 @@ const MESSAGES_EN: Messages = {
   watch_videos: {
     title: 'Video moderation',
     subtitle:
-      'Reported, AI-flagged, or hidden videos. Hide removes a video from Watch without changing its competition status (scoring/awards are unaffected).',
+      'Reported, AI-flagged, or hidden videos. Hide removes a video from the public site without changing its competition status (scoring/awards are unaffected).',
     empty: 'Nothing to review. 🎉',
     col_reports: 'Reports',
     col_creator: 'Creator',
@@ -2212,7 +2210,7 @@ const MESSAGES_KO: Messages = {
       music: '음악 라이브러리',
       messages: '메시지',
       comments: '댓글 관리',
-      watch_home: 'Watch 홈 전환',
+      watch_home: '홈 화면 전환',
       watch_videos: '영상 관리',
       broadcasts: '연락처 발송',
       faq: 'FAQ',
@@ -3050,7 +3048,6 @@ const MESSAGES_KO: Messages = {
       dateStr ? `${seasonName ?? '시즌'} 우승자, ${dateStr} 발표` : '우승자는 심사가 끝난 뒤 발표됩니다.',
     search_placeholder: '영상·크리에이터 검색',
     signin: '로그인',
-    badge_watch: 'WATCH',
     badge_subtitle: 'AI 크리에이터 리그',
     nav_home: '홈',
     nav_home_sub: '랜딩 페이지로 이동',
@@ -3070,7 +3067,7 @@ const MESSAGES_KO: Messages = {
     lib_watchlater: '나중에 볼 영상',
     lib_history: '시청 기록',
     footer_tip_title: '모든 정보를 한곳에서',
-    footer_tip_body: '지금 WATCH에 계십니다. 메뉴를 누르면 새 탭에서 열립니다.',
+    footer_tip_body: '지금 OXXOVO에 계십니다. 메뉴를 누르면 새 탭에서 열립니다.',
     filter_current: '진행 중인 대회',
     filter_all_competitions: '전체 대회',
     filter_newest: '최신순',
@@ -3162,10 +3159,10 @@ const MESSAGES_KO: Messages = {
     score_integrity_verified: '무결성 검증됨',
   },
   watch_home: {
-    title: 'Watch 홈 전환',
+    title: '홈 화면 전환',
     subtitle:
-      'ON이면 사이트 루트(oxxovo.ai)가 Watch 화면을 보여줍니다. OFF면 루트가 마케팅 랜딩을 보여줍니다. 랜딩은 항상 /welcome에서 볼 수 있습니다(Watch 사이드바 "Tournament"). 시즌 0에 영상이 충분히 쌓인 뒤에만 ON으로 켜세요 — Watch가 비어 보이지 않도록.',
-    toggle_on: 'ON — 루트가 Watch를 보여줍니다',
+      'ON이면 사이트 루트(oxxovo.ai)가 영상 사이트를 보여줍니다. OFF면 루트가 마케팅 랜딩을 보여줍니다. 랜딩은 항상 /welcome에서 볼 수 있습니다(사이드바 "Tournament"). 시즌 0에 영상이 충분히 쌓인 뒤에만 ON으로 켜세요 — 홈이 비어 보이지 않도록.',
+    toggle_on: 'ON — 루트가 영상 사이트를 보여줍니다',
     toggle_off: 'OFF — 루트가 랜딩을 보여줍니다',
     save_ok: '저장되었습니다.',
     save_failed: '저장 실패 — 스위치는 바뀌지 않았습니다.',
@@ -3173,7 +3170,7 @@ const MESSAGES_KO: Messages = {
   watch_videos: {
     title: '영상 관리',
     subtitle:
-      '신고됨·AI 플래그·숨김 처리된 영상. 숨기기는 시합 상태(채점/시상)에 영향 없이 Watch 노출만 끕니다.',
+      '신고됨·AI 플래그·숨김 처리된 영상. 숨기기는 시합 상태(채점/시상)에 영향 없이 공개 노출만 끕니다.',
     empty: '검토할 항목이 없습니다 🎉',
     col_reports: '신고',
     col_creator: '참가자',

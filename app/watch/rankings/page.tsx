@@ -66,7 +66,7 @@ export default async function RankingsInfoPage() {
     <main className="min-h-screen bg-[#070512] px-6 py-10 text-[#f4f0ff]">
       <div className="mx-auto max-w-xl">
         <Link href="/watch" className="text-[12px] font-bold text-[#a855ff]/80 hover:text-[#a855ff]">
-          ← WATCH
+          ← OXXOVO
         </Link>
 
         <h1 className="mt-4 text-[22px] font-black uppercase tracking-wide text-white">Creator Ranking</h1>

@@ -39,7 +39,7 @@ export function WatchTopBar({
 
       {/* Logo always goes to the Watch home (YouTube-style: logo = current
           platform home). The landing is reachable via the sidebar "Tournament". */}
-      <Link href="/watch" aria-label="Watch home" className="flex items-center gap-2 shrink-0">
+      <Link href="/watch" aria-label="OXXOVO home" className="flex items-center gap-2 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {/* Logo icon only = LIGHT purple (brightened hard so the deep-purple
             symbol reads as lavender on black); wordmark stays DEEP #8B22FF. */}

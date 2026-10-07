@@ -9,7 +9,7 @@ import { loadDisplayName, saveDisplayName } from './actions'
 const COPY = {
   ko: {
     title: '크리에이터 닉네임',
-    desc: 'Watch에서 영상·댓글에 공개로 표시되는 이름입니다. 이메일은 절대 표시되지 않습니다.',
+    desc: 'OXXOVO에서 영상·댓글에 공개로 표시되는 이름입니다. 이메일은 절대 표시되지 않습니다.',
     edit: '변경',
     save: '저장',
     cancel: '취소',
@@ -23,7 +23,7 @@ const COPY = {
   },
   en: {
     title: 'Creator nickname',
-    desc: 'Your public name on Watch (videos, comments, likes). Your email is never shown.',
+    desc: 'Your public name on OXXOVO (videos, comments, likes). Your email is never shown.',
     edit: 'Change',
     save: 'Save',
     cancel: 'Cancel',

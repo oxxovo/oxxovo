@@ -175,8 +175,8 @@ Q. What about music? 【F】 ⏸ [확인 필요]
 - EN: This hasn't been finalized yet. Please contact info@oxxovo.ai.
 
 Q. Can I submit more than one entry? Can I post my video on social media? 【F·W】
-- KR: 한 시합에 한 편입니다. 여러 편을 내서 하나가 걸리는 것은 실력이 아니라 시행 횟수이기 때문입니다. 작품의 저작권은 만든 사람에게 있습니다. 본인 작품이고 지금 투표가 열려 있다면 Watch 페이지 링크를 공유해 주세요 — 링크로 오신 분이 직접 보고 투표하실 수 있습니다. 영상 파일 자체는 {{winners_announced}} 뒤에 받으실 수 있습니다. 시즌이 끝난 뒤에는 파일을 받아서 어디에나 올리실 수 있고, OXXOVO 로고와 닉네임이 함께 들어갑니다. 다른 분의 작품이라면 창작자의 허락을 받으셔야 하지만, Watch 페이지 링크는 누구나 자유롭게 공유하실 수 있습니다. OXXOVO도 작품을 대회 운영과 홍보에 씁니다 — 본선에 오른 작품은 채널과 광고에 실릴 수 있습니다.
-- EN: One entry per competition. Submitting many and hoping one lands isn't skill — it's volume. The creator owns the copyright. If it's yours and voting is open, share the Watch page link — anyone who follows it can watch and vote directly. The video file itself becomes available after {{winners_announced}}. Once the season closes, you can download it and post it anywhere, carrying the OXXOVO logo and your handle. If it's someone else's, you'd need their permission, but anyone can share the Watch page link freely. OXXOVO also uses entries to run and promote the competition — Finalist entries may appear on our channels and in advertising.
+- KR: 한 시합에 한 편입니다. 여러 편을 내서 하나가 걸리는 것은 실력이 아니라 시행 횟수이기 때문입니다. 작품의 저작권은 만든 사람에게 있습니다. 본인 작품이고 지금 투표가 열려 있다면 영상 링크를 공유해 주세요 — 링크로 오신 분이 직접 보고 투표하실 수 있습니다. 영상 파일 자체는 {{winners_announced}} 뒤에 받으실 수 있습니다. 시즌이 끝난 뒤에는 파일을 받아서 어디에나 올리실 수 있고, OXXOVO 로고와 닉네임이 함께 들어갑니다. 다른 분의 작품이라면 창작자의 허락을 받으셔야 하지만, 영상 링크는 누구나 자유롭게 공유하실 수 있습니다. OXXOVO도 작품을 대회 운영과 홍보에 씁니다 — 본선에 오른 작품은 채널과 광고에 실릴 수 있습니다.
+- EN: One entry per competition. Submitting many and hoping one lands isn't skill — it's volume. The creator owns the copyright. If it's yours and voting is open, share the video link — anyone who follows it can watch and vote directly. The video file itself becomes available after {{winners_announced}}. Once the season closes, you can download it and post it anywhere, carrying the OXXOVO logo and your handle. If it's someone else's, you'd need their permission, but anyone can share the video link freely. OXXOVO also uses entries to run and promote the competition — Finalist entries may appear on our channels and in advertising.
 
 ## D. Judging
 
@@ -276,7 +276,7 @@ Q. Why is there nothing to see yet? (before {{application_open}})
 Q. What are the videos I'm seeing right now, if entries haven't opened? ⭐
 - KR: 시스템 점검용 리허설 기록입니다. 실제 참가작이 아닙니다. OXXOVO가 만든 영상으로 채점과 투표가 제대로 도는지 확인했고, 그 기록이 그대로 남아 있습니다. 실제 참가작은 예선이 시작되면 올라옵니다.
 - EN: These are records from a system rehearsal — not real entries. We used our own videos to check that scoring and voting work end to end, and left the record up. Real entries go live once the preliminary round starts.
-- Only give this answer if the visitor is actually looking at rehearsal-fixture content (the Watch UI already marks these with a banner/tag, HQ 2026-08-30) -- don't volunteer it unprompted.
+- Only give this answer if the visitor is actually looking at rehearsal-fixture content (the video pages already mark these with a banner/tag, HQ 2026-08-30) -- don't volunteer it unprompted.
 
 Q. How many people have signed up? (during {{application_open}}–{{application_close}})
 - KR: 참가 인원은 접수가 마감된 뒤 공개됩니다.
@@ -352,7 +352,7 @@ Q. Who won? (after {{winners_announced}})
 - 참가는 개인 단위입니다. 각자 계정으로 따로 참가하시면 됩니다. 서로 의견을 나누는 건 자유입니다. / Entries are individual — each person enters on their own account, though you're free to discuss with each other.
 
 "제 영상을 남들이 볼 수 있나요?"
-- 네, Watch에 공개되고 시즌 내내 링크가 유지됩니다. 다운로드는 {{winners_announced}} 뒤에 열립니다. / Yes, it's public on Watch all season. Downloading opens after {{winners_announced}}.
+- 네, OXXOVO에 공개되고 시즌 내내 링크가 유지됩니다. 다운로드는 {{winners_announced}} 뒤에 열립니다. / Yes, it's public on OXXOVO all season. Downloading opens after {{winners_announced}}.
 
 "지금 참가하면 늦었나요?" -- answer per whether entries are currently open (W section), and never mention a live application count.
 
