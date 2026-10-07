@@ -153,8 +153,9 @@
 
 ## 8. 미결 — 우선순위대로 (본부 정리 2026-10-07)
 
-### 1순위 — 지금 할 수 있는 것: **없다. ⑩은 영상 대기다.**
-- **예외 후보(본부 결정 대기): 반송 알림.** 영상이 없어도 할 수 있다. 지수 의견은 **지금 하는 쪽**(아래 "반송 알림" 절). 본부가 승인하면 1순위로 올라간다.
+### 1순위 — 내일 첫 작업: **반송 알림 (승인됨, 내일 SQL부터)**
+- 영상 없이 할 수 있고 ⑩과 겹치지 않아서 영상이 오기 전에 한다. **⑩ 자체는 영상 대기다**(2순위).
+- 내일 순서: ① SQL 블록(사전 확인 -> 추가 -> 되읽기 -> 되돌리기, **TK님이 Run하실 때 본부가 같이 본다** — 오늘은 만들지 않았다) ② 코드 ③ **배포는 TK님 명령**. 방법은 아래 "반송 알림" 절.
 
 ### 2순위 — 영상이 오면 즉시: **⑩ 정상 송출 1건 (실제 YouTube, private)**
 - 준비는 끝났다(코드 `6d4d731` 배포됨). 절차는 **설계서 §5-8**: 시작 전 읽기 확인 -> `content_youtube_visibility='private'` 입력(**아직 안 넣었다**, 없으면 코드가 `private`으로 떨어지므로 안전하나 명시한다) -> 만든 쪽이 `allowed_platforms:["youtube"]`, cleared로 1건 수입 -> 어드민에서 제목을 `[시험] 2026-10-07 ...`로 수정 + `[정지]` -> `content_dispatch_per_tick`을 1로 -> 그 콘텐츠 DBA 송출 스위치 하나만 -> `[송출]` -> 로그 `processed:1` -> **즉시 닫고 `per_tick`을 10으로 복원** -> Studio에서 비공개 확인·삭제 -> 어드민 `[반송]`으로 기록.
@@ -188,10 +189,18 @@
 - `content_dispatch_max_attempts`·`content_dispatch_backoff_base_minutes`·`content_dispatch_item_budget_seconds` 값 미정(없으면 재시도 0회 -> 어드민에 노란 안내, 항목 예산 120초). **⑩에서는 재시도 0회를 유지한다**(자동 재시도가 중복 게시를 부를 수 있음).
 - 공개 경로 이름(slug), `restricted -> blocked` 허용 방향 확인.
 
-### 반송 알림 (본부에 의견 제출 — 승인 대기)
-- **왜 걸리나:** 반송은 만든 쪽이 모르면 아무 일도 안 일어난다. `contents`에 반송 알림 추적 칸이 없어서 담당자(info@)도 반송 사실을 메일로 못 받는다(수입 알림 `notified_at`은 수입용 한 칸).
-- **정확한 사실:** 만든 쪽이 반송을 아는 정식 경로는 이미 있다 — `GET /api/contents/returns?since=`(라이브 시험 통과). 다만 **뉴스·제니2 쪽이 이 엔드포인트를 실제로 폴링하는지는 확인하지 못했다.** 이 확인이 "상대가 영영 모른다"의 진짜 답이다.
-- **지수 의견: ⑩ 전에, 영상이 오기 전에 지금 한다.** 근거와 순서는 본부 보고에 있다(칸 하나 `returned_notified_at timestamptz`, 판정은 `returned_at`과 비교하므로 트리거·RPC 변경 없음, **SQL 먼저 -> 되읽기 -> 코드**, 배포는 ⑩ 시작 전에 끝낸다).
+### 반송 알림 — **승인됨(본부 2026-10-07 저녁), 내일 SQL부터**
+- **본부 전제 정정:** 반송 조회 API(`GET /api/contents/returns?since=`, ④에서 라이브 시험 통과)는 **이미 있다.** 없는 것은 **담당자(info@) 메일**이다. 어제 "반송은 만든 쪽이 영영 모른다"로 적은 표현은 **본부의 과한 표현**이었다. 만든 쪽이 모르는지는 **그쪽이 이 API를 실제로 폴링하는지**에 달려 있다.
+- **폴링 확인:** **뉴스·제니2에게 "`GET /api/contents/returns?since=`를 폴링합니까"를 묻는 메시지가 내일 나간다**(본부가 보냄). 답에 따라 메일이 만든 쪽까지 닿는 보강인지, 사실상 유일한 경로인지가 갈린다.
+- **승인된 방법(그대로):**
+  - **컬럼:** `contents`에 `returned_notified_at timestamptz` 하나, nullable, 기본값 없음. SQL은 `ALTER TABLE public.contents ADD COLUMN IF NOT EXISTS returned_notified_at timestamptz;`(행을 다시 쓰지 않고 잠금은 순간, 테이블 단위 GRANT가 새 컬럼에도 적용, 함수를 만들지 않으니 오버로드 없음). 되돌리기는 **별도 블록**, 되읽기는 `pg_attribute`로.
+  - **판정:** 트리거·RPC 변경 없이 비교로 한다. `status='returned' AND (returned_notified_at IS NULL OR returned_notified_at < returned_at)`. `content_return`이 반송 때마다 `returned_at`을 새로 쓰므로 반송 -> 정지 복구 -> 재반송도 다시 알림이 간다. 불변 컬럼 트리거와 감사 트리거는 이 컬럼을 안 본다.
+  - **코드:** ⑧ 알림 러너와 같은 틱에 **별도 쿼리**로(held·scheduled 알림에 영향 없게). 메일이 **수락된 뒤에만** `returned_notified_at` 기록, `probe-` 행은 쿼리와 빌더에서 이중 제외, `returned_reason`·제목은 이스케이프, 가드 훼손 시험까지.
+  - **순서:** **SQL -> 되읽기 -> 코드 -> 배포.** 코드가 먼저 나가면 쿼리가 오류를 내 틱 경고가 반복된다.
+- **주의 둘(승인된 그대로 기록):**
+  1. 지금 DB의 반송 행은 `probe-rpc-20261005` 하나뿐이고 `probe-` 제외라 메일이 안 간다. **배포 후 첫 틱의 기대값은 `notified`가 달라지지 않는 것**이고, 실제 메일 경로는 **⑩의 `[반송]`(시험 영상 삭제 기록)이 처음 라이브로 돌린다**(그 반송 행이 info@로 메일 1통을 만드는 것이 정상).
+  2. 메일은 수락됐는데 `returned_notified_at` 기록이 실패하면 **다음 틱에 같은 메일이 한 번 더 간다**(⑧ `notified_at`과 같은 한계, 설계서에도 한계로 적는다).
+- **내일 첫 작업 순서:** 1. SQL 블록(사전 확인 -> 추가 -> 되읽기 -> 되돌리기, 본부가 TK님 Run을 함께 본다) 2. 코드 3. **배포는 TK님 명령.**
 
 ## 8-2. 위험·이월(어제와 같음)
 - R2 공개 주소 노출(권리 `blocked` 파일도 key를 알면 열림, 의도), `CRON_SECRET` 교체 금지, eslint 기준선(오늘 `app lib` 149건, 변경 전후 동일), `ALERT STATE%` 제외 미증명, `updated_at` 트리거 없는 C분류 5개 테이블, 설계서 후속(본부 반영).
@@ -200,13 +209,14 @@
 
 **현재 상태**
 - 레포 `main` = 라이브 = **`9ab016e`**(이 EOD 커밋 전). 작업 트리 clean.
+- **오늘 라이브 상태(확정):** SHA `9ab016e` · 스위치 **마스터만 열림, 엔터·데일리 닫힘** · **실제 SNS 게시 0건** · **공개 화면 전부 404** · 크론 `no_open_dba`. **⑩은 뉴스·엔터 영상 대기**(양쪽에 제작 지시가 나갔다).
 - 플래그(변화 없음): `social_dispatch_enabled=true`, `news_dispatch_enabled=false`, `entertainment_dispatch_enabled=false`, `news_publication_enabled=false`, `entertainment_publication_enabled=false`, `competition_publication_enabled=false`. **실제 SNS 게시 0건, 공개 화면 전부 404. 건드리지 말 것.**
 - 크론 6개 그대로. 틱 로그에 `notified` 필드가 추가됐다: `[content-dispatch] {"stage":...,"notified":N,...}`. 정상은 `no_open_dba`·`notified:0`·`warnings:[]`.
 - 도구: `scripts/probe-contents.mjs`(수입 경로), `scripts/probe-public-columns.mjs`(읽기 전용 공개 컬럼, 서비스 롤 키는 환경변수로만 — TK님이 `Read-Host -AsSecureString`으로 입력, 키는 Supabase 대시보드 Project Settings -> API Keys -> `service_role` Reveal).
 
 **재개 순서**
 1. 이 파일 8절(우선순위)을 본다. **⑩은 영상 대기**(뉴스·엔터에 제작 지시가 나갔다). 영상이 오면 설계서 §5-8을 그대로 따른다(결정은 이미 났다: 실제 OXXOVO YouTube 1건, private, 테스트 채널은 만들지 않음).
-2. **반송 알림**은 본부 승인이 나면 ⑩ 전에 한다(8절 마지막 항목). SQL -> 되읽기 -> 코드 순서.
+2. **내일 첫 작업: 반송 알림(승인됨).** SQL 블록(사전 확인 -> 추가 -> 되읽기 -> 되돌리기)을 TK님 Run 때 본부가 같이 볼 수 있게 보낸다 -> 되읽기 확인 후 코드 -> 배포는 TK님 명령. 오늘은 SQL 블록을 **만들지 않았다**(본부 지시).
 3. 공개 스위치는 §7-3 체크리스트가 끝나기 전에는 켜지 않는다. 홈·경로·시리즈는 Phase 2.
 
 **작업 규칙(재확인)**
