@@ -254,7 +254,7 @@
 - 경로 `/watch*` 정리: `/watch` -> `/` 308, 상세·랭킹의 새 경로(안: `/v/[id]`, `/rankings`), `/watch-arena`는 최종 목적지로 직접 308, **`RESERVED_SLUGS`에 `watch`·`watch-arena`를 계속 두고 새 경로도 추가**, 홈이 `searchParams`를 받게 수정, 이메일 링크 6곳·챗봇 지식·랜딩 링크 갱신
 - Series / Season / Episode 모델(막는 것 없음, §12-3)
 - `production_origin` / `client_id`(CF 구분)
-- `/admin/contents` 영어 전환(admin-i18n 미적용, 한국어 고정 — TK님 지적)
+- ~~`/admin/contents` 영어 전환~~ **코드 완료·푸시 `0b8e213`, 미배포**(6-5절). 남은 것: TK님 배포 명령, 알림 메일 영어 7건 대조 결과(6-5절 표)에 대한 본부 판단(특히 4번 UTC/PT)
 - ~~배포 검증 canonical 전환(`scripts/deploy-prod.mjs`)~~ **코드 완료(본부 승인, 2026-10-07 밤). 라이브 배포 검증은 TK님 다음 배포 때.** 검증 대상을 `www.oxxovo.ai/api/version`으로 바꾸고(`scripts/deploy-verify.mjs`) **옛 SHA는 통과가 아니라 재시도**(12회 x 5초), `sha`와 `builtAt` 둘 다 맞아야 통과(같은 커밋 재배포의 옛 빌드 거짓 통과 방지), 끝까지 안 맞으면 `exit 1`. 배포 URL은 인증 벽 진단에만 쓴다. 재검증만 하려면 `npm run deploy:verify -- <sha> [builtAt]`. alias 간격은 15개 배포에서 `ready` 후 0.25~0.45초(엣지 전파는 측정 불가라 창을 넉넉히). 가드 훼손 8건 전부 빨개짐.
 
 ### 5순위 — 미정 결정 (TK님)
