@@ -6,6 +6,8 @@
 //   1  sweep    -- zombie `sending` rows -> unknown. BEFORE the switches: an
 //                  incident (switches off) must not let zombies pile up.
 //   1b alert    -- unknown/failed rows nobody has been told about yet.
+//   1c notify   -- import notices (held / scheduled contents). Same rule as 1b, see
+//                  lib/content-notify.ts.
 //   2  early exit -- master off, or no DBA open -> nothing else happens.
 //                  (Without this every tick would download + upload a video and
 //                  then undo it at the recheck: duplicates in the Postiz library.)
@@ -28,6 +30,7 @@ import {
   type Dba,
   type Platform,
 } from '@/lib/content-kinds'
+import { runContentNotices, type NotifiableContent } from '@/lib/content-notify'
 import { readDispatchState, type ConfigReader } from '@/lib/dispatch-switch'
 import { PostizConfigError, PostizHttpError, PostizMediaError } from '@/lib/postiz'
 import type { PostizMedia, PromoChannel } from '@/lib/postiz'
@@ -108,6 +111,8 @@ export type DispatchDeps = {
   sweep(thresholdSec: number): Promise<number>
   listAlertable(): Promise<AlertableDist[]>
   markAlerted(ids: string[]): Promise<void>
+  listNotifiable(): Promise<NotifiableContent[]>
+  markNotified(ids: string[]): Promise<void>
   sendAlert(subject: string, html: string): Promise<boolean>
   alertDaily(key: string, subject: string, html: string): Promise<boolean>
   claimOne(kinds: ContentKind[], maxAttempts: number | null): Promise<ClaimedDist | null>
@@ -126,6 +131,7 @@ export type TickReport = {
   stage: 'unreadable' | 'master_closed' | 'no_open_dba' | 'config' | 'ran'
   swept: number
   alerted: number
+  notified: number
   processed: number
   rows: { dist_id: string; outcome: RowOutcome }[]
   stopped: string | null
@@ -152,7 +158,7 @@ function alertHtml(rows: AlertableDist[]): string {
 }
 
 export async function runDispatchTick(deps: DispatchDeps): Promise<TickReport> {
-  const report: TickReport = { stage: 'ran', swept: 0, alerted: 0, processed: 0, rows: [], stopped: null, warnings: [] }
+  const report: TickReport = { stage: 'ran', swept: 0, alerted: 0, notified: 0, processed: 0, rows: [], stopped: null, warnings: [] }
   const tickStart = deps.nowMs()
 
   // 1. sweep -- regardless of switches.
@@ -177,6 +183,15 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<TickReport> {
     }
   } catch (e) {
     report.warnings.push(`alert_failed:${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  // 1c. import notices -- regardless of switches; never allowed to break the tick.
+  try {
+    const n = await runContentNotices({ list: deps.listNotifiable, send: deps.sendAlert, mark: deps.markNotified })
+    report.notified = n.marked
+    report.warnings.push(...n.warnings)
+  } catch (e) {
+    report.warnings.push(`notify_crashed:${e instanceof Error ? e.message : String(e)}`)
   }
 
   // 2. early exit

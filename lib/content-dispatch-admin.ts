@@ -7,6 +7,7 @@ import { adminConfigReader } from '@/lib/config-reader'
 import { prepareMedia, publishPrepared } from '@/lib/postiz'
 import { sendAdminAlert } from '@/lib/email/admin-alert'
 import { sendAdminAlertOnceDaily } from '@/lib/admin-alert-dedup'
+import { listNotifiableContents, markContentsNotified } from '@/lib/content-notify'
 import type { AlertableDist, ClaimedDist, ContentState, DispatchAsset, DispatchDeps } from '@/lib/content-dispatch'
 
 const ALERT_LIMIT = 50
@@ -54,6 +55,9 @@ export function realDispatchDeps(): DispatchDeps {
       const { error } = await admin.from('content_distributions').update({ alerted_at: new Date().toISOString() }).in('id', ids)
       if (error) throw new Error(error.message)
     },
+
+    listNotifiable: () => listNotifiableContents(admin),
+    markNotified: (ids) => markContentsNotified(admin, ids),
 
     sendAlert: (subject, html) => sendAdminAlert(subject, html),
     alertDaily: (key, subject, html) => sendAdminAlertOnceDaily(key, subject, html),

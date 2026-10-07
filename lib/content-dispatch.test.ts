@@ -75,6 +75,8 @@ function harness(opts: {
     async sweep(th) { h.log.push(`sweep:${th}`); return 0 },
     async listAlertable() { return opts.alertable ?? [] },
     async markAlerted(ids) { h.alerted.push(ids) },
+    async listNotifiable() { return [] },
+    async markNotified() {},
     async sendAlert(subject) { h.alertsSent.push(subject); return opts.sendAlertOk ?? true },
     async alertDaily(key) { h.daily.push(key); return true },
     async claimOne(kinds) { h.log.push('claim'); h.claimKinds.push(kinds); return queue.shift() ?? null },
@@ -400,4 +402,37 @@ test('sweep threshold is computed from maxDuration, above it', async () => {
   await runDispatchTick(h.deps)
   const th = Number(h.log[0].split(':')[1])
   assert.ok(th > DISPATCH_MAX_DURATION_SEC)
+})
+
+test('import notices: sent from the tick with switches CLOSED, marked after the mail; probe- never; a failing list does not break the tick', async () => {
+  const content = (n: number, ref = `ref-${n}`) => ({
+    id: `c${n}`, title: `t${n}`, kind: 'cf', source_ref: ref, source_version: 1, status: 'held',
+    rights_status: 'cleared', held_reason: 'late_for_slot', rights_reason: null, publish_at: '2026-10-08T07:00:00Z',
+  })
+  const closed = { ...OPEN, social_dispatch_enabled: 'false' }
+
+  const h = harness({ config: closed })
+  const marked: string[][] = []
+  h.deps.listNotifiable = async () => [content(1), content(2, 'probe-rt-1')]
+  h.deps.markNotified = async (ids) => { marked.push(ids) }
+  const r = await runDispatchTick(h.deps)
+  assert.equal(r.stage, 'master_closed') // the tick still stops at the switches...
+  assert.equal(r.notified, 1) // ...but the notice went out first
+  assert.deepEqual(marked, [['c1']]) // probe- row not marked
+  assert.equal(h.alertsSent.length, 1)
+
+  const bad = harness({ config: closed, sendAlertOk: false })
+  const marked2: string[][] = []
+  bad.deps.listNotifiable = async () => [content(1)]
+  bad.deps.markNotified = async (ids) => { marked2.push(ids) }
+  const r2 = await runDispatchTick(bad.deps)
+  assert.equal(r2.notified, 0)
+  assert.deepEqual(marked2, []) // mail not accepted -> retried next tick
+  assert.ok(r2.warnings.includes('notice_not_sent:held'))
+
+  const boom = harness({ config: closed })
+  boom.deps.listNotifiable = async () => { throw new Error('db down') }
+  const r3 = await runDispatchTick(boom.deps)
+  assert.equal(r3.stage, 'master_closed')
+  assert.ok(r3.warnings.some((w) => w.startsWith('notify_list_failed')))
 })
