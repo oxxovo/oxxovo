@@ -2,24 +2,26 @@
 
 작성: 지수(메인). 보고 언어 한국어, 코드·로그·에러 원문만 영문 그대로.
 **읽는 순서: 0절 한 줄 요약 -> 8절 미결 -> 9절 인계 메모.** 어제 파일(`jisu_hq_2026-10-06_eod.md`)은 경과가 필요할 때만.
-(시각은 UTC. 이 EOD 커밋 전 라이브는 `a41d4c5`.)
+(시각은 UTC. 이 EOD 커밋 전 라이브는 `9ab016e`. **오전분(⑦⑧⑨)은 1~5절, 오후분(⑩ 준비·문구 정리·Phase 2 기록)은 6절 이하와 6-2절.**)
 
 ## 0. 한 줄 요약
 
-**Phase 1의 ⑦ 어드민, ⑧ 알림, ⑨ 공개 페이지를 끝내고 전부 라이브에 올렸다.** 라이브는 `a41d4c5`.
-남는 것: **⑩ 라이브 검증(정상 송출 포함)** 과 **공개 스위치 체크리스트(§7-3)**. 스위치는 어제와 같고(마스터만 열림), **실제 SNS 게시 0건, 공개 화면은 전부 404**다.
+**Phase 1의 ⑦ 어드민, ⑧ 알림, ⑨ 공개 페이지를 끝내고 전부 라이브에 올렸다.** 오후에 ⑩ 준비(YouTube `title`·`type` 코드)와 구 명칭 문구 정리를 끝내 역시 라이브다. 라이브는 `9ab016e`.
+**⑩ 정상 송출은 영상이 올 때까지 대기다**(뉴스·엔터에 제작 지시가 나갔다, TK님 결정). 코드와 절차(설계서 §5-8)는 준비가 끝났다. 스위치는 어제와 같고(마스터만 열림), **실제 SNS 게시 0건, 공개 화면은 전부 404**다.
 **"정상 송출", "알림 메일 실제 발송", "어드민 버튼", "공개 페이지 본문·308"은 라이브에서 한 번도 돌지 않았다**(5절).
 
-## 1. 배포 3회
+## 1. 배포 (오전 3회 + 오후 3회)
 
 | # | SHA | 시각(UTC) | 내용 |
 |---|---|---|---|
 | 1 | `1f9488e` | 03:29 | ⑦ `/admin/contents` |
 | 2 | `2ad63df` | 03:52 | ⑧ 수입 알림(held / scheduled) |
 | 3 | `a41d4c5` | 04:14 | ⑨ `app/[section]`·`app/[section]/[id]`·`app/c/[id]` + 공개 판정 `probe-` 3중 + 쿼리 오류 로그 |
+| 4 | `6d37e93` | 04:59 | **⑩ 준비**: YouTube `title`·`type`(코드 `6d4d731` 포함, 이 SHA는 그 뒤 EOD 문서 커밋). 같은 SHA를 05:00:25에 한 번 더 배포(코드 변화 없음) |
+| 5 | `9ab016e` | 05:49 | **구 명칭 문구 정리** + 검사 테스트 |
 
-- 세 번 모두 `deploy:prod`(TK님). 자동 검증은 매번 "Could not verify automatically"(deployment URL이 HTML). `www.oxxovo.ai/api/version`으로 SHA를 직접 확인했다.
-- 커밋: `3d37ff2`·`1f9488e`(⑦, 뒤쪽은 설계서 문단 복구), `40dced3`(i18n 미결), `2ad63df`, `a41d4c5`. 전체 테스트 734 -> 748 -> **757**, 전부 통과.
+- 모두 `deploy:prod`(TK님). 자동 검증은 매번 "Could not verify automatically"(deployment URL이 HTML). `www.oxxovo.ai/api/version`으로 SHA를 직접 확인했다.
+- 커밋: `3d37ff2`·`1f9488e`(⑦, 뒤쪽은 설계서 문단 복구), `40dced3`(i18n 미결), `2ad63df`, `a41d4c5`, `6d4d731`·`6d37e93`(⑩ 준비·EOD), `bf64c82`(용어 대응표), `dad9bc5`(Phase 2 기록), `fa4ca9f`(승인 단위·CF 세 축), `9ab016e`(문구 정리). 전체 테스트 734 -> 748 -> 757 -> 767 -> **770**, 전부 통과.
 
 ## 2. ⑦ 어드민 `/admin/contents` (라이브 확인됨: 목록·필터·배너)
 
@@ -84,12 +86,22 @@
 4. **설계서와 코드의 차이를 착수 전에 올렸다:** 조건 ②(수동 송출을 `content_publish_log`에 남김)는 RPC가 일부만 충족 -> 본부가 SQL을 안 고치는 쪽(옵션 B)으로 결정, 한계로 기록.
 5. **"모든 실패가 404"의 함정:** ⑨ 공개 쿼리는 스위치가 닫히면 실행조차 안 되고, 쿼리가 깨져도 404라 둘이 구분되지 않는다. 그래서 오류 로그(코드·id만) + 읽기 전용 점검 스크립트로 컬럼을 라이브에서 먼저 확인했다.
 
+6. **지수의 오류 ③ (오후) — 감시 판정 오판.** 배포 후 첫 틱을 기다리는 감시를 "`vercel logs`의 크론 로그 **줄 수**가 늘면 새 틱"으로 짰다. 그런데 `vercel logs`는 기본 조회 한도가 100건이라 요청이 쌓이면 창이 밀려 줄 수가 안 늘어 보였고, 15분 동안 "틱이 안 돈다"로 오탐했다. `--since`와 `--json` 타임스탬프로 다시 보니 크론은 5분마다 정확히 돌고 있었다. **사고는 없었고 시간만 썼다.** 교훈: 감시는 줄 수가 아니라 **시각**으로 판정한다.
+7. **지수의 오류 ④ (오후) — CRLF 때문에 검사기가 오탐.** 문구 검사 테스트(`lib/user-facing-names.test.ts`)가 처음에 `NicknameCard.tsx`의 **주석 한 줄**을 문구로 잡았다. 파일이 CRLF라서 줄 끝 `\r`이 주석 제거 정규식(`.*$`)을 막은 것이다. 줄 구분을 `\r?\n`으로 고치고 CRLF 대조군을 추가했다. 검사 도구가 거짓 양성을 내면 신뢰를 잃는다.
+8. **지수의 오류 ⑤ (오후) — 바꿀 목록이 불완전했다.** 본부에 올린 목록에 `lib/chatbot-kb.ts:178`을 한 번만 적었는데 그 줄에는 구 명칭이 **두 번** 있었다. 줄 단위 수작업 목록만으로는 놓친다 — **검사 테스트가 남은 한 곳을 잡았다.** 앞서 "뷰"라고 적었던 `watch_scores_public`이 실제로는 `seasons`의 컬럼이었던 것(W1이 바로잡음)도 같은 종류의 정정이다.
+9. **지수의 오류 ⑥ (오후) — 양성 대조군 없는 확인.** 문구 정리 배포 후 `curl /rules`로 새 문구를 찾아 0건이 나왔다. **이 0건을 "반영 안 됨"으로도 "반영됨"으로도 읽지 않았다**: `/rules`는 클라이언트 렌더라 서버 HTML에 본문이 아예 없었다(`Twist`·`Format` 같은 원래 문구도 0건 — 이것이 대조군이다). 그래서 배포된 **JS 번들 19개를 직접 내려받아** 확인했다(새 문구 2건 / 옛 문구 0건, 문장 4쌍 전부).
+   - **교훈: "0건은 증거가 아니다. 대조군이 먼저다."** 아무것도 못 찾았을 때는 "그 도구가 찾을 수 있는 대상이었나"를 먼저 증명한다(양성 대조군: 원래 있어야 하는 것이 나오는지).
+   - ※ `String.replace`의 `$'`(오류 ②)는 오전 항목과 같은 사건이다. 오후에는 같은 이유로 **함수 치환자와 편집 도구**만 썼다.
+
 ### 가드 훼손 시험 누적 (일부러 망가뜨려 테스트가 빨개지는지 확인)
 | 단계 | 건수 | 대상 |
 |---|---|---|
 | ⑦ | 5 | `[송출]` probe 차단 · 다시 보냄 probe 차단 · 미리확인 probe 차단 · 행위자 검증 · probe 판정 대소문자 |
 | ⑧ | 8 | 쿼리 probe 제외 · 빌더 probe 이중 검사 · 메일 실패해도 `notified_at` 기록 · 권리 대기를 건수에 합산 · HTML 이스케이프 · 틱에서 알림 단계 · `notified_at IS NULL` 조건 · 링크 |
 | ⑨ | 7 | 상세 SQL probe 제외 · 목록 SQL probe 제외 · 재검사 probe · projection `source_ref` 유출 · 오류 로그에 message · content 쿼리 로그 제거 · asset 쿼리 로그 제거 |
+| ⑩ 준비 | 10 | 기본값을 public으로 · 틱 시작 값 사용 · 재확인 읽기에서 키 제거(**테스트 결함 포착**) · 모든 채널에 YouTube 설정 · 가시성 재파싱 제거 · 제목 꺾쇠 정리 제거 · 100자 제한 제거 · 최소 2자 검사 제거 · 사전 제목 검사 제거 · YouTube 행에 설정 안 넘김 |
+| 문구 정리 | 7 | 규칙 페이지·챗봇·한글 붙은 형태에 구 명칭 재삽입 3 · 검사기 한글 붙은 경우 못 잡게 · 검사기 CRLF 되돌림 · 허용 목록 이메일 항목 삭제 · 허용 목록 낡은 항목 |
+| 합계 | **37** | ⑦ 5 + ⑧ 8 + ⑨ 7 + ⑩ 준비 10 + 문구 7 |
 - 전부 빨개졌고 원복 후 통과. (⑨ 상세 SQL 제외를 빼도 "id로 조회" 테스트는 재검사가 막아 통과한다 -> "층별로 따로 검증하는" 테스트가 잡는다. 층마다 독립 검증이 필요한 이유.)
 
 ### 대조군을 먼저 세운다 (원칙 재확인)
@@ -106,57 +118,103 @@
 
 ### ⑩ 준비 현황 (정상 송출 시험 1건, 실제 OXXOVO YouTube 채널)
 
-- 코드 `6d4d731` 푸시(**미배포**): 콘텐츠 송출 경로에만 YouTube `title`(100 코드포인트, 이모지 안 쪼갬, 2자 미만이면 지어내지 않고 `failed_terminal`·다운로드 전)과 `type`(`content_youtube_visibility`, 없거나 이상하면 `private`, 재확인 때 새로 읽음). 홍보영상 경로 불변(테스트로 고정). 테스트 767 통과.
+- 코드 `6d4d731` **배포됨**(`6d37e93`, 04:59 UTC): 콘텐츠 송출 경로에만 YouTube `title`(100 코드포인트, 이모지 안 쪼갬, 2자 미만이면 지어내지 않고 `failed_terminal`·다운로드 전)과 `type`(`content_youtube_visibility`, 없거나 이상하면 `private`, 재확인 때 새로 읽음). 홍보영상 경로 불변(테스트로 고정). **YouTube 설정이 빠져 있었던 것**(Postiz 문서는 `title`·`type`을 필수로 요구, 기존 코드는 안 보냄)을 코드와 문서를 대조해 찾았다 — 그냥 열었으면 4xx로 실패하고 원인을 한참 찾았을 것이다.
 - 계획과 절차는 설계서 **§5-8**: 지우는 절차(Studio 직접, Postiz 삭제는 선택), 순서(`per_tick=1` 안전장치, 스위치 하나만, 즉시 닫고 복원), 중단, 실패 처리. 시험 제목 `[시험] 2026-10-07 ...`은 TK님이 어드민 `메타 수정`으로 넣는다(코드에 접두어를 넣지 않는다 — 실제 콘텐츠 오염 방지, `contents_history`에 감사가 남음).
+- **시작 전 읽기 확인(TK님 결과):** A `queued/sending/failed/unknown 0 / total 8`(전부 posted·cancelled인 시험 행) 통과 · C `content_dispatch_per_tick=10`(끝나고 복원할 값), `content_youtube_visibility` 행 없음 통과 · **B `postiz_channel_youtube`는 첫 조회 `n=0`, 재조회 `n=1, len=25`로 같은 쿼리가 다른 답을 냈고 원인은 미확정**(본부는 오조회로 정정). 콘텐츠 송출과 홍보영상은 같은 `postiz_channel_<channel>` 키를 읽는다(코드 확인).
 - **한계(라이브 첫 확인):** Postiz가 `type:private`을 받아 YouTube에 실제로 비공개로 올리는지 · 응답의 `postId`가 Postiz 삭제에 쓰는 id와 같은지.
-- 대기: TK님의 읽기 전용 SQL 3개(대기 행 0건, `postiz_channel_youtube` 키, 현재 `per_tick`) 결과, 올릴 콘텐츠 결정, 배포 명령.
+- **상태 변화(오후 결정):** 뉴스는 완성본이 9:16 세로뿐이고(YouTube는 `main_16x9`만 허용 — 아래 설계 결함 항목), 엔터 C1 AURELIS는 제작 직전이라 MP4가 없다. 홍보영상을 끌어다 쓰는 안과 더미 2048바이트는 **쓰지 않기로** 했다(source가 둘뿐이라 깨끗하지 않음, 제니2 의견). **뉴스·엔터에 영상 제작 지시가 나갔고, 완성본이 오면 재개한다.**
+- **미해결 설계 질문(본부 확인 대기): YouTube에 세로(9:16) 영상이 못 나간다.** `lib/content-kinds.ts`의 `PREFERRED_ROLES.youtube = ['main_16x9']`이고 테스트로 고정돼 있다. 뉴스는 9:16뿐이라 `skipped_no_asset`이 된다. 본부는 설계 결함으로 본다(Shorts는 9:16). 고치는 곳은 한 곳(규칙 한 줄 + 테스트 한 줄)이지만 **아직 고치지 않았다**(⑩ 전에 코드를 바꾸지 않기로 한 결정 때문). 엔터 영상이 16:9로 오면 이 문제와 무관하게 ⑩은 진행된다. 엔터 완성본에 16:9가 있는지 제니2에게 확인이 필요하다.
+
+## 6-2. 오후 작업: 구 명칭 정리 · 용어 대응표 · Phase 2 기록 · 승인 단위 · CF 구분
+
+### 구 명칭 문구 정리 (`9ab016e`, 배포·라이브 확인됨)
+- **결정(TK님 2026-10-07):** 구 명칭(WATCH)은 없어지고 공개 화면은 **OXXOVO**라고 부른다. 사람이 보는 곳만 바꾸고 DB·환경변수·내부 이름·경로(`/watch*`)·링크는 안 바꾼다. 경로는 홈 설계와 같이 **Phase 2**로 미뤘다.
+- **바꾼 것(이름으로 쓴 곳만, 줄 단위):** 사용자 화면 12곳(`apply`·`faq`·`rules`·프로필 닉네임·상단 로고 `aria-label`·랭킹 "← OXXOVO"), 어드민 메뉴·화면(`Watch as Home` -> `Home mode`, `Watch 홈 전환` -> `홈 화면 전환`, 토글·설명), 푸터 안내, 챗봇 지식 5곳. 죽은 `badge_watch` 키 삭제(사용처 0곳).
+- **안 바꾼 것:** 영어 동사(`Watch the video →`, `Watch my entry`, `▶ Watch your film`, `Watch Later` …), 이름 아닌 단어(`scoring-lease-watch`, `watching`, `watchable`, `fs.watch`), 랜딩 라벨 `nav_watch: 'Watch'`(본부 결정 B, 그대로), 이메일 템플릿 이름 문구 4곳(제니3 확정 후 2차).
+- **가드:** `lib/user-facing-names.test.ts` — `app/`·`lib/`에서 주석을 제거한 뒤 구 명칭이 이름으로 남은 곳을 찾는다(CRLF·한글 붙은 형태 대응, 동사·이메일 대기 항목은 허용 목록에 이름으로 적음, 낡은 허용 항목은 실패). 7개 훼손 시험 전부 빨개짐.
+- **라이브 확인:** SHA `9ab016e`, 공개 경로 404 유지, 크론 `no_open_dba`·전 필드 0(05:50:14 UTC가 배포 후 첫 틱, 타임스탬프로 확인). 문구는 **배포된 JS 번들 19개를 직접 내려받아** 새 문구 2건 / 옛 문구 0건(문장 4쌍).
+
+### 용어 대응표 (설계서 §7-4, `bf64c82`)
+- **내부 식별자 접두 `watch_` = OXXOVO 영상 공개 면. 이름은 바꾸지 않는다**(본부 결정). 라이브 DB 카탈로그 조회 W1(46행)로 확정: 테이블 7(`watch_comments`·`watch_comment_reports`·`watch_follows`·`watch_likes`·`watch_video_reports`·`watch_views`·`watch_votes`), `genesis_applications` 컬럼 5(`watch_hidden`·`_at`·`_reason`·`watch_hold`·`watch_hold_released_at`), `seasons`(와 `season0_dates_backup_20260927`) 컬럼(`watch_fixture_visible`·`watch_scores_public`), 함수 1(`enforce_watch_vote_limit`), 트리거 1(`watch_votes_limit_trg`), 설정 키 1(`watch_as_home`), 인덱스 약 30, 정책 0.
+- **정정:** 내가 앞서 `watch_scores_public`을 "뷰"라고 보고했는데 **`seasons`의 컬럼**이었다(코드 `lib/watch-scores.ts`도 컬럼으로 읽는다).
+- 이름을 안 바꾸는 근거 5개: PostgREST 조용한 거부 -> "조용한 데이터 소실", 함수 본문 안의 컬럼명(`CREATE OR REPLACE` Success 함정 전례), 마이그→코드 순서 어긋남, 되돌리기 비용, 과거 기록 왜곡. 운영자 혼란은 용어 대응표 한 줄로 푼다.
+
+### 홈 동작의 사실과 Phase 2 기록 (설계서 §12-2·§12-3, `dad9bc5`·`fa4ca9f`)
+- **홈(루트)의 사실(코드):** `watch_as_home` **AND** 대회 공개 스위치(`competition_publication_enabled`)가 모두 참일 때만 루트가 대회 갤러리(`ArenaWatch`)이고, 아니면 랜딩이다. 대회 스위치가 닫힌 채 `watch_as_home`을 켜도 눈에 보이는 변화는 없다(랜딩으로 떨어짐). 루트는 `searchParams`를 받지 않는다. **`watch_as_home`의 현재 DB 값은 조회하지 못했다**(조회 블록 X1 결과 미수신).
+- **홈 설계는 Phase 2로 미뤘다**(본부·제니2): Phase 1을 다시 뜯지 않고 ⑩까지 먼저 끝낸다. 기록만: 사업축 7개 + Studio(독립 DBA 아님), 두 층 분리(전체 Navigation 7축 / 영상 Discovery 탭 `[전체][대회][뉴스][영화][드라마][CF][음악]`), 음악 탭은 UI에서만 합침, 배너 규격, 빈 항목 Coming Soon, 대회와 콘텐츠는 같은 홈 다른 DB, 카드 출처 라벨.
+- **Phase 1 DB 확장성: 막는 것 없음**(`contents`에 nullable 컬럼·새 표를 더하는 방식, 불변·감사 트리거와 쿼리가 컬럼을 명시하므로 새 컬럼이 기존 경로를 안 깨고 공개 응답에 안 샌다). 수입 요청 검증·해시·RPC 확장은 Phase 2 일.
+- **승인 단위 확정(제니2):** 승인은 프로젝트/시즌 전체가 아니라 **특정 subject + 특정 version**의 증거다. Episode 1 v1 = UUID A, Episode 2 v1 = B, Episode 2 v2 = 새 UUID D. 영화도 한 편 = 독립 release subject. **`UNIQUE (source, upstream_approval_id)` 그대로 유지**(시즌 단위였다면 지금이 가장 쌌다 — 바꿀 것이 없음을 확인한 것).
+- **CF 구분 세 축(제니2 안, Phase 2, 구현 안 함):** `kind`는 안 나눈다(둘 다 `cf`). `production_origin`(`oxxovo_original` | `client_production`), `client_id`(누구의 의뢰인가). **`client_id`를 "외부 수주 여부" 판정값으로 쓰지 않는다.** 라벨: `oxxovo_original` -> OXXOVO ORIGINAL, `client_production` + `cf` -> COMMERCIAL.
 
 ## 7. 영구 잔존 시험 행 (변화 없음)
 
 `probe-trg-20261005`(hidden) · `probe-rpc-20261005`(returned) · `probe-rt-20261006054214`(held, blocked) · `probe-rt-cl-20261006060004`(**hidden**, cleared, 배포 posted `probe-stub`, **hidden 유지 필수**; 본부 전달 id `9946fb81-3ecb-40ee-b065-7c0fb1456818`).
 이제 **어드민 목록(쿼리)·알림(쿼리+빌더)·공개 판정(SQL 둘+재검사)·`[송출]`/`[다시 보냄]`(서버 액션)** 에서 모두 `probe-` 접두로 막혀 있다.
 
-## 8. 미결 (다음 세션)
+## 8. 미결 — 우선순위대로 (본부 정리 2026-10-07)
 
-**구현·검증**
-- **⑩ 라이브 검증 + 정상 송출** — Postiz 테스트 채널이 있으면 거기에, 없으면 실제 OXXOVO 채널에 1건을 올려야 한다. **어느 쪽인지는 TK님 결정**(본부가 묻는 중). 그때 같이: 알림 메일 실제 발송·`notified_at` UPDATE, 어드민 `[송출]` 흐름(`contents_history`와 `publish_log` 대조), 항목 예산 120초·메모리 100MB 실측.
-- **반송 알림 — 할 일 맨 위.** 반송은 만든 쪽이 모르면 아무 일도 안 일어난다. `contents`에 추적 칸(`returned_notified_at` 등)을 추가하는 **SQL이 필요하다**(TK님 Run, 함수/컬럼 되읽기 필수). 그 전까지 담당자는 어드민 `[반송]` 목록에서 본다.
-- `/admin/contents` **영어 전환**(admin-i18n 미적용, 한국어 고정 — TK님 지적).
-- 배포 검증 canonical 전환(`scripts/deploy-prod.mjs`): 매번 "Could not verify automatically". 어제부터 이월.
+### 1순위 — 지금 할 수 있는 것: **없다. ⑩은 영상 대기다.**
+- **예외 후보(본부 결정 대기): 반송 알림.** 영상이 없어도 할 수 있다. 지수 의견은 **지금 하는 쪽**(아래 "반송 알림" 절). 본부가 승인하면 1순위로 올라간다.
+
+### 2순위 — 영상이 오면 즉시: **⑩ 정상 송출 1건 (실제 YouTube, private)**
+- 준비는 끝났다(코드 `6d4d731` 배포됨). 절차는 **설계서 §5-8**: 시작 전 읽기 확인 -> `content_youtube_visibility='private'` 입력(**아직 안 넣었다**, 없으면 코드가 `private`으로 떨어지므로 안전하나 명시한다) -> 만든 쪽이 `allowed_platforms:["youtube"]`, cleared로 1건 수입 -> 어드민에서 제목을 `[시험] 2026-10-07 ...`로 수정 + `[정지]` -> `content_dispatch_per_tick`을 1로 -> 그 콘텐츠 DBA 송출 스위치 하나만 -> `[송출]` -> 로그 `processed:1` -> **즉시 닫고 `per_tick`을 10으로 복원** -> Studio에서 비공개 확인·삭제 -> 어드민 `[반송]`으로 기록.
+- **시작 직전에 SQL 블록 B(`postiz_channel_youtube`)를 한 번 더 돌린다**(같은 쿼리가 `n=0`/`n=1`로 흔들린 원인 미확정). 블록 A(대기 행 0건)도 다시.
+- 같이 볼 것: 알림 메일 실제 발송·`notified_at` UPDATE, 어드민 `[송출]` 흐름(`contents_history`와 `publish_log` 대조), 항목 예산 120초·메모리 100MB 실측, Postiz `type:private` 실제 비공개 여부, 응답 `postId`와 Postiz 삭제 id의 일치.
+- **전제 확인 하나:** 엔터 완성본에 `main_16x9`가 있는지(제니2). YouTube는 현재 `main_16x9`만 받는다(아래 4순위 아님 — **본부 확인 대기 설계 질문**, 6절 "⑩ 준비 현황").
+
+### 3순위 — 남의 답을 기다리는 것
+- 이메일 템플릿 이름 문구(제니3, 2차 문구 정리 — 확정되면 검사 테스트의 허용 목록 항목을 지운다)
+- ElevenLabs·Hedra 상업 약관(뉴스·엔터가 확인, 그때까지 뉴스는 전부 `held`)
+- AI 생성물 표기(제니3, 플랫폼별)
 
 **공개 스위치를 켜기 전 체크리스트(설계서 §7-3, 6개) — 안 끝나면 켜지 않는다**
 - [ ] AI 생성물 표기(제니3, 플랫폼별)
 - [ ] ElevenLabs·Hedra 약관 확인(뉴스·엔터가 확인, 그때까지 뉴스는 전부 `held`)
 - [ ] 공개 화면 문구 확정(`lib/content-public-text.ts` 임시값 교체)
-- [ ] `content_path_<kind>` slug 결정(TK님) + 예약어 충돌 없음
-- [ ] 라이브 컬럼 확인 — **`probe-public-columns.mjs` PASS 10/10(오늘 완료)**
-- [ ] 스위치를 켠 직후 응답 본문 직접 확인(`script`·`sha256`·`source_ref`·`caption`·`rights_reason` 없음) + `/c/<id>` **308 헤더** + **보류 항목 vs 미존재 항목 404 본문 직접 비교**
+- [ ] `content_path_<kind>` slug 결정(TK님) + 예약어 충돌 없음 (안: `news`·`drama`·`film`·`cf`(또는 `ads`)·`music`·`music-video`)
+- [x] 라이브 컬럼 확인 — **`probe-public-columns.mjs` PASS 10/10(완료)**
+- [ ] 스위치를 켠 직후 응답 본문 직접 확인(`script`·`sha256`·`source_ref`·`caption`·`rights_reason` 없음) + `/c/<id>` **308 헤더** + **보류 항목 vs 미존재 항목 404 본문 직접 비교**(시험 행 id는 7절)
 
-**TK님 결정·확인**
-- `content_max_bytes_<kind>_<form>` 미설정: 영상 kind별 수입 상한을 송출 상한(100MB) 이하로 둘지. 수동 `[송출]`로 100MB 초과를 누르면 송출에서 `failed_terminal`이 된다(확인창에 경고는 뜬다).
-- `content_dispatch_max_attempts`·`content_dispatch_backoff_base_minutes`·`content_dispatch_item_budget_seconds` 값 미정(없으면 재시도 0회 -> 어드민에 노란 안내, 항목 예산 120초).
+### 4순위 — Phase 2 (홈 설계와 같이 본다. 지금 구현하지 않는다)
+- 홈/Discovery 설계(설계서 §12-2)
+- 경로 `/watch*` 정리: `/watch` -> `/` 308, 상세·랭킹의 새 경로(안: `/v/[id]`, `/rankings`), `/watch-arena`는 최종 목적지로 직접 308, **`RESERVED_SLUGS`에 `watch`·`watch-arena`를 계속 두고 새 경로도 추가**, 홈이 `searchParams`를 받게 수정, 이메일 링크 6곳·챗봇 지식·랜딩 링크 갱신
+- Series / Season / Episode 모델(막는 것 없음, §12-3)
+- `production_origin` / `client_id`(CF 구분)
+- `/admin/contents` 영어 전환(admin-i18n 미적용, 한국어 고정 — TK님 지적)
+- 배포 검증 canonical 전환(`scripts/deploy-prod.mjs`): 매번 "Could not verify automatically". 어제부터 이월.
+
+### 5순위 — 미정 결정 (TK님)
+- `content_max_bytes_<kind>_<form>` 미설정: **100~500MB 영상이 수입은 되고 송출(100MB)에서 `failed_terminal`이 된다.** 영상 kind별 수입 상한을 송출 상한 이하로 둘지. 수동 `[송출]` 확인창에는 경고가 뜬다.
+- `content_dispatch_max_attempts`·`content_dispatch_backoff_base_minutes`·`content_dispatch_item_budget_seconds` 값 미정(없으면 재시도 0회 -> 어드민에 노란 안내, 항목 예산 120초). **⑩에서는 재시도 0회를 유지한다**(자동 재시도가 중복 게시를 부를 수 있음).
 - 공개 경로 이름(slug), `restricted -> blocked` 허용 방향 확인.
 
-**위험·이월(어제와 같음)**
-- R2 공개 주소 노출(권리 `blocked` 파일도 key를 알면 열림, 의도), `CRON_SECRET` 교체 금지, 제니2(`upstream_approval_id`, `music` kind), eslint 기준선, `ALERT STATE%` 제외 미증명, `updated_at` 트리거 없는 C분류 5개 테이블, 설계서 후속(본부 반영).
+### 반송 알림 (본부에 의견 제출 — 승인 대기)
+- **왜 걸리나:** 반송은 만든 쪽이 모르면 아무 일도 안 일어난다. `contents`에 반송 알림 추적 칸이 없어서 담당자(info@)도 반송 사실을 메일로 못 받는다(수입 알림 `notified_at`은 수입용 한 칸).
+- **정확한 사실:** 만든 쪽이 반송을 아는 정식 경로는 이미 있다 — `GET /api/contents/returns?since=`(라이브 시험 통과). 다만 **뉴스·제니2 쪽이 이 엔드포인트를 실제로 폴링하는지는 확인하지 못했다.** 이 확인이 "상대가 영영 모른다"의 진짜 답이다.
+- **지수 의견: ⑩ 전에, 영상이 오기 전에 지금 한다.** 근거와 순서는 본부 보고에 있다(칸 하나 `returned_notified_at timestamptz`, 판정은 `returned_at`과 비교하므로 트리거·RPC 변경 없음, **SQL 먼저 -> 되읽기 -> 코드**, 배포는 ⑩ 시작 전에 끝낸다).
+
+## 8-2. 위험·이월(어제와 같음)
+- R2 공개 주소 노출(권리 `blocked` 파일도 key를 알면 열림, 의도), `CRON_SECRET` 교체 금지, eslint 기준선(오늘 `app lib` 149건, 변경 전후 동일), `ALERT STATE%` 제외 미증명, `updated_at` 트리거 없는 C분류 5개 테이블, 설계서 후속(본부 반영).
 
 ## 9. 인계 메모
 
 **현재 상태**
-- 레포 `main` = 라이브 = **`a41d4c5`**(이 EOD 커밋 전). 작업 트리 clean.
+- 레포 `main` = 라이브 = **`9ab016e`**(이 EOD 커밋 전). 작업 트리 clean.
 - 플래그(변화 없음): `social_dispatch_enabled=true`, `news_dispatch_enabled=false`, `entertainment_dispatch_enabled=false`, `news_publication_enabled=false`, `entertainment_publication_enabled=false`, `competition_publication_enabled=false`. **실제 SNS 게시 0건, 공개 화면 전부 404. 건드리지 말 것.**
 - 크론 6개 그대로. 틱 로그에 `notified` 필드가 추가됐다: `[content-dispatch] {"stage":...,"notified":N,...}`. 정상은 `no_open_dba`·`notified:0`·`warnings:[]`.
 - 도구: `scripts/probe-contents.mjs`(수입 경로), `scripts/probe-public-columns.mjs`(읽기 전용 공개 컬럼, 서비스 롤 키는 환경변수로만 — TK님이 `Read-Host -AsSecureString`으로 입력, 키는 Supabase 대시보드 Project Settings -> API Keys -> `service_role` Reveal).
 
 **재개 순서**
-1. 이 파일 8절 확인. 본부가 TK님의 ⑩ 결정(테스트 채널 vs 실제 채널 1건)을 가져온다.
-2. **반송 알림 SQL**(칸 추가)을 ⑩과 별개로 먼저 올린다 — 할 일 맨 위.
-3. ⑩ 라이브 검증. 스위치를 켜는 순서는 §7-3 체크리스트가 끝난 뒤.
+1. 이 파일 8절(우선순위)을 본다. **⑩은 영상 대기**(뉴스·엔터에 제작 지시가 나갔다). 영상이 오면 설계서 §5-8을 그대로 따른다(결정은 이미 났다: 실제 OXXOVO YouTube 1건, private, 테스트 채널은 만들지 않음).
+2. **반송 알림**은 본부 승인이 나면 ⑩ 전에 한다(8절 마지막 항목). SQL -> 되읽기 -> 코드 순서.
+3. 공개 스위치는 §7-3 체크리스트가 끝나기 전에는 켜지 않는다. 홈·경로·시리즈는 Phase 2.
 
 **작업 규칙(재확인)**
 - SQL은 채팅 본문으로, 블록 하나에 쿼리 하나, 고유 태그 + `/* */`, 되돌리기는 별도. TK님이 Run, 지수는 Run 안 함. 함수·컬럼을 만들면 되읽는다(`prosrc` 고유 토큰 둘 이상 / `aclexplode`), 0행 증명은 `count(*)`.
 - 배포는 TK님 `! npm run deploy:prod`. 배포 후 `www.oxxovo.ai/api/version`으로 SHA 직접 확인.
 - **여러 줄 수정은 편집 도구로. 셸 치환·`node -e`·`String.replace($')` 금지(오늘 2회 어김).** 부득이하면 파일로 쓴 스크립트 + 함수 치환자.
+- **0건은 증거가 아니다. 대조군이 먼저다.** 찾았는데 없을 때는 "그 도구가 그것을 찾을 수 있었는가"(양성 대조군)를 먼저 증명한다(`/rules`가 클라이언트 렌더라 `curl` 0건이 무의미했던 사례). 감시는 로그 **줄 수**가 아니라 **시각**으로 판정한다(`vercel logs`는 기본 100건 창).
+- **이름 정리는 이름으로 쓴 곳만, 한 곳씩.** 영어 동사 `watch`·`watching`·`scoring-lease-watch`·`fs.watch`는 건드리지 않는다. 사용자 노출 문자열은 `lib/user-facing-names.test.ts`가 지킨다(새 문구에 구 명칭이 이름으로 들어오면 빨개진다).
 - 가드를 만들면 일부러 망가뜨려 테스트가 빨개지는지 확인. 시험은 대조군과 한 쌍. 결과 보고에는 대상 서버·`source_ref`·id를 같이.
 - 사용자向 문안은 내 소관이 아니다(제니3). 운영자 내부 알림만 내가 쓴다.
 - 안 맞으면 근거를 대고 반대할 것(TK 상시 지시). 실패·반례도 기록할 것.
