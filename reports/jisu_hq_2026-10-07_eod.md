@@ -104,7 +104,8 @@
 | 반송 알림 | 8 | 쿼리 probe 제외 · 빌더 probe 제외 · 메일 실패해도 기록 · `returned_notified_at < returned_at` 제거 · 이스케이프 · 틱 단계 제거 · 단계 크래시 재던짐(**테스트 결함 포착**) · 기록값 `now()` |
 | 배포 검증 | 8 | SHA 비교 끄기 · 옛 SHA 통과 처리 · `builtAt` 제거 · HTML 구분 제거 · 인증 벽 진단 제거 · 재시도 제거 · 미검증이어도 성공 종료 · 옛 배포 URL 검증 복원 |
 | 어드민 영어 전환 | 16 | 로캘 ko-KR 되돌림 · PT 접미사 · UTC · 12시간제 · dispatch/publish 혼용 2 · 상태 매핑 누락 2 · 용어 표류 3 · 한글 재삽입 2 · 입력을 브라우저 시간대로 읽음 · 화면이 formatPT 우회(**테스트 결함 포착**) · 화면이 `new Date(v)` |
-| 합계 | **69** | ⑦ 5 + ⑧ 8 + ⑨ 7 + ⑩ 준비 10 + 문구 7 + 반송 알림 8 + 배포 검증 8 + 어드민 영어 16 |
+| 메일 영어 | 9 | publish·stopped·releases·`Times are UTC` 되돌림 4 · 메일 시각 UTC · 알림 원문 상태 · re-sending · 원문 `unknown` · 고정 -7 오프셋(서머타임) |
+| 합계 | **78** | ⑦ 5 + ⑧ 8 + ⑨ 7 + ⑩ 준비 10 + 문구 7 + 반송 알림 8 + 배포 검증 8 + 어드민 영어 16 + 메일 영어 9 |
 - 전부 빨개졌고 원복 후 통과. (⑨ 상세 SQL 제외를 빼도 "id로 조회" 테스트는 재검사가 막아 통과한다 -> "층별로 따로 검증하는" 테스트가 잡는다. 층마다 독립 검증이 필요한 이유.)
 
 ### 대조군을 먼저 세운다 (원칙 재확인)
@@ -184,9 +185,13 @@
 
 - **`deploy-prod.mjs`의 검증 연결 시험이 약하다.** 실행하면 진짜 배포가 되므로 실행할 수 없어서 **소스 텍스트를 읽는 시험**(`verifyLive` 호출·`exitCode = 1`·옛 검사 부재)으로 고정했다. 줄을 지웠는지만 잡고 **동작하는지는 증명하지 못한다.** 실제 동작 확인은 **TK님 다음 배포**다.
 - 이 검증이 라이브 배포와 함께 도는 것은 다음 배포가 처음이다. 거짓 실패가 나면 **재배포하지 말고** 메시지에 찍힌 `deploy:verify` 명령을 쓴다.
+- **라이브 첫 동작(20:24 UTC 배포 `c16b410`): 작동했다, 거짓 실패 없음.** 출력 `Verifying https://www.oxxovo.ai/api/version (sha=c16b410, builtAt=...)` -> `✓ live version (try 1)`로 정상 종료, "Could not verify automatically" 없음. 같은 값으로 `npm run deploy:verify`도 `exit 0`. **단 try 1에 통과했으므로 "옛 SHA 재시도" 경로는 라이브에서 한 번도 걸리지 않았다**(단위 시험과 틀린 SHA로 `www`에 읽기 전용 실행한 것만 증거). alias가 늦게 붙는 날이 오면 그때 처음 보인다.
 - 엣지 전파 지연은 실측하지 못했다(위).
 
-## 6-5. 밤 작업 2: `/admin/contents` 영어 전환 (제니3 용어 확정, 코드 완료·미배포)
+## 6-5. 밤 작업 2: `/admin/contents` 영어 전환 (제니3 용어 확정, **배포됨 `c16b410`**)
+
+- **라이브 확인(본부, 화면):** 제목 `Content dispatch`(메뉴 이름과 일치) · 스위치 줄 `Master Open · Entertainment Closed · Daily Closed` · DBA 필터 `All / Entertainment / Daily`(줄이지 않음, News 아님) · 상태 필터 `Needs action / Waiting on rights / Scheduled / Held / Returned / Hidden`(Pause 아님) · Kind 필터는 DB 값 그대로 · `Test rows / probe- rows hidden (show)` · `No matching content.` · 본문에 dispatch만 있고 publish 없음.
+- **라이브 미확인(목록이 비어서 못 봄) — ⑩에서 실제 콘텐츠가 들어올 때 TK님이 눈으로 확인해야 한다:** 시각 표기 `Oct 7, 2026, 14:30 PT` · 카드 버튼(`Hold / Hide / Return / Dispatch / Re-dispatch / Mark dispatched / Edit metadata / Edit dispatch time`) · 송출 상태(`Queued / Dispatching / Dispatched / Needs review / Skipped — no asset` 등) · 확인창 문구(`Add to dispatch queue`) · `Edit dispatch time` 입력이 PT로 읽히는지. **설계서 §5-8 ⑩ 절차의 체크리스트에도 넣었다.**
 
 - **무엇을:** 화면 문구 전부를 `lib/content-admin-text.ts` 한곳(영어 한 벌)으로 모으고 확정 용어표대로 바꿨다. 화면(`ContentsView.tsx`)·서버 액션 오류(`content-admin-actions.ts`)·Dispatch 확인창(`releaseConfirmLines`)·`remainingLabel`·URL 검사 메시지가 같은 곳을 쓴다. 설계서 §8-0에 **대괄호 표기 <-> 화면 영어 대응표**와 시간 규칙을 한 번 적었다(`[송출]`=Dispatch · `[반송]`=Return · `[정지]`=Hold ...).
 - **구조 판단(본부가 맡긴 부분): `admin-i18n`에 넣지 않고 별도 파일.** 서버가 만드는 메시지는 브라우저의 한/영 토글을 모른다. 그래서 **이 화면은 한/영 토글을 따르지 않는다**(메뉴 이름만 `admin-i18n`에 이미 한/영이 있다). 토글을 따르게 하려면 서버 메시지를 코드+인자로 바꾸고 클라이언트가 조립해야 해서 범위가 커진다 — 본부가 "화면은 영어"로 못 박았고 쓰는 사람이 TK님 한 분이라 영어 고정으로 갔다.
@@ -202,7 +207,12 @@
 2. **PC 시간대가 PT라서 "브라우저 시간대로 읽는" 훼손이 초록이 될 뻔했다.** 작성자 PC가 `America/Los_Angeles`라서, 입력을 PT로 읽어도 브라우저 시간대로 읽어도 **같은 값**이 나온다. 그대로면 H14가 초록이었다. **자식 프로세스를 `TZ=UTC`로 강제해** 실행하는 시험을 만들고, 그 자식이 정말 UTC인지(`getHours()==7`) 대조군으로 먼저 확인한다. 참고: 이 Windows 환경에서는 `TZ=Asia/Seoul`이 **무시된다**(UTC만 먹는다) — 안 먹는 설정으로 시험을 짰으면 대조군 없는 PASS였을 것이다.
 - 교훈: **"내 환경에서 같은 값이 나오는 가드"는 훼손해도 안 빨개진다.** 가드를 시험할 때는 내 환경이 정답과 우연히 일치하지 않는지 먼저 본다.
 
-### 메일 영어 대조 (확정 용어 vs 현재 메일) — **목록만 올림, 메일은 아직 안 고쳤다(본부 지시)**
+### 메일 영어 대조 (확정 용어 vs 현재 메일) — **1·2·3·4·5·6 수정 완료(코드 푸시, 미배포), 7은 제니3 확인 대기**
+
+- **4번(시각):** 메일도 PT로 갔다(`Times are PT.`, 항목은 `formatPT`로 `Oct 7, 2026, 15:00 PT`). **환산 판단:** 환산 대상은 DB의 timestamptz(순간 시각)이므로 뉴스의 원래 시간대(07:00 Asia/Seoul)와 무관하게 `Intl`이 정확히 환산하고 서머타임도 따라간다. 07:00 KST는 PT로 **전날** 15:00 PDT(11월 1일 이후는 14:00 PST)가 된다 — 날짜가 하루 앞서 보이는 것이 정상이다. 시험이 두 경우(10월 PDT, 11월 PST)를 고정하고, 고정 -7 오프셋으로 망가뜨리면 빨개진다. KST를 병기하지 않았다(화면이 PT 하나라는 확정과 어긋남).
+- **가드 훼손 9건 전부 빨개짐**(publish·stopped·releases·UTC 되돌림, 메일 시각 UTC, 알림 원문 상태·re-sending·원문 `unknown`, 고정 오프셋). 누적 **69 -> 78**.
+- 알림 상태 단어는 화면과 **같은 표**(`DIST_STATUS_TEXT`)를 읽는다 — 한 곳을 고치면 화면과 메일이 같이 바뀐다.
+- 남은 표(수정 전 기록):
 
 | # | 위치 | 현재 | 확정 용어와 | 제안 |
 |---|---|---|---|---|

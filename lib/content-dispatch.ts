@@ -30,6 +30,7 @@ import {
   type Dba,
   type Platform,
 } from '@/lib/content-kinds'
+import { DIST_STATUS_TEXT } from '@/lib/content-admin-text'
 import {
   runContentNotices,
   runReturnNotices,
@@ -162,17 +163,22 @@ const parsePosInt = (v: string | undefined): number | null => (v !== undefined &
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string)
 
-function alertHtml(rows: AlertableDist[]): string {
+// Status words are the admin screen's (lib/content-admin-text.ts): `unknown` is shown
+// as "Needs review", never the raw DB value. An unmapped status falls back to raw so a
+// new one is visible rather than blank.
+const statusLabel = (s: string) => (DIST_STATUS_TEXT as Record<string, string>)[s] ?? s
+
+export function alertHtml(rows: AlertableDist[]): string {
   const items = rows
     .map(
       (r) =>
-        `<li><b>${esc(r.status)}</b> ${esc(r.platform)} -- ${esc(r.title)} (${esc(r.source_ref)}) attempts=${r.attempts}` +
+        `<li><b>${esc(statusLabel(r.status))}</b> ${esc(r.platform)} -- ${esc(r.title)} (${esc(r.source_ref)}) attempts=${r.attempts}` +
         `${r.last_error ? ` -- ${esc(r.last_error)}` : ''}<br>dist ${esc(r.id)}</li>`,
     )
     .join('')
   return (
-    `<p>These distributions need a human. <b>unknown</b> = we do not know whether it went out: check the platform before re-sending.` +
-    ` <b>failed</b> = it did not go out.</p><ul>${items}</ul>`
+    `<p>These distributions need a human. <b>${DIST_STATUS_TEXT.unknown}</b> = we do not know whether it went out: check the platform before re-dispatching.` +
+    ` <b>${DIST_STATUS_TEXT.failed}</b> = it did not go out.</p><ul>${items}</ul>`
   )
 }
 

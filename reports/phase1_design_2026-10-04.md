@@ -781,6 +781,14 @@ URL·퍼머링크·상태가 없다 (지수 확인 10-04).
 
 **실패 시**: `failed`(4xx, 안 올라감) -> 재시도 키가 없어 **재시도 0회를 유지**(자동 재시도가 중복 게시를 부를 수 있다), 스위치를 닫고 `last_error`를 고친 뒤 `[다시 보냄]` · `unknown` -> **Studio와 Postiz를 먼저 확인**, 올라갔으면 `[나갔음]`, 없으면 `[다시 보냄]` · `failed_terminal` -> 같은 결과라 재시도 없음, 만든 쪽이 새 버전을 보낸다.
 
+**화면 눈 확인 체크리스트 (영어 전환, 2026-10-07 — 목록이 비어서 라이브에서 아직 못 본 것).** ⑩의 콘텐츠가 처음 목록에 뜨면 TK님이 §8-0 표와 대조한다:
+- [ ] 시각이 `Oct 7, 2026, 14:30 PT` 형태(24시간제, `PT` 붙음, 오전/오후 없음). 카드의 `Dispatch scheduled ... (in 3h 12m)`
+- [ ] 버튼: `Hold / Hide / Return / Dispatch / Restore to hold / Unhide / Edit metadata / Edit dispatch time`
+- [ ] 송출 줄 상태: `Queued / Dispatching / Dispatched / Failed / Needs review / Canceled / Skipped — no asset / Skipped — too large`, 버튼 `Mark dispatched` · `Re-dispatch`
+- [ ] `Dispatch` 확인창 제목 `Add to dispatch queue`, 문장에 publish·UTC·한글이 없다
+- [ ] `Edit dispatch time`에 `07:00`을 넣으면 카드가 `07:00 PT`로 보인다(브라우저가 PT가 아니어도)
+- [ ] ⑩의 `[반송]`: `Return`을 눌러 사유 입력 -> info@ 메일 1통(제목 `[OXXOVO] 1 content item(s) returned`, 첫 줄 `Returned: <사유>`) — 반송 알림의 실제 발송 첫 확인
+
 **한계(라이브 미검증)**: Postiz가 `type:private`을 받아 YouTube에 실제로 비공개로 올리는지 · 올린 직후 응답의 `postId`가 Postiz 삭제에 쓰는 id와 같은지 · YouTube의 AI 합성 콘텐츠 표기는 Postiz 설정에 항목이 없다(공개로 돌릴 때 Studio에서 직접, §7-3).
 
 ---

@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ADMIN_CONTENTS_URL,
+  NOTICE_TEXT,
   NOTIFY_LIMIT,
   heldReasonText,
   listNotifiableContents,
@@ -46,18 +47,20 @@ test('held mail: count in the subject, WHY on the first line, admin link, never 
   assert.ok(p.action)
   assert.match(p.action!.subject, /^\[OXXOVO\] 3 content item\(s\) held/)
   const firstLine = p.action!.html.split('</p>')[0]
-  assert.match(firstLine, /2 missed its publish slot/)
-  assert.match(firstLine, /1 stopped by a person/)
+  assert.match(firstLine, /2 missed its dispatch slot/)
+  assert.match(firstLine, /1 held by a person/)
   assert.ok(p.action!.html.includes(`${ADMIN_CONTENTS_URL}?status=action`))
   assert.doesNotMatch(p.action!.html, /scheduled/i)
   assert.equal(p.scheduled, null)
 })
 
-test('scheduled mail is separate from the held mail and lists UTC times', () => {
+test('scheduled mail is separate from the held mail and lists PT times (same zone as the admin screen)', () => {
   const p = planNotices([c(1), c(2), held(3)], false)
   assert.ok(p.scheduled && p.action)
   assert.match(p.scheduled!.subject, /2 new content item\(s\) scheduled/)
-  assert.match(p.scheduled!.html, /2026-10-08 07:00 UTC/)
+  assert.match(p.scheduled!.html, /Oct 8, 2026, 00:00 PT/) // 2026-10-08T07:00Z = 00:00 PDT
+  assert.match(p.scheduled!.html, /Times are PT/)
+  assert.doesNotMatch(p.scheduled!.html, /UTC/)
   assert.ok(!p.scheduled!.ids.includes('id3'))
   assert.ok(!p.action!.ids.includes('id1'))
   assert.doesNotMatch(p.action!.html, /new content/i)
@@ -279,4 +282,30 @@ test('markReturnedNotified writes the seen returned_at and only touches rows sti
   const db = fakeDb([{ id: 'a', status: 'returned' }, { id: 'b', status: 'held' }])
   await markReturnedNotified(db.admin, [{ id: 'a', returned_at: 'T1' }, { id: 'b', returned_at: 'T2' }])
   assert.deepEqual(db.updates.map((u) => [u.patch.returned_notified_at, u.ids]), [['T1', ['a']], ['T2', []]])
+})
+
+// ---- wording shared with the admin screen (copy owner, 2026-10-07) -----------
+test('mail times are PT, converted from the stored instant: 07:00 Asia/Seoul = previous day 15:00 PDT / 14:00 PST', () => {
+  // The news slot is 07:00 Seoul time. The stored value is an instant, so the source zone does
+  // not matter -- only that the conversion follows DST (PDT in October, PST after Nov 1).
+  const oct = planNotices([c(1, { publish_at: '2026-10-07T22:00:00Z' })], false) // 07:00 KST Oct 8
+  assert.match(oct.scheduled!.html, /Oct 7, 2026, 15:00 PT/)
+  const nov = planNotices([c(2, { publish_at: '2026-11-08T22:00:00Z' })], false) // 07:00 KST Nov 9
+  assert.match(nov.scheduled!.html, /Nov 8, 2026, 14:00 PT/)
+  for (const p of [oct, nov]) assert.doesNotMatch(p.scheduled!.html, /UTC|KST|AM|PM/)
+})
+
+test('notice wording: no "publish", "release" or "UTC" -- dispatch / dispatches / PT, like the screen', () => {
+  const strings: string[] = []
+  const walk = (v: unknown) => {
+    if (typeof v === 'string') strings.push(v)
+    else if (typeof v === 'function') strings.push(String((v as (...a: unknown[]) => unknown)(2, 'x')))
+    else if (v && typeof v === 'object') Object.values(v).forEach(walk)
+  }
+  walk(NOTICE_TEXT)
+  assert.ok(strings.some((s) => /dispatch slot/.test(s))) // control: the scan reads the real text
+  for (const s of strings) assert.doesNotMatch(s, /publish|release|UTC|stopped by/i, s)
+  assert.equal(NOTICE_TEXT.reason.late_for_slot, 'missed its dispatch slot')
+  assert.equal(NOTICE_TEXT.reason.manual, 'held by a person')
+  assert.match(NOTICE_TEXT.reason.version(2), /until a person dispatches it/)
 })

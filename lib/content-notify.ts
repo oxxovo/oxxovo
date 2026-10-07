@@ -17,7 +17,7 @@
 //
 // probe- rows (permanent test rows) are excluded in the QUERY and again here.
 // Pure + injected client: no env, no mail, no DB import, so it is testable.
-import { isProbeRef } from '@/lib/content-admin'
+import { formatPT, isProbeRef } from '@/lib/content-admin'
 
 export const NOTIFY_LIMIT = 100
 export const ADMIN_CONTENTS_URL = 'https://www.oxxovo.ai/admin/contents'
@@ -42,13 +42,14 @@ export const NOTICE_TEXT = {
   // First line of the held mail: WHY they stopped.
   actionLead: (counts: string) => `Held at import, waiting for a person: ${counts}.`,
   reason: {
-    late_for_slot: 'missed its publish slot',
-    manual: 'stopped by a person',
-    version: (v: number) => `version ${v} is always held until a person releases it`,
+    late_for_slot: 'missed its dispatch slot',
+    manual: 'held by a person',
+    version: (v: number) => `version ${v} is always held until a person dispatches it`,
     none: 'held, no reason recorded',
   },
   rightsHeader: (n: number) => `Also waiting on rights (${n}) -- no action needed here; the maker fixes and resends:`,
-  scheduledLead: (n: number) => `${n} content item(s) imported and scheduled. Times are UTC.`,
+  // Same zone as the admin screen (Pacific, always suffixed PT): the same person reads both.
+  scheduledLead: (n: number) => `${n} content item(s) imported and scheduled. Times are PT.`,
   moreNote: (limit: number) => `More than ${limit} pending; the rest follow in the next mail.`,
   linkLabel: 'Open in admin',
   returnedSubject: (n: number) => `[OXXOVO] ${n} content item(s) returned`,
@@ -81,11 +82,6 @@ export function heldReasonText(c: NotifiableContent): string {
   if (c.held_reason === 'manual') return NOTICE_TEXT.reason.manual
   if (c.source_version >= 2) return NOTICE_TEXT.reason.version(c.source_version)
   return NOTICE_TEXT.reason.none
-}
-
-const minuteUtc = (iso: string) => {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '-' : d.toISOString().slice(0, 16).replace('T', ' ')
 }
 
 export type Notice = { subject: string; html: string; ids: string[] }
@@ -135,7 +131,7 @@ export function planNotices(all: readonly NotifiableContent[], more: boolean): N
           subject: NOTICE_TEXT.scheduledSubject(scheduled.length),
           html:
             `<p>${esc(NOTICE_TEXT.scheduledLead(scheduled.length))}</p><ul>${scheduled
-              .map((c) => `<li><b>${safe(c.title)}</b> (${safe(c.kind, 20)}, ${safe(c.source_ref, 80)}) -- ${minuteUtc(c.publish_at)} UTC</li>`)
+              .map((c) => `<li><b>${safe(c.title)}</b> (${safe(c.kind, 20)}, ${safe(c.source_ref, 80)}) -- ${formatPT(c.publish_at)}</li>`)
               .join('')}</ul>${moreHtml}` + link('?status=scheduled', NOTICE_TEXT.linkLabel),
           ids: scheduled.map((c) => c.id),
         }

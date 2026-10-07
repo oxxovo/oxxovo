@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs'
 import {
   DISPATCH_MAX_DURATION_SEC,
   SWEEP_MARGIN_SEC,
+  alertHtml,
   runDispatchTick,
   type AlertableDist,
   type ClaimedDist,
@@ -551,4 +552,17 @@ test('returned notices: own stage, runs with switches CLOSED, counted in returne
   assert.equal(r3.stage, 'master_closed')
   assert.equal(r3.notified, 1)
   assert.ok(r3.warnings.some((w) => w.startsWith('return_notify_crashed:')))
+})
+
+test('alert mail uses the screen words: Needs review / Failed (never the raw unknown / failed), re-dispatching', () => {
+  const row = (status: string): AlertableDist => ({ id: 'x1', platform: 'youtube', status, last_error: null, attempts: 1, title: 'T <b>', source_ref: 'r1' })
+  const html = alertHtml([row('unknown'), row('failed')])
+  assert.match(html, /<b>Needs review<\/b> youtube/)
+  assert.match(html, /<b>Failed<\/b> youtube/)
+  assert.match(html, /<b>Needs review<\/b> = we do not know/)
+  assert.match(html, /<b>Failed<\/b> = it did not go out/)
+  assert.match(html, /before re-dispatching/)
+  assert.doesNotMatch(html, /<b>unknown<\/b>|<b>failed<\/b>|re-sending/)
+  assert.doesNotMatch(html, /T <b>/) // title still escaped
+  assert.match(alertHtml([row('some_new_status')]), /<b>some_new_status<\/b>/) // unmapped: shown raw, not blank
 })
