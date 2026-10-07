@@ -31,6 +31,7 @@
 // clean `git status` is the only thing that makes "this deploy == this commit" true.
 
 import { spawnSync } from 'node:child_process'
+import { LIVE_BASE, verifyLive, diagnoseDeployment } from './deploy-verify.mjs'
 
 const allowDirty = process.argv.includes('--allow-dirty')
 
@@ -113,28 +114,21 @@ const out = (res.stdout ?? '').trim()
 if (out) console.log(out)
 if (res.status !== 0) process.exit(res.status ?? 1)
 
-// ★Close the loop. A stamp nobody reads is not evidence, so verify the deployment
-// serves the SHA we just built rather than trusting that it did.
+// ★Close the loop. A stamp nobody reads is not evidence, so verify that what people
+// get (www.oxxovo.ai, NOT the auth-walled deployment URL) serves the build we just
+// made. An old SHA is retried, never accepted; see scripts/deploy-verify.mjs.
 const url = (out.match(/https:\/\/[^\s]+\.vercel\.app/g) ?? []).pop()
-if (!url) {
-  console.error('\nCould not read the deployment URL from the CLI output.')
-  console.error(`Check manually: <deployment>/api/version should report sha=${buildSha}`)
-  process.exit(0)
-}
-console.error(`\nVerifying ${url}/api/version ...`)
-try {
-  const r = await fetch(`${url}/api/version`, { redirect: 'follow' })
-  const body = await r.json()
-  if (body.sha === buildSha) {
-    console.error(`✓ live version: ${JSON.stringify(body)}`)
-  } else {
-    console.error(`✖ MISMATCH -- expected sha=${buildSha}, got ${JSON.stringify(body)}`)
-    console.error('  The stamp did not reach the build. Do not treat this deploy as identified.')
-    process.exit(1)
+console.error(`\nVerifying ${LIVE_BASE}/api/version (sha=${buildSha}, builtAt=${buildTime}) ...`)
+const verdict = await verifyLive({ sha: buildSha, builtAt: buildTime, log: (m) => console.error(m) })
+if (verdict.ok) {
+  console.error(`✓ live version (try ${verdict.attempts}): ${verdict.result.detail}`)
+} else {
+  console.error(`\n✖ NOT VERIFIED after ${verdict.attempts} tries -- ${verdict.last.kind}: ${verdict.last.detail}`)
+  if (url) {
+    console.error(`  Diagnosis: ${await diagnoseDeployment({ url, sha: buildSha, builtAt: buildTime })}`)
   }
-} catch (e) {
-  // Deployment protection (SSO) returns an auth page rather than JSON. Not a failure
-  // of the deploy -- but it is not a verification either, so say which one it is.
-  console.error(`Could not verify automatically (${e instanceof Error ? e.message : String(e)}).`)
-  console.error(`Open ${url}/api/version in a browser -- it should report sha=${buildSha}`)
+  console.error('  The deploy itself may have succeeded; this only says it is NOT proven. Do not redeploy to find out. Re-check with:')
+  console.error(`    node scripts/deploy-verify.mjs ${buildSha} ${buildTime}`)
+  // exitCode, not process.exit(): see the note in scripts/deploy-verify.mjs (Windows libuv).
+  process.exitCode = 1
 }

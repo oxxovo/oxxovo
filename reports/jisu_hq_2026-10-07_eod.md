@@ -201,7 +201,7 @@
 - Series / Season / Episode 모델(막는 것 없음, §12-3)
 - `production_origin` / `client_id`(CF 구분)
 - `/admin/contents` 영어 전환(admin-i18n 미적용, 한국어 고정 — TK님 지적)
-- 배포 검증 canonical 전환(`scripts/deploy-prod.mjs`): 매번 "Could not verify automatically". 어제부터 이월.
+- ~~배포 검증 canonical 전환(`scripts/deploy-prod.mjs`)~~ **코드 완료(본부 승인, 2026-10-07 밤). 라이브 배포 검증은 TK님 다음 배포 때.** 검증 대상을 `www.oxxovo.ai/api/version`으로 바꾸고(`scripts/deploy-verify.mjs`) **옛 SHA는 통과가 아니라 재시도**(12회 x 5초), `sha`와 `builtAt` 둘 다 맞아야 통과(같은 커밋 재배포의 옛 빌드 거짓 통과 방지), 끝까지 안 맞으면 `exit 1`. 배포 URL은 인증 벽 진단에만 쓴다. 재검증만 하려면 `npm run deploy:verify -- <sha> [builtAt]`. alias 간격은 15개 배포에서 `ready` 후 0.25~0.45초(엣지 전파는 측정 불가라 창을 넉넉히). 가드 훼손 8건 전부 빨개짐.
 
 ### 5순위 — 미정 결정 (TK님)
 - `content_max_bytes_<kind>_<form>` 미설정: **100~500MB 영상이 수입은 되고 송출(100MB)에서 `failed_terminal`이 된다.** 영상 kind별 수입 상한을 송출 상한 이하로 둘지. 수동 `[송출]` 확인창에는 경고가 뜬다.
