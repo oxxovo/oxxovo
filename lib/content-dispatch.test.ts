@@ -39,7 +39,7 @@ type Harness = {
   deps: DispatchDeps
   log: string[]
   marks: MarkArgs[]
-  published: { channels: string[]; caption: string }[]
+  published: { channels: string[]; caption: string; youtube?: { title: string; visibility: string } }[]
   prepared: { url: string; opts: { expectedSha256?: string; maxBytes?: number } }[]
   claimKinds: string[][]
   alertsSent: string[]
@@ -67,10 +67,12 @@ function harness(opts: {
   const queue = [...(opts.rows ?? [])]
   h.deps = {
     nowMs: () => h.clock.t,
-    async readConfig() {
+    // Like the real reader (adminConfigReader): ONLY the requested keys come back.
+    // A fake that returned everything hid a missing key in the recheck read.
+    async readConfig(keys) {
       readCalls++
       const c = typeof opts.config === 'function' ? opts.config(readCalls) : (opts.config ?? OPEN)
-      return c === null ? null : new Map(Object.entries(c))
+      return c === null ? null : new Map(Object.entries(c).filter(([k]) => keys.includes(k)))
     },
     async sweep(th) { h.log.push(`sweep:${th}`); return 0 },
     async listAlertable() { return opts.alertable ?? [] },
@@ -93,7 +95,7 @@ function harness(opts: {
         return opts.prepare ? opts.prepare(url) : { id: 'm1', path: 'p' }
       },
       async publish(args) {
-        h.published.push({ channels: args.channels, caption: args.caption })
+        h.published.push({ channels: args.channels, caption: args.caption, youtube: args.youtube })
         return opts.publish ? opts.publish() : { postIds: ['post-1'] }
       },
     },
@@ -105,7 +107,7 @@ test('control: everything open -> one row is claimed, verified, published and ma
   const h = harness({ rows: [row(1)] })
   const r = await runDispatchTick(h.deps)
   assert.equal(r.stage, 'ran')
-  assert.deepEqual(h.published, [{ channels: ['youtube'], caption: 'caption 1' }])
+  assert.deepEqual(h.published, [{ channels: ['youtube'], caption: 'caption 1', youtube: { title: 'title 1', visibility: 'private' } }])
   assert.equal(h.marks[0].result, 'sent')
   assert.equal(h.marks[0].externalId, 'post-1')
   assert.equal(h.marks[0].captionSent, 'caption 1') // the text actually sent is snapshotted
@@ -435,4 +437,73 @@ test('import notices: sent from the tick with switches CLOSED, marked after the 
   const r3 = await runDispatchTick(boom.deps)
   assert.equal(r3.stage, 'master_closed')
   assert.ok(r3.warnings.some((w) => w.startsWith('notify_list_failed')))
+})
+
+// ---- YouTube title + visibility (content dispatch only; HQ 2026-10-07) ----------
+
+test('youtube visibility: missing / empty / unknown values are PRIVATE; only the three words pass (control: public passes)', async () => {
+  const visibilityFor = async (value: string | undefined) => {
+    const cfg: Record<string, string> = { ...OPEN }
+    if (value !== undefined) cfg.content_youtube_visibility = value
+    const h = harness({ config: cfg, rows: [row(1)] })
+    await runDispatchTick(h.deps)
+    assert.equal(h.published.length, 1)
+    return h.published[0].youtube?.visibility
+  }
+  assert.equal(await visibilityFor(undefined), 'private')
+  for (const bad of ['', ' ', 'yes', 'true', 'PUBLIC!', 'publik', '1', 'private,public']) {
+    assert.equal(await visibilityFor(bad), 'private', JSON.stringify(bad))
+  }
+  assert.equal(await visibilityFor('public'), 'public')
+  assert.equal(await visibilityFor(' Unlisted '), 'unlisted')
+  assert.equal(await visibilityFor('private'), 'private')
+})
+
+test('youtube visibility is read FRESH at the recheck, not from the tick start (both directions)', async () => {
+  // tick start says public, the recheck (right before POST) no longer does -> private
+  const a = harness({
+    rows: [row(1)],
+    config: (call) => (call === 1 ? { ...OPEN, content_youtube_visibility: 'public' } : { ...OPEN }),
+  })
+  await runDispatchTick(a.deps)
+  assert.equal(a.published[0].youtube?.visibility, 'private')
+  // control: tick start has nothing, the recheck says public -> public (so the recheck value is what is used)
+  const b = harness({
+    rows: [row(1)],
+    config: (call) => (call === 1 ? { ...OPEN } : { ...OPEN, content_youtube_visibility: 'public' }),
+  })
+  await runDispatchTick(b.deps)
+  assert.equal(b.published[0].youtube?.visibility, 'public')
+})
+
+test('only youtube rows carry youtube settings (control: the youtube row does)', async () => {
+  const h = harness({ rows: [row(1, { platform: 'instagram' }), row(2)], assets: () => [asset('main_16x9'), asset('main_9x16')] })
+  await runDispatchTick(h.deps)
+  assert.equal(h.published.length, 2)
+  assert.equal(h.published[0].channels[0], 'instagram')
+  assert.equal(h.published[0].youtube, undefined)
+  assert.equal(h.published[1].channels[0], 'youtube')
+  assert.deepEqual(h.published[1].youtube, { title: 'title 2', visibility: 'private' })
+})
+
+test('unusable youtube title: failed_terminal BEFORE any download or post (control: a usable title posts)', async () => {
+  for (const title of ['a', '<>', '   ', '\n\t']) {
+    const h = harness({ rows: [row(1, { title })] })
+    const r = await runDispatchTick(h.deps)
+    assert.equal(h.marks[0].result, 'failed_terminal', JSON.stringify(title))
+    assert.equal(h.marks[0].error, 'youtube_title_invalid')
+    assert.equal(h.prepared.length, 0, 'nothing was downloaded or uploaded')
+    assert.equal(h.published.length, 0)
+    assert.equal(r.rows[0].outcome, 'failed_terminal')
+  }
+  const ok = harness({ rows: [row(1, { title: '[시험] 2026-10-07 test' })] })
+  await runDispatchTick(ok.deps)
+  assert.equal(ok.marks[0].result, 'sent')
+  assert.equal(ok.published[0].youtube?.title, '[시험] 2026-10-07 test')
+})
+
+test('an unusable title only matters for youtube (control: an instagram row with the same title posts)', async () => {
+  const h = harness({ rows: [row(1, { platform: 'instagram', title: 'a' })], assets: () => [asset('main_9x16')] })
+  await runDispatchTick(h.deps)
+  assert.equal(h.marks[0].result, 'sent')
 })

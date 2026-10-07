@@ -32,8 +32,8 @@ import {
 } from '@/lib/content-kinds'
 import { runContentNotices, type NotifiableContent } from '@/lib/content-notify'
 import { readDispatchState, type ConfigReader } from '@/lib/dispatch-switch'
-import { PostizConfigError, PostizHttpError, PostizMediaError } from '@/lib/postiz'
-import type { PostizMedia, PromoChannel } from '@/lib/postiz'
+import { PostizConfigError, PostizHttpError, PostizMediaError, parseYoutubeVisibility, youtubeTitle } from '@/lib/postiz'
+import type { PostizMedia, PromoChannel, YoutubeSettings } from '@/lib/postiz'
 
 // The route file declares `export const maxDuration = 300` as a literal (Next
 // reads it statically, so it cannot import this). content-dispatch.test.ts
@@ -60,6 +60,11 @@ export const KEY_ITEM_BUDGET = 'content_dispatch_item_budget_seconds'
 // DB key is the ONLY place the number lives -- no code default (HQ 2026-10-06);
 // missing/invalid = dispatch sends nothing, like per_tick.
 export const KEY_MAX_BYTES = 'content_dispatch_max_bytes_default'
+// YouTube visibility of what the dispatcher posts: public | unlisted | private.
+// Missing / unreadable / anything else = private (fail-closed, see
+// parseYoutubeVisibility). Read FRESH at the recheck right before POST /posts,
+// so flipping it takes effect on the very next post.
+export const KEY_YOUTUBE_VISIBILITY = 'content_youtube_visibility'
 const CONFIG_KEYS = [KEY_PER_TICK, KEY_MAX_ATTEMPTS, KEY_BACKOFF_BASE, KEY_ITEM_BUDGET, KEY_MAX_BYTES] as const
 
 export type ClaimedDist = {
@@ -121,7 +126,12 @@ export type DispatchDeps = {
   mark(args: MarkArgs): Promise<void>
   postiz: {
     prepare(url: string, opts: { expectedSha256?: string; maxBytes?: number }): Promise<PostizMedia>
-    publish(args: { channels: PromoChannel[]; media: PostizMedia; caption: string }): Promise<{ postIds: string[] }>
+    publish(args: {
+      channels: PromoChannel[]
+      media: PostizMedia
+      caption: string
+      youtube?: YoutubeSettings
+    }): Promise<{ postIds: string[] }>
   }
 }
 
@@ -304,6 +314,12 @@ async function processOne(
   }
 
   // ---- before anything leaves the building ---------------------------------
+  // YouTube needs a usable title (2-100 chars). Nothing is invented: an unusable
+  // one is the same answer every time, so it is terminal, and it is decided
+  // BEFORE the download/upload.
+  if (row.platform === 'youtube' && youtubeTitle(row.title) === null) {
+    return await finish('failed_terminal', { error: 'youtube_title_invalid' })
+  }
   let media: PostizMedia
   try {
     const assets = await deps.loadAssets(row.content_id)
@@ -332,7 +348,7 @@ async function processOne(
 
   // ---- 5/6. recheck, fresh --------------------------------------------------
   const dba: Dba = dbaOfKind(row.kind)
-  const now = await readDispatchState(deps.readConfig, [])
+  const now = await readDispatchState(deps.readConfig, [KEY_YOUTUBE_VISIBILITY])
   if (now.state !== 'ok' || !now.openDbas.includes(dba)) {
     const why = now.state === 'ok' ? `dispatch_switch_closed:${dba}` : `dispatch_switch_${now.state}`
     return await finish('stopped_by_switch', { error: why }, 'switch_closed_at_recheck')
@@ -352,7 +368,13 @@ async function processOne(
 
   // ---- 7. publish -----------------------------------------------------------
   try {
-    const r = await deps.postiz.publish({ channels: [row.platform as PromoChannel], media, caption })
+    // Visibility comes from the FRESH recheck read above, never from the config
+    // the tick started with. Only youtube rows carry it.
+    const youtube: YoutubeSettings | undefined =
+      row.platform === 'youtube'
+        ? { title: row.title, visibility: parseYoutubeVisibility(now.config.get(KEY_YOUTUBE_VISIBILITY)) }
+        : undefined
+    const r = await deps.postiz.publish({ channels: [row.platform as PromoChannel], media, caption, youtube })
     const id = r.postIds[0]
     // 2xx without a usable post id: it may well have gone out. Do not guess.
     if (!id || id === 'unknown') return await finish('unknown', { error: 'empty_or_unidentified_response' })

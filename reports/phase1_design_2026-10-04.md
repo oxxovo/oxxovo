@@ -760,6 +760,29 @@ URL·퍼머링크·상태가 없다 (지수 확인 10-04).
   **"나가지 않는다"를 음성 시험으로만** 확인한다.
 → **설계서에 "송출 가드 라이브 미검증"으로 남긴다.**
 
+### 5-8. ⑩ 정상 송출 시험 계획 — 실제 OXXOVO 채널 1건 (2026-10-07, TK님 결정)
+
+테스트 채널은 만들지 않는다(Postiz 채널을 새로 붙이는 비용이 더 크다). **한 번이라도 실제 SNS에 나가는 첫 건이라 되돌릴 수 없다는 전제로 준비한다.**
+
+**YouTube 설정이 빠져 있었다(코드 대조로 발견).** Postiz 공식 문서([YouTube 설정](https://docs.postiz.com/public-api/providers/youtube.md))는 `title`(2~100자)과 `type`(`public`/`unlisted`/`private`)을 **필수**라고 한다. 그동안 `buildPostBody`는 YouTube에 `__type`·`post_type`만 보냈다 -> 그대로 열면 4xx로 실패(안전하지만 시험이 헛돈다). 콘텐츠 송출 경로에만 추가했다:
+- `title` = 콘텐츠 제목을 정리(제어문자·꺾쇠 제거, 공백 정리, **100 코드포인트**로 자름). 2자 미만이면 **보내지 않고** `failed_terminal`(`youtube_title_invalid`, 다운로드 전). 제목을 지어내지 않는다.
+- `type` = `platform_config` `content_youtube_visibility`. **없거나 이상하면 `private`**(fail-closed). **재확인 때 새로 읽는다**(틱 시작 값 아님).
+- 홍보영상 경로(`publishPromoVideo`)는 건드리지 않았다(`youtube` 인자 없으면 기존 모양 그대로, 테스트로 고정).
+- **시험 제목은 코드가 아니라 어드민 `메타 수정`으로 `[시험] 2026-10-07 ...` 식으로 바꾼다**(감사에 남는다). 코드에 접두어를 넣으면 실제 콘텐츠 제목이 오염된다. 올린 직후 시스템은 영상 URL을 모르므로(§5-4) TK님이 **제목으로 Studio에서 찾는다.**
+
+**올릴 것의 조건**: 100MB 이하(`content_dispatch_max_bytes_default`) · `main_16x9` 있음(YouTube는 이 role만) · **만든 쪽이 처음부터 `cleared`로 수입**(권리는 올릴 수 없다) · `probe-` ref 아님 · 수입 `allowed_platforms`는 `["youtube"]` 하나(지울 것이 하나) · 뉴스라면 ElevenLabs·Hedra 상업 약관 미확인 -> **TK님이 비공개 1건을 감수한다고 확인**.
+
+**지우는 절차(확정)**: Postiz `DELETE /public/v1/posts/{id}`는 존재하지만(그룹 단위, 시간당 30회) **이미 올라간 YouTube 영상까지 지우는지 문서에 없다 -> 믿지 않는다.** 삭제는 **YouTube Studio에서 직접**, Postiz 삭제는 기록 정리용 선택. DB는 `posted`로 남는다("삭제됨" 상태가 없고 콘텐츠는 DB에서 못 지운다) -> 어드민 `[반송]`으로 사유를 남긴다("⑩ 시험 게시, YouTube에서 삭제함"). **못 지우면 이 시험을 하지 않는다.**
+
+**순서**: ① 위 코드 배포(스위치는 닫힌 채) ② `content_youtube_visibility='private'` 입력 ③ 만든 쪽이 1건 수입(`allowed_platforms:["youtube"]`, cleared) ④ 어드민에서 내용 확인 + 제목을 `[시험]`으로 수정, `[정지]` 상태로 둔다 ⑤ `content_dispatch_per_tick`을 `1`로 낮춘다(스위치가 열린 동안 다른 게 같이 나가는 걸 한 건으로 묶는 안전장치) ⑥ 그 콘텐츠 DBA의 송출 스위치 **하나만** 연다 ⑦ 어드민 `[송출]` -> 5분 안에 틱이 가져간다 ⑧ 로그 `processed:1`이 찍히면 **즉시 스위치를 닫고 `per_tick`을 10으로 복원** ⑨ Studio에서 비공개 확인 -> 삭제 -> `[반송]`으로 기록.
+**시작 전 읽기 확인**: 대기 행(`queued`/`sending`/`failed`/`unknown`)이 0건인지, `postiz_channel_youtube` 키가 있는지.
+
+**중단**: 스위치를 닫으면 새 점유는 즉시 멈춘다. 점유해 미디어 준비 중인 행도 `POST /posts` 직전의 새 재확인에서 닫혀 있으면 `queued`로 돌아간다. **`POST /posts`가 나간 뒤에는 못 멈춘다.** 그 시점에 함수가 죽으면 `sending` -> 360초 뒤 `unknown` + 알림.
+
+**실패 시**: `failed`(4xx, 안 올라감) -> 재시도 키가 없어 **재시도 0회를 유지**(자동 재시도가 중복 게시를 부를 수 있다), 스위치를 닫고 `last_error`를 고친 뒤 `[다시 보냄]` · `unknown` -> **Studio와 Postiz를 먼저 확인**, 올라갔으면 `[나갔음]`, 없으면 `[다시 보냄]` · `failed_terminal` -> 같은 결과라 재시도 없음, 만든 쪽이 새 버전을 보낸다.
+
+**한계(라이브 미검증)**: Postiz가 `type:private`을 받아 YouTube에 실제로 비공개로 올리는지 · 올린 직후 응답의 `postId`가 Postiz 삭제에 쓰는 id와 같은지 · YouTube의 AI 합성 콘텐츠 표기는 Postiz 설정에 항목이 없다(공개로 돌릴 때 Studio에서 직접, §7-3).
+
 ---
 
 ## 6. 반송

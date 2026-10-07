@@ -38,6 +38,41 @@ const SETTINGS_TYPE: Record<PromoChannel, string> = {
 // Postiz 게시 종류 (피드 영상 = post, 스토리 = story). 홍보영상은 피드.
 type PostType = 'post' | 'story'
 
+// ---- YouTube settings (content dispatch only) --------------------------------
+// Postiz's YouTube provider REQUIRES `title` (2-100 chars) and `type`
+// (public | unlisted | private) -- https://docs.postiz.com/public-api/providers/youtube
+// The promo path never sent them; the content dispatch path does, through the
+// optional `youtube` argument below. The promo path is deliberately unchanged.
+export const YOUTUBE_VISIBILITIES = ['private', 'unlisted', 'public'] as const
+export type YoutubeVisibility = (typeof YOUTUBE_VISIBILITIES)[number]
+export type YoutubeSettings = { title: string; visibility: YoutubeVisibility }
+
+// FAIL-CLOSED: anything that is not exactly one of the three words (a missing
+// key, a typo, '', 'Public ' with junk) is `private`. A missing setting must
+// never publish a video.
+export function parseYoutubeVisibility(raw: unknown): YoutubeVisibility {
+  const v = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  return (YOUTUBE_VISIBILITIES as readonly string[]).includes(v) ? (v as YoutubeVisibility) : 'private'
+}
+
+export const YOUTUBE_TITLE_MIN = 2
+export const YOUTUBE_TITLE_MAX = 100
+
+// The content title as a YouTube title: control characters and line breaks ->
+// space, `<` and `>` removed (YouTube rejects them), whitespace collapsed,
+// cut to 100 CODE POINTS (not UTF-16 units, so a surrogate pair is never
+// split). null = unusable (< 2 chars): the caller must not send, and must not
+// invent a title.
+export function youtubeTitle(raw: string): string | null {
+  const cleaned = String(raw ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/[<>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const cut = Array.from(cleaned).slice(0, YOUTUBE_TITLE_MAX).join('').trim()
+  return Array.from(cut).length >= YOUTUBE_TITLE_MIN ? cut : null
+}
+
 // 업로드된 media 참조. /posts 의 value[].image 는 객체 배열을 요구.
 export type PostizMedia = { id: string; path: string }
 
@@ -175,6 +210,9 @@ export type PublishPreparedArgs = {
   channels: PromoChannel[]
   media: PostizMedia
   caption: string
+  // Only the content dispatch passes this. Without it the youtube entry is
+  // built exactly as before (promo path unchanged).
+  youtube?: YoutubeSettings
 }
 
 // POST /posts. 항상 즉시(type:'now'). 예약을 받지 않는다 -- 런타임에서도 거부한다
@@ -183,8 +221,17 @@ export function buildPostBody(
   chans: { channel: PromoChannel; integrationId: string }[],
   media: PostizMedia,
   caption: string,
+  youtube?: YoutubeSettings,
 ) {
   const postType: PostType = 'post' // 피드(Reel/영상 자동 감지).
+  // Validated BEFORE any request is built, so a bad title cannot reach Postiz.
+  let ytSettings: { title: string; type: YoutubeVisibility } | null = null
+  if (youtube && chans.some((c) => c.channel === 'youtube')) {
+    const title = youtubeTitle(youtube.title)
+    if (!title) throw new PostizConfigError('postiz: youtube title unusable (needs 2-100 characters)')
+    // Re-parsed here too: whatever the caller typed, only the three words pass.
+    ytSettings = { title, type: parseYoutubeVisibility(youtube.visibility) }
+  }
   // /posts 바디는 2026-06 실측(400 응답)으로 확정한 모양:
   //   top-level: shortLink(boolean), tags(array)
   //   value[].image: media 객체 배열 [{ id, path }]
@@ -197,7 +244,10 @@ export function buildPostBody(
     posts: chans.map((c) => ({
       integration: { id: c.integrationId },
       value: [{ content: caption, image: [media] }],
-      settings: { __type: SETTINGS_TYPE[c.channel], post_type: postType },
+      settings:
+        c.channel === 'youtube' && ytSettings
+          ? { __type: SETTINGS_TYPE[c.channel], post_type: postType, ...ytSettings }
+          : { __type: SETTINGS_TYPE[c.channel], post_type: postType },
     })),
   }
 }
@@ -209,7 +259,7 @@ export async function publishPrepared(
     throw new Error('postiz: scheduling is not allowed (always type:now; schedule is owned by publish_at + cron)')
   }
   const chans = await getPostizChannelIds(args.channels)
-  const body = buildPostBody(chans, args.media, args.caption)
+  const body = buildPostBody(chans, args.media, args.caption, args.youtube)
 
   const res = await postizFetch('/posts', { method: 'POST', body: JSON.stringify(body) })
   // 2026-06 실측: 성공 응답은 채널당 한 엔트리 배열 [{ postId, integration }].

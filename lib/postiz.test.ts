@@ -84,3 +84,55 @@ test('size ceiling: refused on the Content-Length header, and on the received by
     },
   )
 })
+
+// ---- YouTube settings (content dispatch only) --------------------------------
+
+import { PostizConfigError, YOUTUBE_TITLE_MAX, parseYoutubeVisibility, youtubeTitle } from './postiz'
+
+const CHANS = [
+  { channel: 'youtube' as const, integrationId: 'yt1' },
+  { channel: 'x' as const, integrationId: 'x1' },
+]
+
+test('youtube settings: title + type on the youtube entry only; other channels untouched', () => {
+  const b = buildPostBody(CHANS, MEDIA, 'cap', { title: '[시험] 2026-10-07 clip', visibility: 'private' })
+  const yt = b.posts.find((p) => p.integration.id === 'yt1')!
+  const x = b.posts.find((p) => p.integration.id === 'x1')!
+  assert.deepEqual(yt.settings, { __type: 'youtube', post_type: 'post', title: '[시험] 2026-10-07 clip', type: 'private' })
+  assert.deepEqual(x.settings, { __type: 'x', post_type: 'post' })
+})
+
+test('promo path unchanged: without the youtube argument the settings are exactly the old shape', () => {
+  const b = buildPostBody(CHANS, MEDIA, 'cap')
+  for (const p of b.posts) assert.deepEqual(Object.keys(p.settings).sort(), ['__type', 'post_type'])
+})
+
+test('youtube settings with an unusable title throw BEFORE a body exists; the visibility is re-parsed, not trusted', () => {
+  assert.throws(() => buildPostBody(CHANS, MEDIA, 'cap', { title: 'a', visibility: 'private' }), PostizConfigError)
+  // a youtube argument with no youtube channel is simply ignored
+  assert.doesNotThrow(() => buildPostBody([{ channel: 'x', integrationId: 'x1' }], MEDIA, 'cap', { title: 'a', visibility: 'private' }))
+  const b = buildPostBody(CHANS, MEDIA, 'cap', { title: 'ok title', visibility: 'PUBLIC!!' as never })
+  assert.equal((b.posts[0].settings as { type: string }).type, 'private')
+})
+
+test('parseYoutubeVisibility: only the three words, everything else is private', () => {
+  assert.equal(parseYoutubeVisibility('public'), 'public')
+  assert.equal(parseYoutubeVisibility(' UNLISTED '), 'unlisted')
+  assert.equal(parseYoutubeVisibility('private'), 'private')
+  for (const v of [undefined, null, '', 'pub', 'public ok', 1, true, {}, []]) assert.equal(parseYoutubeVisibility(v), 'private', String(v))
+})
+
+test('youtubeTitle: cleaned, capped at 100 code points, null when under 2 characters', () => {
+  assert.equal(youtubeTitle('  [시험]\n 2026-10-07   clip '), '[시험] 2026-10-07 clip')
+  assert.equal(youtubeTitle('<b>hi</b>'), 'bhi/b')
+  assert.equal(youtubeTitle('a'), null)
+  assert.equal(youtubeTitle('<>'), null)
+  assert.equal(youtubeTitle(''), null)
+  assert.equal(youtubeTitle('ab'), 'ab')
+  const long = youtubeTitle('가'.repeat(150))!
+  assert.equal(Array.from(long).length, YOUTUBE_TITLE_MAX)
+  // 100 code points of an astral character: never split a surrogate pair
+  const emoji = youtubeTitle('😀'.repeat(150))!
+  assert.equal(Array.from(emoji).length, YOUTUBE_TITLE_MAX)
+  assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])/.test(emoji))
+})
