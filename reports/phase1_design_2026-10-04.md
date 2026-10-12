@@ -312,6 +312,13 @@ POST /api/contents/presign
 role         허용 목록으로 검증 (main_16x9/main_9x16/thumbnail/script)
 bytes        content_max_bytes_<kind>_<form> 상한을 여기서 미리 거절
              → 다 올린 뒤 import에서 퇴짜 맞는 낭비를 막는다
+             ⚠️ 현재 구현은 전역 최댓값만 본다 (후속 작업 예정, 2026-10-10 본부 확인).
+                이 요청 규격에 kind·form 필드가 없어서 이 줄은 지금 규격으로는 구현할 수 없었다.
+                presign RPC는 `content_max_bytes_*` 키 전체의 최댓값(지금은 film_full 10GB)보다
+                클 때만 거절하고, 정확한 상한은 content_import가 판정한다 (step3 SQL 머리말에
+                결정으로 적혀 있음). 효과: 상한을 넘는 파일이 R2에 올라간 뒤에 import에서 거절된다
+                (낭비일 뿐 오송출 경로는 아니다). 지금은 만든 쪽 합의로 막는다.
+                후속: presign 요청에 kind·form 선택 필드를 더한다 — ⑩ 이후 별도 작업.
 URL 만료     content_presign_ttl_seconds
 발급 횟수    content_presign_rate_per_hour
              ⭐ source_ref 단위 + source 전체 단위 둘 다 센다
@@ -355,9 +362,11 @@ URL 만료     content_presign_ttl_seconds
 **모르는 필드는 거절한다** (무시하지 않음). 이름이 어긋나면 400으로 바로 드러난다.
 **서버가 조용히 매핑하지 않는다** — movie → film 같은 변환 없음.
 
-**🔴 `allowed_platforms`는 1개 이상 필수다.** 빈 배열은 400.
-빈 배열을 허용하면 출처가 실수로 빠뜨린 정상 콘텐츠가
-**"송출 대상 없음"으로 조용히 들어온다.**
+**🔴 `allowed_platforms`는 필드가 반드시 있어야 하는 배열이다.** 필드가 없거나 배열이 아니면 400(`allowed_platforms_required`).
+**빈 배열 `[]`은 받는다 — 사이트 전용(SNS 송출 대상 없음)을 뜻한다.** (본부 결정 2026-10-10. 코드 동작이 정본이고 설계서를 코드에 맞췄다: `lib/content-import.ts` 배열 여부만 검사, `content_import` RPC도 빈 채널을 허용한다. 처음에는 "1개 이상 필수, 빈 배열 400"이었다.)
+이 결정으로 **송출 행이 하나도 없는 콘텐츠**가 정상 경로가 된다. 남는 한계(옛 근거가 가리킨 위험): 출처의 버그로 빈 배열이 나가도 400이 안 나고 **"송출 대상 없음"으로 조용히 들어온다.** 필드 누락은 400으로 잡히지만 "필터 결과가 비어 `[]`이 된 것"은 못 잡는다.
+- 현재 어드민·알림 메일은 송출 행이 0개인 콘텐츠를 따로 구분해 보여 주지 않는다(입고 메일은 콘텐츠 상태로만 분류한다). **구분 표시는 후속 작업 후보**이고 아직 하지 않았다.
+- 사이트 전용 약속: 출처는 SNS에 안 보낼 콘텐츠를 **명시적으로 `[]`로** 보낸다. 100MB 넘는 영상을 `allowed_platforms`를 채워 보내면 송출 상한(`content_dispatch_max_bytes_default`) 때문에 해당 채널이 `skipped_oversize`가 된다(§5-5).
 
 **🔴 `rights_reason`은 `rights_status != 'cleared'`일 때 필수다**
 상한 2000자. `payload_hash`에 포함한다.
@@ -1675,6 +1684,7 @@ content_dispatch_backoff_base_minutes
 | 최종 j | **지수 8차 반영** — 알림 발송 단계 ①b 신설(RPC 추가 없이 서버 액션 직접 UPDATE → 15개 유지, 전송 실패 시 alerted_at 안 씀), `alerted_at` 초기화를 **트리거**로(dist_mark만으론 claim·sweep·requeue 경로가 샌다), `failed_terminal`의 "attempts=max" 삭제(dist_mark에 max 인자가 없다 → `next_attempt_at=NULL`로), `sendAdminAlert`에 `to?` 선택 인자 추가 확정(현재 인자 없음을 코드로 확인), 시간 예산 숫자를 문서에서 빼고 선언값 기반 계산 + `item_budget_seconds` 키, `dist_mark(result='skipped')` 삭제, 더빙 문구 2곳 정정(유튜브만 끄려면 allowed_platforms, 메뉴 경로 단정 제거) |
 | 최종 k | **platform_config 값 5개 확정 (TK 10-05)** — min_lead 120분 / max_bytes_default 500MB / per_tick 10 / presign_ttl 3600초 / presign_rate 20회. 미결 #1·#1c·#1e·#3 종결 |
 | **최종 l** | **`upstream_approval_id` 확정 (본부 10-05, 뉴스 제니 답)** — ①미결 #5 종결: 양쪽 다 UUID(엔터 `approvals.id` / 뉴스 보낼 때 생성), 형식 검증은 **Node 코드에서 소문자 UUID만 받고 틀리면 400**(컬럼 CHECK 없음: 시험 행 2건이 이미 UUID가 아니고 NOT VALID는 착각만 남기며 RPC 재정의 비용이 과함. 대문자는 UNIQUE 우회라 거절). ②**엔터와 뉴스의 차이**: 엔터는 상류에 실제 승인 기록이 있고 뉴스는 없다(TK 육안 승인, 기록·ID 장치 없음). 둘 다 "출처가 주장하는 값"이라는 한계는 같다. 뉴스의 `UNIQUE (source, upstream_approval_id)`는 재사용 방지로 실질 힘이 없다. ③**뉴스 재시도 규칙: UUID는 `(source_ref, source_version)`당 하나** — 만들어 기록해 두고 같은 버전 재전송에는 그 값을 그대로 쓴다, v2에서만 새로 만든다. 안 그러면 재시도마다 `payload_hash`가 달라져 행은 들어갔는데 409가 난다. `upstream_approval_id`는 해시에서 빼지 않는다(내용의 일부이고, 빼면 승인 ID만 바꾼 재전송이 멱등으로 통과) |
+| 최종 m | **설계-구현 격차 2건 정리 (본부 2026-10-10)** — ①§3-2 presign 사전 거절: 설계 의도는 유지, 구현은 전역 최댓값만 봄(요청 규격에 kind·form 없음) -> 후속 작업(presign 선택 필드), 그때까지 만든 쪽 합의. ②§3-3 `allowed_platforms`: 빈 배열 허용이 정본(사이트 전용 표현), 설계서를 코드에 맞춤. 남는 한계(출처 버그의 `[]`이 조용히 들어옴)를 본문에 적음 |
 
 ---
 
