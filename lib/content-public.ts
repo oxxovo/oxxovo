@@ -48,8 +48,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const PUBLIC_LIST_MAX = 50
 
 // The column lists live in a pure file (shared with the live read-only probe).
-export { PUBLIC_CONTENT_COLUMNS, PUBLIC_ASSET_COLUMNS } from '@/lib/content-public-columns'
-import { PUBLIC_CONTENT_COLUMNS, PUBLIC_ASSET_COLUMNS } from '@/lib/content-public-columns'
+export { PUBLIC_CONTENT_COLUMNS, PUBLIC_ASSET_COLUMNS, PUBLIC_THUMBNAIL_COLUMNS } from '@/lib/content-public-columns'
+import { PUBLIC_CONTENT_COLUMNS, PUBLIC_ASSET_COLUMNS, PUBLIC_THUMBNAIL_COLUMNS } from '@/lib/content-public-columns'
 
 type Admin = ReturnType<typeof createSupabaseAdmin>
 
@@ -110,6 +110,30 @@ export function isPublicRow(
   if (typeof row.publish_at !== 'string') return false
   const t = Date.parse(row.publish_at)
   return Number.isFinite(t) && t <= now.getTime()
+}
+
+// A list item may carry ONE extra field: the URL of its thumbnail (never any other
+// asset, never a video). It is present only when the caller asks (withThumbnails) and is
+// null when the item has no usable thumbnail -- the card then draws its gradient frame.
+export type PublicListItem = PublicContent & { thumbnail_url?: string | null }
+
+// Pure. From the rows of the thumbnail query, the URL to show per content id.
+// ONLY role 'thumbnail' (not "any public role": main_16x9 / main_9x16 are public on the
+// detail page but are videos and must not become a list image), only an image, only a
+// non-empty https url, only for an id the caller already judged public. Several
+// thumbnails for one item: the smallest url wins, so the choice is deterministic.
+export function pickThumbnails(rows: readonly Record<string, unknown>[], publicIds: ReadonlySet<string>): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const r of [...rows].sort((a, b) => String(a.url).localeCompare(String(b.url)))) {
+    if (typeof r.content_id !== 'string' || !publicIds.has(r.content_id)) continue
+    if (r.role !== 'thumbnail' || !isPublicAssetRole(r.role)) continue
+    if (r.media_type !== 'image') continue
+    if (typeof r.url !== 'string') continue
+    const url = r.url.trim()
+    if (!url.startsWith('https://')) continue
+    if (!out.has(r.content_id)) out.set(r.content_id, url)
+  }
+  return out
 }
 
 export function toPublicAssets(rows: readonly Record<string, unknown>[]): PublicAsset[] {
@@ -233,8 +257,8 @@ export async function getPublicContent(
 
 // Newest first. `kind` must itself be open; asking for a closed kind is empty.
 export async function listPublicContents(
-  opts: { kind?: ContentKind; limit?: number; admin?: Admin; now?: Date } = {},
-): Promise<PublicContent[]> {
+  opts: { kind?: ContentKind; limit?: number; admin?: Admin; now?: Date; withThumbnails?: boolean } = {},
+): Promise<PublicListItem[]> {
   try {
     const admin = opts.admin ?? createSupabaseAdmin()
     const now = opts.now ?? new Date()
@@ -261,7 +285,22 @@ export async function listPublicContents(
       if (!ok) console.error('[content-public] list row failed the re-check, dropped:', r.id)
       return ok
     })
-    return rows.map(toPublicContent)
+    const items: PublicListItem[] = rows.map(toPublicContent)
+    if (opts.withThumbnails && items.length > 0) {
+      // One query for the whole page, only for ids that passed the judgement above. A
+      // failure costs the images, never the list.
+      const ids = new Set(items.map((i) => i.id))
+      const { data: thumbs, error: tErr } = await admin
+        .from('content_assets')
+        .select(PUBLIC_THUMBNAIL_COLUMNS)
+        .in('content_id', [...ids])
+        .eq('role', 'thumbnail')
+        .not('url', 'is', null)
+      if (tErr) logQueryError('thumbnails', tErr)
+      const picked = tErr || !thumbs ? new Map<string, string>() : pickThumbnails(thumbs as Record<string, unknown>[], ids)
+      for (const item of items) item.thumbnail_url = picked.get(item.id) ?? null
+    }
+    return items
   } catch (e) {
     logException('list', e)
     return []

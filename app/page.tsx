@@ -1,27 +1,41 @@
 // Root (/) -- watch_as_home decides the surface (TK manual switch, default off):
 //   off -> marketing landing (LandingView). This is launch behavior (7/25).
-//   on  -> Watch home (same ArenaWatch surface as /watch), flipped once Season 0
-//          videos have accumulated. The marketing landing stays reachable at
-//          /welcome (sidebar "Tournament").
+//   on  -> the OXXOVO home: top menu + banner + Featured, over the aggregation layer
+//          (lib/home-feed). The other pages of the new site (/entertainment, /daily,
+//          /market, /education, /jobs, /games, /competition) sit behind the same
+//          switch, in every language (/ko/...). The landing stays at /welcome and
+//          /watch is unchanged.
+//
+// The competition gate (isCompetitionWatchPublic) is NOT ANDed here: the home lists
+// contents too, and a closed competition must not hide an open news section. The gate
+// sits inside lib/home-feed, around the competition cards only.
 
 import { isWatchHome } from '@/lib/watch-home'
-import { isCompetitionWatchPublic } from '@/lib/watch-gate'
-import { ArenaWatch } from './watch/ArenaWatch'
+import { getHomeCards } from '@/lib/home-feed'
+import { loadSitePage } from '@/lib/site-page'
+import { SiteFrame } from './_site/SiteFrame'
+import { CardGrid } from './_site/Card'
+import { siteMetadata } from './_site/SectionPage'
 import { LandingView } from './_landing/LandingView'
 import { ChatWidget } from './_components/ChatWidget'
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = () => siteMetadata('home')
+
+const FEATURED_MAX = 4
 
 export default async function Home() {
-  // watch-as-home may render the Watch surface at the root. Pre-launch that must
-  // not expose Watch in production (patent novelty) -- fall back to the landing.
-  // AND'd with Competition Publication (Phase 0-3, HQ 2026-09-27).
-  if ((await isWatchHome()) && (await isCompetitionWatchPublic())) {
+  if (await isWatchHome()) {
+    const data = await loadSitePage('home')
+    const cards = (await getHomeCards('all', undefined, data.locale)).slice(0, FEATURED_MAX)
     return (
-      <main className="min-h-screen bg-[#070512] text-[#f4f0ff]">
-        <ArenaWatch sort="latest" />
+      <>
+        <SiteFrame {...data}>
+          <h2 className="mb-3 text-lg font-bold text-[#f4f0ff]">{data.t('home.featured')}</h2>
+          <CardGrid cards={cards} t={data.t} carousel />
+        </SiteFrame>
         <ChatWidget />
-      </main>
+      </>
     )
   }
   return <LandingView />

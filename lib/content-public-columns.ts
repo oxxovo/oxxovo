@@ -38,3 +38,8 @@ export const NEVER_PUBLIC_KEYS: readonly string[] = [
   'notified_at',
   'bytes',
 ]
+
+// The thumbnail lookup of the public LIST (cards). Four columns, all of which already
+// appear in PUBLIC_ASSET_COLUMNS: nothing new is selected. No sha256, no text_content,
+// no bytes, and `role` is read only so the result can be re-checked.
+export const PUBLIC_THUMBNAIL_COLUMNS = 'content_id, role, media_type, url'

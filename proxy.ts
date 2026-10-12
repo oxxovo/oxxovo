@@ -16,6 +16,7 @@
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { LOCALE_HEADER, PREFIXED_HEADER, decideRoute, isSiteRoute } from '@/lib/locales'
 
 // Routes whose server code relies on a freshly-refreshed cookie session. We do
 // the getUser() refresh only here (matches pre-gate behavior) so the ungated
@@ -32,6 +33,31 @@ function needsSessionRefresh(pathname: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
+
+  // New site language (lib/locales): /ko/<site route> is served by the unprefixed page
+  // with the language in a request header; /en/<...> is a duplicate address and
+  // redirects. The two headers are DELETED from every incoming request first, so only
+  // this code can set them -- a client-supplied value never reaches a page. Only the
+  // new site's own routes are touched; every other path (e.g. /ko/watch) is unchanged.
+  const route = decideRoute(pathname)
+  if (route.action === 'redirect') {
+    const url = request.nextUrl.clone()
+    url.pathname = route.path
+    return NextResponse.redirect(url, 308)
+  }
+  if (route.action === 'rewrite' || isSiteRoute(pathname)) {
+    const headers = new Headers(request.headers)
+    headers.delete(LOCALE_HEADER)
+    headers.delete(PREFIXED_HEADER)
+    if (route.action === 'rewrite') {
+      headers.set(LOCALE_HEADER, route.locale)
+      headers.set(PREFIXED_HEADER, '1')
+      const url = request.nextUrl.clone()
+      url.pathname = route.path
+      return NextResponse.rewrite(url, { request: { headers } })
+    }
+    return NextResponse.next({ request: { headers } })
+  }
 
   // Fast path: this route doesn't need a session refresh — do nothing (no
   // Supabase call).

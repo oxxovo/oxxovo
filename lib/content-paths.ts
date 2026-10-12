@@ -21,6 +21,10 @@ export const RESERVED_SLUGS: readonly string[] = [
   'about', 'admin', 'api', 'apply', 'auth', 'faq', 'fonts', 'guidelines', 'host', 'lobby-preview',
   'login', 'membership', 'partner', 'pre-register', 'privacy', 'profile', 'rules', 'signup',
   'studio', 'terms', 'tournament', 'watch', 'watch-arena', 'welcome',
+  // the new site (home + 7 pages) and its languages (lib/locales: SITE_ROUTES, LOCALES;
+  // a test keeps these lists in step). 'en' is reserved although it has no prefix route:
+  // /en/... redirects, so it must never be a content slug.
+  'competition', 'entertainment', 'daily', 'market', 'education', 'jobs', 'games', 'en', 'ko',
   // Next.js / platform conventions that resolve at the top level
   '_next', 'favicon', 'favicon.ico', 'robots', 'robots.txt', 'sitemap', 'sitemap.xml',
   'manifest', 'icon', 'apple-icon', 'opengraph-image', 'public', 'static',

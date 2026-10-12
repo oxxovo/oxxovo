@@ -9,11 +9,13 @@ import assert from 'node:assert/strict'
 import {
   PUBLIC_ASSET_COLUMNS,
   PUBLIC_CONTENT_COLUMNS,
+  PUBLIC_THUMBNAIL_COLUMNS,
   decidePublicationSwitch,
   getOpenPublicationDbas,
   getPublicContent,
   isPublicRow,
   listPublicContents,
+  pickThumbnails,
   resolvePublicAddress,
   toPublicAssets,
 } from './content-public'
@@ -297,9 +299,9 @@ test('list: broken filter + re-check drops non-public rows', async () => {
 test('/c/<id> resolves to the current address only for a public item with a configured slug', async () => {
   const tables = (paths: Row[], over: Row = {}, sws = sw('true', 'true')) =>
     fakeAdmin({ platform_config: [...sws, ...paths], contents: [content(over)], content_assets: assets() }).admin
-  const slug = [{ key: 'content_path_news', value: 'daily' }]
+  const slug = [{ key: 'content_path_news', value: 'news-slug' }]
 
-  assert.equal(await resolvePublicAddress(ID, { admin: tables(slug), now: NOW }), `/daily/${ID}`)
+  assert.equal(await resolvePublicAddress(ID, { admin: tables(slug), now: NOW }), `/news-slug/${ID}`)
   // public but the kind has no slug -> null (404), not a guessed path
   assert.equal(await resolvePublicAddress(ID, { admin: tables([]), now: NOW }), null)
   // slug present but the item is not public -> null: /c/<id> must not reveal that it exists
@@ -378,7 +380,7 @@ test('query failures are logged with code and id only; the answer stays null', a
 
 import { resolveSectionKind, getPublicContentBySection, listPublicContentsBySection } from './content-public'
 
-const SLUG_NEWS = [{ key: 'content_path_news', value: 'daily' }]
+const SLUG_NEWS = [{ key: 'content_path_news', value: 'news-slug' }]
 const world2 = (paths: Row[], sws = sw('true', 'true'), rows: Row[] = [content()]) =>
   fakeAdmin({ platform_config: [...sws, ...paths], contents: rows, content_assets: assets() })
 
@@ -392,30 +394,147 @@ test('section: a segment that cannot be a slug is answered WITHOUT a database re
 
 test('section: slug-shaped but not configured -> null; configured -> its kind (control)', async () => {
   const none = world2([])
-  assert.equal(await resolveSectionKind('daily', { admin: none.admin }), null)
+  assert.equal(await resolveSectionKind('news-slug', { admin: none.admin }), null)
   assert.equal(none.calls.length, 1) // exactly one platform_config read, no cache
-  assert.equal(await resolveSectionKind('daily', { admin: world2(SLUG_NEWS).admin }), 'news')
+  assert.equal(await resolveSectionKind('news-slug', { admin: world2(SLUG_NEWS).admin }), 'news')
   assert.equal(await resolveSectionKind('other', { admin: world2(SLUG_NEWS).admin }), null)
 })
 
 test('section item: wrong section, missing slug, closed switch, held, probe- are all null (control: the right section shows it)', async () => {
-  const ok = await getPublicContentBySection('daily', ID, { admin: world2(SLUG_NEWS).admin, now: NOW })
+  const ok = await getPublicContentBySection('news-slug', ID, { admin: world2(SLUG_NEWS).admin, now: NOW })
   assert.equal(ok?.kind, 'news')
   assert.equal(ok?.item.content.id, ID)
 
   const filmSlug = [...SLUG_NEWS, { key: 'content_path_film', value: 'movies' }]
   assert.equal(await getPublicContentBySection('movies', ID, { admin: world2(filmSlug).admin, now: NOW }), null) // news item under the film section
-  assert.equal(await getPublicContentBySection('daily', ID, { admin: world2([]).admin, now: NOW }), null)
-  assert.equal(await getPublicContentBySection('daily', ID, { admin: world2(SLUG_NEWS, sw('false', 'false')).admin, now: NOW }), null)
-  assert.equal(await getPublicContentBySection('daily', ID, { admin: world2(SLUG_NEWS, sw('true', 'true'), [content({ status: 'held' })]).admin, now: NOW }), null)
-  assert.equal(await getPublicContentBySection('daily', PROBE_ID, { admin: world2(SLUG_NEWS, sw('true', 'true'), [probeRow()]).admin, now: NOW }), null)
-  assert.equal(await getPublicContentBySection('daily', 'not-a-uuid', { admin: world2(SLUG_NEWS).admin, now: NOW }), null)
+  assert.equal(await getPublicContentBySection('news-slug', ID, { admin: world2([]).admin, now: NOW }), null)
+  assert.equal(await getPublicContentBySection('news-slug', ID, { admin: world2(SLUG_NEWS, sw('false', 'false')).admin, now: NOW }), null)
+  assert.equal(await getPublicContentBySection('news-slug', ID, { admin: world2(SLUG_NEWS, sw('true', 'true'), [content({ status: 'held' })]).admin, now: NOW }), null)
+  assert.equal(await getPublicContentBySection('news-slug', PROBE_ID, { admin: world2(SLUG_NEWS, sw('true', 'true'), [probeRow()]).admin, now: NOW }), null)
+  assert.equal(await getPublicContentBySection('news-slug', 'not-a-uuid', { admin: world2(SLUG_NEWS).admin, now: NOW }), null)
 })
 
 test('section list: closed DBA -> null (404); open and empty -> []; open with items -> items', async () => {
-  assert.equal(await listPublicContentsBySection('daily', { admin: world2(SLUG_NEWS, sw('false', 'true')).admin, now: NOW }), null)
-  assert.equal(await listPublicContentsBySection('daily', { admin: world2(SLUG_NEWS, sw('true', 'true'), []).admin, now: NOW }).then((r) => r?.items.length), 0)
-  const r = await listPublicContentsBySection('daily', { admin: world2(SLUG_NEWS).admin, now: NOW })
+  assert.equal(await listPublicContentsBySection('news-slug', { admin: world2(SLUG_NEWS, sw('false', 'true')).admin, now: NOW }), null)
+  assert.equal(await listPublicContentsBySection('news-slug', { admin: world2(SLUG_NEWS, sw('true', 'true'), []).admin, now: NOW }).then((r) => r?.items.length), 0)
+  const r = await listPublicContentsBySection('news-slug', { admin: world2(SLUG_NEWS).admin, now: NOW })
   assert.deepEqual(r?.items.map((i) => i.id), [ID])
   assert.equal(await listPublicContentsBySection('nothing', { admin: world2(SLUG_NEWS).admin, now: NOW }), null)
+})
+
+// ---- list thumbnails (cards) -----------------------------------------------------
+// The list may carry exactly one extra field, thumbnail_url, and only on request. These
+// tests pin what may enter it (role thumbnail only), what may never (videos, scripts,
+// audio, anything else), and that a missing thumbnail is null, not an error.
+
+const T_ID = '44444444-0000-4000-8000-000000000000'
+const thumbAssets = (): Row[] => [
+  ...assets(),
+  { content_id: T_ID, role: 'main_16x9', media_type: 'video', file_format: 'mp4', url: 'https://cdn.example/other-video.mp4', duration_sec: 30, width: 1920, height: 1080, sha256: 'd', text_content: null },
+]
+const listWorld = (over: { contents?: Row[]; assets?: Row[]; sws?: Row[] } = {}, opts: Parameters<typeof fakeAdmin>[1] = {}) =>
+  fakeAdmin({ platform_config: over.sws ?? sw('true', 'true'), contents: over.contents ?? [content()], content_assets: over.assets ?? thumbAssets() }, opts)
+
+test('thumbnails: with the option, the thumbnail url is set (control); without it there is no field and no asset query', async () => {
+  const { admin, calls } = listWorld()
+  const on = await listPublicContents({ admin, now: NOW, withThumbnails: true })
+  assert.equal(on[0].thumbnail_url, 'https://cdn.example/t.jpg')
+  const off = listWorld()
+  const plain = await listPublicContents({ admin: off.admin, now: NOW })
+  assert.ok(!('thumbnail_url' in plain[0]), 'the field is absent unless asked for')
+  assert.ok(!off.calls.some((c) => c.table === 'content_assets'), 'no asset query unless asked for')
+  assert.ok(calls.some((c) => c.table === 'content_assets'))
+})
+
+test('★thumbnails: the list item carries nothing from the other assets (no video url, script, audio, hash)', async () => {
+  const out = await listPublicContents({ admin: listWorld().admin, now: NOW, withThumbnails: true })
+  const keys = Object.keys(out[0]).sort()
+  assert.deepEqual(keys, ['ai_generated', 'description', 'form', 'id', 'kind', 'language', 'publish_at', 'thumbnail_url', 'title'])
+  const json = JSON.stringify(out)
+  for (const bad of ['m.mp4', 'a.wav', 'other-video', 'SECRET SCRIPT', 'sha256', 'text_content', '"b"', 'source_ref', 'caption']) assert.ok(!json.includes(bad), bad)
+})
+
+test('★thumbnails: the query is SQL-limited to role thumbnail, the judged ids and non-null urls, with the 4 named columns', async () => {
+  const { admin, calls } = listWorld()
+  await listPublicContents({ admin, now: NOW, withThumbnails: true })
+  const q = calls.find((c) => c.table === 'content_assets')!
+  assert.equal(q.select, PUBLIC_THUMBNAIL_COLUMNS)
+  assert.equal(PUBLIC_THUMBNAIL_COLUMNS, 'content_id, role, media_type, url')
+  for (const f of ['in:content_id', 'eq:role', 'not:url']) assert.ok(q.filters.includes(f), f)
+  assert.ok(!q.select.includes('*') && !/sha256|text_content|bytes/.test(q.select))
+})
+
+test('★thumbnails: only items that passed the public judgement are looked up (a held item is never asked about)', async () => {
+  const heldId = '55555555-0000-4000-8000-000000000000'
+  const held = content({ id: heldId, status: 'held' })
+  const heldThumb: Row = { content_id: heldId, role: 'thumbnail', media_type: 'image', url: 'https://cdn.example/held.jpg' }
+  const { admin } = listWorld({ contents: [content(), held], assets: [...thumbAssets(), heldThumb] })
+  const out = await listPublicContents({ admin, now: NOW, withThumbnails: true })
+  assert.deepEqual(out.map((i) => i.id), [ID])
+  assert.ok(!JSON.stringify(out).includes('held.jpg'))
+})
+
+test('★thumbnails: pure rules -- role thumbnail only; a public VIDEO role, a non-image, http, blank and a foreign id are all refused', () => {
+  const ids = new Set([ID])
+  const ok: Row = { content_id: ID, role: 'thumbnail', media_type: 'image', url: 'https://cdn.example/t.jpg' }
+  assert.deepEqual([...pickThumbnails([ok], ids)], [[ID, 'https://cdn.example/t.jpg']])
+  const refused: [string, Row][] = [
+    ['main_16x9 (a public role, but a video)', { ...ok, role: 'main_16x9', media_type: 'video', url: 'https://cdn.example/v.mp4' }],
+    ['main_9x16', { ...ok, role: 'main_9x16' }],
+    ['script', { ...ok, role: 'script' }],
+    ['audio_master', { ...ok, role: 'audio_master' }],
+    ['unknown role', { ...ok, role: 'poster' }],
+    ['thumbnail that is not an image', { ...ok, media_type: 'video' }],
+    ['http url', { ...ok, url: 'http://cdn.example/t.jpg' }],
+    ['relative url', { ...ok, url: '/t.jpg' }],
+    ['blank url', { ...ok, url: '   ' }],
+    ['null url', { ...ok, url: null }],
+    ['javascript url', { ...ok, url: 'javascript:alert(1)' }],
+    ['another item id', { ...ok, content_id: 'ffffffff-0000-4000-8000-000000000000' }],
+    ['no content id', { ...ok, content_id: undefined }],
+  ]
+  for (const [why, row] of refused) assert.equal(pickThumbnails([row], ids).size, 0, why)
+})
+
+test('thumbnails: several thumbnails -> a deterministic one; none -> null (the gradient frame), never an error', async () => {
+  const two: Row[] = [
+    { content_id: ID, role: 'thumbnail', media_type: 'image', url: 'https://cdn.example/b.jpg' },
+    { content_id: ID, role: 'thumbnail', media_type: 'image', url: 'https://cdn.example/a.jpg' },
+  ]
+  assert.equal(pickThumbnails(two, new Set([ID])).get(ID), 'https://cdn.example/a.jpg')
+  const none = await listPublicContents({ admin: listWorld({ assets: [] }).admin, now: NOW, withThumbnails: true })
+  assert.equal(none.length, 1)
+  assert.equal(none[0].thumbnail_url, null)
+  const onlyVideo = await listPublicContents({ admin: listWorld({ assets: [assets()[0]] }).admin, now: NOW, withThumbnails: true })
+  assert.equal(onlyVideo[0].thumbnail_url, null, 'a main video is never used as the card image')
+})
+
+// content_assets.url is nullable (live schema, TK 2026-10-12: `url text`, no NOT NULL). A
+// null url must never throw and never poison a good thumbnail next to it, whatever the order.
+test('★thumbnails: a null / missing url beside a good thumbnail is skipped, never thrown on, in either order', async () => {
+  const good: Row = { content_id: ID, role: 'thumbnail', media_type: 'image', url: 'https://cdn.example/z.jpg' }
+  const nullUrl: Row = { content_id: ID, role: 'thumbnail', media_type: 'image', url: null }
+  const noUrl: Row = { content_id: ID, role: 'thumbnail', media_type: 'image' }
+  const ids = new Set([ID])
+  for (const rows of [[good, nullUrl, noUrl], [nullUrl, noUrl, good], [noUrl, good, nullUrl]]) {
+    assert.deepEqual([...pickThumbnails(rows, ids)], [[ID, 'https://cdn.example/z.jpg']])
+  }
+  assert.equal(pickThumbnails([nullUrl, noUrl], ids).size, 0)
+  // Even if the SQL filter were bypassed and the database handed back only a null url, the card
+  // gets null (the gradient frame), not an error.
+  const out = await listPublicContents({ admin: listWorld({ assets: [{ ...nullUrl, content_id: ID }] }).admin, now: NOW, withThumbnails: true })
+  assert.equal(out.length, 1)
+  assert.equal(out[0].thumbnail_url, null)
+})
+
+test('thumbnails: a failing asset query costs the images, not the list', async () => {
+  const origErr = console.error
+  console.error = () => {}
+  try {
+    const out = await listPublicContents({ admin: listWorld({}, { errorOn: 'content_assets' }).admin, now: NOW, withThumbnails: true })
+    assert.equal(out.length, 1)
+    assert.equal(out[0].thumbnail_url, null)
+  } finally {
+    console.error = origErr
+  }
 })
