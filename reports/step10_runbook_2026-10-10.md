@@ -11,6 +11,7 @@
 - **SQL 규칙:** SQL Editor에서 **한 블록씩 따로 선택해서 Run**(여러 개를 한꺼번에 돌리면 마지막 결과만 보인다). 블록 하나에 쿼리 하나, 전부 한 줄. 값을 바꾸는 블록은 `returning`이 붙어 있어 바뀐 행이 바로 나오고, 바로 아래 되읽기 블록이 한 번 더 확인한다.
 - **어디서 멈추나:** 각 단계의 "멈춤"이 나오면 **그 단계에서 더 진행하지 않는다.** 스위치(`news_dispatch_enabled`)가 열려 있는 동안 이상이 생기면 **무엇보다 먼저 `비상` 블록(11절)으로 스위치를 닫는다.** 닫은 뒤에 원인을 본다.
 - **하지 말 것:** 배포, `CRON_SECRET` 교체, `[Re-dispatch]`(자동 재시도가 중복 게시를 부를 수 있다 -- 재시도 설정은 의도적으로 0회), 서비스 키 조회.
+- **10-12(배포일) 결정(TK님):** 오늘은 수입 -> Hold -> B3(S2-1)·B4(S2-2)까지만. **스위치 열기(C4)·Dispatch(D)는 다음 날 이후.** `pg_trigger` 조회(`tgenabled='O'` 두 행)와 A5·A6는 **스위치 열기 직전에**(그날) 돌린다. SHA·`publish_at` 기대값도 그날 기준으로 읽는다(위 A1·B1).
 - **스위치를 바꾸는 대안 경로:** 아래 SQL 대신 `https://www.oxxovo.ai/admin/settings`에서 같은 키를 수정해도 된다(그 경로는 변경자 이메일이 이력에 남고 `_enabled`는 확인창이 한 번 더 뜬다). **어느 쪽을 쓰든 되읽기로 값을 확인한다.**
 
 ## 1. 전체 순서 한 줄 요약
@@ -23,13 +24,13 @@
 
 **A0. 배포 이력 확인 -- 이 표의 맨 앞 단계 (TK님 결정 2026-10-12: 배포와 ⑩은 같은 날 하지 않는다)** 🅙
 - **규칙:** 새 사이트 배포(`npm run deploy:prod`)를 한 날에는 ⑩을 시작하지 않는다. 배포 **다음 날 이후**에 ⑩을 연다. (이유: alias 직후 크론 틱이 옛 배포를 탈 수 있고(10-07 실측), 배포가 기대 SHA를 바꾸며, 문제가 생겼을 때 원인이 배포인지 ⑩인지 가려지지 않는다.)
-- **A0-1. 마지막 배포 시각:** `https://www.oxxovo.ai/api/version`의 `builtAt`(UTC)이 **오늘 날짜(UTC·PT 둘 다)가 아님**을 확인. 오늘 배포된 것이면 **여기서 멈추고 ⑩을 다음 날로 미룬다.**
-- **A0-2. 새 `deploymentId` 틱:** 배포가 있었다면(A1의 SHA가 이 문서의 `175855f`가 아님) 로그에서 **현재 라이브 배포의 `deploymentId`로 찍힌 틱**이 있는지 본다: `vercel logs --environment production --no-branch --since 15m --limit 300 --json -q "content-dispatch"` 후 행의 `deploymentId`를 모아 **전부 현재 배포 하나**여야 한다(옛 배포 id가 섞여 있으면 아직 이르다). 틱은 `"stage":"no_open_dba"`, `processed:0`, `warnings:[]`. 판정은 줄 수가 아니라 **시각**으로(5분 간격 `:x0:14`/`:x5:14`가 현재 배포 id로 두 번 이상 연속).
+- **A0-1. 마지막 배포 후 경과 시간 (본부 승인 2026-10-12, 날짜 기준에서 변경):** `https://www.oxxovo.ai/api/version`의 `builtAt`(UTC)과 현재 UTC를 비교해 **경과 시간이 2시간 이상**이어야 한다(경과 시간을 계산해 기록). 그리고 **A0-2의 새 배포 틱이 시각 기준 연속 3회(15분) 이상** 확인돼야 한다. 둘 중 하나라도 미달이면 **여기서 멈추고 기다린다**(날짜가 바뀔 때까지 미루지 않는다). N=2시간·K=3회는 실측이 아니라 본부 판단(10-07 사건이 alias 후 13초였다는 근거)이다. 10-12 첫 적용은 경과 약 5.5시간·6틱 연속(EOD 10-12 §7).
+- **A0-2. 새 `deploymentId` 틱:** 배포가 있었다면(A1의 SHA가 그날 기대한 SHA와 다름(10-12 배포 후 `55b45a0`)) 로그에서 **현재 라이브 배포의 `deploymentId`로 찍힌 틱**이 있는지 본다: `vercel logs --environment production --no-branch --since 15m --limit 300 --json -q "content-dispatch"` 후 행의 `deploymentId`를 모아 **전부 현재 배포 하나**여야 한다(옛 배포 id가 섞여 있으면 아직 이르다). 틱은 `"stage":"no_open_dba"`, `processed:0`, `warnings:[]`. 판정은 줄 수가 아니라 **시각**으로(5분 간격 `:x0:14`/`:x5:14`가 현재 배포 id로 두 번 이상 연속).
 - **A0-3.** 이 확인 전에는 스위치(`news_dispatch_enabled`)를 **열지 않는다**(A1 이하는 읽기라 진행해도 되지만 H 이전에 A0-2가 끝나 있어야 한다).
-- 통과하면 **A1에서 SHA 기대값을 새 SHA로 바꿔 읽는다**(실행표 A1·H의 `175855f`는 10-12 현재 값).
+- 통과하면 **A1에서 SHA 기대값을 그날의 새 SHA로 바꿔 읽는다**(실행표 A1·H의 SHA는 10-12 배포 후 `55b45a0`; 10-12에는 배포일이라 ⑩을 열지 않았고, 수입·Hold·S2-1·S2-2만 했다).
 
 **A1. 라이브 버전** 🅙 -- `https://www.oxxovo.ai/api/version`
-- 통과: `sha:"175855f"`, `dirty:false`.
+- 통과: **스위치를 여는 날 시작 시점의 라이브 SHA**(10-12 배포 후 현재 `55b45a0`, `dirty:false`). 이 문서를 쓴 10-10엔 `175855f`였다. 그 사이 배포가 또 있으면 새 SHA로 읽고 A0를 다시 적용한다.
 - 멈춤: 다른 SHA -> 그동안 배포가 있었다는 뜻이다. **스위치를 열기 전에 새 배포의 `deploymentId`로 찍힌 틱을 로그에서 확인**해야 한다(alias 직후 틱이 옛 배포를 탈 수 있음, 10-07 실측). 지수가 확인하기 전까지 진행하지 않는다.
 
 **A2. 어드민 스위치 줄** 🅣 -- `https://www.oxxovo.ai/admin/contents` 상단 `Dispatch switches`
@@ -76,7 +77,7 @@ select c.source_ref, c.status, c.rights_status, c.publish_at, d.platform, d.stat
 ## 3. B. 수입 -> 즉시 정지
 
 **B1. 수입 실행** 🅝 -- 규격 `reports/import_spec_news_2026-10-10.md`
-- 통과: 응답 `201`, `status`가 `scheduled`(월요일 슬롯 `publish_at` = 2026-10-11 22:00Z, 어드민에는 `Oct 11, 2026, 15:00 PT`) 또는 `held`(`late_for_slot`), `channels`에 `youtube`가 `queued` **한 줄**. 응답의 `id`를 🅗에게 전달.
+- 통과: 응답 `201`, `status`가 `scheduled`(`publish_at`은 서버가 설정 `news_publish_weekdays/time/timezone`의 **다음 슬롯**으로 정한다 -- 값은 통과 조건이 아니고 응답·S2에서 읽어 기록만 한다) 또는 `held`(`late_for_slot`), `channels`에 `youtube`가 `queued` **한 줄**. 응답의 `id`를 🅗에게 전달. **응답에 `thumbnail`이 보이거나(에셋을 보냈다는 뜻) 이후 B3에서 `thumbnail` 행이 나오면 멈춤.**
 - 멈춤: `201`이 아님(오류 코드를 🅗에게) / `channels`에 youtube 말고 다른 행이 있거나 `skipped_*` -> **스위치를 열지 않는다.**
 - 이 단계 후 🅝는 이 콘텐츠에 손대지 않는다.
 
@@ -90,8 +91,8 @@ select c.source_ref, c.status, c.rights_status, c.publish_at, d.platform, d.stat
 ```sql
 select c.source_ref, c.source_version, c.form, c.status, c.rights_status, c.created_at, a.role, a.bytes, round(a.bytes / 1048576.0, 1) as mb, a.duration_sec, a.width, a.height, (a.url is not null) as has_url, (a.sha256 is not null) as has_sha from public.contents c left join public.content_assets a on a.content_id = c.id where c.source_ref = 'step10-news-20261010' order by a.role;
 ```
-- 통과: **2행**(에셋 `main_16x9`와 `thumbnail`, `order by a.role`이라 이 순서). 공통: `source_version=1`, `form=short`, `status=held`, `rights_status=cleared`. `main_16x9` 행: `bytes=9008217`, `mb=8.6`, `width=1920`, `height=1080`, `duration_sec=31.02`, `has_url=true`, `has_sha=true`. `thumbnail` 행: `bytes=172346`, `has_url=true`, `has_sha=true`(`mb`는 0.2, 가로·세로는 뉴스가 보냈으면 그 값, 아니면 비어 있어도 정상).
-- 멈춤: 행이 3개 이상 또는 `main_*`가 2개, 값 불일치, `has_url`/`has_sha`가 `false`, `status`가 `held`가 아님. **썸네일 행이 없고 `main_16x9`만 1행이면** 뉴스가 썸네일 없이 보낸 것 -- 송출에는 영향이 없으니 🅗가 판단. `sha256` 컬럼 오류가 나면 마지막 컬럼 `(a.sha256 is not null) as has_sha`만 빼고 다시 돌린다.
+- 통과: **1행**(에셋 `main_16x9` 하나). `source_version=1`, `form=short`, `status=held`, `rights_status=cleared`, `bytes=9008217`, `mb=8.6`, `width=1920`, `height=1080`, `duration_sec=31.02`, `has_url=true`, `has_sha=true`. **⑩ 시험은 썸네일 없이 영상 1개만 수입한다**(본부 결정 2026-10-12, 뉴스·세종에도 전달됨).
+- 멈춤: **`thumbnail` 행이 있으면 지시와 다른 것이니 멈춘다**(스위치를 열지 않고 🅗에게). 그 밖에 행이 2개 이상 또는 `main_*`가 2개, 값 불일치, `has_url`/`has_sha`가 `false`, `status`가 `held`가 아님. `sha256` 컬럼 오류가 나면 마지막 컬럼 `(a.sha256 is not null) as has_sha`만 빼고 다시 돌린다.
 
 **B4. 송출 행 확인** 🅣 (블록 `S2-2`)
 ```sql
@@ -353,5 +354,5 @@ select key, value, updated_at from public.platform_config where key = 'news_disp
 5. 반송 알림 메일의 실제 발송.
 6. `cleared -> blocked` 직행의 라이브 동작.
 7. 항목 예산 120초와 메모리 100MB는 틱 시각 차로만 짐작할 수 있고 정확한 메모리는 보이지 않는다.
-8. **썸네일 에셋의 수입 경로**(presign -> PUT -> import에 `thumbnail` 역할). 코드와 단위 시험(`content-import.test.ts`, `content-hash.test.ts`)에는 있으나 라이브에서 돌린 적이 없다(`scripts/probe-contents.mjs`는 썸네일을 안 쓴다). 썸네일은 **YouTube로 보내지 않는다**(송출 코드가 썸네일을 어디에도 보내지 않음).
+8. **썸네일 에셋의 수입 경로**(presign -> PUT -> import에 `thumbnail` 역할). **⑩ 시험에서는 쓰지 않는다**(본부 결정 2026-10-12: 영상 1개만 수입). 코드와 단위 시험에는 있으나 라이브에서 돌린 적이 없다. 썸네일 행이 나오면 B3에서 멈춤.
 9. D7 직후 `S3-1` 재확인 -- 송출이 끝난 뒤에도 콘텐츠가 `scheduled`로 남는다는 추정(F1의 전제). D7 본문에 단계로 넣었다.
