@@ -84,7 +84,7 @@
 | `https://www.oxxovo.ai/c/00000000-0000-0000-0000-000000000000` | 404 (`x-matched-path: /c/[id]`) | 404 |
 | `https://www.oxxovo.ai/competition` | 404 (`x-matched-path: /[section]` -- 기존 콘텐츠 경로 라우트가 받음) | 404 (새 페이지가 이 경로를 차지하지만 스위치 꺼짐 = 404) |
 | `/entertainment` `/daily` `/market` `/education` `/jobs` `/games` | 전부 404 (`/[section]`) | 전부 404 |
-| `/ko` | 404 (`/[section]`) | 404 |
+| `/ko` | 404 (`/[section]`) | 404 -- **10-12 첫 배포(`55b45a0`) 실측은 200(옛 랜딩과 같은 내용)이었다**: 프록시가 `/ko`를 `/`로 rewrite하는데 스위치 꺼짐의 `/`는 랜딩이라서. 수정(`rootSurface`: 꺼짐 + 프록시 접두 헤더 → `notFound()`)은 로컬 완료·테스트·훼손 시험 통과·로컬 `next start`에서 `/ko` 404 확인, **다음 배포에 포함**. 다음 배포 후 이 줄이 404여야 함 |
 | `/ko/market` `/ko/watch` | 404 (`/[section]/[id]`) | `/ko/market` 404, `/ko/watch` 404 |
 | `/en` | **404** (`/[section]`) | **308**, `location: /` (**배포 후 달라지는 줄 -- 정상**) |
 | `/en/market` | **404** (`/[section]/[id]`) | **308**, `location: /market` (**달라지는 줄 -- 정상**) |

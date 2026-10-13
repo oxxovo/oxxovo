@@ -10,7 +10,10 @@
 // contents too, and a closed competition must not hide an open news section. The gate
 // sits inside lib/home-feed, around the competition cards only.
 
-import { isWatchHome } from '@/lib/watch-home'
+import { isNewSiteOpen } from '@/lib/watch-home'
+import { headers } from 'next/headers'
+import { notFound } from 'next/navigation'
+import { PREFIXED_HEADER, rootSurface } from '@/lib/locales'
 import { getHomeCards } from '@/lib/home-feed'
 import { loadSitePage } from '@/lib/site-page'
 import { SiteFrame } from './_site/SiteFrame'
@@ -25,7 +28,10 @@ export const generateMetadata = () => siteMetadata('home')
 const FEATURED_MAX = 4
 
 export default async function Home() {
-  if (await isWatchHome()) {
+  const surface = rootSurface(await isNewSiteOpen(), (await headers()).get(PREFIXED_HEADER))
+  // Switch off, reached as /ko (the proxy rewrote it to /): a new-site address, so 404.
+  if (surface === 'notfound') notFound()
+  if (surface === 'home') {
     const data = await loadSitePage('home')
     const cards = (await getHomeCards('all', undefined, data.locale)).slice(0, FEATURED_MAX)
     return (

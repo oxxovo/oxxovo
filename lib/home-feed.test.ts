@@ -218,7 +218,7 @@ test('★the root page does not AND the competition gate any more, and never jud
   const src = stripComments(readFileSync('app/page.tsx', 'utf8'))
   assert.ok(!src.includes('isCompetitionWatchPublic'), 'a closed competition would hide the open contents sections')
   assert.ok(!src.includes('isCompetitionPublicationEnabled'))
-  assert.ok(src.includes('isWatchHome()'), 'the watch_as_home switch still decides')
+  assert.ok(src.includes('isNewSiteOpen()'), 'the watch_as_home switch still decides')
   assert.ok(src.includes('<LandingView />'), 'switch off -> the landing')
   assert.ok(!/\.from\(|createSupabase/.test(src), 'the page reads through lib/home-feed only')
 })

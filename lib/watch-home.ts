@@ -22,3 +22,14 @@ export async function isWatchHome(): Promise<boolean> {
     return false
   }
 }
+
+// Entry rule for the new site (home + its pages): open when watch_as_home is on, or
+// whenever this is NOT the production deployment (Preview / local dev), so the site can be
+// reviewed before TK flips the switch. Same env rule as isWatchPublic (lib/watch-gate.ts):
+// Preview and Production share one database, so a DB flag cannot tell them apart; VERCEL_ENV
+// can. Production behavior is unchanged -- there the switch alone decides.
+// isWatchHome() stays the pure switch reader (the admin screen shows it).
+export async function isNewSiteOpen(): Promise<boolean> {
+  if (process.env.VERCEL_ENV !== 'production') return true
+  return isWatchHome()
+}

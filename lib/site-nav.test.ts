@@ -84,8 +84,8 @@ test('★every new page goes through the gate: it loads its data with loadSitePa
   assert.ok(code('app/_site/SectionPage.tsx').includes('loadSitePage('))
   assert.ok(code('lib/site-page.ts').includes('enterSite('))
   const gate = code('lib/site-locale.ts')
-  assert.ok(/if \(!\(await isWatchHome\(\)\)\) notFound\(\)/.test(gate), 'the first check is the switch')
-  assert.ok(gate.indexOf('isWatchHome()') < gate.indexOf('headers()'), 'the switch is checked before anything else is read')
+  assert.ok(/if \(!\(await isNewSiteOpen\(\)\)\) notFound\(\)/.test(gate), 'the first check is the switch')
+  assert.ok(gate.indexOf('isNewSiteOpen()') < gate.indexOf('headers()'), 'the switch is checked before anything else is read')
 })
 
 test('★/competition redirects to /watch only after the gate, and only when the competition is public', () => {

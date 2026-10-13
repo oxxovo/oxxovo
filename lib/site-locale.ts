@@ -10,7 +10,7 @@
 import 'server-only'
 import { cookies, headers } from 'next/headers'
 import { notFound, redirect } from 'next/navigation'
-import { isWatchHome } from '@/lib/watch-home'
+import { isNewSiteOpen } from '@/lib/watch-home'
 import {
   DEFAULT_LOCALE,
   LANG_COOKIE,
@@ -26,7 +26,7 @@ export type SiteContext = { locale: string; dir: 'ltr' | 'rtl'; path: string }
 
 // `path` = the unprefixed address of this page, `search` = its query string (with '?').
 export async function enterSite(path: string, search = ''): Promise<SiteContext> {
-  if (!(await isWatchHome())) notFound()
+  if (!(await isNewSiteOpen())) notFound()
   const h = await headers()
   const prefixed = h.get(PREFIXED_HEADER) === '1'
   const fromProxy = h.get(LOCALE_HEADER)

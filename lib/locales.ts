@@ -63,6 +63,14 @@ export type RouteDecision =
   | { action: 'rewrite'; path: string; locale: string; prefixed: true }
   | { action: 'redirect'; path: string }
 
+// What the root page shows. The root serves two addresses: "/" and, through the proxy rewrite,
+// "/ko" (prefixed header = "1"). Switch off: "/" is the marketing landing, but "/ko" is part of
+// the new site and must be a 404 like /ko/market (nothing new is reachable before the switch).
+export function rootSurface(switchOn: boolean, prefixedHeader: string | null | undefined): 'home' | 'landing' | 'notfound' {
+  if (switchOn) return 'home'
+  return prefixedHeader === '1' ? 'notfound' : 'landing'
+}
+
 // Decide what the proxy does with a pathname. Pure so it can be tested without a server.
 //   /ko/entertainment -> rewrite to /entertainment, locale ko
 //   /en/entertainment -> redirect to /entertainment (one address per page)
