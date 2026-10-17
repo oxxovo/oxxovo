@@ -37,6 +37,9 @@ export const EN = {
   // (Korean was supplied: "AI와 사람이 함께 만드는 더 큰 세상"); nothing is drawn for it in English.
   'hero.sub': '',
   'home.featured': 'Featured',
+  // Shown on pages flagged `comingSoon` in lib/site-nav. English only until Jenny3 confirms
+  // the Korean (the ko catalog falls back to this).
+  'page.comingSoon': 'Coming Soon',
 
   // card origin badges (fixed by TK 2026-10-11)
   'badge.competition': 'COMPETITION',

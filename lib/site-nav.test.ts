@@ -41,11 +41,12 @@ test('left menus are the approved mockup menus (counts, first item = the page ho
   assert.deepEqual(getPage('market').side.map((i) => EN[i.labelKey]), ['AI Market Home', 'All Products', 'AI Robots', 'AI Software', 'AI Hardware', 'Compare', 'Buying Guide', 'Featured', 'Inquiry'])
 })
 
-test('data sources: only the items that equal a content kind list videos; everything else is an empty frame; no Coming Soon', () => {
+test('data sources: only the items that equal a content kind list videos; everything else is an empty frame; Coming Soon is one catalog key', () => {
   const withSource = PAGES.flatMap((p) => p.side.filter((i) => i.section).map((i) => p.id + '/' + i.id + '=' + i.section)).sort()
   assert.deepEqual(withSource, ['daily/home=news', 'daily/latest=news', 'entertainment/cf=cf', 'entertainment/drama=drama', 'entertainment/film=film', 'entertainment/home=entertainment', 'entertainment/music=music'])
   for (const id of ['market', 'education', 'jobs', 'games'] as const) for (const i of getPage(id).side) assert.equal(i.section, null, id + '/' + i.id)
-  assert.ok(!JSON.stringify(EN).toLowerCase().includes('coming soon'), 'no "Coming Soon" wording exists in the catalog')
+  const wording = Object.entries(EN).filter(([, v]) => v.toLowerCase().includes('coming soon')).map(([k]) => k)
+  assert.deepEqual(wording, ['page.comingSoon'], '"Coming Soon" wording lives in exactly one catalog key')
 })
 
 test('?m= resolves inside the page; unknown or foreign values fall to the first item; no menu -> null', () => {

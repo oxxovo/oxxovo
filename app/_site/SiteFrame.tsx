@@ -75,8 +75,9 @@ function TopBar({ locale, t, page, accountHref, languages }: Pick<SiteFrameProps
 
 // The wide hero of the home page and the banner of a section page. The image is a
 // text-free 16:9 original, cropped to the box (object-cover); the home page overlays its
-// hero lines from the catalog, section banners carry no text at all.
-function BannerView({ banner, label, hero, t }: { banner: Banner | null; label: string; hero: boolean; t: Translator }) {
+// hero lines from the catalog; section banners carry no text, except the centered
+// "Coming Soon" chip on the pages flagged `comingSoon`.
+function BannerView({ banner, label, hero, comingSoon, t }: { banner: Banner | null; label: string; hero: boolean; comingSoon: boolean; t: Translator }) {
   const sub = hero ? t('hero.sub') : ''
   return (
     <section
@@ -106,6 +107,18 @@ function BannerView({ banner, label, hero, t }: { banner: Banner | null; label: 
             <p className="mt-3 text-xs text-[#c9a9ff] sm:text-sm">{t('hero.verbs')}</p>
           </div>
           {sub !== '' && <p className="max-w-[16rem] text-lg font-semibold text-[#f4f0ff] sm:text-2xl">{sub}</p>}
+        </div>
+      )}
+      {comingSoon && (
+        // Centered in the box. The chip is always drawn (no branch on the image): over the dark
+        // default it is nearly invisible, over a banner image it keeps the line readable.
+        <div className="absolute inset-0 flex items-center justify-center px-4">
+          <p
+            data-coming-soon="true"
+            className="max-w-full rounded-lg bg-black/65 px-5 py-2 text-center text-base font-semibold text-[#f4f0ff] sm:text-lg"
+          >
+            {t('page.comingSoon')}
+          </p>
         </div>
       )}
     </section>
@@ -199,14 +212,14 @@ export function SiteFrame(props: SiteFrameProps) {
     <div lang={locale} dir={dir} data-locale={locale} className="min-h-screen bg-[#070512] text-[#f4f0ff]">
       <TopBar locale={locale} t={t} page={page} accountHref={props.accountHref} languages={props.languages} />
       <div className="mx-auto max-w-6xl px-4 pt-4">
-        {!sided && <BannerView banner={banner} label={label} hero={page === 'home'} t={t} />}
+        {!sided && <BannerView banner={banner} label={label} hero={page === 'home'} comingSoon={!!def.comingSoon} t={t} />}
       </div>
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 md:flex-row">
         <SideMenuDesktop locale={locale} t={t} page={page} activeItem={activeItem} />
         <main className="min-w-0 flex-1">
           {sided && (
             <div className="mb-6">
-              <BannerView banner={banner} label={label} hero={false} t={t} />
+              <BannerView banner={banner} label={label} hero={false} comingSoon={!!def.comingSoon} t={t} />
             </div>
           )}
           {/* Small screens: the section menu sits directly under the banner. */}

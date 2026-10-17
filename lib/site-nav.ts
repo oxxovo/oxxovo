@@ -28,6 +28,10 @@ export type PageDef = {
   navKey: MessageKey | null
   // Left menu; empty = the page has none.
   side: readonly SidebarItem[]
+  // Explicit, per page (TK 2026-10-13): the body shows the "Coming Soon" line above the
+  // empty frame. Never derived from data -- a section with a source that is briefly empty
+  // must stay a text-free frame. Remove the flag in the commit that gives the page a source.
+  comingSoon?: boolean
 }
 
 // Left menus (the approved mockup, TK 2026-10-11). The first item of every page is that
@@ -70,6 +74,7 @@ export const PAGES: readonly PageDef[] = [
     id: 'market',
     path: '/market',
     navKey: 'nav.market',
+    comingSoon: true,
     side: menu('market', [
       ['home', null], ['products', null], ['robots', null], ['software', null], ['hardware', null],
       ['compare', null], ['guide', null], ['featured', null], ['inquiry', null],
@@ -79,6 +84,7 @@ export const PAGES: readonly PageDef[] = [
     id: 'education',
     path: '/education',
     navKey: 'nav.education',
+    comingSoon: true,
     side: menu('education', [
       ['home', null], ['courses', null], ['projects', null], ['assessments', null], ['certification', null],
       ['tutorials', null], ['mentoring', null], ['community', null], ['learning', null],
@@ -88,6 +94,7 @@ export const PAGES: readonly PageDef[] = [
     id: 'jobs',
     path: '/jobs',
     navKey: 'nav.jobs',
+    comingSoon: true,
     side: menu('jobs', [
       ['home', null], ['find', null], ['talent', null], ['post', null],
       ['applications', null], ['companies', null], ['guide', null], ['profile', null],
@@ -97,6 +104,7 @@ export const PAGES: readonly PageDef[] = [
     id: 'games',
     path: '/games',
     navKey: 'nav.games',
+    comingSoon: true,
     side: menu('games', [
       ['home', null], ['chess', null], ['go', null], ['janggi', null], ['opponent', null],
       ['records', null], ['rankings', null], ['tournaments', null], ['community', null],

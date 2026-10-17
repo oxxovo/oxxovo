@@ -1,7 +1,7 @@
 // Body of a section page (Entertainment, Daily, Market, Education, Jobs, AI Games):
 // the frame + the cards of the chosen left-menu item. An item with no video source, or
-// a source with nothing public, shows the text-free skeleton -- never a "Coming Soon"
-// line. Real data for the four data-less sections plugs in by giving their left-menu
+// a source with nothing public, shows the text-free skeleton. The "Coming Soon" line comes
+// from SiteFrame and only for pages flagged `comingSoon` in lib/site-nav. Real data for the four data-less sections plugs in by giving their left-menu
 // items a `section` (lib/site-nav) or a new source -- this component does not change.
 import type { Metadata } from 'next'
 import { SiteFrame } from './SiteFrame'

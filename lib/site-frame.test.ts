@@ -41,14 +41,45 @@ const card = (over: Partial<HomeCard> = {}): HomeCard => ({
   publishedAt: '2026-10-10T00:00:00Z', durationSec: null, thumbnailUrl: null, aiGenerated: false, ...over,
 })
 
-test('every page renders; the top menu has the 7 axes; the empty body is a text-free skeleton (no Coming Soon)', async () => {
+const COMING_SOON: readonly PageId[] = ['market', 'education', 'jobs', 'games']
+
+test('every page renders; the top menu has the 7 axes; the empty body is a skeleton; "Coming Soon" only on Market/Education/Jobs/Games', async () => {
   for (const p of PAGES) {
     const out = await frame(p.id)
     for (const n of TOP_MENU) assert.ok(out.includes(`data-nav="${n.id}"`), `${p.id}: ${n.id}`)
     assert.ok(out.includes('data-empty="true"'), p.id)
     assert.ok(out.includes('data-skeleton="card"'), p.id)
-    assert.ok(!/coming soon/i.test(out), `${p.id}: no Coming Soon`)
+    if (COMING_SOON.includes(p.id)) {
+      assert.ok(out.includes('data-coming-soon="true"') && out.includes('>Coming Soon<'), `${p.id}: Coming Soon`)
+    } else {
+      assert.ok(!/coming soon/i.test(out) && !out.includes('data-coming-soon'), `${p.id}: no Coming Soon`)
+    }
   }
+})
+
+test('"Coming Soon" is a centered chip INSIDE the banner box, with or without a banner image, and not in the body', async () => {
+  for (const withImage of [false, true]) {
+    for (const p of COMING_SOON) {
+      const out = await frame(p, { banner: withImage })
+      const banner = out.match(/<section[^>]*data-banner="[^"]*"[^>]*>[\s\S]*?<\/section>/)
+      assert.ok(banner, `${p}: banner section`)
+      assert.ok(banner[0].includes('data-coming-soon="true"'), `${p} image=${withImage}: chip inside the banner`)
+      assert.equal(out.split('data-coming-soon').length - 1, 1, `${p}: exactly one`)
+      assert.ok(banner[0].includes('items-center justify-center'), `${p}: centered both ways`)
+      assert.ok(/bg-black\/65/.test(banner[0]) && banner[0].includes('text-[#f4f0ff]'), `${p}: dark chip, light text`)
+      assert.ok(banner[0].includes('max-w-full') && banner[0].includes('text-base'), `${p}: fits a narrow box`)
+    }
+  }
+})
+
+test('the flag is explicit in site-nav: exactly the four pages, and none of them has a data source', () => {
+  assert.deepEqual(PAGES.filter((p) => p.comingSoon).map((p) => p.id), [...COMING_SOON])
+  for (const id of COMING_SOON) assert.ok(getPage(id).side.every((i) => i.section === null), `${id}: a page with a source must not be flagged`)
+})
+
+test('/ko shows the same English line until Korean is confirmed; a Korean value, once added, wins', async () => {
+  assert.equal(KO['page.comingSoon'], undefined)
+  assert.ok((await frame('market', { locale: 'ko' })).includes('>Coming Soon<'))
 })
 
 test('control: with a card the grid shows and the skeleton does not', async () => {
