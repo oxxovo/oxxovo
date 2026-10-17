@@ -1,0 +1,49 @@
+-- ============================================================================
+-- Write-surface audit (READ ONLY, DRAFT 2026-10-16)
+-- ============================================================================
+-- Question: which public tables/views can anon or authenticated WRITE through
+-- PostgREST (anon key + user JWT), i.e. the same hole class as profiles?
+-- A write needs BOTH (1) a privilege (table-level or column-level) and (2) for
+-- RLS tables, an INSERT/UPDATE/ALL policy that lets the row through. This query
+-- lists every relation that has a privilege OR a write policy for
+-- anon/authenticated/public, so both halves are visible in one row.
+--
+-- Columns: rls = row security on; a_ins/a_upd/a_del = authenticated table-level
+--   INSERT/UPDATE/DELETE; a_upd_cols/a_ins_cols = number of columns the
+--   authenticated role can update/insert (counts column-level grants too);
+--   anon_* = same for anon; write_policies = INSERT/UPDATE/ALL policies whose
+--   roles include authenticated, anon or public (name [cmd roles] using/check).
+-- Views (kind = v) are included: a view with write privilege can write through
+--   to its base table, and whether RLS applies depends on security_invoker.
+-- NOT covered: SECURITY DEFINER functions granted to authenticated/anon (RPC
+--   write path), storage buckets, and column-level INSERT from default
+--   privileges set on future tables.
+--
+-- HOW TO READ THE RESULT (worst first):
+--   1. rls = false AND any write privilege for anon or authenticated
+--        -> CRITICAL: anyone holding the privilege can write ANY row.
+--   2. any write privilege for anon (INSERT/UPDATE/DELETE, not MAINTAIN)
+--        -> CRITICAL unless the table is meant to take public form posts.
+--   3. write policy whose using/check is true or has no auth.uid() / is_admin()
+--        -> CRITICAL (open to every role listed).
+--   4. write policy limited to "own row" (id/user_id = auth.uid()) AND a_upd or
+--      a_upd_cols > 0 -> the profiles pattern: the user can change EVERY column
+--      of their own row. Open the table's columns; if any column is a role,
+--      status, tier, price, score, balance, count, flag or foreign owner key,
+--      it is HIGH. Fix = column-level grant or revoke.
+--   5. write policy exists but no privilege (a_upd/a_ins false, *_cols = 0)
+--        -> inert today; delete the policy as cleanup.
+--   6. privilege exists, rls = true, no write policy -> blocked by RLS today
+--      (the common Supabase default); LOW, but one future policy opens it.
+--      Revoke if the app never writes with a user JWT.
+--   7. write policy with is_admin() only -> acceptable ONLY because role cannot
+--      be changed any more (profiles lockdown). Confirm profiles stays locked.
+--   Expected state for this app: every write goes through service_role, so the
+--   ideal result is rows of kind 5/6 only, or none. Any row of kind 1-4 needs
+--   the repo checked for the browser code that uses it (the only browser table
+--   call found so far is a storage bucket in app/admin/promo/PromoView.tsx:529)
+--   and then a decision. Do not fix from this output alone.
+-- Paste as ONE statement. ASCII only.
+-- ============================================================================
+
+with rel as (select c.oid, c.relname, c.relkind, c.relrowsecurity as rls from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','p','v')), pol as (select p.tablename, string_agg(p.policyname || ' [' || p.cmd || ' ' || p.roles::text || '] using=' || coalesce(p.qual, '-') || ' check=' || coalesce(p.with_check, '-'), ' ; ' order by p.policyname) as write_policies from pg_policies p where p.schemaname = 'public' and p.cmd in ('INSERT','UPDATE','ALL') and p.roles && array['authenticated','anon','public']::name[] group by p.tablename), x as (select rel.relname, rel.relkind as kind, rel.rls, has_table_privilege('authenticated', rel.oid, 'INSERT') as a_ins, has_table_privilege('authenticated', rel.oid, 'UPDATE') as a_upd, has_table_privilege('authenticated', rel.oid, 'DELETE') as a_del, (select count(*) from pg_attribute at where at.attrelid = rel.oid and at.attnum > 0 and not at.attisdropped and has_column_privilege('authenticated', rel.oid, at.attnum, 'UPDATE')) as a_upd_cols, (select count(*) from pg_attribute at where at.attrelid = rel.oid and at.attnum > 0 and not at.attisdropped and has_column_privilege('authenticated', rel.oid, at.attnum, 'INSERT')) as a_ins_cols, has_table_privilege('anon', rel.oid, 'INSERT') as anon_ins, has_table_privilege('anon', rel.oid, 'UPDATE') as anon_upd, has_table_privilege('anon', rel.oid, 'DELETE') as anon_del, (select count(*) from pg_attribute at where at.attrelid = rel.oid and at.attnum > 0 and not at.attisdropped and has_column_privilege('anon', rel.oid, at.attnum, 'UPDATE')) as anon_upd_cols, pol.write_policies from rel left join pol on pol.tablename = rel.relname) select * from x where a_ins or a_upd or a_del or a_upd_cols > 0 or a_ins_cols > 0 or anon_ins or anon_upd or anon_del or anon_upd_cols > 0 or write_policies is not null order by (not rls and (a_ins or a_upd or a_del or anon_ins or anon_upd or anon_del)) desc, (anon_ins or anon_upd or anon_del or anon_upd_cols > 0) desc, (write_policies is not null and (a_upd or a_upd_cols > 0 or a_ins)) desc, relname;
