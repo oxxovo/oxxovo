@@ -41,5 +41,10 @@ export function isWatchPublic(): boolean {
 // responsibility split only, not a rewrite of every Watch-adjacent surface).
 export async function isCompetitionWatchPublic(): Promise<boolean> {
   if (!isWatchPublic()) return false
+  // Preview deployments only (HQ 2026-10-12): the DB switch below is shared by Preview and
+  // Production (one Supabase), so opening it to look at Preview would open Production too.
+  // Preview is private behind Vercel login; there the surface opens without the DB switch.
+  // Production and local dev (VERCEL_ENV is 'production' / undefined) still follow the switch.
+  if (process.env.VERCEL_ENV === 'preview') return true
   return isCompetitionPublicationEnabled()
 }
